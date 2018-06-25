@@ -1,9 +1,9 @@
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Token {
     pub kind: Kind,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Kind {
     Keyword(Keyword),
     Identifier(String),
@@ -13,7 +13,7 @@ pub enum Kind {
     LineTerminator,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Keyword {
     Break,
     Case,
@@ -43,7 +43,7 @@ pub enum Keyword {
     With,
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Symbol {
     OpeningParen,
     ClosingParen,

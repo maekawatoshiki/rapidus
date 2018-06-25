@@ -294,3 +294,14 @@ impl Lexer {
         self.pos >= self.code.len()
     }
 }
+
+#[test]
+fn number() {
+    let mut lexer = Lexer::new("1 2 0x34 056 7.89 0b10".to_string());
+    assert_eq!(lexer.next().unwrap(), Token::new_number(1.0));
+    assert_eq!(lexer.next().unwrap(), Token::new_number(2.0));
+    assert_eq!(lexer.next().unwrap(), Token::new_number(52.0));
+    assert_eq!(lexer.next().unwrap(), Token::new_number(46.0));
+    assert_eq!(lexer.next().unwrap(), Token::new_number(7.89));
+    assert_eq!(lexer.next().unwrap(), Token::new_number(2.0));
+}
