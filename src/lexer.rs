@@ -327,6 +327,57 @@ fn string() {
 }
 
 #[test]
+fn keyword() {
+    use token::Keyword;
+
+    let mut lexer = Lexer::new(
+        "break case catch continue debugger default \
+         delete do else finally for function if in instanceof \
+         new return switch this throw try typeof \
+         var void while with"
+            .to_string(),
+    );
+    assert_eq!(lexer.next().unwrap(), Token::new_keyword(Keyword::Break,));
+    assert_eq!(lexer.next().unwrap(), Token::new_keyword(Keyword::Case,));
+    assert_eq!(lexer.next().unwrap(), Token::new_keyword(Keyword::Catch,));
+    assert_eq!(
+        lexer.next().unwrap(),
+        Token::new_keyword(Keyword::Continue,)
+    );
+    assert_eq!(
+        lexer.next().unwrap(),
+        Token::new_keyword(Keyword::Debugger,)
+    );
+    assert_eq!(lexer.next().unwrap(), Token::new_keyword(Keyword::Default,));
+    assert_eq!(lexer.next().unwrap(), Token::new_keyword(Keyword::Delete,));
+    assert_eq!(lexer.next().unwrap(), Token::new_keyword(Keyword::Do,));
+    assert_eq!(lexer.next().unwrap(), Token::new_keyword(Keyword::Else,));
+    assert_eq!(lexer.next().unwrap(), Token::new_keyword(Keyword::Finally,));
+    assert_eq!(lexer.next().unwrap(), Token::new_keyword(Keyword::For,));
+    assert_eq!(
+        lexer.next().unwrap(),
+        Token::new_keyword(Keyword::Function,)
+    );
+    assert_eq!(lexer.next().unwrap(), Token::new_keyword(Keyword::If,));
+    assert_eq!(lexer.next().unwrap(), Token::new_keyword(Keyword::In,));
+    assert_eq!(
+        lexer.next().unwrap(),
+        Token::new_keyword(Keyword::Instanceof,)
+    );
+    assert_eq!(lexer.next().unwrap(), Token::new_keyword(Keyword::New,));
+    assert_eq!(lexer.next().unwrap(), Token::new_keyword(Keyword::Return,));
+    assert_eq!(lexer.next().unwrap(), Token::new_keyword(Keyword::Switch,));
+    assert_eq!(lexer.next().unwrap(), Token::new_keyword(Keyword::This,));
+    assert_eq!(lexer.next().unwrap(), Token::new_keyword(Keyword::Throw,));
+    assert_eq!(lexer.next().unwrap(), Token::new_keyword(Keyword::Try,));
+    assert_eq!(lexer.next().unwrap(), Token::new_keyword(Keyword::Typeof,));
+    assert_eq!(lexer.next().unwrap(), Token::new_keyword(Keyword::Var,));
+    assert_eq!(lexer.next().unwrap(), Token::new_keyword(Keyword::Void,));
+    assert_eq!(lexer.next().unwrap(), Token::new_keyword(Keyword::While,));
+    assert_eq!(lexer.next().unwrap(), Token::new_keyword(Keyword::With,));
+}
+
+#[test]
 fn symbol() {
     let mut lexer = Lexer::new(
         "() {} [] , ; : . -> ++ -- + - * / % \
