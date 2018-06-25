@@ -4,3 +4,15 @@ version = "0.1.0"
 authors = ["maekawatoshiki <konndennsa@gmail.com>"]
 
 [dependencies]
+clap = "*"
+
+[profile.dev]
+codegen-units = 16
+
+[profile.release]
+codegen-units = 16
+opt-level = 3
+debug = false
+lto = true
+debug-assertions = false
+panic = "unwind"
