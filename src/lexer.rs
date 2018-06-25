@@ -1,4 +1,4 @@
-use token::{Symbol, Token};
+use token::{convert_reserved_keyword, Symbol, Token};
 
 #[derive(Clone, Debug)]
 pub struct Lexer {
@@ -35,7 +35,11 @@ impl Lexer {
 impl Lexer {
     pub fn read_identifier(&mut self) -> Result<Token, ()> {
         let ident = self.skip_while(|c| c.is_alphanumeric() || c == '_')?;
-        Ok(Token::new_identifier(ident))
+        if let Some(keyword) = convert_reserved_keyword(ident.as_str()) {
+            Ok(Token::new_keyword(keyword))
+        } else {
+            Ok(Token::new_identifier(ident))
+        }
     }
 }
 

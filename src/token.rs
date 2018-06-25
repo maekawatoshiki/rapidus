@@ -15,6 +15,32 @@ pub enum Kind {
 
 #[derive(Clone, Debug)]
 pub enum Keyword {
+    Break,
+    Case,
+    Catch,
+    Continue,
+    Debugger,
+    Default,
+    Delete,
+    Do,
+    Else,
+    Finally,
+    For,
+    Function,
+    If,
+    In,
+    Instanceof,
+    New,
+    Return,
+    Switch,
+    This,
+    Throw,
+    Try,
+    Typeof,
+    Var,
+    Void,
+    While,
+    With,
 }
 
 #[derive(PartialEq, Debug, Clone)]
@@ -82,6 +108,12 @@ impl Token {
         }
     }
 
+    pub fn new_keyword(keyword: Keyword) -> Token {
+        Token {
+            kind: Kind::Keyword(keyword),
+        }
+    }
+
     pub fn new_string(s: String) -> Token {
         Token {
             kind: Kind::String(s),
@@ -98,5 +130,37 @@ impl Token {
         Token {
             kind: Kind::LineTerminator,
         }
+    }
+}
+
+pub fn convert_reserved_keyword(keyword: &str) -> Option<Keyword> {
+    match keyword {
+        "break" => Some(Keyword::Break),
+        "case" => Some(Keyword::Case),
+        "catch" => Some(Keyword::Catch),
+        "continue" => Some(Keyword::Continue),
+        "debugger" => Some(Keyword::Debugger),
+        "default" => Some(Keyword::Default),
+        "delete" => Some(Keyword::Delete),
+        "do" => Some(Keyword::Do),
+        "else" => Some(Keyword::Else),
+        "finally" => Some(Keyword::Finally),
+        "for" => Some(Keyword::For),
+        "function" => Some(Keyword::Function),
+        "if" => Some(Keyword::If),
+        "in" => Some(Keyword::In),
+        "instanceof" => Some(Keyword::Instanceof),
+        "new" => Some(Keyword::New),
+        "return" => Some(Keyword::Return),
+        "switch" => Some(Keyword::Switch),
+        "this" => Some(Keyword::This),
+        "throw" => Some(Keyword::Throw),
+        "try" => Some(Keyword::Try),
+        "typeof" => Some(Keyword::Typeof),
+        "var" => Some(Keyword::Var),
+        "void" => Some(Keyword::Void),
+        "while" => Some(Keyword::While),
+        "with" => Some(Keyword::With),
+        _ => None,
     }
 }
