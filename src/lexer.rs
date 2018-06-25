@@ -305,3 +305,121 @@ fn number() {
     assert_eq!(lexer.next().unwrap(), Token::new_number(7.89));
     assert_eq!(lexer.next().unwrap(), Token::new_number(2.0));
 }
+
+#[test]
+fn identifier() {
+    let mut lexer = Lexer::new("console log".to_string());
+    assert_eq!(
+        lexer.next().unwrap(),
+        Token::new_identifier("console".to_string())
+    );
+    assert_eq!(
+        lexer.next().unwrap(),
+        Token::new_identifier("log".to_string())
+    );
+}
+
+#[test]
+fn string() {
+    let mut lexer = Lexer::new("'aaa' \"bbb\"".to_string());
+    assert_eq!(lexer.next().unwrap(), Token::new_string("aaa".to_string()));
+    assert_eq!(lexer.next().unwrap(), Token::new_string("bbb".to_string()));
+}
+
+#[test]
+fn symbol() {
+    let mut lexer = Lexer::new(
+        "() {} [] , ; : . -> ++ -- + - * / % \
+         ! ~ << >> < <= > >= == != & | ^ && || \
+         ? = += -= *= /= %= <<= >>= &= |= ^= \
+         &&= ||= #"
+            .to_string(),
+    );
+
+    assert_eq!(
+        lexer.next().unwrap(),
+        Token::new_symbol(Symbol::OpeningParen,)
+    );
+    assert_eq!(
+        lexer.next().unwrap(),
+        Token::new_symbol(Symbol::ClosingParen,)
+    );
+    assert_eq!(
+        lexer.next().unwrap(),
+        Token::new_symbol(Symbol::OpeningBrace,)
+    );
+    assert_eq!(
+        lexer.next().unwrap(),
+        Token::new_symbol(Symbol::ClosingBrace,)
+    );
+    assert_eq!(
+        lexer.next().unwrap(),
+        Token::new_symbol(Symbol::OpeningBoxBracket,)
+    );
+    assert_eq!(
+        lexer.next().unwrap(),
+        Token::new_symbol(Symbol::ClosingBoxBracket,)
+    );
+    assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::Comma,));
+    assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::Semicolon,));
+    assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::Colon,));
+    assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::Point,));
+    assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::Arrow,));
+    assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::Inc,));
+    assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::Dec,));
+    assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::Add,));
+    assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::Sub,));
+    assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::Asterisk,));
+    assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::Div,));
+    assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::Mod,));
+    assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::Not,));
+    assert_eq!(
+        lexer.next().unwrap(),
+        Token::new_symbol(Symbol::BitwiseNot,)
+    );
+    assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::Shl,));
+    assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::Shr,));
+    assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::Lt,));
+    assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::Le,));
+    assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::Gt,));
+    assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::Ge,));
+    assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::Eq,));
+    assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::Ne,));
+    assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::And,));
+    assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::Or,));
+    assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::Xor,));
+    assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::LAnd,));
+    assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::LOr,));
+    assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::Question,));
+    assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::Assign,));
+    assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::AssignAdd,));
+    assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::AssignSub,));
+    assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::AssignMul,));
+    assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::AssignDiv,));
+    assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::AssignMod,));
+    assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::AssignShl,));
+    assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::AssignShr,));
+    assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::AssignAnd,));
+    assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::AssignOr,));
+    assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::AssignXor,));
+    assert_eq!(
+        lexer.next().unwrap(),
+        Token::new_symbol(Symbol::AssignLAnd,)
+    );
+    assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::AssignLOr,));
+    assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::Hash,));
+}
+
+#[test]
+fn line_terminator() {
+    let mut lexer = Lexer::new("hello\nworld".to_string());
+    assert_eq!(
+        lexer.next().unwrap(),
+        Token::new_identifier("hello".to_string())
+    );
+    assert_eq!(lexer.next().unwrap(), Token::new_line_terminator());
+    assert_eq!(
+        lexer.next().unwrap(),
+        Token::new_identifier("world".to_string())
+    );
+}
