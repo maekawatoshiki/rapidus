@@ -5,3 +5,9 @@
 [![](http://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
 A toy JavaScript engine
+
+# Run
+
+```sh
+$ cargo run example/fact.js
+```
