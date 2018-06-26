@@ -8,6 +8,8 @@ A toy JavaScript engine
 
 # Run
 
+Currently, the example(s) except``example/arith.js`` can not run since the parser of Rapidus doesn't work well.
+
 ```sh
-$ cargo run example/fact.js
+$ cargo run example/~~~.js
 ```
