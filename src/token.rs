@@ -133,6 +133,12 @@ impl Token {
     }
 }
 
+impl Token {
+    pub fn is_the_keyword(&self, keyword: Keyword) -> bool {
+        self.kind == Kind::Keyword(keyword)
+    }
+}
+
 pub fn convert_reserved_keyword(keyword: &str) -> Option<Keyword> {
     match keyword {
         "break" => Some(Keyword::Break),

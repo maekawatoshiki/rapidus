@@ -1,14 +1,21 @@
 use token::{convert_reserved_keyword, Symbol, Token};
 
+use std::collections::VecDeque;
+
 #[derive(Clone, Debug)]
 pub struct Lexer {
-    pub code: String,
-    pub pos: usize,
+    code: String,
+    pos: usize,
+    buf: VecDeque<Token>,
 }
 
 impl Lexer {
     pub fn new(code: String) -> Lexer {
-        Lexer { code: code, pos: 0 }
+        Lexer {
+            code: code,
+            pos: 0,
+            buf: VecDeque::new(),
+        }
     }
 }
 
@@ -17,7 +24,21 @@ impl Lexer {
         self.read_token()
     }
 
+    pub fn peek(&mut self) -> Result<Token, ()> {
+        let tok = self.read_token()?;
+        self.buf.push_back(tok.clone());
+        Ok(tok)
+    }
+
+    pub fn unget(&mut self, tok: &Token) {
+        self.buf.push_back(tok.clone());
+    }
+
     pub fn read_token(&mut self) -> Result<Token, ()> {
+        if !self.buf.is_empty() {
+            return Ok(self.buf.pop_front().unwrap());
+        }
+
         match self.next_char()? {
             'a'...'z' | 'A'...'Z' | '_' => self.read_identifier(),
             '0'...'9' => self.read_number(),
