@@ -62,7 +62,38 @@ impl Parser {
     }
 
     fn read_statement(&mut self) -> Result<Node, ()> {
-        self.read_expression_statement()
+        let tok = self.lexer.next()?;
+        match tok.kind {
+            Kind::Keyword(Keyword::If) => self.read_if_statement(),
+            _ => {
+                self.lexer.unget(&tok);
+                self.read_expression_statement()
+            }
+        }
+    }
+}
+
+impl Parser {
+    fn read_if_statement(&mut self) -> Result<Node, ()> {
+        assert_eq!(self.lexer.next()?.kind, Kind::Symbol(Symbol::OpeningParen));
+        let cond = self.read_expression()?;
+        assert_eq!(self.lexer.next()?.kind, Kind::Symbol(Symbol::ClosingParen));
+
+        let then_ = self.read_statement()?;
+
+        let expect_else_tok = self.lexer.next()?;
+        if expect_else_tok.kind == Kind::Keyword(Keyword::Else) {
+            let else_ = self.read_statement()?;
+            return Ok(Node::If(Box::new(cond), Box::new(then_), Box::new(else_)));
+        } else {
+            self.lexer.unget(&expect_else_tok);
+        }
+
+        Ok(Node::If(
+            Box::new(cond),
+            Box::new(then_),
+            Box::new(Node::StatementList(vec![])),
+        ))
     }
 }
 
