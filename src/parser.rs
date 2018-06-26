@@ -20,3 +20,15 @@ impl Parser {
         Err(())
     }
 }
+
+impl Parser {
+    fn read_script(&mut self) -> Result<Node, ()> { 
+        Err(())
+    }
+}
+
+impl Parser {
+    fn read_statement_list(&mut self) -> Result<Node, ()> {
+        Err(())
+    }
+}
