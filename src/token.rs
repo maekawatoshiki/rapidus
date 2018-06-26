@@ -137,6 +137,10 @@ impl Token {
     pub fn is_the_keyword(&self, keyword: Keyword) -> bool {
         self.kind == Kind::Keyword(keyword)
     }
+
+    pub fn is_the_symbol(&self, symbol: Symbol) -> bool {
+        self.kind == Kind::Symbol(symbol)
+    }
 }
 
 pub fn convert_reserved_keyword(keyword: &str) -> Option<Keyword> {

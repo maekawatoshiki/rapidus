@@ -1,5 +1,6 @@
 extern crate rapidus;
 use rapidus::lexer;
+use rapidus::parser;
 
 extern crate clap;
 use clap::{App, Arg};
@@ -30,10 +31,16 @@ fn main() {
             }
         };
 
-        let mut lexer = lexer::Lexer::new(file_body);
+        let mut lexer = lexer::Lexer::new(file_body.clone());
 
         while let Ok(token) = lexer.next() {
             println!("{:?}", token);
+        }
+
+        let mut parser = parser::Parser::new(file_body);
+
+        while let Ok(node) = parser.next() {
+            println!("{:?}", node);
         }
     }
 }

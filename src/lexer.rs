@@ -311,7 +311,7 @@ impl Lexer {
         self.code[self.pos..].chars().next().ok_or(())
     }
 
-    fn eof(&self) -> bool {
+    pub fn eof(&self) -> bool {
         self.pos >= self.code.len()
     }
 }
