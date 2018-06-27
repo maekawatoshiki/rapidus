@@ -109,8 +109,32 @@ impl Parser {
 
     /// https://tc39.github.io/ecma262/#prod-AssignmentExpression
     fn read_assignment_expression(&mut self) -> Result<Node, ()> {
-        let lhs = self.read_additive_expression();
+        let lhs = self.read_equality_expression();
         lhs
+    }
+
+    /// https://tc39.github.io/ecma262/#prod-EqualityExpression
+    fn read_equality_expression(&mut self) -> Result<Node, ()> {
+        let mut lhs = self.read_additive_expression()?;
+        let tok = self.lexer.next()?;
+        match tok.kind {
+            Kind::Symbol(Symbol::Eq) => {
+                lhs = Node::BinOp(
+                    Box::new(lhs),
+                    Box::new(self.read_equality_expression()?),
+                    BinOp::Eq,
+                )
+            }
+            Kind::Symbol(Symbol::Ne) => {
+                lhs = Node::BinOp(
+                    Box::new(lhs),
+                    Box::new(self.read_equality_expression()?),
+                    BinOp::Ne,
+                )
+            }
+            _ => self.lexer.unget(&tok),
+        };
+        Ok(lhs)
     }
 
     /// https://tc39.github.io/ecma262/#prod-AssignmentExpression

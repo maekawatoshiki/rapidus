@@ -24,6 +24,8 @@ pub enum BinOp {
     LOr,
     Eq,
     Ne,
+    SEq, // Strict Eq
+    SNe, // Strict Ne
     Lt,
     Gt,
     Le,
