@@ -72,7 +72,9 @@ pub enum Symbol {
     Gt,
     Ge,
     Eq,
+    SEq, // Strict Equality
     Ne,
+    SNe, // Strict Inequality
     And,
     Or,
     Xor,

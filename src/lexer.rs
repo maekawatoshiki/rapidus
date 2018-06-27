@@ -194,7 +194,11 @@ impl Lexer {
             }
             '=' => {
                 if self.skip_char_if_any('=')? {
-                    symbol = Symbol::Eq
+                    symbol = if self.skip_char_if_any('=')? {
+                        Symbol::SEq
+                    } else {
+                        Symbol::Eq
+                    }
                 } else {
                     symbol = Symbol::Assign
                 }
@@ -208,7 +212,11 @@ impl Lexer {
             }
             '!' => {
                 if self.skip_char_if_any('=')? {
-                    symbol = Symbol::Ne
+                    symbol = if self.skip_char_if_any('=')? {
+                        Symbol::SNe
+                    } else {
+                        Symbol::Ne
+                    }
                 } else {
                     symbol = Symbol::Not
                 }
@@ -402,7 +410,7 @@ fn keyword() {
 fn symbol() {
     let mut lexer = Lexer::new(
         "() {} [] , ; : . -> ++ -- + - * / % \
-         ! ~ << >> < <= > >= == != & | ^ && || \
+         ! ~ << >> < <= > >= == != === !== & | ^ && || \
          ? = += -= *= /= %= <<= >>= &= |= ^= \
          &&= ||= #"
             .to_string(),
@@ -457,6 +465,8 @@ fn symbol() {
     assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::Ge,));
     assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::Eq,));
     assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::Ne,));
+    assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::SEq,));
+    assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::SNe,));
     assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::And,));
     assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::Or,));
     assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::Xor,));
