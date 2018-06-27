@@ -8,7 +8,7 @@ A toy JavaScript engine
 
 # Run
 
-Currently, the example(s) except``example/arith.js`` can not run since the parser of Rapidus doesn't work well.
+Currently, some examples can not run successfully (enter infinite loop) since the parser of Rapidus doesn't work well.
 
 ```sh
 $ cargo run example/~~~.js
