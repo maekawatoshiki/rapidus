@@ -1,6 +1,6 @@
 use lexer;
 use token::{Keyword, Kind, Symbol};
-use node::{BinOp, Node};
+use node::Node;
 
 #[derive(Clone, Debug)]
 pub struct Parser {
@@ -118,18 +118,11 @@ impl Parser {
         let mut lhs = self.read_additive_expression()?;
         let tok = self.lexer.next()?;
         match tok.kind {
-            Kind::Symbol(Symbol::Eq) => {
+            Kind::Symbol(ref op) if op == &Symbol::Eq || op == &Symbol::Ne => {
                 lhs = Node::BinOp(
                     Box::new(lhs),
                     Box::new(self.read_equality_expression()?),
-                    BinOp::Eq,
-                )
-            }
-            Kind::Symbol(Symbol::Ne) => {
-                lhs = Node::BinOp(
-                    Box::new(lhs),
-                    Box::new(self.read_equality_expression()?),
-                    BinOp::Ne,
+                    op.as_binop().unwrap(),
                 )
             }
             _ => self.lexer.unget(&tok),
@@ -142,18 +135,11 @@ impl Parser {
         let mut lhs = self.read_multiplicative_expression()?;
         let tok = self.lexer.next()?;
         match tok.kind {
-            Kind::Symbol(Symbol::Add) => {
+            Kind::Symbol(ref op) if op == &Symbol::Add || op == &Symbol::Sub => {
                 lhs = Node::BinOp(
                     Box::new(lhs),
-                    Box::new(self.read_additive_expression()?),
-                    BinOp::Add,
-                )
-            }
-            Kind::Symbol(Symbol::Sub) => {
-                lhs = Node::BinOp(
-                    Box::new(lhs),
-                    Box::new(self.read_additive_expression()?),
-                    BinOp::Sub,
+                    Box::new(self.read_equality_expression()?),
+                    op.as_binop().unwrap(),
                 )
             }
             _ => self.lexer.unget(&tok),
@@ -166,18 +152,11 @@ impl Parser {
         let mut lhs = self.read_primary_expression()?;
         let tok = self.lexer.next()?;
         match tok.kind {
-            Kind::Symbol(Symbol::Asterisk) => {
+            Kind::Symbol(ref op) if op == &Symbol::Asterisk || op == &Symbol::Div => {
                 lhs = Node::BinOp(
                     Box::new(lhs),
-                    Box::new(self.read_multiplicative_expression()?),
-                    BinOp::Mul,
-                )
-            }
-            Kind::Symbol(Symbol::Div) => {
-                lhs = Node::BinOp(
-                    Box::new(lhs),
-                    Box::new(self.read_multiplicative_expression()?),
-                    BinOp::Div,
+                    Box::new(self.read_equality_expression()?),
+                    op.as_binop().unwrap(),
                 )
             }
             _ => self.lexer.unget(&tok),

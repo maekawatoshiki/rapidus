@@ -1,3 +1,5 @@
+use node::BinOp;
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Token {
     pub kind: Kind,
@@ -142,6 +144,36 @@ impl Token {
 
     pub fn is_the_symbol(&self, symbol: Symbol) -> bool {
         self.kind == Kind::Symbol(symbol)
+    }
+}
+
+impl Symbol {
+    pub fn as_binop(&self) -> Option<BinOp> {
+        match self {
+            Symbol::Add => Some(BinOp::Add),
+            Symbol::Sub => Some(BinOp::Sub),
+            Symbol::Asterisk => Some(BinOp::Mul),
+            Symbol::Div => Some(BinOp::Div),
+            Symbol::Mod => Some(BinOp::Rem),
+            Symbol::And => Some(BinOp::And),
+            Symbol::Or => Some(BinOp::Or),
+            Symbol::Xor => Some(BinOp::Xor),
+            Symbol::LAnd => Some(BinOp::LAnd),
+            Symbol::LOr => Some(BinOp::LOr),
+            Symbol::Eq => Some(BinOp::Eq),
+            Symbol::Ne => Some(BinOp::Ne),
+            Symbol::SEq => Some(BinOp::SEq),
+            Symbol::SNe => Some(BinOp::SNe),
+            Symbol::Lt => Some(BinOp::Lt),
+            Symbol::Gt => Some(BinOp::Gt),
+            Symbol::Le => Some(BinOp::Le),
+            Symbol::Ge => Some(BinOp::Ge),
+            Symbol::Shl => Some(BinOp::Shl),
+            Symbol::Shr => Some(BinOp::Shr),
+            Symbol::Comma => Some(BinOp::Comma),
+            Symbol::Assign => Some(BinOp::Assign),
+            _ => None,
+        }
     }
 }
 
