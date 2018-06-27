@@ -97,6 +97,24 @@ impl Parser {
     }
 }
 
+macro_rules! expression { ( $name:ident, $lower:ident, [ $( $op:path ),* ] ) => {
+    fn $name (&mut self) -> Result<Node, ()> {
+        let mut lhs = self. $lower ()?;
+        let tok = self.lexer.next()?;
+        match tok.kind {
+            Kind::Symbol(ref op) if $( op == &$op )||* => {
+                lhs = Node::BinOp(
+                    Box::new(lhs),
+                    Box::new(self. $name ()?),
+                    op.as_binop().unwrap(),
+                )
+            }
+            _ => self.lexer.unget(&tok),
+        };
+        Ok(lhs)
+    }
+} }
+
 impl Parser {
     fn read_expression_statement(&mut self) -> Result<Node, ()> {
         self.read_expression()
@@ -114,55 +132,25 @@ impl Parser {
     }
 
     /// https://tc39.github.io/ecma262/#prod-EqualityExpression
-    fn read_equality_expression(&mut self) -> Result<Node, ()> {
-        let mut lhs = self.read_additive_expression()?;
-        let tok = self.lexer.next()?;
-        match tok.kind {
-            Kind::Symbol(ref op) if op == &Symbol::Eq || op == &Symbol::Ne => {
-                lhs = Node::BinOp(
-                    Box::new(lhs),
-                    Box::new(self.read_equality_expression()?),
-                    op.as_binop().unwrap(),
-                )
-            }
-            _ => self.lexer.unget(&tok),
-        };
-        Ok(lhs)
-    }
+    expression!(
+        read_equality_expression,
+        read_additive_expression,
+        [Symbol::Eq, Symbol::Ne]
+    );
+
+    /// https://tc39.github.io/ecma262/#prod-AdditiveExpression
+    expression!(
+        read_additive_expression,
+        read_multiplicate_expression,
+        [Symbol::Add, Symbol::Sub]
+    );
 
     /// https://tc39.github.io/ecma262/#prod-AssignmentExpression
-    fn read_additive_expression(&mut self) -> Result<Node, ()> {
-        let mut lhs = self.read_multiplicative_expression()?;
-        let tok = self.lexer.next()?;
-        match tok.kind {
-            Kind::Symbol(ref op) if op == &Symbol::Add || op == &Symbol::Sub => {
-                lhs = Node::BinOp(
-                    Box::new(lhs),
-                    Box::new(self.read_equality_expression()?),
-                    op.as_binop().unwrap(),
-                )
-            }
-            _ => self.lexer.unget(&tok),
-        };
-        Ok(lhs)
-    }
-
-    /// https://tc39.github.io/ecma262/#prod-AssignmentExpression
-    fn read_multiplicative_expression(&mut self) -> Result<Node, ()> {
-        let mut lhs = self.read_primary_expression()?;
-        let tok = self.lexer.next()?;
-        match tok.kind {
-            Kind::Symbol(ref op) if op == &Symbol::Asterisk || op == &Symbol::Div => {
-                lhs = Node::BinOp(
-                    Box::new(lhs),
-                    Box::new(self.read_equality_expression()?),
-                    op.as_binop().unwrap(),
-                )
-            }
-            _ => self.lexer.unget(&tok),
-        };
-        Ok(lhs)
-    }
+    expression!(
+        read_multiplicate_expression,
+        read_primary_expression,
+        [Symbol::Asterisk, Symbol::Div]
+    );
 
     /// https://tc39.github.io/ecma262/#prod-PrimaryExpression
     fn read_primary_expression(&mut self) -> Result<Node, ()> {
