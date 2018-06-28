@@ -134,8 +134,15 @@ impl Parser {
     /// https://tc39.github.io/ecma262/#prod-EqualityExpression
     expression!(
         read_equality_expression,
+        read_relational_expression,
+        [Symbol::Eq, Symbol::Ne, Symbol::SEq, Symbol::SNe]
+    );
+
+    /// https://tc39.github.io/ecma262/#prod-RelationalExpression
+    expression!(
+        read_relational_expression,
         read_additive_expression,
-        [Symbol::Eq, Symbol::Ne]
+        [Symbol::Lt, Symbol::Gt, Symbol::Le, Symbol::Ge]
     );
 
     /// https://tc39.github.io/ecma262/#prod-AdditiveExpression
@@ -145,7 +152,7 @@ impl Parser {
         [Symbol::Add, Symbol::Sub]
     );
 
-    /// https://tc39.github.io/ecma262/#prod-AssignmentExpression
+    /// https://tc39.github.io/ecma262/#prod-MultiplicativeExpression
     expression!(
         read_multiplicate_expression,
         read_primary_expression,
