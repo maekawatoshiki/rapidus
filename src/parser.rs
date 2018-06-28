@@ -229,7 +229,7 @@ fn identifier() {
 }
 
 #[test]
-fn simple_expr() {
+fn simple_expr1() {
     use node::BinOp;
 
     let mut parser = Parser::new("31 + 26 / 3 - 1 * 20".to_string());
@@ -255,6 +255,35 @@ fn simple_expr() {
             ),
         ])
     );
+}
+
+#[test]
+fn simple_expr2() {
+    use node::BinOp;
+
+    for (input, op) in [
+        ("1 + 2 == 3", BinOp::Eq),
+        ("1 + 2 != 3", BinOp::Ne),
+        ("1 + 2 === 3", BinOp::SEq),
+        ("1 + 2 !== 3", BinOp::SNe),
+    ].iter()
+    {
+        let mut parser = Parser::new(input.to_string());
+        assert_eq!(
+            parser.next().unwrap(),
+            Node::StatementList(vec![
+                Node::BinOp(
+                    Box::new(Node::BinOp(
+                        Box::new(Node::Number(1.0)),
+                        Box::new(Node::Number(2.0)),
+                        BinOp::Add,
+                    )),
+                    Box::new(Node::Number(3.0)),
+                    op.clone(),
+                ),
+            ])
+        );
+    }
 }
 
 #[test]
