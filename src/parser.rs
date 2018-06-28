@@ -209,3 +209,71 @@ fn number() {
         Node::StatementList(vec![Node::Number(12345.0)])
     );
 }
+
+#[test]
+fn boolean() {
+    let mut parser = Parser::new("true".to_string());
+    assert_eq!(
+        parser.next().unwrap(),
+        Node::StatementList(vec![Node::Boolean(true)])
+    );
+}
+
+#[test]
+fn identifier() {
+    let mut parser = Parser::new("variable".to_string());
+    assert_eq!(
+        parser.next().unwrap(),
+        Node::StatementList(vec![Node::Identifier("variable".to_string())])
+    );
+}
+
+#[test]
+fn simple_expr() {
+    use node::BinOp;
+
+    let mut parser = Parser::new("31 + 26 / 3 - 1 * 20".to_string());
+    assert_eq!(
+        parser.next().unwrap(),
+        Node::StatementList(vec![
+            Node::BinOp(
+                Box::new(Node::Number(31.0)),
+                Box::new(Node::BinOp(
+                    Box::new(Node::BinOp(
+                        Box::new(Node::Number(26.0)),
+                        Box::new(Node::Number(3.0)),
+                        BinOp::Div,
+                    )),
+                    Box::new(Node::BinOp(
+                        Box::new(Node::Number(1.0)),
+                        Box::new(Node::Number(20.0)),
+                        BinOp::Mul,
+                    )),
+                    BinOp::Sub,
+                )),
+                BinOp::Add,
+            ),
+        ])
+    );
+}
+
+#[test]
+fn if_() {
+    use node::BinOp;
+
+    let mut parser = Parser::new("if (x <= 2) then_stmt else else_stmt".to_string());
+    assert_eq!(
+        parser.next().unwrap(),
+        Node::StatementList(vec![
+            Node::If(
+                Box::new(Node::BinOp(
+                    Box::new(Node::Identifier("x".to_string())),
+                    Box::new(Node::Number(2.0)),
+                    BinOp::Le,
+                )),
+                Box::new(Node::Identifier("then_stmt".to_string())),
+                Box::new(Node::Identifier("else_stmt".to_string())),
+            ),
+        ])
+    );
+}
