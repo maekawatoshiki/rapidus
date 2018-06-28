@@ -1,6 +1,6 @@
 use std::boxed::Box;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Node {
     StatementList(Vec<Node>),
     If(Box<Node>, Box<Node>, Box<Node>), // Cond, Then, Else
@@ -10,7 +10,7 @@ pub enum Node {
     Number(f64),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum BinOp {
     Add,
     Sub,

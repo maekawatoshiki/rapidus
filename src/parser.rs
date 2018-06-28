@@ -100,17 +100,18 @@ impl Parser {
 macro_rules! expression { ( $name:ident, $lower:ident, [ $( $op:path ),* ] ) => {
     fn $name (&mut self) -> Result<Node, ()> {
         let mut lhs = self. $lower ()?;
-        let tok = self.lexer.next()?;
-        match tok.kind {
-            Kind::Symbol(ref op) if $( op == &$op )||* => {
-                lhs = Node::BinOp(
-                    Box::new(lhs),
-                    Box::new(self. $name ()?),
-                    op.as_binop().unwrap(),
-                )
+        if let Ok(tok) = self.lexer.next() {
+            match tok.kind {
+                Kind::Symbol(ref op) if $( op == &$op )||* => {
+                    lhs = Node::BinOp(
+                        Box::new(lhs),
+                        Box::new(self. $name ()?),
+                        op.as_binop().unwrap(),
+                    )
+                }
+                _ => self.lexer.unget(&tok),
             }
-            _ => self.lexer.unget(&tok),
-        };
+        }
         Ok(lhs)
     }
 } }
@@ -198,4 +199,13 @@ impl Parser {
             Err(_) => false,
         }
     }
+}
+
+#[test]
+fn number() {
+    let mut parser = Parser::new("12345".to_string());
+    assert_eq!(
+        parser.next().unwrap(),
+        Node::StatementList(vec![Node::Number(12345.0)])
+    );
 }
