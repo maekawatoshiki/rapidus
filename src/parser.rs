@@ -163,8 +163,29 @@ impl Parser {
     /// https://tc39.github.io/ecma262/#prod-LogicalANDExpression
     expression!(
         read_logical_and_expression,
-        read_equality_expression,
+        read_bitwise_or_expression,
         [Symbol::LAnd]
+    );
+
+    /// https://tc39.github.io/ecma262/#prod-BitwiseORExpression
+    expression!(
+        read_bitwise_or_expression,
+        read_bitwise_xor_expression,
+        [Symbol::Or]
+    );
+
+    /// https://tc39.github.io/ecma262/#prod-BitwiseXORExpression
+    expression!(
+        read_bitwise_xor_expression,
+        read_bitwise_and_expression,
+        [Symbol::Xor]
+    );
+
+    /// https://tc39.github.io/ecma262/#prod-BitwiseANDExpression
+    expression!(
+        read_bitwise_and_expression,
+        read_equality_expression,
+        [Symbol::And]
     );
 
     /// https://tc39.github.io/ecma262/#prod-EqualityExpression
@@ -347,7 +368,7 @@ fn simple_expr_cond() {
 }
 
 #[test]
-fn simple_expr_log() {
+fn simple_expr_logical_or() {
     use node::BinOp;
 
     for (input, op) in [("1 || 0", BinOp::LOr), ("1 && 0", BinOp::LAnd)].iter() {
@@ -358,6 +379,30 @@ fn simple_expr_log() {
                 Node::BinaryOp(
                     Box::new(Node::Number(1.0)),
                     Box::new(Node::Number(0.0)),
+                    op.clone(),
+                ),
+            ])
+        );
+    }
+}
+
+#[test]
+fn simple_expr_bitwise_and() {
+    use node::BinOp;
+
+    for (input, op) in [
+        ("1 & 3", BinOp::And),
+        ("1 ^ 3", BinOp::Xor),
+        ("1 |3", BinOp::Or),
+    ].iter()
+    {
+        let mut parser = Parser::new(input.to_string());
+        assert_eq!(
+            parser.next().unwrap(),
+            Node::StatementList(vec![
+                Node::BinaryOp(
+                    Box::new(Node::Number(1.0)),
+                    Box::new(Node::Number(3.0)),
                     op.clone(),
                 ),
             ])
