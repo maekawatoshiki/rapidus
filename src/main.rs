@@ -33,11 +33,11 @@ fn main() {
 
         let mut lexer = lexer::Lexer::new(file_body.clone());
 
-        // println!("Lexer:");
-        // while let Ok(token) = lexer.next() {
-        //     println!("{:?}", token);
-        // }
-        //
+        println!("Lexer:");
+        while let Ok(token) = lexer.next() {
+            println!("{:?}", token);
+        }
+
         let mut parser = parser::Parser::new(file_body);
 
         println!("Parser:");

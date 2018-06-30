@@ -351,14 +351,9 @@ impl Parser {
                 }
                 Kind::Symbol(Symbol::Point) => {
                     // TODO: More simple way?
-                    if let Ok(tok) = self.lexer.next() {
-                        if let Kind::Identifier(name) = tok.kind {
-                            lhs = Node::Member(Box::new(lhs), name)
-                        } else {
-                            panic!("error")
-                        }
-                    } else {
-                        panic!("error")
+                    match self.lexer.next()?.kind {
+                        Kind::Identifier(name) => lhs = Node::Member(Box::new(lhs), name),
+                        _ => panic!("error: expected identifier"),
                     }
                 }
                 _ => {
