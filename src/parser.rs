@@ -228,7 +228,7 @@ impl Parser {
         if self.is_unary_expression() {
             return self.read_unary_expression();
         }
-        let lhs = self.read_primary_expression()?;
+        let lhs = self.read_update_expression()?;
         if let Ok(tok) = self.lexer.next() {
             if let Kind::Symbol(Symbol::Exp) = tok.kind {
                 return Ok(Node::BinaryOp(
@@ -293,9 +293,41 @@ impl Parser {
             )),
             _ => {
                 self.lexer.unget(&tok);
-                self.read_primary_expression()
+                self.read_update_expression()
             }
         }
+    }
+
+    /// https://tc39.github.io/ecma262/#prod-UpdateExpression
+    // TODO: Implement all features.
+    fn read_update_expression(&mut self) -> Result<Node, ()> {
+        let tok = self.lexer.next()?;
+        match tok.kind {
+            Kind::Symbol(Symbol::Inc) => {
+                return Ok(Node::UnaryOp(
+                    Box::new(self.read_primary_expression()?),
+                    UnaryOp::PrInc,
+                ))
+            }
+            Kind::Symbol(Symbol::Dec) => {
+                return Ok(Node::UnaryOp(
+                    Box::new(self.read_primary_expression()?),
+                    UnaryOp::PrDec,
+                ))
+            }
+            _ => self.lexer.unget(&tok),
+        }
+
+        let e = self.read_primary_expression()?;
+        if let Ok(tok) = self.lexer.next() {
+            match tok.kind {
+                Kind::Symbol(Symbol::Inc) => return Ok(Node::UnaryOp(Box::new(e), UnaryOp::PoInc)),
+                Kind::Symbol(Symbol::Dec) => return Ok(Node::UnaryOp(Box::new(e), UnaryOp::PoDec)),
+                _ => self.lexer.unget(&tok),
+            }
+        }
+
+        Ok(e)
     }
 
     /// https://tc39.github.io/ecma262/#prod-PrimaryExpression
@@ -526,6 +558,10 @@ fn simple_expr_unary() {
         ("-a", UnaryOp::Minus),
         ("~a", UnaryOp::BitwiseNot),
         ("!a", UnaryOp::Not),
+        ("++a", UnaryOp::PrInc),
+        ("--a", UnaryOp::PrDec),
+        ("a++", UnaryOp::PoInc),
+        ("a--", UnaryOp::PoDec),
     ].iter()
     {
         let mut parser = Parser::new(input.to_string());

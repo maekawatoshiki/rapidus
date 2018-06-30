@@ -21,6 +21,10 @@ pub enum UnaryOp {
     Minus,
     BitwiseNot,
     Not,
+    PrInc, // Prefix
+    PrDec,
+    PoInc, // Postfix
+    PoDec,
 }
 
 #[derive(Clone, Debug, PartialEq)]
