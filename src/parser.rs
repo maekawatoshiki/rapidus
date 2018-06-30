@@ -350,8 +350,16 @@ impl Parser {
                     lhs = Node::Call(Box::new(lhs), args)
                 }
                 Kind::Symbol(Symbol::Point) => {
-                    let args = self.read_arguments()?;
-                    lhs = Node::Call(Box::new(lhs), args)
+                    // TODO: More simple way?
+                    if let Ok(tok) = self.lexer.next() {
+                        if let Kind::Identifier(name) = tok.kind {
+                            lhs = Node::Member(Box::new(lhs), name)
+                        } else {
+                            panic!("error")
+                        }
+                    } else {
+                        panic!("error")
+                    }
                 }
                 _ => {
                     self.lexer.unget(&tok);
@@ -395,6 +403,7 @@ impl Parser {
             Kind::Identifier(ref i) if i == "true" => Ok(Node::Boolean(true)),
             Kind::Identifier(ref i) if i == "false" => Ok(Node::Boolean(false)),
             Kind::Identifier(ident) => Ok(Node::Identifier(ident)),
+            Kind::String(s) => Ok(Node::String(s)),
             Kind::Number(num) => Ok(Node::Number(num)),
             Kind::LineTerminator => self.read_primary_expression(),
             e => unimplemented!("{:?}", e),

@@ -1,4 +1,4 @@
-use token::{convert_reserved_keyword, Symbol, Token};
+use token::{convert_reserved_keyword, Kind, Symbol, Token};
 
 use std::collections::VecDeque;
 
@@ -21,7 +21,10 @@ impl Lexer {
 
 impl Lexer {
     pub fn next(&mut self) -> Result<Token, ()> {
-        self.read_token()
+        match self.read_token() {
+            Ok(ref tok) if tok.kind == Kind::LineTerminator => self.next(),
+            otherwise => otherwise,
+        }
     }
 
     pub fn peek(&mut self) -> Result<Token, ()> {
@@ -509,7 +512,7 @@ fn line_terminator() {
         lexer.next().unwrap(),
         Token::new_identifier("hello".to_string())
     );
-    assert_eq!(lexer.next().unwrap(), Token::new_line_terminator());
+    assert_eq!(lexer.read_token().unwrap(), Token::new_line_terminator());
     assert_eq!(
         lexer.next().unwrap(),
         Token::new_identifier("world".to_string())
