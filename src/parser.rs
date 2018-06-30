@@ -1,6 +1,6 @@
 use lexer;
 use token::{Keyword, Kind, Symbol};
-use node::{BinOp, Node};
+use node::{BinOp, Node, UnaryOp};
 
 #[derive(Clone, Debug)]
 pub struct Parser {
@@ -225,6 +225,9 @@ impl Parser {
 
     /// https://tc39.github.io/ecma262/#prod-ExponentiationExpression
     fn read_exponentiation_expression(&mut self) -> Result<Node, ()> {
+        if self.is_unary_expression() {
+            return self.read_unary_expression();
+        }
         let lhs = self.read_primary_expression()?;
         if let Ok(tok) = self.lexer.next() {
             if let Kind::Symbol(Symbol::Exp) = tok.kind {
@@ -238,6 +241,61 @@ impl Parser {
             }
         }
         Ok(lhs)
+    }
+
+    fn is_unary_expression(&mut self) -> bool {
+        match self.lexer.peek() {
+            Ok(ok) => match ok.kind {
+                Kind::Keyword(Keyword::Delete)
+                | Kind::Keyword(Keyword::Void)
+                | Kind::Keyword(Keyword::Typeof)
+                | Kind::Symbol(Symbol::Add)
+                | Kind::Symbol(Symbol::Sub)
+                | Kind::Symbol(Symbol::BitwiseNot)
+                | Kind::Symbol(Symbol::Not) => true,
+                _ => false,
+            },
+            Err(_) => false,
+        }
+    }
+
+    /// https://tc39.github.io/ecma262/#prod-UnaryExpression
+    fn read_unary_expression(&mut self) -> Result<Node, ()> {
+        let tok = self.lexer.next()?;
+        match tok.kind {
+            Kind::Keyword(Keyword::Delete) => Ok(Node::UnaryOp(
+                Box::new(self.read_unary_expression()?),
+                UnaryOp::Delete,
+            )),
+            Kind::Keyword(Keyword::Void) => Ok(Node::UnaryOp(
+                Box::new(self.read_unary_expression()?),
+                UnaryOp::Void,
+            )),
+            Kind::Keyword(Keyword::Typeof) => Ok(Node::UnaryOp(
+                Box::new(self.read_unary_expression()?),
+                UnaryOp::Typeof,
+            )),
+            Kind::Symbol(Symbol::Add) => Ok(Node::UnaryOp(
+                Box::new(self.read_unary_expression()?),
+                UnaryOp::Plus,
+            )),
+            Kind::Symbol(Symbol::Sub) => Ok(Node::UnaryOp(
+                Box::new(self.read_unary_expression()?),
+                UnaryOp::Minus,
+            )),
+            Kind::Symbol(Symbol::BitwiseNot) => Ok(Node::UnaryOp(
+                Box::new(self.read_unary_expression()?),
+                UnaryOp::BitwiseNot,
+            )),
+            Kind::Symbol(Symbol::Not) => Ok(Node::UnaryOp(
+                Box::new(self.read_unary_expression()?),
+                UnaryOp::Not,
+            )),
+            _ => {
+                self.lexer.unget(&tok);
+                self.read_primary_expression()
+            }
+        }
     }
 
     /// https://tc39.github.io/ecma262/#prod-PrimaryExpression
@@ -453,6 +511,28 @@ fn simple_expr_shift() {
                     Box::new(Node::Number(2.0)),
                     op.clone(),
                 ),
+            ])
+        );
+    }
+}
+
+#[test]
+fn simple_expr_unary() {
+    for (input, op) in [
+        ("delete a", UnaryOp::Delete),
+        ("void a", UnaryOp::Void),
+        ("typeof a", UnaryOp::Typeof),
+        ("+a", UnaryOp::Plus),
+        ("-a", UnaryOp::Minus),
+        ("~a", UnaryOp::BitwiseNot),
+        ("!a", UnaryOp::Not),
+    ].iter()
+    {
+        let mut parser = Parser::new(input.to_string());
+        assert_eq!(
+            parser.next().unwrap(),
+            Node::StatementList(vec![
+                Node::UnaryOp(Box::new(Node::Identifier("a".to_string())), op.clone()),
             ])
         );
     }
