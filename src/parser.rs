@@ -158,7 +158,7 @@ impl Parser {
     expression!(
         read_multiplicate_expression,
         read_primary_expression,
-        [Symbol::Asterisk, Symbol::Div]
+        [Symbol::Asterisk, Symbol::Div, Symbol::Mod]
     );
 
     /// https://tc39.github.io/ecma262/#prod-PrimaryExpression
@@ -233,7 +233,7 @@ fn identifier() {
 fn simple_expr1() {
     use node::BinOp;
 
-    let mut parser = Parser::new("31 + 26 / 3 - 1 * 20".to_string());
+    let mut parser = Parser::new("31 + 26 / 3 - 1 * 20 % 3".to_string());
     assert_eq!(
         parser.next().unwrap(),
         Node::StatementList(vec![
@@ -247,7 +247,11 @@ fn simple_expr1() {
                     )),
                     Box::new(Node::BinOp(
                         Box::new(Node::Number(1.0)),
-                        Box::new(Node::Number(20.0)),
+                        Box::new(Node::BinOp(
+                            Box::new(Node::Number(20.0)),
+                            Box::new(Node::Number(3.0)),
+                            BinOp::Rem,
+                        )),
                         BinOp::Mul,
                     )),
                     BinOp::Sub,
@@ -291,7 +295,13 @@ fn simple_expr2() {
 fn if_() {
     use node::BinOp;
 
-    let mut parser = Parser::new("if (x <= 2) then_stmt else else_stmt".to_string());
+    let mut parser = Parser::new(
+        "if (x <= 2) 
+            then_stmt 
+        else 
+            else_stmt"
+            .to_string(),
+    );
     assert_eq!(
         parser.next().unwrap(),
         Node::StatementList(vec![
