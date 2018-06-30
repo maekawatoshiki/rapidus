@@ -135,7 +135,7 @@ impl Parser {
 
     /// https://tc39.github.io/ecma262/#prod-ConditionalExpression
     fn read_conditional_expression(&mut self) -> Result<Node, ()> {
-        let lhs = self.read_equality_expression()?;
+        let lhs = self.read_logical_or_expression()?;
         if let Ok(tok) = self.lexer.next() {
             if let Kind::Symbol(Symbol::Question) = tok.kind {
                 let then_ = self.read_conditional_expression()?;
@@ -152,6 +152,20 @@ impl Parser {
         }
         Ok(lhs)
     }
+
+    /// https://tc39.github.io/ecma262/#prod-LogicalORExpression
+    expression!(
+        read_logical_or_expression,
+        read_logical_and_expression,
+        [Symbol::LOr]
+    );
+
+    /// https://tc39.github.io/ecma262/#prod-LogicalANDExpression
+    expression!(
+        read_logical_and_expression,
+        read_equality_expression,
+        [Symbol::LAnd]
+    );
 
     /// https://tc39.github.io/ecma262/#prod-EqualityExpression
     expression!(
@@ -330,6 +344,25 @@ fn simple_expr_cond() {
             ),
         ])
     );
+}
+
+#[test]
+fn simple_expr_log() {
+    use node::BinOp;
+
+    for (input, op) in [("1 || 0", BinOp::LOr), ("1 && 0", BinOp::LAnd)].iter() {
+        let mut parser = Parser::new(input.to_string());
+        assert_eq!(
+            parser.next().unwrap(),
+            Node::StatementList(vec![
+                Node::BinaryOp(
+                    Box::new(Node::Number(1.0)),
+                    Box::new(Node::Number(0.0)),
+                    op.clone(),
+                ),
+            ])
+        );
+    }
 }
 
 #[test]
