@@ -33,6 +33,7 @@ pub enum BinOp {
     Ge,
     Shl,
     Shr,
+    ZFShr,
     Comma,
     Assign,
 }

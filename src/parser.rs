@@ -198,8 +198,15 @@ impl Parser {
     /// https://tc39.github.io/ecma262/#prod-RelationalExpression
     expression!(
         read_relational_expression,
-        read_additive_expression,
+        read_shift_expression,
         [Symbol::Lt, Symbol::Gt, Symbol::Le, Symbol::Ge]
+    );
+
+    /// https://tc39.github.io/ecma262/#prod-ShiftExpression
+    expression!(
+        read_shift_expression,
+        read_additive_expression,
+        [Symbol::Shl, Symbol::Shr, Symbol::ZFShr]
     );
 
     /// https://tc39.github.io/ecma262/#prod-AdditiveExpression
@@ -403,6 +410,30 @@ fn simple_expr_bitwise_and() {
                 Node::BinaryOp(
                     Box::new(Node::Number(1.0)),
                     Box::new(Node::Number(3.0)),
+                    op.clone(),
+                ),
+            ])
+        );
+    }
+}
+
+#[test]
+fn simple_expr_shift() {
+    use node::BinOp;
+
+    for (input, op) in [
+        ("1 << 2", BinOp::Shl),
+        ("1 >> 2", BinOp::Shr),
+        ("1 >>> 2", BinOp::ZFShr),
+    ].iter()
+    {
+        let mut parser = Parser::new(input.to_string());
+        assert_eq!(
+            parser.next().unwrap(),
+            Node::StatementList(vec![
+                Node::BinaryOp(
+                    Box::new(Node::Number(1.0)),
+                    Box::new(Node::Number(2.0)),
                     op.clone(),
                 ),
             ])

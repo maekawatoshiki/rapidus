@@ -69,6 +69,7 @@ pub enum Symbol {
     BitwiseNot,
     Shl,
     Shr,
+    ZFShr, // Zero-Fill Right Shift
     Lt,
     Le,
     Gt,
@@ -170,6 +171,7 @@ impl Symbol {
             Symbol::Ge => Some(BinOp::Ge),
             Symbol::Shl => Some(BinOp::Shl),
             Symbol::Shr => Some(BinOp::Shr),
+            Symbol::ZFShr => Some(BinOp::ZFShr),
             Symbol::Comma => Some(BinOp::Comma),
             Symbol::Assign => Some(BinOp::Assign),
             _ => None,

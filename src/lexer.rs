@@ -226,7 +226,13 @@ impl Lexer {
                 if self.skip_char_if_any(c)? {
                     symbol = match c {
                         '<' => Symbol::Shl,
-                        '>' => Symbol::Shr,
+                        '>' => {
+                            if self.skip_char_if_any('>')? {
+                                Symbol::ZFShr
+                            } else {
+                                Symbol::Shr
+                            }
+                        }
                         '&' => Symbol::LAnd,
                         '|' => Symbol::LOr,
                         _ => unreachable!(),
@@ -410,7 +416,7 @@ fn keyword() {
 fn symbol() {
     let mut lexer = Lexer::new(
         "() {} [] , ; : . -> ++ -- + - * / % \
-         ! ~ << >> < <= > >= == != === !== & | ^ && || \
+         ! ~ << >> >>> < <= > >= == != === !== & | ^ && || \
          ? = += -= *= /= %= <<= >>= &= |= ^= \
          &&= ||= #"
             .to_string(),
@@ -459,6 +465,7 @@ fn symbol() {
     );
     assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::Shl,));
     assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::Shr,));
+    assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::ZFShr,));
     assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::Lt,));
     assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::Le,));
     assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::Gt,));
