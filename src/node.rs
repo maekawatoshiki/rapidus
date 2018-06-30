@@ -6,6 +6,7 @@ pub enum Node {
     Member(Box<Node>, String),
     Call(Box<Node>, Vec<Node>),
     If(Box<Node>, Box<Node>, Box<Node>), // Cond, Then, Else
+    Assign(Box<Node>, Box<Node>),
     UnaryOp(Box<Node>, UnaryOp),
     BinaryOp(Box<Node>, Box<Node>, BinOp),
     TernaryOp(Box<Node>, Box<Node>, Box<Node>),

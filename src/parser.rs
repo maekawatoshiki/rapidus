@@ -128,9 +128,21 @@ impl Parser {
     }
 
     /// https://tc39.github.io/ecma262/#prod-AssignmentExpression
+    // TODO: Implement all features.
     fn read_assignment_expression(&mut self) -> Result<Node, ()> {
-        let lhs = self.read_conditional_expression();
-        lhs
+        let mut lhs = self.read_conditional_expression()?;
+        while let Ok(tok) = self.lexer.next() {
+            match tok.kind {
+                Kind::Symbol(Symbol::Assign) => {
+                    lhs = Node::Assign(Box::new(lhs), Box::new(self.read_conditional_expression()?))
+                }
+                _ => {
+                    self.lexer.unget(&tok);
+                    break;
+                }
+            }
+        }
+        Ok(lhs)
     }
 
     /// https://tc39.github.io/ecma262/#prod-ConditionalExpression
@@ -637,6 +649,20 @@ fn simple_expr_unary() {
             ])
         );
     }
+}
+
+#[test]
+fn simple_expr_assign() {
+    let mut parser = Parser::new("v = 1".to_string());
+    assert_eq!(
+        parser.next().unwrap(),
+        Node::StatementList(vec![
+            Node::Assign(
+                Box::new(Node::Identifier("v".to_string())),
+                Box::new(Node::Number(1.0)),
+            ),
+        ])
+    );
 }
 
 #[test]
