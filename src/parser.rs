@@ -81,12 +81,13 @@ impl Parser {
 
         let then_ = self.read_statement()?;
 
-        let expect_else_tok = self.lexer.next()?;
-        if expect_else_tok.kind == Kind::Keyword(Keyword::Else) {
-            let else_ = self.read_statement()?;
-            return Ok(Node::If(Box::new(cond), Box::new(then_), Box::new(else_)));
-        } else {
-            self.lexer.unget(&expect_else_tok);
+        if let Ok(expect_else_tok) = self.lexer.next() {
+            if expect_else_tok.kind == Kind::Keyword(Keyword::Else) {
+                let else_ = self.read_statement()?;
+                return Ok(Node::If(Box::new(cond), Box::new(then_), Box::new(else_)));
+            } else {
+                self.lexer.unget(&expect_else_tok);
+            }
         }
 
         Ok(Node::If(
@@ -302,6 +303,22 @@ fn if_() {
                 )),
                 Box::new(Node::Identifier("then_stmt".to_string())),
                 Box::new(Node::Identifier("else_stmt".to_string())),
+            ),
+        ])
+    );
+
+    parser = Parser::new("if (x <= 2) then_stmt ".to_string());
+    assert_eq!(
+        parser.next().unwrap(),
+        Node::StatementList(vec![
+            Node::If(
+                Box::new(Node::BinOp(
+                    Box::new(Node::Identifier("x".to_string())),
+                    Box::new(Node::Number(2.0)),
+                    BinOp::Le,
+                )),
+                Box::new(Node::Identifier("then_stmt".to_string())),
+                Box::new(Node::StatementList(vec![])),
             ),
         ])
     );
