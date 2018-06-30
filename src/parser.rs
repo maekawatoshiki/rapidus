@@ -305,20 +305,20 @@ impl Parser {
         match tok.kind {
             Kind::Symbol(Symbol::Inc) => {
                 return Ok(Node::UnaryOp(
-                    Box::new(self.read_primary_expression()?),
+                    Box::new(self.read_left_hand_side_expression()?),
                     UnaryOp::PrInc,
                 ))
             }
             Kind::Symbol(Symbol::Dec) => {
                 return Ok(Node::UnaryOp(
-                    Box::new(self.read_primary_expression()?),
+                    Box::new(self.read_left_hand_side_expression()?),
                     UnaryOp::PrDec,
                 ))
             }
             _ => self.lexer.unget(&tok),
         }
 
-        let e = self.read_primary_expression()?;
+        let e = self.read_left_hand_side_expression()?;
         if let Ok(tok) = self.lexer.next() {
             match tok.kind {
                 Kind::Symbol(Symbol::Inc) => return Ok(Node::UnaryOp(Box::new(e), UnaryOp::PoInc)),
@@ -328,6 +328,64 @@ impl Parser {
         }
 
         Ok(e)
+    }
+
+    /// https://tc39.github.io/ecma262/#prod-LeftHandSideExpression
+    // TODO: Implement all features.
+    fn read_left_hand_side_expression(&mut self) -> Result<Node, ()> {
+        let lhs = self.read_call_expression()?;
+
+        Ok(lhs)
+    }
+
+    /// https://tc39.github.io/ecma262/#prod-CallExpression
+    // TODO: Implement all features.
+    fn read_call_expression(&mut self) -> Result<Node, ()> {
+        let mut lhs = self.read_primary_expression()?;
+
+        while let Ok(tok) = self.lexer.next() {
+            match tok.kind {
+                Kind::Symbol(Symbol::OpeningParen) => {
+                    let args = self.read_arguments()?;
+                    lhs = Node::Call(Box::new(lhs), args)
+                }
+                Kind::Symbol(Symbol::Point) => {
+                    let args = self.read_arguments()?;
+                    lhs = Node::Call(Box::new(lhs), args)
+                }
+                _ => {
+                    self.lexer.unget(&tok);
+                    break;
+                }
+            }
+        }
+
+        Ok(lhs)
+    }
+
+    fn read_arguments(&mut self) -> Result<Vec<Node>, ()> {
+        let tok = self.lexer.next()?;
+        match tok.kind {
+            Kind::Symbol(Symbol::ClosingParen) => return Ok(vec![]),
+            _ => {
+                self.lexer.unget(&tok);
+            }
+        }
+
+        let mut args = vec![];
+        loop {
+            if let Ok(arg) = self.read_assignment_expression() {
+                args.push(arg)
+            }
+
+            match self.lexer.next() {
+                Ok(ref tok) if tok.kind == Kind::Symbol(Symbol::ClosingParen) => break,
+                Ok(ref tok) if tok.kind == Kind::Symbol(Symbol::Comma) => {}
+                _ => break,
+            }
+        }
+
+        Ok(args)
     }
 
     /// https://tc39.github.io/ecma262/#prod-PrimaryExpression
