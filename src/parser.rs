@@ -349,13 +349,10 @@ impl Parser {
                     let args = self.read_arguments()?;
                     lhs = Node::Call(Box::new(lhs), args)
                 }
-                Kind::Symbol(Symbol::Point) => {
-                    // TODO: More simple way?
-                    match self.lexer.next()?.kind {
-                        Kind::Identifier(name) => lhs = Node::Member(Box::new(lhs), name),
-                        _ => panic!("error: expected identifier"),
-                    }
-                }
+                Kind::Symbol(Symbol::Point) => match self.lexer.next()?.kind {
+                    Kind::Identifier(name) => lhs = Node::Member(Box::new(lhs), name),
+                    _ => panic!("error: expected identifier"),
+                },
                 _ => {
                     self.lexer.unget(&tok);
                     break;
@@ -377,13 +374,19 @@ impl Parser {
 
         let mut args = vec![];
         loop {
+            match self.lexer.next() {
+                Ok(ref tok) if tok.kind == Kind::Symbol(Symbol::ClosingParen) => break,
+                Ok(tok) => self.lexer.unget(&tok),
+                Err(_) => break,
+            }
+
             if let Ok(arg) = self.read_assignment_expression() {
                 args.push(arg)
             }
 
             match self.lexer.next() {
-                Ok(ref tok) if tok.kind == Kind::Symbol(Symbol::ClosingParen) => break,
                 Ok(ref tok) if tok.kind == Kind::Symbol(Symbol::Comma) => {}
+                Ok(tok) => self.lexer.unget(&tok),
                 _ => break,
             }
         }
@@ -632,6 +635,57 @@ fn simple_expr_unary() {
             Node::StatementList(vec![
                 Node::UnaryOp(Box::new(Node::Identifier("a".to_string())), op.clone()),
             ])
+        );
+    }
+}
+
+#[test]
+fn call() {
+    for (input, args) in [
+        ("f()", vec![]),
+        ("f(1, 2, 3)", vec![1, 2, 3]),
+        ("f(1, 2,)", vec![1, 2]),
+    ].iter()
+    {
+        let mut parser = Parser::new(input.to_string());
+        assert_eq!(
+            parser.next().unwrap(),
+            Node::StatementList(vec![
+                Node::Call(
+                    Box::new(Node::Identifier("f".to_string())),
+                    args.iter().map(|n| Node::Number(*n as f64)).collect(),
+                ),
+            ])
+        );
+    }
+}
+
+#[test]
+fn member() {
+    for (input, node) in [
+        (
+            "a.b.c",
+            Node::Member(
+                Box::new(Node::Member(
+                    Box::new(Node::Identifier("a".to_string())),
+                    "b".to_string(),
+                )),
+                "c".to_string(),
+            ),
+        ),
+        (
+            "console.log",
+            Node::Member(
+                Box::new(Node::Identifier("console".to_string())),
+                "log".to_string(),
+            ),
+        ),
+    ].iter()
+    {
+        let mut parser = Parser::new(input.to_string());
+        assert_eq!(
+            parser.next().unwrap(),
+            Node::StatementList(vec![node.clone()])
         );
     }
 }
