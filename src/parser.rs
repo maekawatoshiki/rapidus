@@ -100,15 +100,15 @@ impl Parser {
 
 macro_rules! expression { ( $name:ident, $lower:ident, [ $( $op:path ),* ] ) => {
     fn $name (&mut self) -> Result<Node, ()> {
-        let mut lhs = self. $lower ()?;
+        let lhs = self. $lower ()?;
         if let Ok(tok) = self.lexer.next() {
             match tok.kind {
                 Kind::Symbol(ref op) if $( op == &$op )||* => {
-                    lhs = Node::BinOp(
+                    return Ok(Node::BinaryOp(
                         Box::new(lhs),
                         Box::new(self. $name ()?),
                         op.as_binop().unwrap(),
-                    )
+                    ));
                 }
                 _ => self.lexer.unget(&tok),
             }
@@ -129,8 +129,28 @@ impl Parser {
 
     /// https://tc39.github.io/ecma262/#prod-AssignmentExpression
     fn read_assignment_expression(&mut self) -> Result<Node, ()> {
-        let lhs = self.read_equality_expression();
+        let lhs = self.read_conditional_expression();
         lhs
+    }
+
+    /// https://tc39.github.io/ecma262/#prod-ConditionalExpression
+    fn read_conditional_expression(&mut self) -> Result<Node, ()> {
+        let lhs = self.read_equality_expression()?;
+        if let Ok(tok) = self.lexer.next() {
+            if let Kind::Symbol(Symbol::Question) = tok.kind {
+                let then_ = self.read_conditional_expression()?;
+                assert_eq!(self.lexer.next()?.kind, Kind::Symbol(Symbol::Colon));
+                let else_ = self.read_conditional_expression()?;
+                return Ok(Node::TernaryOp(
+                    Box::new(lhs),
+                    Box::new(then_),
+                    Box::new(else_),
+                ));
+            } else {
+                self.lexer.unget(&tok);
+            }
+        }
+        Ok(lhs)
     }
 
     /// https://tc39.github.io/ecma262/#prod-EqualityExpression
@@ -230,24 +250,24 @@ fn identifier() {
 }
 
 #[test]
-fn simple_expr1() {
+fn simple_expr_5arith() {
     use node::BinOp;
 
     let mut parser = Parser::new("31 + 26 / 3 - 1 * 20 % 3".to_string());
     assert_eq!(
         parser.next().unwrap(),
         Node::StatementList(vec![
-            Node::BinOp(
+            Node::BinaryOp(
                 Box::new(Node::Number(31.0)),
-                Box::new(Node::BinOp(
-                    Box::new(Node::BinOp(
+                Box::new(Node::BinaryOp(
+                    Box::new(Node::BinaryOp(
                         Box::new(Node::Number(26.0)),
                         Box::new(Node::Number(3.0)),
                         BinOp::Div,
                     )),
-                    Box::new(Node::BinOp(
+                    Box::new(Node::BinaryOp(
                         Box::new(Node::Number(1.0)),
-                        Box::new(Node::BinOp(
+                        Box::new(Node::BinaryOp(
                             Box::new(Node::Number(20.0)),
                             Box::new(Node::Number(3.0)),
                             BinOp::Rem,
@@ -263,7 +283,7 @@ fn simple_expr1() {
 }
 
 #[test]
-fn simple_expr2() {
+fn simple_expr_eq() {
     use node::BinOp;
 
     for (input, op) in [
@@ -277,8 +297,8 @@ fn simple_expr2() {
         assert_eq!(
             parser.next().unwrap(),
             Node::StatementList(vec![
-                Node::BinOp(
-                    Box::new(Node::BinOp(
+                Node::BinaryOp(
+                    Box::new(Node::BinaryOp(
                         Box::new(Node::Number(1.0)),
                         Box::new(Node::Number(2.0)),
                         BinOp::Add,
@@ -289,6 +309,27 @@ fn simple_expr2() {
             ])
         );
     }
+}
+
+#[test]
+fn simple_expr_cond() {
+    use node::BinOp;
+
+    let mut parser = Parser::new("n == 1 ? 2 : max".to_string());
+    assert_eq!(
+        parser.next().unwrap(),
+        Node::StatementList(vec![
+            Node::TernaryOp(
+                Box::new(Node::BinaryOp(
+                    Box::new(Node::Identifier("n".to_string())),
+                    Box::new(Node::Number(1.0)),
+                    BinOp::Eq,
+                )),
+                Box::new(Node::Number(2.0)),
+                Box::new(Node::Identifier("max".to_string())),
+            ),
+        ])
+    );
 }
 
 #[test]
@@ -306,7 +347,7 @@ fn if_() {
         parser.next().unwrap(),
         Node::StatementList(vec![
             Node::If(
-                Box::new(Node::BinOp(
+                Box::new(Node::BinaryOp(
                     Box::new(Node::Identifier("x".to_string())),
                     Box::new(Node::Number(2.0)),
                     BinOp::Le,
@@ -322,7 +363,7 @@ fn if_() {
         parser.next().unwrap(),
         Node::StatementList(vec![
             Node::If(
-                Box::new(Node::BinOp(
+                Box::new(Node::BinaryOp(
                     Box::new(Node::Identifier("x".to_string())),
                     Box::new(Node::Number(2.0)),
                     BinOp::Le,
