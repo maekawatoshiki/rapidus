@@ -18,6 +18,7 @@ pub enum BinOp {
     Mul,
     Div,
     Rem,
+    Exp,
     And,
     Or,
     Xor,

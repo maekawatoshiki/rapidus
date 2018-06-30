@@ -174,6 +174,8 @@ impl Lexer {
             '*' => {
                 if self.skip_char_if_any('=')? {
                     symbol = Symbol::AssignMul
+                } else if self.skip_char_if_any('*')? {
+                    symbol = Symbol::Exp
                 } else {
                     symbol = Symbol::Asterisk
                 }
@@ -415,7 +417,7 @@ fn keyword() {
 #[test]
 fn symbol() {
     let mut lexer = Lexer::new(
-        "() {} [] , ; : . -> ++ -- + - * / % \
+        "() {} [] , ; : . -> ++ -- + - * / % **\
          ! ~ << >> >>> < <= > >= == != === !== & | ^ && || \
          ? = += -= *= /= %= <<= >>= &= |= ^= \
          &&= ||= #"
@@ -458,6 +460,7 @@ fn symbol() {
     assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::Asterisk,));
     assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::Div,));
     assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::Mod,));
+    assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::Exp,));
     assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::Not,));
     assert_eq!(
         lexer.next().unwrap(),

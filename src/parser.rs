@@ -1,6 +1,6 @@
 use lexer;
 use token::{Keyword, Kind, Symbol};
-use node::Node;
+use node::{BinOp, Node};
 
 #[derive(Clone, Debug)]
 pub struct Parser {
@@ -219,9 +219,26 @@ impl Parser {
     /// https://tc39.github.io/ecma262/#prod-MultiplicativeExpression
     expression!(
         read_multiplicate_expression,
-        read_primary_expression,
+        read_exponentiation_expression,
         [Symbol::Asterisk, Symbol::Div, Symbol::Mod]
     );
+
+    /// https://tc39.github.io/ecma262/#prod-ExponentiationExpression
+    fn read_exponentiation_expression(&mut self) -> Result<Node, ()> {
+        let lhs = self.read_primary_expression()?;
+        if let Ok(tok) = self.lexer.next() {
+            if let Kind::Symbol(Symbol::Exp) = tok.kind {
+                return Ok(Node::BinaryOp(
+                    Box::new(lhs),
+                    Box::new(self.read_exponentiation_expression()?),
+                    BinOp::Exp,
+                ));
+            } else {
+                self.lexer.unget(&tok);
+            }
+        }
+        Ok(lhs)
+    }
 
     /// https://tc39.github.io/ecma262/#prod-PrimaryExpression
     fn read_primary_expression(&mut self) -> Result<Node, ()> {

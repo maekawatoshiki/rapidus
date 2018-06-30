@@ -65,6 +65,7 @@ pub enum Symbol {
     Asterisk,
     Div,
     Mod,
+    Exp,
     Not,
     BitwiseNot,
     Shl,
