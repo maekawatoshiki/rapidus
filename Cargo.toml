@@ -5,6 +5,7 @@ authors = ["maekawatoshiki <konndennsa@gmail.com>"]
 
 [dependencies]
 clap = "*"
+bitflags = "*"
 
 [profile.dev]
 codegen-units = 16
