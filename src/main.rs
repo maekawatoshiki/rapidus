@@ -1,6 +1,7 @@
 extern crate rapidus;
 use rapidus::lexer;
 use rapidus::parser;
+use rapidus::vm;
 
 extern crate clap;
 use clap::{App, Arg};
@@ -44,5 +45,7 @@ fn main() {
         while let Ok(node) = parser.next() {
             println!("{:?}", node);
         }
+
+        vm::test();
     }
 }
