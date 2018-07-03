@@ -1,6 +1,6 @@
 use lexer;
-use token::{Keyword, Kind, Symbol};
 use node::{BinOp, Node, UnaryOp};
+use token::{Keyword, Kind, Symbol};
 
 #[derive(Clone, Debug)]
 pub struct Parser {
@@ -482,29 +482,27 @@ fn simple_expr_5arith() {
     let mut parser = Parser::new("31 + 26 / 3 - 1 * 20 % 3".to_string());
     assert_eq!(
         parser.next().unwrap(),
-        Node::StatementList(vec![
-            Node::BinaryOp(
-                Box::new(Node::Number(31.0)),
+        Node::StatementList(vec![Node::BinaryOp(
+            Box::new(Node::Number(31.0)),
+            Box::new(Node::BinaryOp(
                 Box::new(Node::BinaryOp(
-                    Box::new(Node::BinaryOp(
-                        Box::new(Node::Number(26.0)),
-                        Box::new(Node::Number(3.0)),
-                        BinOp::Div,
-                    )),
-                    Box::new(Node::BinaryOp(
-                        Box::new(Node::Number(1.0)),
-                        Box::new(Node::BinaryOp(
-                            Box::new(Node::Number(20.0)),
-                            Box::new(Node::Number(3.0)),
-                            BinOp::Rem,
-                        )),
-                        BinOp::Mul,
-                    )),
-                    BinOp::Sub,
+                    Box::new(Node::Number(26.0)),
+                    Box::new(Node::Number(3.0)),
+                    BinOp::Div,
                 )),
-                BinOp::Add,
-            ),
-        ])
+                Box::new(Node::BinaryOp(
+                    Box::new(Node::Number(1.0)),
+                    Box::new(Node::BinaryOp(
+                        Box::new(Node::Number(20.0)),
+                        Box::new(Node::Number(3.0)),
+                        BinOp::Rem,
+                    )),
+                    BinOp::Mul,
+                )),
+                BinOp::Sub,
+            )),
+            BinOp::Add,
+        )])
     );
 }
 
@@ -522,17 +520,15 @@ fn simple_expr_eq() {
         let mut parser = Parser::new(input.to_string());
         assert_eq!(
             parser.next().unwrap(),
-            Node::StatementList(vec![
-                Node::BinaryOp(
-                    Box::new(Node::BinaryOp(
-                        Box::new(Node::Number(1.0)),
-                        Box::new(Node::Number(2.0)),
-                        BinOp::Add,
-                    )),
-                    Box::new(Node::Number(3.0)),
-                    op.clone(),
-                ),
-            ])
+            Node::StatementList(vec![Node::BinaryOp(
+                Box::new(Node::BinaryOp(
+                    Box::new(Node::Number(1.0)),
+                    Box::new(Node::Number(2.0)),
+                    BinOp::Add,
+                )),
+                Box::new(Node::Number(3.0)),
+                op.clone(),
+            )])
         );
     }
 }
@@ -544,17 +540,15 @@ fn simple_expr_cond() {
     let mut parser = Parser::new("n == 1 ? 2 : max".to_string());
     assert_eq!(
         parser.next().unwrap(),
-        Node::StatementList(vec![
-            Node::TernaryOp(
-                Box::new(Node::BinaryOp(
-                    Box::new(Node::Identifier("n".to_string())),
-                    Box::new(Node::Number(1.0)),
-                    BinOp::Eq,
-                )),
-                Box::new(Node::Number(2.0)),
-                Box::new(Node::Identifier("max".to_string())),
-            ),
-        ])
+        Node::StatementList(vec![Node::TernaryOp(
+            Box::new(Node::BinaryOp(
+                Box::new(Node::Identifier("n".to_string())),
+                Box::new(Node::Number(1.0)),
+                BinOp::Eq,
+            )),
+            Box::new(Node::Number(2.0)),
+            Box::new(Node::Identifier("max".to_string())),
+        )])
     );
 }
 
@@ -566,13 +560,11 @@ fn simple_expr_logical_or() {
         let mut parser = Parser::new(input.to_string());
         assert_eq!(
             parser.next().unwrap(),
-            Node::StatementList(vec![
-                Node::BinaryOp(
-                    Box::new(Node::Number(1.0)),
-                    Box::new(Node::Number(0.0)),
-                    op.clone(),
-                ),
-            ])
+            Node::StatementList(vec![Node::BinaryOp(
+                Box::new(Node::Number(1.0)),
+                Box::new(Node::Number(0.0)),
+                op.clone(),
+            )])
         );
     }
 }
@@ -590,13 +582,11 @@ fn simple_expr_bitwise_and() {
         let mut parser = Parser::new(input.to_string());
         assert_eq!(
             parser.next().unwrap(),
-            Node::StatementList(vec![
-                Node::BinaryOp(
-                    Box::new(Node::Number(1.0)),
-                    Box::new(Node::Number(3.0)),
-                    op.clone(),
-                ),
-            ])
+            Node::StatementList(vec![Node::BinaryOp(
+                Box::new(Node::Number(1.0)),
+                Box::new(Node::Number(3.0)),
+                op.clone(),
+            )])
         );
     }
 }
@@ -614,13 +604,11 @@ fn simple_expr_shift() {
         let mut parser = Parser::new(input.to_string());
         assert_eq!(
             parser.next().unwrap(),
-            Node::StatementList(vec![
-                Node::BinaryOp(
-                    Box::new(Node::Number(1.0)),
-                    Box::new(Node::Number(2.0)),
-                    op.clone(),
-                ),
-            ])
+            Node::StatementList(vec![Node::BinaryOp(
+                Box::new(Node::Number(1.0)),
+                Box::new(Node::Number(2.0)),
+                op.clone(),
+            )])
         );
     }
 }
@@ -644,9 +632,10 @@ fn simple_expr_unary() {
         let mut parser = Parser::new(input.to_string());
         assert_eq!(
             parser.next().unwrap(),
-            Node::StatementList(vec![
-                Node::UnaryOp(Box::new(Node::Identifier("a".to_string())), op.clone()),
-            ])
+            Node::StatementList(vec![Node::UnaryOp(
+                Box::new(Node::Identifier("a".to_string())),
+                op.clone(),
+            )])
         );
     }
 }
@@ -656,12 +645,10 @@ fn simple_expr_assign() {
     let mut parser = Parser::new("v = 1".to_string());
     assert_eq!(
         parser.next().unwrap(),
-        Node::StatementList(vec![
-            Node::Assign(
-                Box::new(Node::Identifier("v".to_string())),
-                Box::new(Node::Number(1.0)),
-            ),
-        ])
+        Node::StatementList(vec![Node::Assign(
+            Box::new(Node::Identifier("v".to_string())),
+            Box::new(Node::Number(1.0)),
+        )])
     );
 }
 
@@ -676,12 +663,10 @@ fn call() {
         let mut parser = Parser::new(input.to_string());
         assert_eq!(
             parser.next().unwrap(),
-            Node::StatementList(vec![
-                Node::Call(
-                    Box::new(Node::Identifier("f".to_string())),
-                    args.iter().map(|n| Node::Number(*n as f64)).collect(),
-                ),
-            ])
+            Node::StatementList(vec![Node::Call(
+                Box::new(Node::Identifier("f".to_string())),
+                args.iter().map(|n| Node::Number(*n as f64)).collect(),
+            )])
         );
     }
 }
@@ -729,32 +714,28 @@ fn if_() {
     );
     assert_eq!(
         parser.next().unwrap(),
-        Node::StatementList(vec![
-            Node::If(
-                Box::new(Node::BinaryOp(
-                    Box::new(Node::Identifier("x".to_string())),
-                    Box::new(Node::Number(2.0)),
-                    BinOp::Le,
-                )),
-                Box::new(Node::Identifier("then_stmt".to_string())),
-                Box::new(Node::Identifier("else_stmt".to_string())),
-            ),
-        ])
+        Node::StatementList(vec![Node::If(
+            Box::new(Node::BinaryOp(
+                Box::new(Node::Identifier("x".to_string())),
+                Box::new(Node::Number(2.0)),
+                BinOp::Le,
+            )),
+            Box::new(Node::Identifier("then_stmt".to_string())),
+            Box::new(Node::Identifier("else_stmt".to_string())),
+        )])
     );
 
     parser = Parser::new("if (x <= 2) then_stmt ".to_string());
     assert_eq!(
         parser.next().unwrap(),
-        Node::StatementList(vec![
-            Node::If(
-                Box::new(Node::BinaryOp(
-                    Box::new(Node::Identifier("x".to_string())),
-                    Box::new(Node::Number(2.0)),
-                    BinOp::Le,
-                )),
-                Box::new(Node::Identifier("then_stmt".to_string())),
-                Box::new(Node::StatementList(vec![])),
-            ),
-        ])
+        Node::StatementList(vec![Node::If(
+            Box::new(Node::BinaryOp(
+                Box::new(Node::Identifier("x".to_string())),
+                Box::new(Node::Number(2.0)),
+                BinOp::Le,
+            )),
+            Box::new(Node::Identifier("then_stmt".to_string())),
+            Box::new(Node::StatementList(vec![])),
+        )])
     );
 }
