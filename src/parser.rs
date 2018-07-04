@@ -756,6 +756,20 @@ fn member() {
 }
 
 #[test]
+fn var_decl() {
+    let mut parser = Parser::new("var a, b = 21".to_string());
+    assert_eq!(
+        parser.next().unwrap(),
+        Node::StatementList(vec![
+            Node::StatementList(vec![
+                Node::VarDecl("a".to_string(), None),
+                Node::VarDecl("b".to_string(), Some(Box::new(Node::Number(21.0)))),
+            ]),
+        ])
+    );
+}
+
+#[test]
 fn if_() {
     use node::BinOp;
 
