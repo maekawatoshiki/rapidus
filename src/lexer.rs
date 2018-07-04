@@ -33,6 +33,19 @@ impl Lexer {
         Ok(tok)
     }
 
+    pub fn skip(&mut self, kind: Kind) -> bool {
+        match self.next() {
+            Ok(tok) => {
+                let success = tok.kind == kind;
+                if !success {
+                    self.unget(&tok)
+                }
+                success
+            }
+            Err(_) => false,
+        }
+    }
+
     pub fn unget(&mut self, tok: &Token) {
         self.buf.push_back(tok.clone());
     }

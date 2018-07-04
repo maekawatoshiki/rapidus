@@ -3,6 +3,7 @@ use std::boxed::Box;
 #[derive(Clone, Debug, PartialEq)]
 pub enum Node {
     StatementList(Vec<Node>),
+    VarDecl(String, Option<Box<Node>>),
     Member(Box<Node>, String),
     Call(Box<Node>, Vec<Node>),
     If(Box<Node>, Box<Node>, Box<Node>), // Cond, Then, Else

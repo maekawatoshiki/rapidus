@@ -39,15 +39,15 @@ impl Parser {
                 break;
             }
 
-            if let Ok(ok) = self.lexer.peek() {
-                if ok.is_the_symbol(Symbol::ClosingBrace) {
-                    break;
-                }
+            if self.lexer.skip(Kind::Symbol(Symbol::ClosingBrace)) {
+                break;
             }
 
             if let Ok(item) = self.read_statement_list_item() {
                 items.push(item)
             }
+
+            self.lexer.skip(Kind::Symbol(Symbol::Semicolon));
         }
 
         Ok(Node::StatementList(items))
@@ -65,11 +65,55 @@ impl Parser {
         let tok = self.lexer.next()?;
         match tok.kind {
             Kind::Keyword(Keyword::If) => self.read_if_statement(),
+            Kind::Keyword(Keyword::Var) => self.read_variable_statement(),
             _ => {
                 self.lexer.unget(&tok);
                 self.read_expression_statement()
             }
         }
+    }
+}
+
+impl Parser {
+    /// https://tc39.github.io/ecma262/#prod-VariableStatement
+    fn read_variable_statement(&mut self) -> Result<Node, ()> {
+        self.read_variable_declaration_list()
+    }
+
+    /// https://tc39.github.io/ecma262/#prod-VariableDeclarationList
+    fn read_variable_declaration_list(&mut self) -> Result<Node, ()> {
+        let mut list = vec![];
+
+        loop {
+            list.push(self.read_variable_declaration()?);
+            if !self.lexer.skip(Kind::Symbol(Symbol::Comma)) {
+                break;
+            }
+        }
+
+        Ok(Node::StatementList(list))
+    }
+
+    /// https://tc39.github.io/ecma262/#prod-VariableDeclaration
+    fn read_variable_declaration(&mut self) -> Result<Node, ()> {
+        let name = match self.lexer.next()?.kind {
+            Kind::Identifier(name) => name,
+            _ => unimplemented!(),
+        };
+
+        if self.lexer.skip(Kind::Symbol(Symbol::Assign)) {
+            Ok(Node::VarDecl(
+                name,
+                Some(Box::new(self.read_initializer()?)),
+            ))
+        } else {
+            Ok(Node::VarDecl(name, None))
+        }
+    }
+
+    /// https://tc39.github.io/ecma262/#prod-Initializer
+    fn read_initializer(&mut self) -> Result<Node, ()> {
+        self.read_assignment_expression()
     }
 }
 
