@@ -46,6 +46,7 @@ fn main() {
             println!("{:?}", node);
         }
 
+        println!("VM Test:");
         vm::test();
     }
 }
