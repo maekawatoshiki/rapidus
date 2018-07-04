@@ -122,10 +122,8 @@ impl Parser {
         self.read_expression()
     }
 
-    fn read_expression(&mut self) -> Result<Node, ()> {
-        let lhs = self.read_assignment_expression();
-        lhs
-    }
+    /// https://tc39.github.io/ecma262/#prod-Expression
+    expression!(read_expression, read_assignment_expression, [Symbol::Comma]);
 
     /// https://tc39.github.io/ecma262/#prod-AssignmentExpression
     // TODO: Implement all features.
