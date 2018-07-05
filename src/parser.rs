@@ -778,6 +778,22 @@ fn var_decl() {
 }
 
 #[test]
+fn block() {
+    let mut parser = Parser::new("{ a=1 }".to_string());
+    assert_eq!(
+        parser.next().unwrap(),
+        Node::StatementList(vec![
+            Node::StatementList(vec![
+                Node::Assign(
+                    Box::new(Node::Identifier("a".to_string())),
+                    Box::new(Node::Number(1.0)),
+                ),
+            ]),
+        ])
+    );
+}
+
+#[test]
 fn if_() {
     use node::BinOp;
 
