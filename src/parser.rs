@@ -66,11 +66,19 @@ impl Parser {
         match tok.kind {
             Kind::Keyword(Keyword::If) => self.read_if_statement(),
             Kind::Keyword(Keyword::Var) => self.read_variable_statement(),
+            Kind::Symbol(Symbol::OpeningBrace) => self.read_block_statement(),
             _ => {
                 self.lexer.unget(&tok);
                 self.read_expression_statement()
             }
         }
+    }
+}
+
+impl Parser {
+    /// https://tc39.github.io/ecma262/#prod-BlockStatement
+    fn read_block_statement(&mut self) -> Result<Node, ()> {
+        self.read_statement_list()
     }
 }
 
