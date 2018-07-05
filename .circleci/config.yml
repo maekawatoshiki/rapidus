@@ -25,7 +25,6 @@ jobs:
             chmod -R a+w $RUSTUP_HOME $CARGO_HOME;
             rm rustup-init
             source ~/.cargo/env
-            rustup default nightly
       - run: 
           name: Install llvm-3.8 and so on
           command: |

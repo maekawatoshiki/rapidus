@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::collections::VecDeque;
 
-use std::heap::{Alloc, Global, Layout};
+use std::alloc::{Alloc, Global, Layout};
 
 pub type HeapAddr = *mut Value;
 
