@@ -23,7 +23,8 @@ fn main() {
         let mut file_body = String::new();
 
         match OpenOptions::new().read(true).open(filename) {
-            Ok(mut ok) => ok.read_to_string(&mut file_body)
+            Ok(mut ok) => ok
+                .read_to_string(&mut file_body)
                 .ok()
                 .expect("cannot read file"),
             Err(e) => {

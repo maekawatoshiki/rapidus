@@ -66,7 +66,8 @@ impl VM {
         for inst in insts {
             match inst {
                 Inst::Push(val) => self.stack.push_back(val),
-                Inst::GetGlobal(name) => self.stack
+                Inst::GetGlobal(name) => self
+                    .stack
                     .push_back(self.global_objects.get(name.as_str()).unwrap().clone()),
                 Inst::SetGlobal(name, obj) => {
                     self.global_objects.insert(name, obj);
