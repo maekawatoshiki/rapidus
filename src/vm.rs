@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 use std::collections::VecDeque;
 
-pub type HeapAddr = usize;
+use std::heap::{Alloc, Global, Layout};
+
+pub type HeapAddr = *mut Value;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
@@ -25,28 +27,37 @@ pub enum Inst {
 
 pub struct VM {
     pub global_objects: HashMap<String, Value>,
-    pub heap: HashMap<HeapAddr, Value>,
     pub stack: VecDeque<Value>,
 }
 
 impl VM {
     pub fn new() -> VM {
         let mut obj = HashMap::new();
-        let console_log_addr = 0;
-        obj.insert("console".to_string(), {
-            let mut map = HashMap::new();
-            map.insert("log".to_string(), console_log_addr);
-            Value::Object(map)
-        });
 
-        let mut heap = HashMap::new();
-        heap.insert(console_log_addr, Value::EmbeddedFunction(1));
+        unsafe {
+            let console_log_addr = VM::alloc_for_value();
+            *console_log_addr = Value::EmbeddedFunction(1);
+
+            obj.insert("console".to_string(), {
+                let mut map = HashMap::new();
+                map.insert("log".to_string(), console_log_addr);
+                Value::Object(map)
+            });
+        }
 
         VM {
             global_objects: obj,
-            heap: heap,
             stack: VecDeque::new(),
         }
+    }
+
+    pub unsafe fn alloc_for_value() -> HeapAddr {
+        let layout = Layout::from_size_align(
+            ::std::mem::size_of::<Value>() + 1, // Without '+ 1', segv occurs. Why?
+            ::std::mem::align_of::<Value>(),
+        ).unwrap();
+        let ptr_nonnull = Global.alloc(layout.clone()).unwrap();
+        ptr_nonnull.as_ptr() as *mut Value
     }
 }
 
@@ -72,7 +83,7 @@ impl VM {
                     let parent = self.stack.pop_back().unwrap();
                     if let Value::Object(map) = parent {
                         match map.get(member_name.as_str()) {
-                            Some(v) => self.stack.push_back(self.heap.get(v).unwrap().clone()),
+                            Some(addr) => unsafe { self.stack.push_back((**addr).clone()) },
                             None => {}
                         }
                     }
@@ -92,7 +103,7 @@ impl VM {
         let callee = self.stack.pop_back().unwrap();
         match callee {
             Value::EmbeddedFunction(1) => console_log(&args[0]),
-            _ => {}
+            c => println!("{:?}", c),
         }
 
         // EmbeddedFunction(1)
