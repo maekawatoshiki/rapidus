@@ -2,6 +2,7 @@ extern crate rapidus;
 use rapidus::lexer;
 use rapidus::parser;
 use rapidus::vm;
+use rapidus::vm_codegen;
 
 extern crate clap;
 use clap::{App, Arg};
@@ -46,6 +47,9 @@ fn main() {
         while let Ok(node) = parser.next() {
             println!("{:?}", node);
         }
+
+        println!("VM CodeGen Test:");
+        vm_codegen::test();
 
         println!("VM Test:");
         vm::test();

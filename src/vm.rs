@@ -18,16 +18,17 @@ pub enum Value {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Inst {
     Push(Value),
-    Member,
+    GetMember,
+    SetMember,
     GetGlobal(String),
     GetLocal(String),
-    SetGlobal(String, Value),
+    SetGlobal(String),
     Call(usize),
 }
 
 pub struct VM {
     pub global_objects: HashMap<String, Value>,
-    pub stack: VecDeque<Value>,
+    pub stack: Vec<VecDeque<Value>>,
 }
 
 impl VM {
@@ -47,7 +48,7 @@ impl VM {
 
         VM {
             global_objects: obj,
-            stack: VecDeque::new(),
+            stack: vec![VecDeque::new()],
         }
     }
 
@@ -65,26 +66,31 @@ impl VM {
     pub fn run(&mut self, insts: Vec<Inst>) {
         for inst in insts {
             match inst {
-                Inst::Push(val) => self.stack.push_back(val),
+                Inst::Push(val) => self.stack.last_mut().unwrap().push_back(val),
                 Inst::GetGlobal(name) => self
                     .stack
+                    .last_mut()
+                    .unwrap()
                     .push_back(self.global_objects.get(name.as_str()).unwrap().clone()),
-                Inst::SetGlobal(name, obj) => {
-                    self.global_objects.insert(name, obj);
+                Inst::SetGlobal(name) => {
+                    self.global_objects
+                        .insert(name, self.stack.last_mut().unwrap().pop_back().unwrap());
                 }
-                Inst::Member => {
+                Inst::GetMember => {
                     let member_name = {
-                        let member = self.stack.pop_back().unwrap();
+                        let member = self.stack.last_mut().unwrap().pop_back().unwrap();
                         if let Value::Data(name) = member {
                             name
                         } else {
                             panic!()
                         }
                     };
-                    let parent = self.stack.pop_back().unwrap();
+                    let parent = self.stack.last_mut().unwrap().pop_back().unwrap();
                     if let Value::Object(map) = parent {
                         match map.get(member_name.as_str()) {
-                            Some(addr) => unsafe { self.stack.push_back((**addr).clone()) },
+                            Some(addr) => unsafe {
+                                self.stack.last_mut().unwrap().push_back((**addr).clone())
+                            },
                             None => {}
                         }
                     }
@@ -98,10 +104,10 @@ impl VM {
     fn run_function(&mut self, argc: usize) {
         let mut args = vec![];
         for _ in 0..argc {
-            args.push(self.stack.pop_back().unwrap());
+            args.push(self.stack.last_mut().unwrap().pop_back().unwrap());
         }
 
-        let callee = self.stack.pop_back().unwrap();
+        let callee = self.stack.last_mut().unwrap().pop_back().unwrap();
         match callee {
             Value::EmbeddedFunction(1) => console_log(&args[0]),
             c => println!("{:?}", c),
@@ -122,13 +128,14 @@ pub fn test() {
     let insts = vec![
         Inst::GetGlobal("console".to_string()),
         Inst::Push(Value::Data("log".to_string())),
-        Inst::Member,
+        Inst::GetMember,
         Inst::Push(Value::String("hello".to_string())),
         Inst::Call(1),
-        Inst::SetGlobal("n".to_string(), Value::Number(123.0)),
+        Inst::Push(Value::Number(123.0)),
+        Inst::SetGlobal("n".to_string()),
         Inst::GetGlobal("console".to_string()),
         Inst::Push(Value::Data("log".to_string())),
-        Inst::Member,
+        Inst::GetMember,
         Inst::GetGlobal("n".to_string()),
         Inst::Call(1),
     ];
