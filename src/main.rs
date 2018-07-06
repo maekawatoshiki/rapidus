@@ -1,7 +1,6 @@
 extern crate rapidus;
 use rapidus::lexer;
 use rapidus::parser;
-use rapidus::vm;
 use rapidus::vm_codegen;
 
 extern crate clap;
@@ -50,8 +49,5 @@ fn main() {
 
         println!("VM CodeGen Test:");
         vm_codegen::test();
-
-        println!("VM Test:");
-        vm::test();
     }
 }

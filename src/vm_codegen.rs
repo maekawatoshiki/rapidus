@@ -22,6 +22,7 @@ impl VMCodeGen {
             &Node::StatementList(ref node_list) => self.run_statement_list(node_list, insts),
             &Node::Assign(ref dst, ref src) => self.run_assign(&*dst, &*src, insts),
             &Node::Call(ref callee, ref args) => self.run_call(&*callee, args, insts),
+            &Node::Member(ref parent, ref member) => self.run_member(&*parent, member, insts),
             &Node::Identifier(ref name) => self.run_identifier(name, insts),
             &Node::Number(n) => insts.push(Inst::Push(Value::Number(n))),
             _ => {}
@@ -60,6 +61,13 @@ impl VMCodeGen {
 }
 
 impl VMCodeGen {
+    fn run_member(&mut self, parent: &Node, member: &String, insts: &mut Vec<Inst>) {
+        self.run(parent, insts);
+
+        insts.push(Inst::Push(Value::Data(member.clone())));
+        insts.push(Inst::GetMember)
+    }
+
     fn run_identifier(&mut self, name: &String, insts: &mut Vec<Inst>) {
         // if let Some(_) = self.global_varmap.get(name.as_str()) {
         insts.push(Inst::GetGlobal(name.clone()))
@@ -84,15 +92,20 @@ impl VMCodeGen {
 
 pub fn test() {
     use parser::Parser;
+    use vm::VM;
     let mut node_list = vec![];
-    let mut parser = Parser::new("a = 1; f(a)".to_string());
+    let mut parser = Parser::new("a = 123.456; console.log(a)".to_string());
     while let Ok(ok) = parser.next() {
         node_list.push(ok)
     }
     let mut vm_codegen = VMCodeGen::new();
     let mut insts = vec![];
     vm_codegen.run(&node_list[0], &mut insts);
-    for inst in insts {
+    for inst in &insts {
         println!("{:?}", inst);
     }
+
+    println!("VM Test:");
+    let mut vm = VM::new();
+    vm.run(insts);
 }
