@@ -1,6 +1,7 @@
 extern crate rapidus;
 use rapidus::lexer;
 use rapidus::parser;
+use rapidus::vm;
 use rapidus::vm_codegen;
 
 extern crate clap;
@@ -16,10 +17,20 @@ fn main() {
         .version(VERSION_STR)
         .author("uint256_t")
         .about("A toy JavaScript engine")
+        .arg(
+            Arg::with_name("easyrun")
+                .help("Enable easy-run")
+                .long("easy-run"),
+        )
         .arg(Arg::with_name("file").help("Input file name").index(1));
     let app_matches = app.clone().get_matches();
 
     if let Some(filename) = app_matches.value_of("file") {
+        if app_matches.is_present("easyrun") {
+            easy_run(filename);
+            return;
+        }
+
         let mut file_body = String::new();
 
         match OpenOptions::new().read(true).open(filename) {
@@ -50,4 +61,34 @@ fn main() {
         println!("VM CodeGen Test:");
         vm_codegen::test();
     }
+}
+
+fn easy_run(file_name: &str) {
+    let mut file_body = String::new();
+
+    match OpenOptions::new().read(true).open(file_name) {
+        Ok(mut ok) => ok
+            .read_to_string(&mut file_body)
+            .ok()
+            .expect("cannot read file"),
+        Err(e) => {
+            println!("error: {}", e);
+            return;
+        }
+    };
+
+    let mut parser = parser::Parser::new(file_body);
+
+    let mut node_list = vec![];
+    while let Ok(ok) = parser.next() {
+        node_list.push(ok)
+    }
+
+    let mut vm_codegen = vm_codegen::VMCodeGen::new();
+    let mut insts = vec![];
+    vm_codegen.run(&node_list[0], &mut insts);
+
+    println!("Result:");
+    let mut vm = vm::VM::new();
+    vm.run(insts);
 }
