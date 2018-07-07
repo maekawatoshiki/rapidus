@@ -37,7 +37,7 @@ pub enum Inst {
 
 pub struct VM {
     pub global_objects: HashMap<String, Value>,
-    pub stack: Vec<VecDeque<Value>>,
+    pub stack: VecDeque<Value>,
 }
 
 impl VM {
@@ -57,7 +57,7 @@ impl VM {
 
         VM {
             global_objects: obj,
-            stack: vec![VecDeque::new()],
+            stack: VecDeque::new(),
         }
     }
 
@@ -79,7 +79,7 @@ impl VM {
         while pc < insts_len {
             match insts[pc].clone() {
                 Inst::Push(ref val) => {
-                    self.stack.last_mut().unwrap().push_back(val.clone());
+                    self.stack.push_back(val.clone());
                     pc += 1
                 }
                 ref op
@@ -94,31 +94,27 @@ impl VM {
                 }
                 Inst::GetGlobal(ref name) => {
                     self.stack
-                        .last_mut()
-                        .unwrap()
                         .push_back(self.global_objects.get(name.as_str()).unwrap().clone());
                     pc += 1
                 }
                 Inst::SetGlobal(name) => {
                     self.global_objects
-                        .insert(name, self.stack.last_mut().unwrap().pop_back().unwrap());
+                        .insert(name, self.stack.pop_back().unwrap());
                     pc += 1
                 }
                 Inst::GetMember => {
                     let member_name = {
-                        let member = self.stack.last_mut().unwrap().pop_back().unwrap();
+                        let member = self.stack.pop_back().unwrap();
                         if let Value::Data(name) = member {
                             name
                         } else {
                             panic!()
                         }
                     };
-                    let parent = self.stack.last_mut().unwrap().pop_back().unwrap();
+                    let parent = self.stack.pop_back().unwrap();
                     if let Value::Object(map) = parent {
                         match map.get(member_name.as_str()) {
-                            Some(addr) => unsafe {
-                                self.stack.last_mut().unwrap().push_back((**addr).clone())
-                            },
+                            Some(addr) => unsafe { self.stack.push_back((**addr).clone()) },
                             None => {}
                         }
                     }
@@ -130,7 +126,7 @@ impl VM {
                 }
                 Inst::Jmp(dst) => pc = dst,
                 Inst::JmpIfFalse(dst) => {
-                    let cond = self.stack.last_mut().unwrap().pop_back().unwrap();
+                    let cond = self.stack.pop_back().unwrap();
                     if let Value::Bool(false) = cond {
                         pc = dst
                     } else {
@@ -143,19 +139,17 @@ impl VM {
     }
 
     fn run_binary_op(&mut self, op: &Inst) {
-        let rhs = self.stack.last_mut().unwrap().pop_back().unwrap();
-        let lhs = self.stack.last_mut().unwrap().pop_back().unwrap();
+        let rhs = self.stack.pop_back().unwrap();
+        let lhs = self.stack.pop_back().unwrap();
         match (lhs, rhs) {
-            (Value::Number(n1), Value::Number(n2)) => {
-                self.stack.last_mut().unwrap().push_back(match op {
-                    &Inst::Add => Value::Number(n1 + n2),
-                    &Inst::Sub => Value::Number(n1 - n2),
-                    &Inst::Mul => Value::Number(n1 * n2),
-                    &Inst::Div => Value::Number(n1 / n2),
-                    &Inst::Lt => Value::Bool(n1 < n2),
-                    _ => panic!(),
-                })
-            }
+            (Value::Number(n1), Value::Number(n2)) => self.stack.push_back(match op {
+                &Inst::Add => Value::Number(n1 + n2),
+                &Inst::Sub => Value::Number(n1 - n2),
+                &Inst::Mul => Value::Number(n1 * n2),
+                &Inst::Div => Value::Number(n1 / n2),
+                &Inst::Lt => Value::Bool(n1 < n2),
+                _ => panic!(),
+            }),
             _ => {}
         }
     }
@@ -163,10 +157,10 @@ impl VM {
     fn run_function(&mut self, argc: usize) {
         let mut args = vec![];
         for _ in 0..argc {
-            args.push(self.stack.last_mut().unwrap().pop_back().unwrap());
+            args.push(self.stack.pop_back().unwrap());
         }
 
-        let callee = self.stack.last_mut().unwrap().pop_back().unwrap();
+        let callee = self.stack.pop_back().unwrap();
         match callee {
             Value::EmbeddedFunction(1) => console_log(&args[0]),
             c => println!("{:?}", c),
