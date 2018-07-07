@@ -66,6 +66,7 @@ impl Parser {
         match tok.kind {
             Kind::Keyword(Keyword::If) => self.read_if_statement(),
             Kind::Keyword(Keyword::Var) => self.read_variable_statement(),
+            Kind::Keyword(Keyword::While) => self.read_while_statement(),
             Kind::Symbol(Symbol::OpeningBrace) => self.read_block_statement(),
             _ => {
                 self.lexer.unget(&tok);
@@ -147,6 +148,18 @@ impl Parser {
             Box::new(then_),
             Box::new(Node::StatementList(vec![])),
         ))
+    }
+}
+
+impl Parser {
+    fn read_while_statement(&mut self) -> Result<Node, ()> {
+        assert_eq!(self.lexer.next()?.kind, Kind::Symbol(Symbol::OpeningParen));
+        let cond = self.read_expression()?;
+        assert_eq!(self.lexer.next()?.kind, Kind::Symbol(Symbol::ClosingParen));
+
+        let body = self.read_statement()?;
+
+        Ok(Node::While(Box::new(cond), Box::new(body)))
     }
 }
 

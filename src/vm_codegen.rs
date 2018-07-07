@@ -20,6 +20,7 @@ impl VMCodeGen {
     pub fn run(&mut self, node: &Node, insts: &mut Vec<Inst>) {
         match node {
             &Node::StatementList(ref node_list) => self.run_statement_list(node_list, insts),
+            &Node::While(ref cond, ref body) => self.run_while(&*cond, &*body, insts),
             &Node::Assign(ref dst, ref src) => self.run_assign(&*dst, &*src, insts),
             &Node::BinaryOp(ref lhs, ref rhs, ref op) => {
                 self.run_binary_op(&*lhs, &*rhs, op, insts)
@@ -42,6 +43,28 @@ impl VMCodeGen {
 }
 
 impl VMCodeGen {
+    pub fn run_while(&mut self, cond: &Node, body: &Node, insts: &mut Vec<Inst>) {
+        let pos = insts.len();
+
+        self.run(cond, insts);
+
+        let cond_pos = insts.len();
+        insts.push(Inst::JmpIfFalse(0));
+
+        self.run(body, insts);
+
+        insts.push(Inst::Jmp(pos));
+
+        let pos = insts.len();
+        if let Inst::JmpIfFalse(ref mut dst) = insts[cond_pos] {
+            *dst = pos
+        } else {
+            unreachable!()
+        }
+    }
+}
+
+impl VMCodeGen {
     pub fn run_binary_op(&mut self, lhs: &Node, rhs: &Node, op: &BinOp, insts: &mut Vec<Inst>) {
         self.run(lhs, insts);
         self.run(rhs, insts);
@@ -50,6 +73,7 @@ impl VMCodeGen {
             &BinOp::Sub => insts.push(Inst::Sub),
             &BinOp::Mul => insts.push(Inst::Mul),
             &BinOp::Div => insts.push(Inst::Div),
+            &BinOp::Lt => insts.push(Inst::Lt),
             _ => {}
         }
     }

@@ -7,6 +7,7 @@ pub type HeapAddr = *mut Value;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
+    Bool(bool),
     Number(f64),
     String(String),
     Data(String),
@@ -22,6 +23,7 @@ pub enum Inst {
     Sub,
     Mul,
     Div,
+    Lt,
     GetMember,
     SetMember,
     GetGlobal(String),
@@ -29,6 +31,8 @@ pub enum Inst {
     SetGlobal(String),
     Call(usize),
     Jmp(usize),
+    JmpIfFalse(usize),
+    JmpIfTrue(usize),
 }
 
 pub struct VM {
@@ -82,7 +86,8 @@ impl VM {
                     if op == &Inst::Add
                         || op == &Inst::Sub
                         || op == &Inst::Mul
-                        || op == &Inst::Div =>
+                        || op == &Inst::Div
+                        || op == &Inst::Lt =>
                 {
                     self.run_binary_op(op);
                     pc += 1
@@ -124,6 +129,14 @@ impl VM {
                     pc += 1
                 }
                 Inst::Jmp(dst) => pc = dst,
+                Inst::JmpIfFalse(dst) => {
+                    let cond = self.stack.last_mut().unwrap().pop_back().unwrap();
+                    if let Value::Bool(false) = cond {
+                        pc = dst
+                    } else {
+                        pc += 1
+                    }
+                }
                 _ => {}
             }
         }
@@ -133,15 +146,16 @@ impl VM {
         let rhs = self.stack.last_mut().unwrap().pop_back().unwrap();
         let lhs = self.stack.last_mut().unwrap().pop_back().unwrap();
         match (lhs, rhs) {
-            (Value::Number(n1), Value::Number(n2)) => self.stack.last_mut().unwrap().push_back(
-                Value::Number(match op {
-                    &Inst::Add => n1 + n2,
-                    &Inst::Sub => n1 - n2,
-                    &Inst::Mul => n1 * n2,
-                    &Inst::Div => n1 / n2,
-                    _ => 0.0,
-                }),
-            ),
+            (Value::Number(n1), Value::Number(n2)) => {
+                self.stack.last_mut().unwrap().push_back(match op {
+                    &Inst::Add => Value::Number(n1 + n2),
+                    &Inst::Sub => Value::Number(n1 - n2),
+                    &Inst::Mul => Value::Number(n1 * n2),
+                    &Inst::Div => Value::Number(n1 / n2),
+                    &Inst::Lt => Value::Bool(n1 < n2),
+                    _ => panic!(),
+                })
+            }
             _ => {}
         }
     }
