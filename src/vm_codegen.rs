@@ -6,20 +6,36 @@ use std::collections::HashMap;
 #[derive(Clone, Debug, PartialEq)]
 pub struct VMCodeGen {
     pub global_varmap: HashMap<String, usize>, // usize will be replaced with an appropriate type
+    pub local_varmap: Vec<HashMap<String, usize>>,
+    pub id: usize,
 }
 
 impl VMCodeGen {
     pub fn new() -> VMCodeGen {
         VMCodeGen {
             global_varmap: HashMap::new(),
+            local_varmap: vec![HashMap::new()],
+            id: 0,
         }
     }
 }
 
 impl VMCodeGen {
-    pub fn run(&mut self, node: &Node, insts: &mut Vec<Inst>) {
+    pub fn compile(&mut self, node: &Node, insts: &mut Vec<Inst>) {
+        let pos = insts.len();
+        insts.push(Inst::AllocLocalVar(0));
+
+        self.run(node, insts);
+
+        if let Inst::AllocLocalVar(ref mut n) = insts[pos] {
+            *n = self.id
+        }
+    }
+
+    fn run(&mut self, node: &Node, insts: &mut Vec<Inst>) {
         match node {
             &Node::StatementList(ref node_list) => self.run_statement_list(node_list, insts),
+            &Node::VarDecl(ref name, ref init) => self.run_var_decl(name, init, insts),
             &Node::If(ref cond, ref then_, ref else_) => {
                 self.run_if(&*cond, &*then_, &*else_, insts)
             }
@@ -43,6 +59,21 @@ impl VMCodeGen {
         for node in node_list {
             self.run(node, insts)
         }
+    }
+}
+
+impl VMCodeGen {
+    pub fn run_var_decl(&mut self, name: &String, init: &Option<Box<Node>>, insts: &mut Vec<Inst>) {
+        self.local_varmap
+            .last_mut()
+            .unwrap()
+            .insert(name.clone(), self.id);
+
+        if let &Some(ref init) = init {
+            self.run(&*init, insts);
+            insts.push(Inst::SetLocal(self.id));
+        }
+        self.id += 1;
     }
 }
 
@@ -113,6 +144,8 @@ impl VMCodeGen {
             &BinOp::Ne => insts.push(Inst::Ne),
             &BinOp::Lt => insts.push(Inst::Lt),
             &BinOp::Gt => insts.push(Inst::Gt),
+            &BinOp::Le => insts.push(Inst::Le),
+            &BinOp::Ge => insts.push(Inst::Ge),
             _ => {}
         }
     }
@@ -120,8 +153,15 @@ impl VMCodeGen {
     pub fn run_assign(&mut self, dst: &Node, src: &Node, insts: &mut Vec<Inst>) {
         self.run(src, insts);
 
-        if let Some((name, _is_global)) = self.get_var(dst) {
-            insts.push(Inst::SetGlobal(name));
+        match dst {
+            &Node::Identifier(ref name) => {
+                if let Some(p) = self.local_varmap.last().unwrap().get(name.as_str()) {
+                    insts.push(Inst::SetLocal(*p));
+                } else {
+                    insts.push(Inst::SetGlobal(name.clone()));
+                }
+            }
+            _ => {}
         }
     }
 }
@@ -147,23 +187,10 @@ impl VMCodeGen {
     }
 
     fn run_identifier(&mut self, name: &String, insts: &mut Vec<Inst>) {
-        // if let Some(_) = self.global_varmap.get(name.as_str()) {
-        insts.push(Inst::GetGlobal(name.clone()))
-        // }
-    }
-}
-
-impl VMCodeGen {
-    fn get_var(&mut self, var: &Node) -> Option<(String, bool)> {
-        match var {
-            &Node::Identifier(ref name) => {
-                // if let Some(_) = self.global_varmap.get(name.as_str()) {
-                //     return Some((name.clone(), true));
-                // }
-                // self.global_varmap.insert(name.clone(), 0);
-                Some((name.clone(), true))
-            }
-            _ => None,
+        if let Some(p) = self.local_varmap.last().unwrap().get(name.as_str()) {
+            insts.push(Inst::GetLocal(*p))
+        } else {
+            insts.push(Inst::GetGlobal(name.clone()))
         }
     }
 }
@@ -178,7 +205,7 @@ pub fn test() {
     }
     let mut vm_codegen = VMCodeGen::new();
     let mut insts = vec![];
-    vm_codegen.run(&node_list[0], &mut insts);
+    vm_codegen.compile(&node_list[0], &mut insts);
     for inst in &insts {
         println!("{:?}", inst);
     }

@@ -86,7 +86,7 @@ fn easy_run(file_name: &str) {
 
     let mut vm_codegen = vm_codegen::VMCodeGen::new();
     let mut insts = vec![];
-    vm_codegen.run(&node_list[0], &mut insts);
+    vm_codegen.compile(&node_list[0], &mut insts);
 
     println!("Result:");
     let mut vm = vm::VM::new();

@@ -25,23 +25,29 @@ pub enum Inst {
     Div,
     Rem,
     Lt,
+    Le,
     Gt,
+    Ge,
     Eq,
     Ne,
     GetMember,
     SetMember,
     GetGlobal(String),
-    GetLocal(String),
+    GetLocal(usize),
     SetGlobal(String),
+    SetLocal(usize),
     Call(usize),
     Jmp(usize),
     JmpIfFalse(usize),
     JmpIfTrue(usize),
+    AllocLocalVar(usize),
 }
 
 pub struct VM {
     pub global_objects: HashMap<String, Value>,
     pub stack: VecDeque<Value>,
+    pub sp_buf: Vec<usize>,
+    pub sp: usize,
 }
 
 impl VM {
@@ -62,6 +68,8 @@ impl VM {
         VM {
             global_objects: obj,
             stack: VecDeque::new(),
+            sp_buf: vec![],
+            sp: 0,
         }
     }
 
@@ -82,6 +90,13 @@ impl VM {
         let mut pc = 0usize;
         while pc < insts_len {
             match insts[pc].clone() {
+                Inst::AllocLocalVar(ref n) => {
+                    for _ in 0..*n {
+                        self.stack.push_back(Value::Number(0.0));
+                    }
+                    self.sp = *n;
+                    pc += 1
+                }
                 Inst::Push(ref val) => {
                     self.stack.push_back(val.clone());
                     pc += 1
@@ -94,15 +109,27 @@ impl VM {
                         || op == &Inst::Rem
                         || op == &Inst::Lt
                         || op == &Inst::Gt
+                        || op == &Inst::Le
+                        || op == &Inst::Ge
                         || op == &Inst::Eq
                         || op == &Inst::Ne =>
                 {
                     self.run_binary_op(op);
                     pc += 1
                 }
+                Inst::GetLocal(ref n) => {
+                    let val = self.stack[*n].clone();
+                    self.stack.push_back(val);
+                    pc += 1
+                }
                 Inst::GetGlobal(ref name) => {
                     self.stack
                         .push_back(self.global_objects.get(name.as_str()).unwrap().clone());
+                    pc += 1
+                }
+                Inst::SetLocal(ref n) => {
+                    let val = self.stack.pop_back().unwrap();
+                    self.stack[*n] = val;
                     pc += 1
                 }
                 Inst::SetGlobal(name) => {
@@ -158,6 +185,8 @@ impl VM {
                 &Inst::Rem => Value::Number((n1 as i64 % n2 as i64) as f64),
                 &Inst::Lt => Value::Bool(n1 < n2),
                 &Inst::Gt => Value::Bool(n1 > n2),
+                &Inst::Le => Value::Bool(n1 <= n2),
+                &Inst::Ge => Value::Bool(n1 >= n2),
                 &Inst::Eq => Value::Bool(n1 == n2),
                 &Inst::Ne => Value::Bool(n1 != n2),
                 _ => panic!(),
