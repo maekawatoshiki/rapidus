@@ -91,10 +91,10 @@ impl VM {
         while pc < insts_len {
             match insts[pc].clone() {
                 Inst::AllocLocalVar(ref n) => {
+                    self.sp = self.stack.len();
                     for _ in 0..*n {
                         self.stack.push_back(Value::Number(0.0));
                     }
-                    self.sp = *n;
                     pc += 1
                 }
                 Inst::Push(ref val) => {
@@ -118,7 +118,7 @@ impl VM {
                     pc += 1
                 }
                 Inst::GetLocal(ref n) => {
-                    let val = self.stack[*n].clone();
+                    let val = self.stack[self.sp + *n].clone();
                     self.stack.push_back(val);
                     pc += 1
                 }
@@ -129,7 +129,7 @@ impl VM {
                 }
                 Inst::SetLocal(ref n) => {
                     let val = self.stack.pop_back().unwrap();
-                    self.stack[*n] = val;
+                    self.stack[self.sp + *n] = val;
                     pc += 1
                 }
                 Inst::SetGlobal(name) => {
