@@ -16,6 +16,7 @@ pub enum Node {
     String(String),
     Boolean(bool),
     Number(f64),
+    Nope,
 }
 
 #[derive(Clone, Debug, PartialEq)]

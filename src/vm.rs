@@ -23,7 +23,11 @@ pub enum Inst {
     Sub,
     Mul,
     Div,
+    Rem,
     Lt,
+    Gt,
+    Eq,
+    Ne,
     GetMember,
     SetMember,
     GetGlobal(String),
@@ -87,7 +91,11 @@ impl VM {
                         || op == &Inst::Sub
                         || op == &Inst::Mul
                         || op == &Inst::Div
-                        || op == &Inst::Lt =>
+                        || op == &Inst::Rem
+                        || op == &Inst::Lt
+                        || op == &Inst::Gt
+                        || op == &Inst::Eq
+                        || op == &Inst::Ne =>
                 {
                     self.run_binary_op(op);
                     pc += 1
@@ -147,7 +155,11 @@ impl VM {
                 &Inst::Sub => Value::Number(n1 - n2),
                 &Inst::Mul => Value::Number(n1 * n2),
                 &Inst::Div => Value::Number(n1 / n2),
+                &Inst::Rem => Value::Number((n1 as i64 % n2 as i64) as f64),
                 &Inst::Lt => Value::Bool(n1 < n2),
+                &Inst::Gt => Value::Bool(n1 > n2),
+                &Inst::Eq => Value::Bool(n1 == n2),
+                &Inst::Ne => Value::Bool(n1 != n2),
                 _ => panic!(),
             }),
             _ => {}

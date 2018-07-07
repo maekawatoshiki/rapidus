@@ -20,6 +20,9 @@ impl VMCodeGen {
     pub fn run(&mut self, node: &Node, insts: &mut Vec<Inst>) {
         match node {
             &Node::StatementList(ref node_list) => self.run_statement_list(node_list, insts),
+            &Node::If(ref cond, ref then_, ref else_) => {
+                self.run_if(&*cond, &*then_, &*else_, insts)
+            }
             &Node::While(ref cond, ref body) => self.run_while(&*cond, &*body, insts),
             &Node::Assign(ref dst, ref src) => self.run_assign(&*dst, &*src, insts),
             &Node::BinaryOp(ref lhs, ref rhs, ref op) => {
@@ -28,6 +31,7 @@ impl VMCodeGen {
             &Node::Call(ref callee, ref args) => self.run_call(&*callee, args, insts),
             &Node::Member(ref parent, ref member) => self.run_member(&*parent, member, insts),
             &Node::Identifier(ref name) => self.run_identifier(name, insts),
+            &Node::String(ref s) => insts.push(Inst::Push(Value::String(s.clone()))),
             &Node::Number(n) => insts.push(Inst::Push(Value::Number(n))),
             _ => {}
         }
@@ -43,6 +47,37 @@ impl VMCodeGen {
 }
 
 impl VMCodeGen {
+    pub fn run_if(&mut self, cond: &Node, then_: &Node, else_: &Node, insts: &mut Vec<Inst>) {
+        self.run(cond, insts);
+
+        let cond_pos = insts.len();
+        insts.push(Inst::JmpIfFalse(0));
+
+        self.run(then_, insts);
+
+        if else_ == &Node::Nope {
+            let pos = insts.len();
+            if let Inst::JmpIfFalse(ref mut dst) = insts[cond_pos] {
+                *dst = pos
+            }
+        } else {
+            let then_end_pos = insts.len();
+            insts.push(Inst::Jmp(0));
+
+            let pos = insts.len();
+            if let Inst::JmpIfFalse(ref mut dst) = insts[cond_pos] {
+                *dst = pos
+            }
+
+            self.run(else_, insts);
+
+            let pos = insts.len();
+            if let Inst::Jmp(ref mut dst) = insts[then_end_pos] {
+                *dst = pos
+            }
+        }
+    }
+
     pub fn run_while(&mut self, cond: &Node, body: &Node, insts: &mut Vec<Inst>) {
         let pos = insts.len();
 
@@ -73,7 +108,11 @@ impl VMCodeGen {
             &BinOp::Sub => insts.push(Inst::Sub),
             &BinOp::Mul => insts.push(Inst::Mul),
             &BinOp::Div => insts.push(Inst::Div),
+            &BinOp::Rem => insts.push(Inst::Rem),
+            &BinOp::Eq => insts.push(Inst::Eq),
+            &BinOp::Ne => insts.push(Inst::Ne),
             &BinOp::Lt => insts.push(Inst::Lt),
+            &BinOp::Gt => insts.push(Inst::Gt),
             _ => {}
         }
     }

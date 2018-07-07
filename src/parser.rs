@@ -146,7 +146,7 @@ impl Parser {
         Ok(Node::If(
             Box::new(cond),
             Box::new(then_),
-            Box::new(Node::StatementList(vec![])),
+            Box::new(Node::Nope),
         ))
     }
 }
