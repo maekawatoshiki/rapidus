@@ -20,6 +20,8 @@ pub enum Inst {
     Push(Value),
     Add,
     Sub,
+    Mul,
+    Div,
     GetMember,
     SetMember,
     GetGlobal(String),
@@ -69,7 +71,14 @@ impl VM {
         for inst in insts {
             match inst {
                 Inst::Push(val) => self.stack.last_mut().unwrap().push_back(val),
-                ref op if op == &Inst::Add || op == &Inst::Sub => self.run_binary_op(op),
+                ref op
+                    if op == &Inst::Add
+                        || op == &Inst::Sub
+                        || op == &Inst::Mul
+                        || op == &Inst::Div =>
+                {
+                    self.run_binary_op(op)
+                }
                 Inst::GetGlobal(name) => self
                     .stack
                     .last_mut()
@@ -112,6 +121,8 @@ impl VM {
                 Value::Number(match op {
                     &Inst::Add => n1 + n2,
                     &Inst::Sub => n1 - n2,
+                    &Inst::Mul => n1 * n2,
+                    &Inst::Div => n1 / n2,
                     _ => 0.0,
                 }),
             ),

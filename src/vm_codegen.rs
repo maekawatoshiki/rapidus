@@ -48,6 +48,8 @@ impl VMCodeGen {
         match op {
             &BinOp::Add => insts.push(Inst::Add),
             &BinOp::Sub => insts.push(Inst::Sub),
+            &BinOp::Mul => insts.push(Inst::Mul),
+            &BinOp::Div => insts.push(Inst::Div),
             _ => {}
         }
     }
