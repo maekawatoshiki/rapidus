@@ -819,7 +819,7 @@ fn if_() {
                 BinOp::Le,
             )),
             Box::new(Node::Identifier("then_stmt".to_string())),
-            Box::new(Node::StatementList(vec![])),
+            Box::new(Node::Nope),
         )])
     );
 }
