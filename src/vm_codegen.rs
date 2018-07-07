@@ -1,4 +1,4 @@
-use node::Node;
+use node::{BinOp, Node};
 use vm::{Inst, Value};
 
 use std::collections::HashMap;
@@ -21,6 +21,9 @@ impl VMCodeGen {
         match node {
             &Node::StatementList(ref node_list) => self.run_statement_list(node_list, insts),
             &Node::Assign(ref dst, ref src) => self.run_assign(&*dst, &*src, insts),
+            &Node::BinaryOp(ref lhs, ref rhs, ref op) => {
+                self.run_binary_op(&*lhs, &*rhs, op, insts)
+            }
             &Node::Call(ref callee, ref args) => self.run_call(&*callee, args, insts),
             &Node::Member(ref parent, ref member) => self.run_member(&*parent, member, insts),
             &Node::Identifier(ref name) => self.run_identifier(name, insts),
@@ -39,6 +42,16 @@ impl VMCodeGen {
 }
 
 impl VMCodeGen {
+    pub fn run_binary_op(&mut self, lhs: &Node, rhs: &Node, op: &BinOp, insts: &mut Vec<Inst>) {
+        self.run(lhs, insts);
+        self.run(rhs, insts);
+        match op {
+            &BinOp::Add => insts.push(Inst::Add),
+            &BinOp::Sub => insts.push(Inst::Sub),
+            _ => {}
+        }
+    }
+
     pub fn run_assign(&mut self, dst: &Node, src: &Node, insts: &mut Vec<Inst>) {
         self.run(src, insts);
 

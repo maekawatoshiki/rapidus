@@ -18,6 +18,8 @@ pub enum Value {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Inst {
     Push(Value),
+    Add,
+    Sub,
     GetMember,
     SetMember,
     GetGlobal(String),
@@ -67,6 +69,7 @@ impl VM {
         for inst in insts {
             match inst {
                 Inst::Push(val) => self.stack.last_mut().unwrap().push_back(val),
+                ref op if op == &Inst::Add || op == &Inst::Sub => self.run_binary_op(op),
                 Inst::GetGlobal(name) => self
                     .stack
                     .last_mut()
@@ -98,6 +101,21 @@ impl VM {
                 Inst::Call(argc) => self.run_function(argc),
                 _ => {}
             }
+        }
+    }
+
+    fn run_binary_op(&mut self, op: &Inst) {
+        let rhs = self.stack.last_mut().unwrap().pop_back().unwrap();
+        let lhs = self.stack.last_mut().unwrap().pop_back().unwrap();
+        match (lhs, rhs) {
+            (Value::Number(n1), Value::Number(n2)) => self.stack.last_mut().unwrap().push_back(
+                Value::Number(match op {
+                    &Inst::Add => n1 + n2,
+                    &Inst::Sub => n1 - n2,
+                    _ => 0.0,
+                }),
+            ),
+            _ => {}
         }
     }
 
