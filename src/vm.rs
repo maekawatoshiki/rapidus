@@ -28,6 +28,7 @@ pub enum Inst {
     GetLocal(String),
     SetGlobal(String),
     Call(usize),
+    Jmp(usize),
 }
 
 pub struct VM {
@@ -58,8 +59,8 @@ impl VM {
 
     pub unsafe fn alloc_for_value() -> HeapAddr {
         let layout = Layout::from_size_align(
-            ::std::mem::size_of::<Value>() + 1, // Without '+ 1', segv occurs. Why?
-            ::std::mem::align_of::<Value>(),
+            ::std::mem::size_of::<Value>() * 2, // Without '* 2', segv occurs. Why?
+            ::std::mem::align_of::<Value>() * 2,
         ).unwrap();
         let ptr_nonnull = Global.alloc(layout.clone()).unwrap();
         ptr_nonnull.as_ptr() as *mut Value
@@ -68,25 +69,35 @@ impl VM {
 
 impl VM {
     pub fn run(&mut self, insts: Vec<Inst>) {
-        for inst in insts {
-            match inst {
-                Inst::Push(val) => self.stack.last_mut().unwrap().push_back(val),
+        let insts_len = insts.len();
+
+        let mut pc = 0usize;
+        while pc < insts_len {
+            match insts[pc].clone() {
+                Inst::Push(ref val) => {
+                    self.stack.last_mut().unwrap().push_back(val.clone());
+                    pc += 1
+                }
                 ref op
                     if op == &Inst::Add
                         || op == &Inst::Sub
                         || op == &Inst::Mul
                         || op == &Inst::Div =>
                 {
-                    self.run_binary_op(op)
+                    self.run_binary_op(op);
+                    pc += 1
                 }
-                Inst::GetGlobal(name) => self
-                    .stack
-                    .last_mut()
-                    .unwrap()
-                    .push_back(self.global_objects.get(name.as_str()).unwrap().clone()),
+                Inst::GetGlobal(ref name) => {
+                    self.stack
+                        .last_mut()
+                        .unwrap()
+                        .push_back(self.global_objects.get(name.as_str()).unwrap().clone());
+                    pc += 1
+                }
                 Inst::SetGlobal(name) => {
                     self.global_objects
                         .insert(name, self.stack.last_mut().unwrap().pop_back().unwrap());
+                    pc += 1
                 }
                 Inst::GetMember => {
                     let member_name = {
@@ -106,8 +117,13 @@ impl VM {
                             None => {}
                         }
                     }
+                    pc += 1
                 }
-                Inst::Call(argc) => self.run_function(argc),
+                Inst::Call(argc) => {
+                    self.run_function(argc);
+                    pc += 1
+                }
+                Inst::Jmp(dst) => pc = dst,
                 _ => {}
             }
         }
@@ -154,19 +170,33 @@ impl VM {
 }
 
 pub fn test() {
+    // let insts = vec![
+    //     Inst::GetGlobal("console".to_string()),
+    //     Inst::Push(Value::Data("log".to_string())),
+    //     Inst::GetMember,
+    //     Inst::Push(Value::String("hello".to_string())),
+    //     Inst::Call(1),
+    //     Inst::Push(Value::Number(123.0)),
+    //     Inst::SetGlobal("n".to_string()),
+    //     Inst::GetGlobal("console".to_string()),
+    //     Inst::Push(Value::Data("log".to_string())),
+    //     Inst::GetMember,
+    //     Inst::GetGlobal("n".to_string()),
+    //     Inst::Call(1),
+    // ];
     let insts = vec![
-        Inst::GetGlobal("console".to_string()),
-        Inst::Push(Value::Data("log".to_string())),
-        Inst::GetMember,
-        Inst::Push(Value::String("hello".to_string())),
-        Inst::Call(1),
-        Inst::Push(Value::Number(123.0)),
+        Inst::Push(Value::Number(0.0)),
         Inst::SetGlobal("n".to_string()),
         Inst::GetGlobal("console".to_string()),
         Inst::Push(Value::Data("log".to_string())),
         Inst::GetMember,
         Inst::GetGlobal("n".to_string()),
         Inst::Call(1),
+        Inst::GetGlobal("n".to_string()),
+        Inst::Push(Value::Number(1.0)),
+        Inst::Add,
+        Inst::SetGlobal("n".to_string()),
+        Inst::Jmp(2),
     ];
     let mut vm = VM::new();
     vm.run(insts);
