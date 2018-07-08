@@ -1,4 +1,4 @@
-use node::{BinOp, FormalParameter, FormalParameters, Node};
+use node::{BinOp, FormalParameters, Node};
 use vm::{Inst, Value};
 
 use std::collections::HashMap;
@@ -74,7 +74,7 @@ impl VMCodeGen {
         match node {
             &Node::StatementList(ref node_list) => self.run_statement_list(node_list, insts),
             &Node::FunctionDecl(ref name, ref params, ref body) => {
-                self.run_function_decl(name, params, &*body, insts)
+                self.run_function_decl(name, params, &*body)
             }
             &Node::VarDecl(ref name, ref init) => self.run_var_decl(name, init, insts),
             &Node::If(ref cond, ref then_, ref else_) => {
@@ -110,7 +110,6 @@ impl VMCodeGen {
         name: &Option<String>,
         params: &FormalParameters,
         body: &Node,
-        insts: &mut Vec<Inst>,
     ) {
         let name = name.clone().unwrap();
 

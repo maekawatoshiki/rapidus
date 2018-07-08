@@ -211,11 +211,12 @@ impl VM {
         for _ in 0..argc {
             args.push(self.stack.pop_back().unwrap());
         }
+        args.reverse();
 
         let callee = self.stack.pop_back().unwrap();
         match callee {
             Value::EmbeddedFunction(1) => {
-                console_log(&args[0]);
+                console_log(args);
                 *pc += 1;
             }
             Value::Function(dst) => {
@@ -229,12 +230,19 @@ impl VM {
         }
 
         // EmbeddedFunction(1)
-        fn console_log(arg: &Value) {
-            match arg {
-                &Value::String(ref s) => println!("{}", s),
-                &Value::Number(ref n) => println!("{}", *n),
-                _ => {}
+        fn console_log(args: Vec<Value>) {
+            let args_len = args.len();
+            for i in 0..args_len {
+                match args[i] {
+                    Value::String(ref s) => print!("{}", s),
+                    Value::Number(ref n) => print!("{}", *n),
+                    _ => {}
+                }
+                if args_len - 1 != i {
+                    print!(" ")
+                }
             }
+            println!()
         }
     }
 }
