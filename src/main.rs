@@ -88,7 +88,12 @@ fn easy_run(file_name: &str) {
     let mut insts = vec![];
     vm_codegen.compile(&node_list[0], &mut insts);
 
+    // for inst in insts.clone() {
+    //     println!("{:?}", inst);
+    // }
+
     println!("Result:");
     let mut vm = vm::VM::new();
+    vm.global_objects.extend(vm_codegen.global_varmap);
     vm.run(insts);
 }

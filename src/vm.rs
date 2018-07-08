@@ -11,7 +11,8 @@ pub enum Value {
     Number(f64),
     String(String),
     Data(String),
-    Function(Vec<i32>),      // Vec<i32> will replaced with appropriate type.
+    ReturnAddr(usize),
+    Function(usize),
     EmbeddedFunction(usize), // unknown if usize == 0; specific function if usize > 0
     Object(HashMap<String, HeapAddr>),
 }
@@ -37,10 +38,12 @@ pub enum Inst {
     SetGlobal(String),
     SetLocal(usize),
     Call(usize),
-    Jmp(usize),
-    JmpIfFalse(usize),
-    JmpIfTrue(usize),
-    AllocLocalVar(usize),
+    Jmp(isize),
+    JmpIfFalse(isize),
+    JmpIfTrue(isize),
+    AllocLocalVar(usize, usize),
+    Return(usize),
+    End,
 }
 
 pub struct VM {
@@ -48,6 +51,7 @@ pub struct VM {
     pub stack: VecDeque<Value>,
     pub sp_buf: Vec<usize>,
     pub sp: usize,
+    pub return_addr: Vec<isize>,
 }
 
 impl VM {
@@ -70,6 +74,7 @@ impl VM {
             stack: VecDeque::new(),
             sp_buf: vec![],
             sp: 0,
+            return_addr: vec![],
         }
     }
 
@@ -80,17 +85,29 @@ impl VM {
 
 impl VM {
     pub fn run(&mut self, insts: Vec<Inst>) {
-        let insts_len = insts.len();
+        let insts_len = insts.len() as isize;
 
-        let mut pc = 0usize;
+        let mut pc = 0isize;
         while pc < insts_len {
-            match insts[pc].clone() {
-                Inst::AllocLocalVar(ref n) => {
-                    self.sp = self.stack.len();
+            match insts[pc as usize].clone() {
+                Inst::End => break,
+                Inst::AllocLocalVar(ref n, ref argc) => {
+                    self.sp_buf.push(self.sp);
+                    self.sp = self.stack.len() - argc;
                     for _ in 0..*n {
                         self.stack.push_back(Value::Number(0.0));
                     }
                     pc += 1
+                }
+                Inst::Return(ref n) => {
+                    let val = self.stack.pop_back().unwrap();
+                    for _ in 0..*n {
+                        self.stack.pop_back();
+                    }
+                    pc = self.return_addr.pop().unwrap();
+
+                    self.stack.push_back(val);
+                    self.sp = self.sp_buf.pop().unwrap();
                 }
                 Inst::Push(ref val) => {
                     self.stack.push_back(val.clone());
@@ -151,14 +168,13 @@ impl VM {
                     pc += 1
                 }
                 Inst::Call(argc) => {
-                    self.run_function(argc);
-                    pc += 1
+                    self.run_function(argc, &mut pc);
                 }
-                Inst::Jmp(dst) => pc = dst,
+                Inst::Jmp(dst) => pc += dst,
                 Inst::JmpIfFalse(dst) => {
                     let cond = self.stack.pop_back().unwrap();
                     if let Value::Bool(false) = cond {
-                        pc = dst
+                        pc += dst
                     } else {
                         pc += 1
                     }
@@ -190,7 +206,7 @@ impl VM {
         }
     }
 
-    fn run_function(&mut self, argc: usize) {
+    fn run_function(&mut self, argc: usize, pc: &mut isize) {
         let mut args = vec![];
         for _ in 0..argc {
             args.push(self.stack.pop_back().unwrap());
@@ -198,7 +214,17 @@ impl VM {
 
         let callee = self.stack.pop_back().unwrap();
         match callee {
-            Value::EmbeddedFunction(1) => console_log(&args[0]),
+            Value::EmbeddedFunction(1) => {
+                console_log(&args[0]);
+                *pc += 1;
+            }
+            Value::Function(dst) => {
+                self.return_addr.push(*pc + 1);
+                for arg in args {
+                    self.stack.push_back(arg);
+                }
+                *pc = dst as isize;
+            }
             c => println!("{:?}", c),
         }
 

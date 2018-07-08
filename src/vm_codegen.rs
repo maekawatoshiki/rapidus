@@ -1,13 +1,30 @@
-use node::{BinOp, Node};
+use node::{BinOp, FormalParameter, FormalParameters, Node};
 use vm::{Inst, Value};
 
 use std::collections::HashMap;
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct FunctionInfo {
+    pub name: String,
+    pub insts: Vec<Inst>,
+}
+
+impl FunctionInfo {
+    pub fn new(name: String, insts: Vec<Inst>) -> FunctionInfo {
+        FunctionInfo {
+            name: name,
+            insts: insts,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct VMCodeGen {
-    pub global_varmap: HashMap<String, usize>, // usize will be replaced with an appropriate type
+    pub global_varmap: HashMap<String, Value>, // usize will be replaced with an appropriate type
     pub local_varmap: Vec<HashMap<String, usize>>,
+    pub functions: HashMap<String, FunctionInfo>,
     pub id: usize,
+    pub return_inst_pos: Vec<usize>,
 }
 
 impl VMCodeGen {
@@ -15,7 +32,9 @@ impl VMCodeGen {
         VMCodeGen {
             global_varmap: HashMap::new(),
             local_varmap: vec![HashMap::new()],
+            functions: HashMap::new(),
             id: 0,
+            return_inst_pos: vec![],
         }
     }
 }
@@ -23,18 +42,40 @@ impl VMCodeGen {
 impl VMCodeGen {
     pub fn compile(&mut self, node: &Node, insts: &mut Vec<Inst>) {
         let pos = insts.len();
-        insts.push(Inst::AllocLocalVar(0));
+        insts.push(Inst::AllocLocalVar(0, 0));
 
         self.run(node, insts);
 
-        if let Inst::AllocLocalVar(ref mut n) = insts[pos] {
+        if let Inst::AllocLocalVar(ref mut n, _) = insts[pos] {
             *n = self.id
+        }
+        insts.push(Inst::End);
+
+        for (
+            _,
+            FunctionInfo {
+                name,
+                insts: func_insts,
+            },
+        ) in &self.functions
+        {
+            let pos = insts.len();
+            self.global_varmap
+                .insert(name.clone(), Value::Function(pos));
+            // if let Inst::Push(Value::Function(ref mut addr)) = insts[*pos_in_insts] {
+            //     *addr = pos
+            // }
+            let mut func_insts = func_insts.clone();
+            insts.append(&mut func_insts);
         }
     }
 
     fn run(&mut self, node: &Node, insts: &mut Vec<Inst>) {
         match node {
             &Node::StatementList(ref node_list) => self.run_statement_list(node_list, insts),
+            &Node::FunctionDecl(ref name, ref params, ref body) => {
+                self.run_function_decl(name, params, &*body, insts)
+            }
             &Node::VarDecl(ref name, ref init) => self.run_var_decl(name, init, insts),
             &Node::If(ref cond, ref then_, ref else_) => {
                 self.run_if(&*cond, &*then_, &*else_, insts)
@@ -46,6 +87,7 @@ impl VMCodeGen {
             }
             &Node::Call(ref callee, ref args) => self.run_call(&*callee, args, insts),
             &Node::Member(ref parent, ref member) => self.run_member(&*parent, member, insts),
+            &Node::Return(ref val) => self.run_return(val, insts),
             &Node::Identifier(ref name) => self.run_identifier(name, insts),
             &Node::String(ref s) => insts.push(Inst::Push(Value::String(s.clone()))),
             &Node::Number(n) => insts.push(Inst::Push(Value::Number(n))),
@@ -63,6 +105,65 @@ impl VMCodeGen {
 }
 
 impl VMCodeGen {
+    pub fn run_function_decl(
+        &mut self,
+        name: &Option<String>,
+        params: &FormalParameters,
+        body: &Node,
+        insts: &mut Vec<Inst>,
+    ) {
+        let name = name.clone().unwrap();
+
+        // self.run_var_decl2(&name, &None, insts);
+        // let func_pos = insts.len();
+        // insts.push(Inst::Push(Value::Function(0)));
+        // insts.push(Inst::SetLocal(self.id - 1));
+
+        self.local_varmap.push(HashMap::new());
+        let save_cur_id = self.id;
+        self.id = 0;
+
+        let mut func_insts = vec![];
+
+        func_insts.push(Inst::AllocLocalVar(0, 0));
+
+        for param in params {
+            self.run_var_decl2(&param.name, &param.init, &mut func_insts)
+        }
+
+        self.run(body, &mut func_insts);
+
+        if let Inst::AllocLocalVar(ref mut n, ref mut argc) = func_insts[0] {
+            *n = self.id - params.len();
+            *argc = params.len()
+        }
+        for pos in &self.return_inst_pos {
+            if let Inst::Return(ref mut n) = func_insts[*pos] {
+                *n = if self.id > params.len() {
+                    self.id - params.len()
+                } else {
+                    params.len()
+                };
+            }
+        }
+
+        self.id = save_cur_id;
+        self.local_varmap.pop();
+
+        self.functions
+            .insert(name.clone(), FunctionInfo::new(name.clone(), func_insts));
+    }
+
+    pub fn run_return(&mut self, val: &Option<Box<Node>>, insts: &mut Vec<Inst>) {
+        if let &Some(ref val) = val {
+            self.run(&*val, insts)
+        }
+        self.return_inst_pos.push(insts.len());
+        insts.push(Inst::Return(0));
+    }
+}
+
+impl VMCodeGen {
     pub fn run_var_decl(&mut self, name: &String, init: &Option<Box<Node>>, insts: &mut Vec<Inst>) {
         self.local_varmap
             .last_mut()
@@ -75,55 +176,68 @@ impl VMCodeGen {
         }
         self.id += 1;
     }
+
+    pub fn run_var_decl2(&mut self, name: &String, init: &Option<Node>, insts: &mut Vec<Inst>) {
+        self.local_varmap
+            .last_mut()
+            .unwrap()
+            .insert(name.clone(), self.id);
+
+        if let &Some(ref init) = init {
+            self.run(init, insts);
+            insts.push(Inst::SetLocal(self.id));
+        }
+        self.id += 1;
+    }
 }
 
 impl VMCodeGen {
     pub fn run_if(&mut self, cond: &Node, then_: &Node, else_: &Node, insts: &mut Vec<Inst>) {
         self.run(cond, insts);
 
-        let cond_pos = insts.len();
+        let cond_pos = insts.len() as isize;
         insts.push(Inst::JmpIfFalse(0));
 
         self.run(then_, insts);
 
         if else_ == &Node::Nope {
-            let pos = insts.len();
-            if let Inst::JmpIfFalse(ref mut dst) = insts[cond_pos] {
-                *dst = pos
+            let pos = insts.len() as isize;
+            if let Inst::JmpIfFalse(ref mut dst) = insts[cond_pos as usize] {
+                *dst = pos - cond_pos
             }
         } else {
-            let then_end_pos = insts.len();
+            let then_end_pos = insts.len() as isize;
             insts.push(Inst::Jmp(0));
 
-            let pos = insts.len();
-            if let Inst::JmpIfFalse(ref mut dst) = insts[cond_pos] {
-                *dst = pos
+            let pos = insts.len() as isize;
+            if let Inst::JmpIfFalse(ref mut dst) = insts[cond_pos as usize] {
+                *dst = pos - cond_pos
             }
 
             self.run(else_, insts);
 
-            let pos = insts.len();
-            if let Inst::Jmp(ref mut dst) = insts[then_end_pos] {
-                *dst = pos
+            let pos = insts.len() as isize;
+            if let Inst::Jmp(ref mut dst) = insts[then_end_pos as usize] {
+                *dst = pos - then_end_pos
             }
         }
     }
 
     pub fn run_while(&mut self, cond: &Node, body: &Node, insts: &mut Vec<Inst>) {
-        let pos = insts.len();
+        let pos = insts.len() as isize;
 
         self.run(cond, insts);
 
-        let cond_pos = insts.len();
+        let cond_pos = insts.len() as isize;
         insts.push(Inst::JmpIfFalse(0));
 
         self.run(body, insts);
 
         insts.push(Inst::Jmp(pos));
 
-        let pos = insts.len();
-        if let Inst::JmpIfFalse(ref mut dst) = insts[cond_pos] {
-            *dst = pos
+        let pos = insts.len() as isize;
+        if let Inst::JmpIfFalse(ref mut dst) = insts[cond_pos as usize] {
+            *dst = pos - cond_pos
         } else {
             unreachable!()
         }
