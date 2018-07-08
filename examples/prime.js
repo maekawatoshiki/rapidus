@@ -1,14 +1,18 @@
-var i = 2
-while (i < 30) {
+function prime(n) {
   k = 2
-  p = 1
-  while (k * k <= i) {
-    if (i % k == 0) {
-      p = 0
-      k = i
+  while (k * k <= n) {
+    if (n % k == 0) {
+      return false
     }
     k = k + 1
   }
-  if (p == 1) console.log(i) 
+  return true
+}
+
+var i = 2
+while (i < 40) {
+  if (prime(i)) {
+    console.log(i, "is prime")
+  }
   i = i + 1
 }
