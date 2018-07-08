@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::collections::VecDeque;
 
-use std::alloc::{Alloc, Global, Layout};
+use libc;
 
 pub type HeapAddr = *mut Value;
 
@@ -74,12 +74,7 @@ impl VM {
     }
 
     pub unsafe fn alloc_for_value() -> HeapAddr {
-        let layout = Layout::from_size_align(
-            ::std::mem::size_of::<Value>() * 2, // Without '* 2', segv occurs. Why?
-            ::std::mem::align_of::<Value>() * 2,
-        ).unwrap();
-        let ptr_nonnull = Global.alloc(layout.clone()).unwrap();
-        ptr_nonnull.as_ptr() as *mut Value
+        libc::malloc(::std::mem::size_of::<Value>()) as *mut Value
     }
 }
 

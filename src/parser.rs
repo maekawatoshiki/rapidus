@@ -1,5 +1,5 @@
 use lexer;
-use node::{BinOp, Node, UnaryOp};
+use node::{BinOp, FormalParameter, FormalParameters, Node, UnaryOp};
 use token::{Keyword, Kind, Symbol};
 
 #[derive(Clone, Debug)]
@@ -67,6 +67,7 @@ impl Parser {
             Kind::Keyword(Keyword::If) => self.read_if_statement(),
             Kind::Keyword(Keyword::Var) => self.read_variable_statement(),
             Kind::Keyword(Keyword::While) => self.read_while_statement(),
+            Kind::Keyword(Keyword::Return) => self.read_return_statement(),
             Kind::Symbol(Symbol::OpeningBrace) => self.read_block_statement(),
             _ => {
                 self.lexer.unget(&tok);
@@ -482,12 +483,77 @@ impl Parser {
 }
 
 impl Parser {
+    /// https://tc39.github.io/ecma262/#prod-ReturnStatement
+    fn read_return_statement(&mut self) -> Result<Node, ()> {
+        if self.lexer.skip(Kind::Symbol(Symbol::Semicolon)) {
+            return Ok(Node::Return(None));
+        }
+
+        let expr = self.read_expression()?;
+
+        Ok(Node::Return(Some(Box::new(expr))))
+    }
+}
+
+impl Parser {
     fn is_declaration(&mut self) -> bool {
         self.is_hoistable_declaration()
     }
 
     fn read_declaration(&mut self) -> Result<Node, ()> {
-        Err(())
+        let tok = self.lexer.next()?;
+        match tok.kind {
+            Kind::Keyword(Keyword::Function) => self.read_function_declaration(),
+            _ => Ok(Node::Nope),
+        }
+    }
+
+    /// https://tc39.github.io/ecma262/#prod-FunctionDeclaration
+    fn read_function_declaration(&mut self) -> Result<Node, ()> {
+        let name = if let Kind::Identifier(name) = self.lexer.next()?.kind {
+            Some(name)
+        } else {
+            None
+        };
+
+        assert!(self.lexer.skip(Kind::Symbol(Symbol::OpeningParen)));
+        let params = self.read_formal_parameters()?;
+
+        assert!(self.lexer.skip(Kind::Symbol(Symbol::OpeningBrace)));
+        let body = self.read_statement_list()?;
+
+        Ok(Node::FunctionDecl(name, params, Box::new(body)))
+    }
+
+    fn read_formal_parameters(&mut self) -> Result<FormalParameters, ()> {
+        if self.lexer.skip(Kind::Symbol(Symbol::ClosingParen)) {
+            return Ok(vec![]);
+        }
+
+        let mut params = vec![];
+
+        loop {
+            params.push(self.read_formal_parameter()?);
+
+            if self.lexer.skip(Kind::Symbol(Symbol::ClosingParen)) {
+                break;
+            }
+
+            assert!(self.lexer.skip(Kind::Symbol(Symbol::ClosingParen)))
+        }
+
+        Ok(params)
+    }
+
+    // TODO: Support all features: https://tc39.github.io/ecma262/#prod-FormalParameter
+    pub fn read_formal_parameter(&mut self) -> Result<FormalParameter, ()> {
+        let name = if let Kind::Identifier(name) = self.lexer.next()?.kind {
+            name
+        } else {
+            panic!()
+        };
+        // TODO: Implement initializer.
+        Ok(FormalParameter::new(name, None))
     }
 }
 

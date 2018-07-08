@@ -6,6 +6,7 @@ authors = ["maekawatoshiki <konndennsa@gmail.com>"]
 [dependencies]
 clap = "*"
 bitflags = "*"
+libc = "0.2"
 
 [profile.dev]
 codegen-units = 16
