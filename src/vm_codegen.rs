@@ -91,6 +91,7 @@ impl VMCodeGen {
             &Node::Identifier(ref name) => self.run_identifier(name, insts),
             &Node::String(ref s) => insts.push(Inst::Push(Value::String(s.clone()))),
             &Node::Number(n) => insts.push(Inst::Push(Value::Number(n))),
+            &Node::Boolean(b) => insts.push(Inst::Push(Value::Bool(b))),
             _ => {}
         }
     }
@@ -133,7 +134,11 @@ impl VMCodeGen {
         self.run(body, &mut func_insts);
 
         if let Inst::AllocLocalVar(ref mut n, ref mut argc) = func_insts[0] {
-            *n = self.id - params.len();
+            *n = if self.id > params.len() {
+                self.id - params.len()
+            } else {
+                params.len()
+            };
             *argc = params.len()
         }
         for pos in &self.return_inst_pos {
@@ -232,7 +237,8 @@ impl VMCodeGen {
 
         self.run(body, insts);
 
-        insts.push(Inst::Jmp(pos));
+        let loop_pos = insts.len() as isize;
+        insts.push(Inst::Jmp(pos - loop_pos));
 
         let pos = insts.len() as isize;
         if let Inst::JmpIfFalse(ref mut dst) = insts[cond_pos as usize] {

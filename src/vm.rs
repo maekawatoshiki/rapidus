@@ -11,7 +11,6 @@ pub enum Value {
     Number(f64),
     String(String),
     Data(String),
-    ReturnAddr(usize),
     Function(usize),
     EmbeddedFunction(usize), // unknown if usize == 0; specific function if usize > 0
     Object(HashMap<String, HeapAddr>),
