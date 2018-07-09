@@ -539,7 +539,7 @@ impl Parser {
                 break;
             }
 
-            assert!(self.lexer.skip(Kind::Symbol(Symbol::ClosingParen)))
+            assert!(self.lexer.skip(Kind::Symbol(Symbol::Comma)))
         }
 
         Ok(params)
@@ -888,4 +888,42 @@ fn if_() {
             Box::new(Node::Nope),
         )])
     );
+}
+
+#[test]
+fn function_decl() {
+    for (input, node) in [
+        (
+            "function f() { }",
+            Node::FunctionDecl(
+                Some("f".to_string()),
+                vec![],
+                Box::new(Node::StatementList(vec![])),
+            ),
+        ),
+        (
+            "function f(x, y) { return x + y }",
+            Node::FunctionDecl(
+                Some("f".to_string()),
+                vec![
+                    FormalParameter::new("x".to_string(), None),
+                    FormalParameter::new("y".to_string(), None),
+                ],
+                Box::new(Node::StatementList(vec![Node::Return(Some(Box::new(
+                    Node::BinaryOp(
+                        Box::new(Node::Identifier("x".to_string())),
+                        Box::new(Node::Identifier("y".to_string())),
+                        BinOp::Add,
+                    ),
+                )))])),
+            ),
+        ),
+    ].iter()
+    {
+        let mut parser = Parser::new(input.to_string());
+        assert_eq!(
+            parser.next().unwrap(),
+            Node::StatementList(vec![node.clone()])
+        );
+    }
 }
