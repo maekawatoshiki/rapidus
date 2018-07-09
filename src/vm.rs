@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::collections::VecDeque;
 
 use libc;
 
@@ -47,7 +46,7 @@ pub enum Inst {
 
 pub struct VM {
     pub global_objects: HashMap<String, Value>,
-    pub stack: VecDeque<Value>,
+    pub stack: Vec<Value>,
     pub sp_buf: Vec<usize>,
     pub sp: usize,
     pub return_addr: Vec<isize>,
@@ -70,7 +69,7 @@ impl VM {
 
         VM {
             global_objects: obj,
-            stack: VecDeque::new(),
+            stack: Vec::with_capacity(128),
             sp_buf: vec![],
             sp: 0,
             return_addr: vec![],
@@ -94,22 +93,22 @@ impl VM {
                     self.sp_buf.push(self.sp);
                     self.sp = self.stack.len() - argc;
                     for _ in 0..*n {
-                        self.stack.push_back(Value::Number(0.0));
+                        self.stack.push(Value::Number(0.0));
                     }
                     pc += 1
                 }
                 Inst::Return(ref n) => {
-                    let val = self.stack.pop_back().unwrap();
+                    let val = self.stack.pop().unwrap();
                     for _ in 0..*n {
-                        self.stack.pop_back();
+                        self.stack.pop();
                     }
                     pc = self.return_addr.pop().unwrap();
 
-                    self.stack.push_back(val);
+                    self.stack.push(val);
                     self.sp = self.sp_buf.pop().unwrap();
                 }
                 Inst::Push(ref val) => {
-                    self.stack.push_back(val.clone());
+                    self.stack.push(val.clone());
                     pc += 1
                 }
                 ref op
@@ -130,37 +129,36 @@ impl VM {
                 }
                 Inst::GetLocal(ref n) => {
                     let val = self.stack[self.sp + *n].clone();
-                    self.stack.push_back(val);
+                    self.stack.push(val);
                     pc += 1
                 }
                 Inst::GetGlobal(ref name) => {
                     self.stack
-                        .push_back(self.global_objects.get(name.as_str()).unwrap().clone());
+                        .push(self.global_objects.get(name.as_str()).unwrap().clone());
                     pc += 1
                 }
                 Inst::SetLocal(ref n) => {
-                    let val = self.stack.pop_back().unwrap();
+                    let val = self.stack.pop().unwrap();
                     self.stack[self.sp + *n] = val;
                     pc += 1
                 }
                 Inst::SetGlobal(name) => {
-                    self.global_objects
-                        .insert(name, self.stack.pop_back().unwrap());
+                    self.global_objects.insert(name, self.stack.pop().unwrap());
                     pc += 1
                 }
                 Inst::GetMember => {
                     let member_name = {
-                        let member = self.stack.pop_back().unwrap();
+                        let member = self.stack.pop().unwrap();
                         if let Value::Data(name) = member {
                             name
                         } else {
                             panic!()
                         }
                     };
-                    let parent = self.stack.pop_back().unwrap();
+                    let parent = self.stack.pop().unwrap();
                     if let Value::Object(map) = parent {
                         match map.get(member_name.as_str()) {
-                            Some(addr) => unsafe { self.stack.push_back((**addr).clone()) },
+                            Some(addr) => unsafe { self.stack.push((**addr).clone()) },
                             None => {}
                         }
                     }
@@ -171,7 +169,7 @@ impl VM {
                 }
                 Inst::Jmp(dst) => pc += dst,
                 Inst::JmpIfFalse(dst) => {
-                    let cond = self.stack.pop_back().unwrap();
+                    let cond = self.stack.pop().unwrap();
                     if let Value::Bool(false) = cond {
                         pc += dst
                     } else {
@@ -184,10 +182,10 @@ impl VM {
     }
 
     fn run_binary_op(&mut self, op: &Inst) {
-        let rhs = self.stack.pop_back().unwrap();
-        let lhs = self.stack.pop_back().unwrap();
+        let rhs = self.stack.pop().unwrap();
+        let lhs = self.stack.pop().unwrap();
         match (lhs, rhs) {
-            (Value::Number(n1), Value::Number(n2)) => self.stack.push_back(match op {
+            (Value::Number(n1), Value::Number(n2)) => self.stack.push(match op {
                 &Inst::Add => Value::Number(n1 + n2),
                 &Inst::Sub => Value::Number(n1 - n2),
                 &Inst::Mul => Value::Number(n1 * n2),
@@ -208,11 +206,11 @@ impl VM {
     fn run_function(&mut self, argc: usize, pc: &mut isize) {
         let mut args = vec![];
         for _ in 0..argc {
-            args.push(self.stack.pop_back().unwrap());
+            args.push(self.stack.pop().unwrap());
         }
         args.reverse();
 
-        let callee = self.stack.pop_back().unwrap();
+        let callee = self.stack.pop().unwrap();
         match callee {
             Value::EmbeddedFunction(1) => {
                 console_log(args);
@@ -221,7 +219,7 @@ impl VM {
             Value::Function(dst) => {
                 self.return_addr.push(*pc + 1);
                 for arg in args {
-                    self.stack.push_back(arg);
+                    self.stack.push(arg);
                 }
                 *pc = dst as isize;
             }
