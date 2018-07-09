@@ -891,6 +891,18 @@ fn if_() {
 }
 
 #[test]
+fn while_() {
+    let mut parser = Parser::new("while (true) { }".to_string());
+    assert_eq!(
+        parser.next().unwrap(),
+        Node::StatementList(vec![Node::While(
+            Box::new(Node::Boolean(true)),
+            Box::new(Node::StatementList(vec![])),
+        )])
+    );
+}
+
+#[test]
 fn function_decl() {
     for (input, node) in [
         (
