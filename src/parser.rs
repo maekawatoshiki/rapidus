@@ -584,6 +584,15 @@ fn number() {
 }
 
 #[test]
+fn string() {
+    let mut parser = Parser::new("\"aaa\"".to_string());
+    assert_eq!(
+        parser.next().unwrap(),
+        Node::StatementList(vec![Node::String("aaa".to_string())])
+    );
+}
+
+#[test]
 fn boolean() {
     let mut parser = Parser::new("true".to_string());
     assert_eq!(
@@ -733,6 +742,21 @@ fn simple_expr_shift() {
             Node::StatementList(vec![Node::BinaryOp(
                 Box::new(Node::Number(1.0)),
                 Box::new(Node::Number(2.0)),
+                op.clone(),
+            )])
+        );
+    }
+}
+
+#[test]
+fn simple_exp() {
+    for (input, op) in [("2**5", BinOp::Exp)].iter() {
+        let mut parser = Parser::new(input.to_string());
+        assert_eq!(
+            parser.next().unwrap(),
+            Node::StatementList(vec![Node::BinaryOp(
+                Box::new(Node::Number(2.0)),
+                Box::new(Node::Number(5.0)),
                 op.clone(),
             )])
         );
