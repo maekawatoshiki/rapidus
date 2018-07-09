@@ -1,5 +1,6 @@
 use node::{BinOp, FormalParameters, Node};
 use vm::{Inst, Value};
+use id::IdGen;
 
 use std::collections::HashMap;
 
@@ -23,7 +24,7 @@ pub struct VMCodeGen {
     pub global_varmap: HashMap<String, Value>, // usize will be replaced with an appropriate type
     pub local_varmap: Vec<HashMap<String, usize>>,
     pub functions: HashMap<String, FunctionInfo>,
-    pub id: usize,
+    pub id: IdGen,
     pub return_inst_pos: Vec<usize>,
 }
 
@@ -33,7 +34,7 @@ impl VMCodeGen {
             global_varmap: HashMap::new(),
             local_varmap: vec![HashMap::new()],
             functions: HashMap::new(),
-            id: 0,
+            id: IdGen::new(),
             return_inst_pos: vec![],
         }
     }
@@ -47,7 +48,7 @@ impl VMCodeGen {
         self.run(node, insts);
 
         if let Inst::AllocLocalVar(ref mut n, _) = insts[pos] {
-            *n = self.id
+            *n = self.id.get_cur_id()
         }
         insts.push(Inst::End);
 
@@ -114,14 +115,8 @@ impl VMCodeGen {
     ) {
         let name = name.clone().unwrap();
 
-        // self.run_var_decl2(&name, &None, insts);
-        // let func_pos = insts.len();
-        // insts.push(Inst::Push(Value::Function(0)));
-        // insts.push(Inst::SetLocal(self.id - 1));
-
         self.local_varmap.push(HashMap::new());
-        let save_cur_id = self.id;
-        self.id = 0;
+        self.id.save();
 
         let mut func_insts = vec![];
 
@@ -134,8 +129,8 @@ impl VMCodeGen {
         self.run(body, &mut func_insts);
 
         if let Inst::AllocLocalVar(ref mut n, ref mut argc) = func_insts[0] {
-            *n = if self.id > params.len() {
-                self.id - params.len()
+            *n = if self.id.get_cur_id() > params.len() {
+                self.id.get_cur_id() - params.len()
             } else {
                 params.len()
             };
@@ -143,15 +138,15 @@ impl VMCodeGen {
         }
         for pos in &self.return_inst_pos {
             if let Inst::Return(ref mut n) = func_insts[*pos] {
-                *n = if self.id > params.len() {
-                    self.id - params.len()
+                *n = if self.id.get_cur_id() > params.len() {
+                    self.id.get_cur_id() - params.len()
                 } else {
                     params.len()
                 };
             }
         }
 
-        self.id = save_cur_id;
+        self.id.restore();
         self.local_varmap.pop();
 
         self.functions
@@ -169,29 +164,31 @@ impl VMCodeGen {
 
 impl VMCodeGen {
     pub fn run_var_decl(&mut self, name: &String, init: &Option<Box<Node>>, insts: &mut Vec<Inst>) {
+        let id = self.id.gen_id();
+
         self.local_varmap
             .last_mut()
             .unwrap()
-            .insert(name.clone(), self.id);
+            .insert(name.clone(), id);
 
         if let &Some(ref init) = init {
             self.run(&*init, insts);
-            insts.push(Inst::SetLocal(self.id));
+            insts.push(Inst::SetLocal(id));
         }
-        self.id += 1;
     }
 
     pub fn run_var_decl2(&mut self, name: &String, init: &Option<Node>, insts: &mut Vec<Inst>) {
+        let id = self.id.gen_id();
+
         self.local_varmap
             .last_mut()
             .unwrap()
-            .insert(name.clone(), self.id);
+            .insert(name.clone(), id);
 
         if let &Some(ref init) = init {
             self.run(init, insts);
-            insts.push(Inst::SetLocal(self.id));
+            insts.push(Inst::SetLocal(id));
         }
-        self.id += 1;
     }
 }
 
