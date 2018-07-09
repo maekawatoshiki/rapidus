@@ -643,13 +643,36 @@ fn simple_expr_5arith() {
 
 #[test]
 fn simple_expr_eq() {
-    use node::BinOp;
-
     for (input, op) in [
         ("1 + 2 == 3", BinOp::Eq),
         ("1 + 2 != 3", BinOp::Ne),
         ("1 + 2 === 3", BinOp::SEq),
         ("1 + 2 !== 3", BinOp::SNe),
+    ].iter()
+    {
+        let mut parser = Parser::new(input.to_string());
+        assert_eq!(
+            parser.next().unwrap(),
+            Node::StatementList(vec![Node::BinaryOp(
+                Box::new(Node::BinaryOp(
+                    Box::new(Node::Number(1.0)),
+                    Box::new(Node::Number(2.0)),
+                    BinOp::Add,
+                )),
+                Box::new(Node::Number(3.0)),
+                op.clone(),
+            )])
+        );
+    }
+}
+
+#[test]
+fn simple_expr_rel() {
+    for (input, op) in [
+        ("1 + 2 < 3", BinOp::Lt),
+        ("1 + 2 > 3", BinOp::Gt),
+        ("1 + 2 <= 3", BinOp::Le),
+        ("1 + 2 >= 3", BinOp::Ge),
     ].iter()
     {
         let mut parser = Parser::new(input.to_string());
