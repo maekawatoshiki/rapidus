@@ -129,11 +129,7 @@ impl VMCodeGen {
         self.run(body, &mut func_insts);
 
         if let Inst::AllocLocalVar(ref mut n, ref mut argc) = func_insts[0] {
-            *n = if self.id.get_cur_id() > params.len() {
-                self.id.get_cur_id() - params.len()
-            } else {
-                params.len()
-            };
+            *n = self.id.get_cur_id() - params.len();
             *argc = params.len()
         }
         for pos in &self.return_inst_pos {
