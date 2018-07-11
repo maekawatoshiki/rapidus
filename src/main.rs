@@ -47,34 +47,28 @@ fn main() {
 
         let mut lexer = lexer::Lexer::new(file_body.clone());
 
-        println!("Lexer:");
+        // println!("Lexer:");
         while let Ok(token) = lexer.next() {
-            println!("{:?}", token);
+            // println!("{:?}", token);
         }
 
         let mut parser = parser::Parser::new(file_body);
 
-        println!("Parser:");
+        // println!("Parser:");
         let mut a = vec![];
         while let Ok(node) = parser.next() {
-            println!("{:?}", node);
+            // println!("{:?}", node);
             a.push(node);
         }
 
         let mut c = closure::ClosureConv::new();
-        let mut b = vec![];
-        c.run(&a, &mut b);
-        use rapidus::node;
-        let mut aa;
-        println!(">>>>> {:?}", b);
-        if let node::Node::StatementList(q) = b[0].clone() {
-            aa = node::Node::StatementList(q.clone());
-        }else{panic!()}
+        let mut b = a[0].clone();
+        c.run(&mut b);
 
-        println!("{:?}", aa);
+        println!("{:?}", b);
         let mut vm_codegen = vm_codegen::VMCodeGen::new();
         let mut insts = vec![];
-        vm_codegen.compile(&aa, &mut insts);
+        vm_codegen.compile(&b, &mut insts);
 
         for inst in insts.clone() {
             println!("{:?}", inst);

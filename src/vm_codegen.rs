@@ -1,5 +1,6 @@
 use id::IdGen;
 use node::{BinOp, FormalParameters, Node};
+use std::collections::HashSet;
 use vm::{Inst, Value};
 
 use std::collections::HashMap;
@@ -8,15 +9,22 @@ use std::collections::HashMap;
 pub struct FunctionInfo {
     pub name: String,
     pub insts: Vec<Inst>,
+    pub fv_name: Vec<String>,
     pub fv_stack_addr: Vec<usize>,
 }
 
 impl FunctionInfo {
-    pub fn new(name: String, fv_stack_addr: Vec<usize>, insts: Vec<Inst>) -> FunctionInfo {
+    pub fn new(
+        name: String,
+        fv_name: Vec<String>,
+        fv_stack_addr: Vec<usize>,
+        insts: Vec<Inst>,
+    ) -> FunctionInfo {
         FunctionInfo {
             name: name,
             insts: insts,
             fv_stack_addr: fv_stack_addr,
+            fv_name: fv_name,
         }
     }
 }
@@ -26,6 +34,7 @@ pub struct VMCodeGen {
     pub global_varmap: HashMap<String, Value>, // usize will be replaced with an appropriate type
     pub local_varmap: Vec<HashMap<String, usize>>,
     pub functions: HashMap<String, FunctionInfo>,
+    pub cur_nest_functions: HashMap<String, FunctionInfo>,
     pub local_var_stacj_addr: IdGen,
     pub return_inst_pos: Vec<usize>,
 }
@@ -36,6 +45,7 @@ impl VMCodeGen {
             global_varmap: HashMap::new(),
             local_varmap: vec![HashMap::new()],
             functions: HashMap::new(),
+            cur_nest_functions: HashMap::new(),
             local_var_stacj_addr: IdGen::new(),
             return_inst_pos: vec![],
         }
@@ -54,18 +64,30 @@ impl VMCodeGen {
         }
         insts.push(Inst::End);
 
+        for (a, b) in self.cur_nest_functions.clone() {
+            self.functions.insert(a, b);
+        }
+
         for (
             _,
             FunctionInfo {
                 name,
                 insts: func_insts,
-                fv_stack_addr
+                fv_stack_addr,
+                fv_name,
             },
         ) in &self.functions
         {
             let pos = insts.len();
-            self.global_varmap
-                .insert(name.clone(), Value::Function(pos));
+            if fv_stack_addr.len() > 0 {
+                self.global_varmap.insert(
+                    name.clone(),
+                    Value::Cls(Box::new(Value::Function(pos)), fv_stack_addr.clone()),
+                );
+            } else {
+                self.global_varmap
+                    .insert(name.clone(), Value::Function(pos));
+            }
             // if let Inst::Push(Value::Function(ref mut addr)) = insts[*pos_in_insts] {
             //     *addr = pos
             // }
@@ -113,7 +135,7 @@ impl VMCodeGen {
     pub fn run_function_decl(
         &mut self,
         name: &Option<String>,
-        fv: &Vec<String>,
+        fv: &HashSet<String>,
         params: &FormalParameters,
         body: &Node,
     ) {
@@ -126,8 +148,11 @@ impl VMCodeGen {
 
         func_insts.push(Inst::AllocLocalVar(0, 0));
 
+        let mut newfv = vec![];
+
         for name in fv {
-            self.run_var_decl2(name, &None, &mut func_insts)
+            self.run_var_decl2(name, &None, &mut func_insts);
+            newfv.push(name.clone());
         }
         for param in params {
             self.run_var_decl2(&param.name, &param.init, &mut func_insts)
@@ -153,21 +178,28 @@ impl VMCodeGen {
         }
         self.return_inst_pos.clear();
 
+        for (name, v) in self.cur_nest_functions.clone() {
+            let mut names = v.fv_name.clone();
+            let mut fv_stack_addr = vec![];
+            for name in names {
+                if let Some(p) = self.local_varmap.last().unwrap().get(name.as_str()) {
+                    fv_stack_addr.push(*p);
+                } else {
+                    panic!()
+                };
+            }
+            let mut v = v.clone();
+            v.fv_stack_addr = fv_stack_addr;
+            self.functions.insert(name, v);
+        }
+        self.cur_nest_functions.clear();
+
         self.local_var_stacj_addr.restore();
         self.local_varmap.pop();
 
-        let mut fv_stack_addr = vec![];
-        for name in fv {
-            if let Some(p) = self.local_varmap.last().unwrap().get(name.as_str()) {
-                fv_stack_addr.push(*p);
-            } else {
-                panic!()
-            };
-        }
-
-        self.functions.insert(
+        self.cur_nest_functions.insert(
             name.clone(),
-            FunctionInfo::new(name.clone(), fv_stack_addr, func_insts),
+            FunctionInfo::new(name.clone(), newfv.clone(), vec![], func_insts),
         );
     }
 

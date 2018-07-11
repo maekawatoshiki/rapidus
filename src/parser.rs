@@ -1,6 +1,7 @@
 use lexer;
 use node::{BinOp, FormalParameter, FormalParameters, Node, UnaryOp};
 use token::{Keyword, Kind, Symbol};
+use std::collections::HashSet;
 
 #[derive(Clone, Debug)]
 pub struct Parser {
@@ -522,7 +523,7 @@ impl Parser {
         assert!(self.lexer.skip(Kind::Symbol(Symbol::OpeningBrace)));
         let body = self.read_statement_list()?;
 
-        Ok(Node::FunctionDecl(name, vec![], params, Box::new(body)))
+        Ok(Node::FunctionDecl(name, HashSet::new(), params, Box::new(body)))
     }
 
     fn read_formal_parameters(&mut self) -> Result<FormalParameters, ()> {
@@ -956,7 +957,7 @@ fn function_decl() {
             "function f() { }",
             Node::FunctionDecl(
                 Some("f".to_string()),
-                vec![],
+                HashSet::new(),
                 vec![],
                 Box::new(Node::StatementList(vec![])),
             ),
@@ -965,7 +966,7 @@ fn function_decl() {
             "function f(x, y) { return x + y }",
             Node::FunctionDecl(
                 Some("f".to_string()),
-                vec![],
+                HashSet::new(),
                 vec![
                     FormalParameter::new("x".to_string(), None),
                     FormalParameter::new("y".to_string(), None),
