@@ -3,15 +3,17 @@ use node::{FormalParameter, FormalParameters, Node};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone)]
-pub struct ClosureConv {
+pub struct FreeVariableFinder {
     pub varmap: Vec<HashSet<String>>,
     pub cur_fv: HashSet<String>,
 }
 
-impl ClosureConv {
-    pub fn new() -> ClosureConv {
-        ClosureConv {
-            varmap: vec![HashSet::new()],
+impl FreeVariableFinder {
+    pub fn new() -> FreeVariableFinder {
+        let mut varmap = HashSet::new();
+        varmap.insert("console".to_string());
+        FreeVariableFinder {
+            varmap: vec![varmap],
             cur_fv: HashSet::new(),
         }
     }
@@ -52,18 +54,51 @@ impl ClosureConv {
                     self.run(arg)
                 }
             }
-            &mut Node::VarDecl(ref name, ref init) => {
+            &mut Node::VarDecl(ref name, ref mut init) => {
                 self.varmap.last_mut().unwrap().insert(name.clone());
+                if let &mut Some(ref mut init) = init {
+                    self.run(init)
+                }
             }
             &mut Node::Return(ref mut val) => {
                 if let &mut Some(ref mut val) = val {
                     self.run(&mut **val)
                 }
             }
+            &mut Node::Member(ref mut parent, _) => {
+                self.run(&mut *parent);
+            }
             &mut Node::Identifier(ref name) => {
-                if !self.varmap.last().unwrap().contains(name.as_str()) {
+                if !self.varmap[0].contains(name.as_str())
+                    && !self.varmap.last().unwrap().contains(name.as_str())
+                {
                     self.cur_fv.insert(name.clone());
                 }
+            }
+            &mut Node::If(ref mut cond, ref mut then, ref mut else_) => {
+                self.run(&mut *cond);
+                self.run(&mut *then);
+                self.run(&mut *else_);
+            }
+            &mut Node::While(ref mut cond, ref mut body) => {
+                self.run(&mut *cond);
+                self.run(&mut *body);
+            }
+            &mut Node::Assign(ref mut dst, ref mut src) => {
+                self.run(&mut *dst);
+                self.run(&mut *src);
+            }
+            &mut Node::UnaryOp(ref mut expr, _) => {
+                self.run(&mut *expr);
+            }
+            &mut Node::BinaryOp(ref mut lhs, ref mut rhs, _) => {
+                self.run(&mut *lhs);
+                self.run(&mut *rhs);
+            }
+            &mut Node::TernaryOp(ref mut cond, ref mut then, ref mut else_) => {
+                self.run(&mut *cond);
+                self.run(&mut *then);
+                self.run(&mut *else_);
             }
             _ => {}
         }

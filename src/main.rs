@@ -1,5 +1,5 @@
 extern crate rapidus;
-use rapidus::closure;
+use rapidus::fv_finder;
 use rapidus::lexer;
 use rapidus::parser;
 use rapidus::vm;
@@ -47,28 +47,27 @@ fn main() {
 
         let mut lexer = lexer::Lexer::new(file_body.clone());
 
-        // println!("Lexer:");
+        println!("Lexer:");
         while let Ok(token) = lexer.next() {
-            // println!("{:?}", token);
+            println!("{:?}", token);
         }
 
         let mut parser = parser::Parser::new(file_body);
 
-        // println!("Parser:");
-        let mut a = vec![];
+        println!("Parser:");
+        let mut nodes = vec![];
         while let Ok(node) = parser.next() {
-            // println!("{:?}", node);
-            a.push(node);
+            println!("{:?}", node);
+            nodes.push(node);
         }
 
-        let mut c = closure::ClosureConv::new();
-        let mut b = a[0].clone();
-        c.run(&mut b);
+        let mut node = nodes[0].clone();
+        fv_finder::FreeVariableFinder::new().run(&mut node);
 
-        println!("{:?}", b);
+        println!("{:?}", node);
         let mut vm_codegen = vm_codegen::VMCodeGen::new();
         let mut insts = vec![];
-        vm_codegen.compile(&b, &mut insts);
+        vm_codegen.compile(&node, &mut insts);
 
         for inst in insts.clone() {
             println!("{:?}", inst);
