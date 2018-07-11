@@ -957,6 +957,7 @@ fn function_decl() {
             Node::FunctionDecl(
                 Some("f".to_string()),
                 vec![],
+                vec![],
                 Box::new(Node::StatementList(vec![])),
             ),
         ),
@@ -964,6 +965,7 @@ fn function_decl() {
             "function f(x, y) { return x + y }",
             Node::FunctionDecl(
                 Some("f".to_string()),
+                vec![],
                 vec![
                     FormalParameter::new("x".to_string(), None),
                     FormalParameter::new("y".to_string(), None),
