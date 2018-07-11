@@ -11,5 +11,5 @@ A toy JavaScript engine
 Currently, some examples can not run successfully (enter infinite loop) since the parser of Rapidus doesn't work well.
 
 ```sh
-$ cargo run example/~~~.js
+$ cargo run example/~~~.js --easy-run
 ```
