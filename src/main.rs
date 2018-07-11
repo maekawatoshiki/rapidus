@@ -1,4 +1,5 @@
 extern crate rapidus;
+use rapidus::fv_finder;
 use rapidus::lexer;
 use rapidus::parser;
 use rapidus::vm;
@@ -54,12 +55,31 @@ fn main() {
         let mut parser = parser::Parser::new(file_body);
 
         println!("Parser:");
+        let mut nodes = vec![];
         while let Ok(node) = parser.next() {
             println!("{:?}", node);
+            nodes.push(node);
         }
 
-        println!("VM CodeGen Test:");
-        vm_codegen::test();
+        let mut node = nodes[0].clone();
+        fv_finder::FreeVariableFinder::new().run(&mut node);
+
+        println!("{:?}", node);
+        let mut vm_codegen = vm_codegen::VMCodeGen::new();
+        let mut insts = vec![];
+        vm_codegen.compile(&node, &mut insts);
+
+        for inst in insts.clone() {
+            println!("{:?}", inst);
+        }
+
+        println!("Result:");
+        let mut vm = vm::VM::new();
+        vm.global_objects.extend(vm_codegen.global_varmap);
+        vm.run(insts);
+
+        // println!("VM CodeGen Test:");
+        // vm_codegen::test();
     }
 }
 
@@ -83,6 +103,8 @@ fn easy_run(file_name: &str) {
     while let Ok(ok) = parser.next() {
         node_list.push(ok)
     }
+
+    fv_finder::FreeVariableFinder::new().run(&mut node_list[0]);
 
     let mut vm_codegen = vm_codegen::VMCodeGen::new();
     let mut insts = vec![];

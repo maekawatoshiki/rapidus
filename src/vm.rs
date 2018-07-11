@@ -1,3 +1,4 @@
+use std::boxed::Box;
 use std::collections::HashMap;
 
 use libc;
@@ -11,7 +12,9 @@ pub enum Value {
     String(String),
     Data(String),
     Function(usize),
-    EmbeddedFunction(usize), // unknown if usize == 0; specific function if usize > 0
+    Cls(Box<Value>, Vec<usize>),   // Function, Vec<free variable addr>
+    ClsSp(Box<Value>, Vec<Value>), // Function, Vec<value of free variable>
+    EmbeddedFunction(usize),       // unknown if usize == 0; specific function if usize > 0
     Object(HashMap<String, HeapAddr>),
 }
 
@@ -129,12 +132,28 @@ impl VM {
                 }
                 Inst::GetLocal(ref n) => {
                     let val = self.stack[self.sp + *n].clone();
-                    self.stack.push(val);
+                    if let Value::Cls(callee, addrs) = val {
+                        let mut fv_val = vec![];
+                        for addr in addrs {
+                            fv_val.push(self.stack[self.sp + addr].clone());
+                        }
+                        self.stack.push(Value::ClsSp(callee, fv_val));
+                    } else {
+                        self.stack.push(val);
+                    }
                     pc += 1
                 }
                 Inst::GetGlobal(ref name) => {
-                    self.stack
-                        .push(self.global_objects.get(name.as_str()).unwrap().clone());
+                    let val = self.global_objects.get(name.as_str()).unwrap().clone();
+                    if let Value::Cls(callee, addrs) = val {
+                        let mut fv_val = vec![];
+                        for addr in addrs {
+                            fv_val.push(self.stack[self.sp + addr].clone());
+                        }
+                        self.stack.push(Value::ClsSp(callee, fv_val));
+                    } else {
+                        self.stack.push(val);
+                    }
                     pc += 1
                 }
                 Inst::SetLocal(ref n) => {
@@ -204,26 +223,42 @@ impl VM {
     }
 
     fn run_function(&mut self, argc: usize, pc: &mut isize) {
+        let mut fv_vals = vec![];
         let mut args = vec![];
         for _ in 0..argc {
             args.push(self.stack.pop().unwrap());
         }
         args.reverse();
 
-        let callee = self.stack.pop().unwrap();
-        match callee {
-            Value::EmbeddedFunction(1) => {
-                console_log(args);
-                *pc += 1;
-            }
-            Value::Function(dst) => {
-                self.return_addr.push(*pc + 1);
-                for arg in args {
-                    self.stack.push(arg);
+        let mut callee = self.stack.pop().unwrap();
+
+        loop {
+            match callee {
+                Value::EmbeddedFunction(1) => {
+                    console_log(args);
+                    *pc += 1;
+                    break;
                 }
-                *pc = dst as isize;
+                Value::Function(dst) => {
+                    self.return_addr.push(*pc + 1);
+                    for fv_val in fv_vals {
+                        self.stack.push(fv_val);
+                    }
+                    for arg in args {
+                        self.stack.push(arg);
+                    }
+                    *pc = dst as isize;
+                    break;
+                }
+                Value::ClsSp(callee_, fv_vals_) => {
+                    fv_vals = fv_vals_;
+                    callee = *callee_;
+                }
+                c => {
+                    println!("{:?}", c);
+                    break;
+                }
             }
-            c => println!("{:?}", c),
         }
 
         // EmbeddedFunction(1)

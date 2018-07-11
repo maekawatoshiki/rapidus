@@ -1,5 +1,6 @@
 use id::IdGen;
 use node::{BinOp, FormalParameters, Node};
+use std::collections::HashSet;
 use vm::{Inst, Value};
 
 use std::collections::HashMap;
@@ -7,14 +8,34 @@ use std::collections::HashMap;
 #[derive(Clone, Debug, PartialEq)]
 pub struct FunctionInfo {
     pub name: String,
+    pub fv_stack_addr: Vec<usize>,
     pub insts: Vec<Inst>,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct ClosureInfo {
+    pub name: String,
+    pub fv_name: Vec<String>,
+    pub insts: Vec<Inst>,
+}
+
+
 impl FunctionInfo {
-    pub fn new(name: String, insts: Vec<Inst>) -> FunctionInfo {
+    pub fn new(name: String, fv_stack_addr: Vec<usize>, insts: Vec<Inst>) -> FunctionInfo {
         FunctionInfo {
             name: name,
             insts: insts,
+            fv_stack_addr: fv_stack_addr,
+        }
+    }
+}
+
+impl ClosureInfo {
+    pub fn new(name: String, fv_name: Vec<String>, insts: Vec<Inst>) -> ClosureInfo {
+        ClosureInfo {
+            name: name,
+            insts: insts,
+            fv_name: fv_name,
         }
     }
 }
@@ -23,7 +44,8 @@ impl FunctionInfo {
 pub struct VMCodeGen {
     pub global_varmap: HashMap<String, Value>, // usize will be replaced with an appropriate type
     pub local_varmap: Vec<HashMap<String, usize>>,
-    pub pending_functions: HashMap<String, FunctionInfo>,
+    pub functions: HashMap<String, FunctionInfo>,
+    pub pending_closure_functions: HashMap<String, ClosureInfo>,
     pub local_var_stack_addr: IdGen,
     pub return_inst_pos: Vec<usize>,
     pub fv: Vec<Vec<String>>,
@@ -34,7 +56,8 @@ impl VMCodeGen {
         VMCodeGen {
             global_varmap: HashMap::new(),
             local_varmap: vec![HashMap::new()],
-            pending_functions: HashMap::new(),
+            functions: HashMap::new(),
+            pending_closure_functions: HashMap::new(),
             local_var_stack_addr: IdGen::new(),
             return_inst_pos: vec![],
             fv: vec![vec![]],
@@ -54,17 +77,29 @@ impl VMCodeGen {
         }
         insts.push(Inst::End);
 
+        // for (a, b) in self.pending_closure_functions.clone() {
+        //     self.functions.insert(a, b);
+        // }
+
         for (
             _,
             FunctionInfo {
                 name,
                 insts: func_insts,
+                fv_stack_addr,
             },
         ) in &self.pending_functions
         {
             let pos = insts.len();
-            self.global_varmap
-                .insert(name.clone(), Value::Function(pos));
+            if fv_stack_addr.len() > 0 {
+                self.global_varmap.insert(
+                    name.clone(),
+                    Value::Cls(Box::new(Value::Function(pos)), fv_stack_addr.clone()),
+                );
+            } else {
+                self.global_varmap
+                    .insert(name.clone(), Value::Function(pos));
+            }
             // if let Inst::Push(Value::Function(ref mut addr)) = insts[*pos_in_insts] {
             //     *addr = pos
             // }
@@ -76,8 +111,8 @@ impl VMCodeGen {
     fn run(&mut self, node: &Node, insts: &mut Vec<Inst>) {
         match node {
             &Node::StatementList(ref node_list) => self.run_statement_list(node_list, insts),
-            &Node::FunctionDecl(ref name, ref params, ref body) => {
-                self.run_function_decl(name, params, &*body)
+            &Node::FunctionDecl(ref name, ref fv, ref params, ref body) => {
+                self.run_function_decl(name, fv, params, &*body)
             }
             &Node::VarDecl(ref name, ref init) => self.run_var_decl(name, init, insts),
             &Node::If(ref cond, ref then_, ref else_) => {
@@ -112,6 +147,7 @@ impl VMCodeGen {
     pub fn run_function_decl(
         &mut self,
         name: &Option<String>,
+        fv: &HashSet<String>,
         params: &FormalParameters,
         body: &Node,
     ) {
@@ -120,35 +156,73 @@ impl VMCodeGen {
         self.local_varmap.push(HashMap::new());
         self.local_var_stack_addr.save();
 
+        let this_is_closure = self.local_varmap.len() > 2;
+
         let mut func_insts = vec![];
 
         func_insts.push(Inst::AllocLocalVar(0, 0));
+
+        for name in fv {
+            self.run_var_decl2(name, &None, &mut func_insts);
+        }
 
         for param in params {
             self.run_var_decl2(&param.name, &param.init, &mut func_insts)
         }
 
+        let params_len = params.len() + fv.len();
+
         self.run(body, &mut func_insts);
 
         if let Inst::AllocLocalVar(ref mut n, ref mut argc) = func_insts[0] {
-            *n = self.local_var_stack_addr.get_cur_id() - params.len();
-            *argc = params.len()
+            *n = self.local_var_stack_addr.get_cur_id() - params_len;
+            *argc = params_len;
         }
+
         for pos in &self.return_inst_pos {
             if let Inst::Return(ref mut n) = func_insts[*pos] {
-                *n = if self.local_var_stack_addr.get_cur_id() > params.len() {
-                    self.local_var_stack_addr.get_cur_id() - params.len()
+                *n = if self.local_var_stack_addr.get_cur_id() > params_len {
+                    self.local_var_stack_addr.get_cur_id() - params_len
                 } else {
-                    params.len()
+                    params_len
                 };
             }
         }
+        self.return_inst_pos.clear();
+
+        for (name, v) in self.pending_closure_functions.clone() {
+            let mut names = v.fv_name.clone();
+            let mut fv_stack_addr = vec![];
+            for name in names {
+                if let Some(p) = self.local_varmap.last().unwrap().get(name.as_str()) {
+                    fv_stack_addr.push(*p);
+                } else {
+                    unreachable!()
+                };
+            }
+            self.functions
+                .insert(name, FunctionInfo::new(v.name, fv_stack_addr, v.insts));
+        }
+        self.pending_closure_functions.clear();
 
         self.local_var_stack_addr.restore();
         self.local_varmap.pop();
 
-        self.pending_functions
-            .insert(name.clone(), FunctionInfo::new(name.clone(), func_insts));
+        if this_is_closure {
+            self.pending_closure_functions.insert(
+                name.clone(),
+                ClosureInfo::new(
+                    name.clone(),
+                    fv.iter().cloned().collect::<Vec<_>>(),
+                    func_insts,
+                ),
+            );
+        } else {
+            self.functions.insert(
+                name.clone(),
+                FunctionInfo::new(name.clone(), vec![], func_insts),
+            );
+        }
     }
 
     pub fn run_return(&mut self, val: &Option<Box<Node>>, insts: &mut Vec<Inst>) {

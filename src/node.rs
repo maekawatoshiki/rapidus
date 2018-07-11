@@ -1,4 +1,5 @@
 use std::boxed::Box;
+use std::collections::HashSet;
 
 // TODO: Support all features: https://tc39.github.io/ecma262/#prod-FormalParameter
 #[derive(Clone, Debug, PartialEq)]
@@ -21,7 +22,7 @@ impl FormalParameter {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Node {
     StatementList(Vec<Node>),
-    FunctionDecl(Option<String>, FormalParameters, Box<Node>),
+    FunctionDecl(Option<String>, HashSet<String>, FormalParameters, Box<Node>),
     VarDecl(String, Option<Box<Node>>),
     Member(Box<Node>, String),
     Call(Box<Node>, Vec<Node>),
