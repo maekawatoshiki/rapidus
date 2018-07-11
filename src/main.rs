@@ -104,6 +104,8 @@ fn easy_run(file_name: &str) {
         node_list.push(ok)
     }
 
+    fv_finder::FreeVariableFinder::new().run(&mut node_list[0]);
+
     let mut vm_codegen = vm_codegen::VMCodeGen::new();
     let mut insts = vec![];
     vm_codegen.compile(&node_list[0], &mut insts);

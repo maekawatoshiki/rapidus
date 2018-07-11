@@ -254,7 +254,10 @@ impl VM {
                     fv_vals = fv_vals_;
                     callee = *callee_;
                 }
-                c => {println!("{:?}", c);break;}
+                c => {
+                    println!("{:?}", c);
+                    break;
+                }
             }
         }
 
