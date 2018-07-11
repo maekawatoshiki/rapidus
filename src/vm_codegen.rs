@@ -23,9 +23,10 @@ impl FunctionInfo {
 pub struct VMCodeGen {
     pub global_varmap: HashMap<String, Value>, // usize will be replaced with an appropriate type
     pub local_varmap: Vec<HashMap<String, usize>>,
-    pub functions: HashMap<String, FunctionInfo>,
+    pub pending_functions: HashMap<String, FunctionInfo>,
     pub local_var_stack_addr: IdGen,
     pub return_inst_pos: Vec<usize>,
+    pub fv: Vec<Vec<String>>,
 }
 
 impl VMCodeGen {
@@ -33,9 +34,10 @@ impl VMCodeGen {
         VMCodeGen {
             global_varmap: HashMap::new(),
             local_varmap: vec![HashMap::new()],
-            functions: HashMap::new(),
+            pending_functions: HashMap::new(),
             local_var_stack_addr: IdGen::new(),
             return_inst_pos: vec![],
+            fv: vec![vec![]],
         }
     }
 }
@@ -58,7 +60,7 @@ impl VMCodeGen {
                 name,
                 insts: func_insts,
             },
-        ) in &self.functions
+        ) in &self.pending_functions
         {
             let pos = insts.len();
             self.global_varmap
@@ -145,7 +147,7 @@ impl VMCodeGen {
         self.local_var_stack_addr.restore();
         self.local_varmap.pop();
 
-        self.functions
+        self.pending_functions
             .insert(name.clone(), FunctionInfo::new(name.clone(), func_insts));
     }
 
