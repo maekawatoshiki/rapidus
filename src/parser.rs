@@ -522,7 +522,7 @@ impl Parser {
         assert!(self.lexer.skip(Kind::Symbol(Symbol::OpeningBrace)));
         let body = self.read_statement_list()?;
 
-        Ok(Node::FunctionDecl(name, params, Box::new(body)))
+        Ok(Node::FunctionDecl(name, vec![], params, Box::new(body)))
     }
 
     fn read_formal_parameters(&mut self) -> Result<FormalParameters, ()> {

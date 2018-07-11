@@ -21,7 +21,7 @@ impl FormalParameter {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Node {
     StatementList(Vec<Node>),
-    FunctionDecl(Option<String>, FormalParameters, Box<Node>),
+    FunctionDecl(Option<String>, Vec<String>, FormalParameters, Box<Node>),
     VarDecl(String, Option<Box<Node>>),
     Member(Box<Node>, String),
     Call(Box<Node>, Vec<Node>),

@@ -8,13 +8,15 @@ use std::collections::HashMap;
 pub struct FunctionInfo {
     pub name: String,
     pub insts: Vec<Inst>,
+    pub fv_stack_addr: Vec<usize>,
 }
 
 impl FunctionInfo {
-    pub fn new(name: String, insts: Vec<Inst>) -> FunctionInfo {
+    pub fn new(name: String, fv_stack_addr: Vec<usize>, insts: Vec<Inst>) -> FunctionInfo {
         FunctionInfo {
             name: name,
             insts: insts,
+            fv_stack_addr: fv_stack_addr,
         }
     }
 }
@@ -57,6 +59,7 @@ impl VMCodeGen {
             FunctionInfo {
                 name,
                 insts: func_insts,
+                fv_stack_addr
             },
         ) in &self.functions
         {
@@ -74,8 +77,8 @@ impl VMCodeGen {
     fn run(&mut self, node: &Node, insts: &mut Vec<Inst>) {
         match node {
             &Node::StatementList(ref node_list) => self.run_statement_list(node_list, insts),
-            &Node::FunctionDecl(ref name, ref params, ref body) => {
-                self.run_function_decl(name, params, &*body)
+            &Node::FunctionDecl(ref name, ref fv, ref params, ref body) => {
+                self.run_function_decl(name, fv, params, &*body)
             }
             &Node::VarDecl(ref name, ref init) => self.run_var_decl(name, init, insts),
             &Node::If(ref cond, ref then_, ref else_) => {
@@ -110,6 +113,7 @@ impl VMCodeGen {
     pub fn run_function_decl(
         &mut self,
         name: &Option<String>,
+        fv: &Vec<String>,
         params: &FormalParameters,
         body: &Node,
     ) {
@@ -122,31 +126,49 @@ impl VMCodeGen {
 
         func_insts.push(Inst::AllocLocalVar(0, 0));
 
+        for name in fv {
+            self.run_var_decl2(name, &None, &mut func_insts)
+        }
         for param in params {
             self.run_var_decl2(&param.name, &param.init, &mut func_insts)
         }
 
+        let params_len = params.len() + fv.len();
+
         self.run(body, &mut func_insts);
 
         if let Inst::AllocLocalVar(ref mut n, ref mut argc) = func_insts[0] {
-            *n = self.local_var_stacj_addr.get_cur_id() - params.len();
-            *argc = params.len()
+            *n = self.local_var_stacj_addr.get_cur_id() - params_len;
+            *argc = params_len;
         }
+
         for pos in &self.return_inst_pos {
             if let Inst::Return(ref mut n) = func_insts[*pos] {
-                *n = if self.local_var_stacj_addr.get_cur_id() > params.len() {
-                    self.local_var_stacj_addr.get_cur_id() - params.len()
+                *n = if self.local_var_stacj_addr.get_cur_id() > params_len {
+                    self.local_var_stacj_addr.get_cur_id() - params_len
                 } else {
-                    params.len()
+                    params_len
                 };
             }
         }
+        self.return_inst_pos.clear();
 
         self.local_var_stacj_addr.restore();
         self.local_varmap.pop();
 
-        self.functions
-            .insert(name.clone(), FunctionInfo::new(name.clone(), func_insts));
+        let mut fv_stack_addr = vec![];
+        for name in fv {
+            if let Some(p) = self.local_varmap.last().unwrap().get(name.as_str()) {
+                fv_stack_addr.push(*p);
+            } else {
+                panic!()
+            };
+        }
+
+        self.functions.insert(
+            name.clone(),
+            FunctionInfo::new(name.clone(), fv_stack_addr, func_insts),
+        );
     }
 
     pub fn run_return(&mut self, val: &Option<Box<Node>>, insts: &mut Vec<Inst>) {
