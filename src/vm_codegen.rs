@@ -24,7 +24,7 @@ pub struct VMCodeGen {
     pub global_varmap: HashMap<String, Value>, // usize will be replaced with an appropriate type
     pub local_varmap: Vec<HashMap<String, usize>>,
     pub functions: HashMap<String, FunctionInfo>,
-    pub local_var_stacj_addr: IdGen,
+    pub local_var_stack_addr: IdGen,
     pub return_inst_pos: Vec<usize>,
 }
 
@@ -34,7 +34,7 @@ impl VMCodeGen {
             global_varmap: HashMap::new(),
             local_varmap: vec![HashMap::new()],
             functions: HashMap::new(),
-            local_var_stacj_addr: IdGen::new(),
+            local_var_stack_addr: IdGen::new(),
             return_inst_pos: vec![],
         }
     }
@@ -48,7 +48,7 @@ impl VMCodeGen {
         self.run(node, insts);
 
         if let Inst::AllocLocalVar(ref mut n, _) = insts[pos] {
-            *n = self.local_var_stacj_addr.get_cur_id()
+            *n = self.local_var_stack_addr.get_cur_id()
         }
         insts.push(Inst::End);
 
@@ -116,7 +116,7 @@ impl VMCodeGen {
         let name = name.clone().unwrap();
 
         self.local_varmap.push(HashMap::new());
-        self.local_var_stacj_addr.save();
+        self.local_var_stack_addr.save();
 
         let mut func_insts = vec![];
 
@@ -129,20 +129,20 @@ impl VMCodeGen {
         self.run(body, &mut func_insts);
 
         if let Inst::AllocLocalVar(ref mut n, ref mut argc) = func_insts[0] {
-            *n = self.local_var_stacj_addr.get_cur_id() - params.len();
+            *n = self.local_var_stack_addr.get_cur_id() - params.len();
             *argc = params.len()
         }
         for pos in &self.return_inst_pos {
             if let Inst::Return(ref mut n) = func_insts[*pos] {
-                *n = if self.local_var_stacj_addr.get_cur_id() > params.len() {
-                    self.local_var_stacj_addr.get_cur_id() - params.len()
+                *n = if self.local_var_stack_addr.get_cur_id() > params.len() {
+                    self.local_var_stack_addr.get_cur_id() - params.len()
                 } else {
                     params.len()
                 };
             }
         }
 
-        self.local_var_stacj_addr.restore();
+        self.local_var_stack_addr.restore();
         self.local_varmap.pop();
 
         self.functions
@@ -160,7 +160,7 @@ impl VMCodeGen {
 
 impl VMCodeGen {
     pub fn run_var_decl(&mut self, name: &String, init: &Option<Box<Node>>, insts: &mut Vec<Inst>) {
-        let id = self.local_var_stacj_addr.gen_id();
+        let id = self.local_var_stack_addr.gen_id();
 
         self.local_varmap
             .last_mut()
@@ -174,7 +174,7 @@ impl VMCodeGen {
     }
 
     pub fn run_var_decl2(&mut self, name: &String, init: &Option<Node>, insts: &mut Vec<Inst>) {
-        let id = self.local_var_stacj_addr.gen_id();
+        let id = self.local_var_stack_addr.gen_id();
 
         self.local_varmap
             .last_mut()
