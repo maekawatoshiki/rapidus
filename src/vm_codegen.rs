@@ -19,7 +19,6 @@ pub struct ClosureInfo {
     pub insts: Vec<Inst>,
 }
 
-
 impl FunctionInfo {
     pub fn new(name: String, fv_stack_addr: Vec<usize>, insts: Vec<Inst>) -> FunctionInfo {
         FunctionInfo {
@@ -88,7 +87,7 @@ impl VMCodeGen {
                 insts: func_insts,
                 fv_stack_addr,
             },
-        ) in &self.pending_functions
+        ) in &self.functions
         {
             let pos = insts.len();
             if fv_stack_addr.len() > 0 {
