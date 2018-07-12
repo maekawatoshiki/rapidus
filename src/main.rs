@@ -62,7 +62,7 @@ fn main() {
         }
 
         let mut node = nodes[0].clone();
-        fv_finder::FreeVariableFinder::new().run(&mut node);
+        fv_finder::FreeVariableFinder::new().run_toplevel(&mut node);
 
         println!("{:?}", node);
         let mut vm_codegen = vm_codegen::VMCodeGen::new();
@@ -73,10 +73,10 @@ fn main() {
             println!("{:?}", inst);
         }
 
-        println!("Result:");
-        let mut vm = vm::VM::new();
-        vm.global_objects.extend(vm_codegen.global_varmap);
-        vm.run(insts);
+        // println!("Result:");
+        // let mut vm = vm::VM::new();
+        // vm.global_objects.extend(vm_codegen.global_varmap);
+        // vm.run(insts);
 
         // println!("VM CodeGen Test:");
         // vm_codegen::test();
@@ -104,7 +104,7 @@ fn easy_run(file_name: &str) {
         node_list.push(ok)
     }
 
-    fv_finder::FreeVariableFinder::new().run(&mut node_list[0]);
+    fv_finder::FreeVariableFinder::new().run_toplevel(&mut node_list[0]);
 
     let mut vm_codegen = vm_codegen::VMCodeGen::new();
     let mut insts = vec![];

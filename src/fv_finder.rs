@@ -18,7 +18,18 @@ impl FreeVariableFinder {
         }
     }
 
-    pub fn run(&mut self, node: &mut Node) {
+    pub fn run_toplevel(&mut self, node: &mut Node) {
+        match node {
+            &mut Node::StatementList(ref mut nodes) => {
+                for node in nodes {
+                    self.run(node)
+                }
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    fn run(&mut self, node: &mut Node) {
         match node {
             &mut Node::StatementList(ref mut nodes) => {
                 for node in nodes {
@@ -35,7 +46,29 @@ impl FreeVariableFinder {
                     self.varmap.last_mut().unwrap().insert(param.name);
                 }
 
-                self.run(body);
+                let mut body = if let &mut Node::StatementList(ref mut body) = &mut **body {
+                    body
+                } else {
+                    unreachable!()
+                };
+
+                let mut func_decl_index = vec![];
+                for (i, node) in body.iter_mut().enumerate() {
+                    match node {
+                        &mut Node::FunctionDecl(ref name, _, _, _) => {
+                            self.varmap
+                                .last_mut()
+                                .unwrap()
+                                .insert(name.clone().unwrap());
+                            func_decl_index.push(i)
+                        }
+                        _ => self.run(node),
+                    }
+                }
+
+                for index in func_decl_index {
+                    self.run(&mut body[index])
+                }
 
                 for v in self.varmap.last().unwrap() {
                     self.cur_fv.remove(v);
@@ -72,7 +105,12 @@ impl FreeVariableFinder {
                 if !self.varmap[0].contains(name.as_str())
                     && !self.varmap.last().unwrap().contains(name.as_str())
                 {
-                    self.cur_fv.insert(name.clone());
+                    if self.varmap.len() == 1 {
+                        // toplevel
+                        self.varmap[0].insert(name.clone());
+                    } else {
+                        self.cur_fv.insert(name.clone());
+                    }
                 }
             }
             &mut Node::If(ref mut cond, ref mut then, ref mut else_) => {
@@ -84,8 +122,21 @@ impl FreeVariableFinder {
                 self.run(&mut *cond);
                 self.run(&mut *body);
             }
-            &mut Node::Assign(ref mut dst, ref mut src) => {
-                self.run(&mut *dst);
+            &mut Node::Assign(ref dst, ref mut src) => {
+                match &**dst {
+                    &Node::Identifier(ref name) => {
+                        if !self.varmap.iter().any(|v| v.contains(name.as_str())) {
+                            // If such a variable didn't appear before, this assignment
+                            // serves the declaration of it as a global variable.
+                            self.varmap[0].insert(name.clone());
+                        } else if !self.varmap[0].contains(name.as_str())
+                            && !self.varmap.last().unwrap().contains(name.as_str())
+                        {
+                            self.cur_fv.insert(name.clone());
+                        }
+                    }
+                    _ => unimplemented!(),
+                }
                 self.run(&mut *src);
             }
             &mut Node::UnaryOp(ref mut expr, _) => {

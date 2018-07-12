@@ -46,7 +46,6 @@ pub struct VMCodeGen {
     pub functions: HashMap<String, FunctionInfo>,
     pub pending_closure_functions: HashMap<String, ClosureInfo>,
     pub local_var_stack_addr: IdGen,
-    pub return_inst_pos: Vec<usize>,
     pub fv: Vec<Vec<String>>,
 }
 
@@ -58,7 +57,6 @@ impl VMCodeGen {
             functions: HashMap::new(),
             pending_closure_functions: HashMap::new(),
             local_var_stack_addr: IdGen::new(),
-            return_inst_pos: vec![],
             fv: vec![vec![]],
         }
     }
@@ -178,17 +176,6 @@ impl VMCodeGen {
             *argc = params_len;
         }
 
-        for pos in &self.return_inst_pos {
-            if let Inst::Return(ref mut n) = func_insts[*pos] {
-                *n = if self.local_var_stack_addr.get_cur_id() > params_len {
-                    self.local_var_stack_addr.get_cur_id() - params_len
-                } else {
-                    params_len
-                };
-            }
-        }
-        self.return_inst_pos.clear();
-
         for (name, v) in self.pending_closure_functions.clone() {
             let mut names = v.fv_name.clone();
             let mut fv_stack_addr = vec![];
@@ -227,9 +214,10 @@ impl VMCodeGen {
     pub fn run_return(&mut self, val: &Option<Box<Node>>, insts: &mut Vec<Inst>) {
         if let &Some(ref val) = val {
             self.run(&*val, insts)
+        } else {
+            insts.push(Inst::Push(Value::Undefined));
         }
-        self.return_inst_pos.push(insts.len());
-        insts.push(Inst::Return(0));
+        insts.push(Inst::Return);
     }
 }
 

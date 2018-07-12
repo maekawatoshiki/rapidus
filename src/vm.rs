@@ -7,6 +7,7 @@ pub type HeapAddr = *mut Value;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
+    Undefined,
     Bool(bool),
     Number(f64),
     String(String),
@@ -43,15 +44,16 @@ pub enum Inst {
     JmpIfFalse(isize),
     JmpIfTrue(isize),
     AllocLocalVar(usize, usize),
-    Return(usize),
+    Return,
     End,
 }
 
 pub struct VM {
     pub global_objects: HashMap<String, Value>,
     pub stack: Vec<Value>,
-    pub sp_buf: Vec<usize>,
-    pub sp: usize,
+    pub bp_buf: Vec<usize>,
+    pub bp: usize,
+    pub sp_history: Vec<usize>,
     pub return_addr: Vec<isize>,
 }
 
@@ -73,14 +75,15 @@ impl VM {
         VM {
             global_objects: obj,
             stack: Vec::with_capacity(128),
-            sp_buf: vec![],
-            sp: 0,
+            bp_buf: vec![],
+            bp: 0,
+            sp_history: vec![],
             return_addr: vec![],
         }
     }
 
     pub unsafe fn alloc_for_value() -> HeapAddr {
-        libc::malloc(::std::mem::size_of::<Value>()) as *mut Value
+        libc::malloc(::std::mem::size_of::<Value>() * 2) as *mut Value
     }
 }
 
@@ -93,22 +96,23 @@ impl VM {
             match insts[pc as usize].clone() {
                 Inst::End => break,
                 Inst::AllocLocalVar(ref n, ref argc) => {
-                    self.sp_buf.push(self.sp);
-                    self.sp = self.stack.len() - argc;
+                    self.bp_buf.push(self.bp);
+                    self.sp_history.push(self.stack.len() - argc);
+                    self.bp = self.stack.len() - argc;
                     for _ in 0..*n {
                         self.stack.push(Value::Number(0.0));
                     }
                     pc += 1
                 }
-                Inst::Return(ref n) => {
+                Inst::Return => {
                     let val = self.stack.pop().unwrap();
-                    for _ in 0..*n {
+                    let former_sp = self.sp_history.pop().unwrap();
+                    while self.stack.len() != former_sp {
                         self.stack.pop();
                     }
                     pc = self.return_addr.pop().unwrap();
-
                     self.stack.push(val);
-                    self.sp = self.sp_buf.pop().unwrap();
+                    self.bp = self.bp_buf.pop().unwrap();
                 }
                 Inst::Push(ref val) => {
                     self.stack.push(val.clone());
@@ -131,11 +135,11 @@ impl VM {
                     pc += 1
                 }
                 Inst::GetLocal(ref n) => {
-                    let val = self.stack[self.sp + *n].clone();
+                    let val = self.stack[self.bp + *n].clone();
                     if let Value::Cls(callee, addrs) = val {
                         let mut fv_val = vec![];
                         for addr in addrs {
-                            fv_val.push(self.stack[self.sp + addr].clone());
+                            fv_val.push(self.stack[self.bp + addr].clone());
                         }
                         self.stack.push(Value::ClsSp(callee, fv_val));
                     } else {
@@ -148,7 +152,7 @@ impl VM {
                     if let Value::Cls(callee, addrs) = val {
                         let mut fv_val = vec![];
                         for addr in addrs {
-                            fv_val.push(self.stack[self.sp + addr].clone());
+                            fv_val.push(self.stack[self.bp + addr].clone());
                         }
                         self.stack.push(Value::ClsSp(callee, fv_val));
                     } else {
@@ -158,7 +162,7 @@ impl VM {
                 }
                 Inst::SetLocal(ref n) => {
                     let val = self.stack.pop().unwrap();
-                    self.stack[self.sp + *n] = val;
+                    self.stack[self.bp + *n] = val;
                     pc += 1
                 }
                 Inst::SetGlobal(name) => {
@@ -255,7 +259,7 @@ impl VM {
                     callee = *callee_;
                 }
                 c => {
-                    println!("{:?}", c);
+                    println!("err: {:?}, pc = {}", c, pc);
                     break;
                 }
             }
