@@ -1,5 +1,5 @@
 function prime(n) {
-  k = 2
+  var k = 2
   while (k * k <= n) {
     if (n % k == 0) {
       return false
