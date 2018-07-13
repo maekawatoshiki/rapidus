@@ -280,7 +280,7 @@ impl VM {
                             libc::printf(b"%s\0".as_ptr() as RawStringPtr, *s as RawStringPtr);
                         }
                         Value::Number(ref n) => {
-                            libc::printf(b"%g\0".as_ptr() as RawStringPtr, *n);
+                            libc::printf(b"%.15g\0".as_ptr() as RawStringPtr, *n);
                         }
                         _ => {}
                     }
