@@ -171,6 +171,14 @@ impl VMCodeGen {
 
         self.run(body, &mut func_insts);
 
+        match func_insts.last() {
+            Some(&Inst::Return) => {},
+            _ => {
+                func_insts.push(Inst::Push(Value::Undefined));
+                func_insts.push(Inst::Return)
+            }
+        }
+
         if let Inst::AllocLocalVar(ref mut n, ref mut argc) = func_insts[0] {
             *n = self.local_var_stack_addr.get_cur_id() - params_len;
             *argc = params_len;
