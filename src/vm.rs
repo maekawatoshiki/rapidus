@@ -2,16 +2,23 @@ use std::boxed::Box;
 use std::collections::HashMap;
 
 use libc;
+use std::ffi::CStr;
 
 pub type HeapAddr = *mut Value;
+pub type RawStringPtr = *mut libc::c_char;
+
+pub unsafe fn alloc_rawstring(s: &str) -> RawStringPtr {
+    let p = libc::calloc(1, s.len() + 2) as RawStringPtr;
+    libc::strncpy(p, s.as_ptr() as *const i8, s.len());
+    p
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     Undefined,
     Bool(bool),
     Number(f64),
-    String(String),
-    Data(String),
+    String(RawStringPtr),
     Function(usize),
     Cls(Box<Value>, Vec<usize>),   // Function, Vec<free variable addr>
     ClsSp(Box<Value>, Vec<Value>), // Function, Vec<value of free variable>
@@ -100,18 +107,16 @@ impl VM {
                     self.sp_history.push(self.stack.len() - argc);
                     self.bp = self.stack.len() - argc;
                     for _ in 0..*n {
-                        self.stack.push(Value::Number(0.0));
+                        self.stack.push(Value::Undefined);
                     }
                     pc += 1
                 }
                 Inst::Return => {
                     let val = self.stack.pop().unwrap();
                     let former_sp = self.sp_history.pop().unwrap();
-                    while self.stack.len() != former_sp {
-                        self.stack.pop();
-                    }
-                    pc = self.return_addr.pop().unwrap();
+                    self.stack.truncate(former_sp);
                     self.stack.push(val);
+                    pc = self.return_addr.pop().unwrap();
                     self.bp = self.bp_buf.pop().unwrap();
                 }
                 Inst::Push(ref val) => {
@@ -170,20 +175,20 @@ impl VM {
                     pc += 1
                 }
                 Inst::GetMember => {
-                    let member_name = {
-                        let member = self.stack.pop().unwrap();
-                        if let Value::Data(name) = member {
-                            name
-                        } else {
-                            panic!()
+                    let member = self.stack.pop().unwrap();
+                    if let Value::String(name) = member {
+                        unsafe {
+                            let member_name = CStr::from_ptr(name).to_str().unwrap();
+                            let parent = self.stack.pop().unwrap();
+                            if let Value::Object(map) = parent {
+                                match map.get(member_name) {
+                                    Some(addr) => self.stack.push((**addr).clone()),
+                                    None => panic!(),
+                                }
+                            }
                         }
-                    };
-                    let parent = self.stack.pop().unwrap();
-                    if let Value::Object(map) = parent {
-                        match map.get(member_name.as_str()) {
-                            Some(addr) => unsafe { self.stack.push((**addr).clone()) },
-                            None => {}
-                        }
+                    } else {
+                        panic!()
                     }
                     pc += 1
                 }
@@ -267,18 +272,24 @@ impl VM {
 
         // EmbeddedFunction(1)
         fn console_log(args: Vec<Value>) {
-            let args_len = args.len();
-            for i in 0..args_len {
-                match args[i] {
-                    Value::String(ref s) => print!("{}", s),
-                    Value::Number(ref n) => print!("{}", *n),
-                    _ => {}
+            unsafe {
+                let args_len = args.len();
+                for i in 0..args_len {
+                    match args[i] {
+                        Value::String(ref s) => {
+                            libc::printf(b"%s\0".as_ptr() as RawStringPtr, *s as RawStringPtr);
+                        }
+                        Value::Number(ref n) => {
+                            libc::printf(b"%g\0".as_ptr() as RawStringPtr, *n);
+                        }
+                        _ => {}
+                    }
+                    if args_len - 1 != i {
+                        libc::printf(b" \0".as_ptr() as RawStringPtr);
+                    }
                 }
-                if args_len - 1 != i {
-                    print!(" ")
-                }
+                libc::puts(b"\0".as_ptr() as RawStringPtr);
             }
-            println!()
         }
     }
 }
@@ -302,7 +313,7 @@ pub fn test() {
         Inst::Push(Value::Number(0.0)),
         Inst::SetGlobal("n".to_string()),
         Inst::GetGlobal("console".to_string()),
-        Inst::Push(Value::Data("log".to_string())),
+        // Inst::Push(Value::Data("log".to_string())),
         Inst::GetMember,
         Inst::GetGlobal("n".to_string()),
         Inst::Call(1),

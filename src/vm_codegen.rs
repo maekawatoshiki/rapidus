@@ -1,7 +1,7 @@
 use id::IdGen;
 use node::{BinOp, FormalParameters, Node};
 use std::collections::HashSet;
-use vm::{Inst, Value};
+use vm::{alloc_rawstring, Inst, Value};
 
 use std::collections::HashMap;
 
@@ -74,9 +74,7 @@ impl VMCodeGen {
         }
         insts.push(Inst::End);
 
-        // for (a, b) in self.pending_closure_functions.clone() {
-        //     self.functions.insert(a, b);
-        // }
+        self.process_pending_functions();
 
         for (
             _,
@@ -124,7 +122,9 @@ impl VMCodeGen {
             &Node::Member(ref parent, ref member) => self.run_member(&*parent, member, insts),
             &Node::Return(ref val) => self.run_return(val, insts),
             &Node::Identifier(ref name) => self.run_identifier(name, insts),
-            &Node::String(ref s) => insts.push(Inst::Push(Value::String(s.clone()))),
+            &Node::String(ref s) => insts.push(Inst::Push(Value::String(unsafe {
+                alloc_rawstring(s.as_str())
+            }))),
             &Node::Number(n) => insts.push(Inst::Push(Value::Number(n))),
             &Node::Boolean(b) => insts.push(Inst::Push(Value::Bool(b))),
             _ => {}
@@ -141,6 +141,23 @@ impl VMCodeGen {
 }
 
 impl VMCodeGen {
+    fn process_pending_functions(&mut self) {
+        for (name, v) in self.pending_closure_functions.clone() {
+            let mut names = v.fv_name.clone();
+            let mut fv_stack_addr = vec![];
+            for name in names {
+                if let Some(p) = self.local_varmap.last().unwrap().get(name.as_str()) {
+                    fv_stack_addr.push(*p);
+                } else {
+                    unreachable!()
+                };
+            }
+            self.functions
+                .insert(name, FunctionInfo::new(v.name, fv_stack_addr, v.insts));
+        }
+        self.pending_closure_functions.clear();
+    }
+
     pub fn run_function_decl(
         &mut self,
         name: &Option<String>,
@@ -152,8 +169,6 @@ impl VMCodeGen {
 
         self.local_varmap.push(HashMap::new());
         self.local_var_stack_addr.save();
-
-        let this_is_closure = self.local_varmap.len() > 2;
 
         let mut func_insts = vec![];
 
@@ -172,7 +187,7 @@ impl VMCodeGen {
         self.run(body, &mut func_insts);
 
         match func_insts.last() {
-            Some(&Inst::Return) => {},
+            Some(&Inst::Return) => {}
             _ => {
                 func_insts.push(Inst::Push(Value::Undefined));
                 func_insts.push(Inst::Return)
@@ -184,39 +199,19 @@ impl VMCodeGen {
             *argc = params_len;
         }
 
-        for (name, v) in self.pending_closure_functions.clone() {
-            let mut names = v.fv_name.clone();
-            let mut fv_stack_addr = vec![];
-            for name in names {
-                if let Some(p) = self.local_varmap.last().unwrap().get(name.as_str()) {
-                    fv_stack_addr.push(*p);
-                } else {
-                    unreachable!()
-                };
-            }
-            self.functions
-                .insert(name, FunctionInfo::new(v.name, fv_stack_addr, v.insts));
-        }
-        self.pending_closure_functions.clear();
+        self.process_pending_functions();
 
         self.local_var_stack_addr.restore();
         self.local_varmap.pop();
 
-        if this_is_closure {
-            self.pending_closure_functions.insert(
+        self.pending_closure_functions.insert(
+            name.clone(),
+            ClosureInfo::new(
                 name.clone(),
-                ClosureInfo::new(
-                    name.clone(),
-                    fv.iter().cloned().collect::<Vec<_>>(),
-                    func_insts,
-                ),
-            );
-        } else {
-            self.functions.insert(
-                name.clone(),
-                FunctionInfo::new(name.clone(), vec![], func_insts),
-            );
-        }
+                fv.iter().cloned().collect::<Vec<_>>(),
+                func_insts,
+            ),
+        );
     }
 
     pub fn run_return(&mut self, val: &Option<Box<Node>>, insts: &mut Vec<Inst>) {
@@ -365,7 +360,9 @@ impl VMCodeGen {
     fn run_member(&mut self, parent: &Node, member: &String, insts: &mut Vec<Inst>) {
         self.run(parent, insts);
 
-        insts.push(Inst::Push(Value::Data(member.clone())));
+        unsafe {
+            insts.push(Inst::Push(Value::String(alloc_rawstring(member.as_str()))));
+        }
         insts.push(Inst::GetMember)
     }
 
