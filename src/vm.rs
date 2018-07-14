@@ -33,9 +33,9 @@ pub enum Value {
     Number(f64),
     String(RawStringPtr),
     Function(usize),
-    Cls(Box<Value>, bool, Vec<usize>), // Function, use 'this'?, Vec<free variable addr>
-    ClsSp(Box<Value>, Vec<Value>),     // Function, Vec<value of free variable>
-    EmbeddedFunction(usize),           // unknown if usize == 0; specific function if usize > 0
+    MakeCls(Box<Value>, bool, Vec<usize>), // Function, use 'this'?, Vec<free variable addr>
+    Cls(Box<Value>, Vec<Value>),           // Function, Vec<value of free variable>
+    EmbeddedFunction(usize),               // unknown if usize == 0; specific function if usize > 0
     // Object(HashMap<String, HeapAddr>),
     Object(Rc<RefCell<HashMap<String, HeapAddr>>>),
 }
@@ -142,10 +142,10 @@ impl VM {
                     pc = self.return_addr.pop().unwrap();
                     self.bp = self.bp_buf.pop().unwrap();
                 }
-                Inst::NewThis => unsafe {
+                Inst::NewThis => {
                     self.this.push(Rc::new(RefCell::new(HashMap::new())));
                     pc += 1;
-                },
+                }
                 Inst::DumpThis => {
                     self.this.pop();
                     pc += 1;
@@ -177,7 +177,7 @@ impl VM {
                 }
                 Inst::GetLocal(ref n) => {
                     let val = self.stack[self.bp + *n].clone();
-                    if let Value::Cls(callee, use_this, addrs) = val {
+                    if let Value::MakeCls(callee, use_this, addrs) = val {
                         let mut fv_val = vec![];
                         if use_this {
                             fv_val.push(Value::Object(self.this.last().unwrap().clone()));
@@ -185,7 +185,7 @@ impl VM {
                         for addr in addrs {
                             fv_val.push(self.stack[self.bp + addr].clone());
                         }
-                        self.stack.push(Value::ClsSp(callee, fv_val));
+                        self.stack.push(Value::Cls(callee, fv_val));
                     } else {
                         self.stack.push(val);
                     }
@@ -195,7 +195,7 @@ impl VM {
                     unsafe {
                         let val =
                             (**(*self.global_objects).borrow().get(name.as_str()).unwrap()).clone();
-                        if let Value::Cls(callee, use_this, addrs) = val {
+                        if let Value::MakeCls(callee, use_this, addrs) = val {
                             let mut fv_val = vec![];
                             if use_this {
                                 fv_val.push(Value::Object(self.this.last().unwrap().clone()));
@@ -203,7 +203,7 @@ impl VM {
                             for addr in addrs {
                                 fv_val.push(self.stack[self.bp + addr].clone());
                             }
-                            self.stack.push(Value::ClsSp(callee, fv_val));
+                            self.stack.push(Value::Cls(callee, fv_val));
                         } else {
                             self.stack.push(val);
                         }
@@ -232,7 +232,7 @@ impl VM {
                                 match map.borrow().get(member_name) {
                                     Some(addr) => {
                                         let val = (**addr).clone();
-                                        if let Value::Cls(callee, use_this, addrs) = val {
+                                        if let Value::MakeCls(callee, use_this, addrs) = val {
                                             let mut fv_val = vec![];
                                             if use_this {
                                                 fv_val.push(Value::Object(
@@ -242,7 +242,7 @@ impl VM {
                                             for addr in addrs {
                                                 fv_val.push(self.stack[self.bp + addr].clone());
                                             }
-                                            self.stack.push(Value::ClsSp(callee, fv_val))
+                                            self.stack.push(Value::Cls(callee, fv_val))
                                         } else {
                                             self.stack.push(val)
                                         }
@@ -353,17 +353,22 @@ impl VM {
 
     fn run_function(&mut self, argc: usize, pc: &mut isize) {
         let mut fv_vals = vec![];
-        let mut args = vec![];
-        for _ in 0..argc {
-            args.push(self.stack.pop().unwrap());
-        }
-        args.reverse();
+        // let mut args = vec![];
+        // for _ in 0..argc {
+        //     args.push(self.stack.pop().unwrap());
+        // }
+        // args.reverse();
 
         let mut callee = self.stack.pop().unwrap();
 
         loop {
             match callee {
                 Value::EmbeddedFunction(1) => {
+                    let mut args = vec![];
+                    for _ in 0..argc {
+                        args.push(self.stack.pop().unwrap());
+                    }
+                    args.reverse();
                     console_log(args);
                     *pc += 1;
                     break;
@@ -371,15 +376,13 @@ impl VM {
                 Value::Function(dst) => {
                     self.return_addr.push(*pc + 1);
                     for fv_val in fv_vals {
-                        self.stack.push(fv_val);
-                    }
-                    for arg in args {
-                        self.stack.push(arg);
+                        let pos = self.stack.len() - argc;
+                        self.stack.insert(pos, fv_val);
                     }
                     *pc = dst as isize;
                     break;
                 }
-                Value::ClsSp(callee_, fv_vals_) => {
+                Value::Cls(callee_, fv_vals_) => {
                     fv_vals = fv_vals_;
                     callee = *callee_;
                 }

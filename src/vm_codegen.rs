@@ -107,7 +107,7 @@ impl VMCodeGen {
             unsafe {
                 let mem = alloc_for_value();
                 if fv_stack_addr.len() > 0 || *use_this {
-                    *mem = Value::Cls(
+                    *mem = Value::MakeCls(
                         Box::new(Value::Function(pos)),
                         *use_this,
                         fv_stack_addr.clone(),
@@ -393,11 +393,11 @@ impl VMCodeGen {
 
 impl VMCodeGen {
     pub fn run_call(&mut self, callee: &Node, args: &Vec<Node>, insts: &mut Vec<Inst>) {
-        self.run(callee, insts);
-
         for arg in args {
             self.run(arg, insts);
         }
+
+        self.run(callee, insts);
 
         insts.push(Inst::Call(args.len()));
     }
