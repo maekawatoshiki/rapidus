@@ -108,10 +108,10 @@ impl VM {
                 stack.push(Value::Object(global_objects.clone()));
                 stack
             },
-            bp_buf: vec![],
+            bp_buf: Vec::with_capacity(128),
             bp: 0,
-            sp_history: vec![],
-            return_addr: vec![],
+            sp_history: Vec::with_capacity(128),
+            return_addr: Vec::with_capacity(128),
             this: vec![global_objects],
         }
     }
@@ -119,13 +119,11 @@ impl VM {
 
 impl VM {
     pub fn run(&mut self, insts: Vec<Inst>) {
-        let insts_len = insts.len() as isize;
-
         let mut pc = 0isize;
-        while pc < insts_len {
-            match insts[pc as usize].clone() {
-                Inst::End => break,
-                Inst::AllocLocalVar(ref n, ref argc) => {
+        loop {
+            match &insts[pc as usize] {
+                &Inst::End => break,
+                &Inst::AllocLocalVar(ref n, ref argc) => {
                     self.bp_buf.push(self.bp);
                     self.sp_history.push(self.stack.len() - argc);
                     self.bp = self.stack.len() - argc;
@@ -134,7 +132,7 @@ impl VM {
                     }
                     pc += 1;
                 }
-                Inst::Return => {
+                &Inst::Return => {
                     let val = self.stack.pop().unwrap();
                     let former_sp = self.sp_history.pop().unwrap();
                     self.stack.truncate(former_sp);
@@ -142,40 +140,40 @@ impl VM {
                     pc = self.return_addr.pop().unwrap();
                     self.bp = self.bp_buf.pop().unwrap();
                 }
-                Inst::NewThis => {
+                &Inst::NewThis => {
                     self.this.push(Rc::new(RefCell::new(HashMap::new())));
                     pc += 1;
                 }
-                Inst::DumpThis => {
+                &Inst::DumpThis => {
                     self.this.pop();
                     pc += 1;
                 }
-                Inst::Push(ref val) => {
+                &Inst::Push(ref val) => {
                     self.stack.push(val.clone());
                     pc += 1;
                 }
-                Inst::PushThis => {
-                    let val = self.stack[self.bp + 0].clone();
+                &Inst::PushThis => {
+                    let val = self.stack[self.bp].clone();
                     self.stack.push(val);
                     pc += 1;
                 }
                 ref op
-                    if op == &Inst::Add
-                        || op == &Inst::Sub
-                        || op == &Inst::Mul
-                        || op == &Inst::Div
-                        || op == &Inst::Rem
-                        || op == &Inst::Lt
-                        || op == &Inst::Gt
-                        || op == &Inst::Le
-                        || op == &Inst::Ge
-                        || op == &Inst::Eq
-                        || op == &Inst::Ne =>
+                    if *op == &Inst::Add
+                        || *op == &Inst::Sub
+                        || *op == &Inst::Mul
+                        || *op == &Inst::Div
+                        || *op == &Inst::Rem
+                        || *op == &Inst::Lt
+                        || *op == &Inst::Gt
+                        || *op == &Inst::Le
+                        || *op == &Inst::Ge
+                        || *op == &Inst::Eq
+                        || *op == &Inst::Ne =>
                 {
                     self.run_binary_op(op);
                     pc += 1;
                 }
-                Inst::GetLocal(ref n) => {
+                &Inst::GetLocal(ref n) => {
                     let val = self.stack[self.bp + *n].clone();
                     if let Value::MakeCls(callee, use_this, addrs) = val {
                         let mut fv_val = vec![];
@@ -191,7 +189,7 @@ impl VM {
                     }
                     pc += 1;
                 }
-                Inst::GetGlobal(ref name) => {
+                &Inst::GetGlobal(ref name) => {
                     unsafe {
                         let val =
                             (**(*self.global_objects).borrow().get(name.as_str()).unwrap()).clone();
@@ -210,19 +208,19 @@ impl VM {
                     }
                     pc += 1
                 }
-                Inst::SetLocal(ref n) => {
+                &Inst::SetLocal(ref n) => {
                     let val = self.stack.pop().unwrap();
                     self.stack[self.bp + *n] = val;
                     pc += 1;
                 }
-                Inst::SetGlobal(name) => unsafe {
+                &Inst::SetGlobal(ref name) => unsafe {
                     **(*self.global_objects)
                         .borrow_mut()
-                        .entry(name)
+                        .entry(name.to_string())
                         .or_insert_with(|| alloc_for_value()) = self.stack.pop().unwrap();
                     pc += 1
                 },
-                Inst::GetMember => {
+                &Inst::GetMember => {
                     let member = self.stack.pop().unwrap();
                     if let Value::String(name) = member {
                         unsafe {
@@ -256,7 +254,7 @@ impl VM {
                     }
                     pc += 1
                 }
-                Inst::SetMember => {
+                &Inst::SetMember => {
                     let member = self.stack.pop().unwrap();
                     if let Value::String(name) = member {
                         unsafe {
@@ -275,11 +273,11 @@ impl VM {
                     }
                     pc += 1
                 }
-                Inst::Call(argc) => {
+                &Inst::Call(argc) => {
                     self.run_function(argc, &mut pc);
                 }
-                Inst::Jmp(dst) => pc += dst,
-                Inst::JmpIfFalse(dst) => {
+                &Inst::Jmp(dst) => pc += dst,
+                &Inst::JmpIfFalse(dst) => {
                     let cond = self.stack.pop().unwrap();
                     if let Value::Bool(false) = cond {
                         pc += dst
@@ -298,6 +296,7 @@ impl VM {
         });
     }
 
+    #[inline]
     fn run_binary_op(&mut self, op: &Inst) {
         let rhs = self.stack.pop().unwrap();
         let lhs = self.stack.pop().unwrap();
@@ -351,13 +350,9 @@ impl VM {
         }
     }
 
+    #[inline]
     fn run_function(&mut self, argc: usize, pc: &mut isize) {
         let mut fv_vals = vec![];
-        // let mut args = vec![];
-        // for _ in 0..argc {
-        //     args.push(self.stack.pop().unwrap());
-        // }
-        // args.reverse();
 
         let mut callee = self.stack.pop().unwrap();
 
