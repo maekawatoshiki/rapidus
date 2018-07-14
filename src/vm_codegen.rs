@@ -81,10 +81,13 @@ impl VMCodeGen {
         let pos = insts.len();
         insts.push(Inst::AllocLocalVar(0, 0));
 
+        self.run_var_decl2(&"this".to_string(), &None, insts);
+
         self.run(node, insts);
 
-        if let Inst::AllocLocalVar(ref mut n, _) = insts[pos] {
-            *n = self.local_var_stack_addr.get_cur_id()
+        if let Inst::AllocLocalVar(ref mut n, ref mut argc) = insts[pos] {
+            *n = self.local_var_stack_addr.get_cur_id();
+            *argc = 1; // for 'this'
         }
         insts.push(Inst::End);
 

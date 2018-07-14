@@ -103,7 +103,11 @@ impl VM {
 
         VM {
             global_objects: global_objects.clone(),
-            stack: Vec::with_capacity(128),
+            stack: {
+                let mut stack = Vec::with_capacity(128);
+                stack.push(Value::Object(global_objects.clone()));
+                stack
+            },
             bp_buf: vec![],
             bp: 0,
             sp_history: vec![],
