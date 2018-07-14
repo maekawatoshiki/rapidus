@@ -521,9 +521,9 @@ impl Parser {
     /// https://tc39.github.io/ecma262/#prod-FunctionDeclaration
     fn read_function_declaration(&mut self) -> Result<Node, ()> {
         let name = if let Kind::Identifier(name) = self.lexer.next()?.kind {
-            Some(name)
+            name
         } else {
-            None
+            panic!("expected function name")
         };
 
         assert!(self.lexer.skip(Kind::Symbol(Symbol::OpeningParen)));
@@ -971,7 +971,7 @@ fn function_decl() {
         (
             "function f() { }",
             Node::FunctionDecl(
-                Some("f".to_string()),
+                "f".to_string(),
                 false,
                 HashSet::new(),
                 vec![],
@@ -981,7 +981,7 @@ fn function_decl() {
         (
             "function f(x, y) { return x + y }",
             Node::FunctionDecl(
-                Some("f".to_string()),
+                "f".to_string(),
                 false,
                 HashSet::new(),
                 vec![

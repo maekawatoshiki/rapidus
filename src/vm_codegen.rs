@@ -182,13 +182,13 @@ impl VMCodeGen {
 
     pub fn run_function_decl(
         &mut self,
-        name: &Option<String>,
+        name: &String,
         use_this: bool,
         fv: &HashSet<String>,
         params: &FormalParameters,
         body: &Node,
     ) {
-        let name = name.clone().unwrap();
+        let name = name.clone();
 
         self.local_varmap.push(HashMap::new());
         self.local_var_stack_addr.save();

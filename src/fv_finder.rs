@@ -47,9 +47,7 @@ impl FreeVariableFinder {
                 ref mut body,
             ) => {
                 self.varmap.push(HashSet::new());
-                if let &Some(ref name) = name {
-                    self.varmap.last_mut().unwrap().insert(name.clone());
-                }
+                self.varmap.last_mut().unwrap().insert(name.clone());
 
                 for param in params.clone() {
                     self.varmap.last_mut().unwrap().insert(param.name);
@@ -65,10 +63,7 @@ impl FreeVariableFinder {
                 for (i, node) in body.iter_mut().enumerate() {
                     match node {
                         &mut Node::FunctionDecl(ref name, _, _, _, _) => {
-                            self.varmap
-                                .last_mut()
-                                .unwrap()
-                                .insert(name.clone().unwrap());
+                            self.varmap.last_mut().unwrap().insert(name.clone());
                             func_decl_index.push(i)
                         }
                         _ => self.run(node),
@@ -87,9 +82,8 @@ impl FreeVariableFinder {
                 *use_this = self.use_this;
 
                 self.varmap.pop();
-                if let &Some(ref name) = name {
-                    self.varmap.last_mut().unwrap().insert(name.clone());
-                }
+
+                self.varmap.last_mut().unwrap().insert(name.clone());
             }
             &mut Node::Call(ref mut callee, ref mut args) => {
                 self.run(callee);
