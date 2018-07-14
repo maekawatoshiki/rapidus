@@ -25,6 +25,7 @@ pub enum Node {
     FunctionDecl(Option<String>, HashSet<String>, FormalParameters, Box<Node>),
     VarDecl(String, Option<Box<Node>>),
     Member(Box<Node>, String),
+    New(Box<Node>),
     Call(Box<Node>, Vec<Node>),
     If(Box<Node>, Box<Node>, Box<Node>), // Cond, Then, Else
     While(Box<Node>, Box<Node>),         // Cond, Body
@@ -34,6 +35,7 @@ pub enum Node {
     TernaryOp(Box<Node>, Box<Node>, Box<Node>),
     Return(Option<Box<Node>>),
     Identifier(String),
+    This,
     String(String),
     Boolean(bool),
     Number(f64),

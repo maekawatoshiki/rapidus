@@ -135,7 +135,7 @@ impl FreeVariableFinder {
                             self.cur_fv.insert(name.clone());
                         }
                     }
-                    _ => unimplemented!(),
+                    _ => {}
                 }
                 self.run(&mut *src);
             }

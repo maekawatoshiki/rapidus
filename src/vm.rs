@@ -2,14 +2,27 @@ use std::boxed::Box;
 use std::collections::HashMap;
 
 use libc;
+use std::cell::RefCell;
 use std::ffi::CStr;
+use std::rc::Rc;
 
 pub type HeapAddr = *mut Value;
+pub type ObjectAddr = *mut HashMap<String, HeapAddr>;
 pub type RawStringPtr = *mut libc::c_char;
+
+thread_local!(pub static ALLOCATED_MEM_LIST: RefCell<Vec<HeapAddr>> = {
+    RefCell::new(vec![])
+});
 
 pub unsafe fn alloc_rawstring(s: &str) -> RawStringPtr {
     let p = libc::calloc(1, s.len() + 2) as RawStringPtr;
     libc::strncpy(p, s.as_ptr() as *const i8, s.len());
+    p
+}
+
+pub unsafe fn alloc_for_value() -> HeapAddr {
+    let p = libc::calloc(1, 64) as *mut Value;
+    ALLOCATED_MEM_LIST.with(|list| list.borrow_mut().push(p));
     p
 }
 
@@ -23,12 +36,16 @@ pub enum Value {
     Cls(Box<Value>, Vec<usize>),   // Function, Vec<free variable addr>
     ClsSp(Box<Value>, Vec<Value>), // Function, Vec<value of free variable>
     EmbeddedFunction(usize),       // unknown if usize == 0; specific function if usize > 0
-    Object(HashMap<String, HeapAddr>),
+    // Object(HashMap<String, HeapAddr>),
+    Object(Rc<RefCell<HashMap<String, HeapAddr>>>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Inst {
+    PushThis,
     Push(Value),
+    NewS,
+    NewE,
     Add,
     Sub,
     Mul,
@@ -56,12 +73,13 @@ pub enum Inst {
 }
 
 pub struct VM {
-    pub global_objects: HashMap<String, Value>,
+    pub global_objects: Rc<RefCell<HashMap<String, HeapAddr>>>,
     pub stack: Vec<Value>,
     pub bp_buf: Vec<usize>,
     pub bp: usize,
     pub sp_history: Vec<usize>,
     pub return_addr: Vec<isize>,
+    pub this: Vec<Rc<RefCell<HashMap<String, HeapAddr>>>>,
 }
 
 impl VM {
@@ -69,28 +87,29 @@ impl VM {
         let mut obj = HashMap::new();
 
         unsafe {
-            let console_log_addr = VM::alloc_for_value();
+            let console_log_addr = alloc_for_value();
             *console_log_addr = Value::EmbeddedFunction(1);
 
             obj.insert("console".to_string(), {
                 let mut map = HashMap::new();
                 map.insert("log".to_string(), console_log_addr);
-                Value::Object(map)
+                let obj = alloc_for_value();
+                *obj = Value::Object(Rc::new(RefCell::new(map)));
+                obj
             });
         }
 
+        let global_objects = Rc::new(RefCell::new(obj));
+
         VM {
-            global_objects: obj,
+            global_objects: global_objects.clone(),
             stack: Vec::with_capacity(128),
             bp_buf: vec![],
             bp: 0,
             sp_history: vec![],
             return_addr: vec![],
+            this: vec![global_objects],
         }
-    }
-
-    pub unsafe fn alloc_for_value() -> HeapAddr {
-        libc::malloc(::std::mem::size_of::<Value>() * 2) as *mut Value
     }
 }
 
@@ -109,7 +128,7 @@ impl VM {
                     for _ in 0..*n {
                         self.stack.push(Value::Undefined);
                     }
-                    pc += 1
+                    pc += 1;
                 }
                 Inst::Return => {
                     let val = self.stack.pop().unwrap();
@@ -119,9 +138,30 @@ impl VM {
                     pc = self.return_addr.pop().unwrap();
                     self.bp = self.bp_buf.pop().unwrap();
                 }
+                Inst::NewS => unsafe {
+                    let mut obj = HashMap::new();
+
+                    obj.insert("console".to_string(), {
+                        let mut map = HashMap::new();
+                        let obj = alloc_for_value();
+                        *obj = Value::Object(Rc::new(RefCell::new(map)));
+                        obj
+                    });
+                    let global_objects = Rc::new(RefCell::new(obj));
+                    pc += 1;
+                },
+                Inst::NewE => {
+                    self.this.pop();
+                    pc += 1;
+                }
                 Inst::Push(ref val) => {
                     self.stack.push(val.clone());
-                    pc += 1
+                    pc += 1;
+                }
+                Inst::PushThis => {
+                    self.stack
+                        .push(Value::Object((*self.this.last().unwrap()).clone()));
+                    pc += 1;
                 }
                 ref op
                     if op == &Inst::Add
@@ -137,7 +177,7 @@ impl VM {
                         || op == &Inst::Ne =>
                 {
                     self.run_binary_op(op);
-                    pc += 1
+                    pc += 1;
                 }
                 Inst::GetLocal(ref n) => {
                     let val = self.stack[self.bp + *n].clone();
@@ -150,30 +190,36 @@ impl VM {
                     } else {
                         self.stack.push(val);
                     }
-                    pc += 1
+                    pc += 1;
                 }
                 Inst::GetGlobal(ref name) => {
-                    let val = self.global_objects.get(name.as_str()).unwrap().clone();
-                    if let Value::Cls(callee, addrs) = val {
-                        let mut fv_val = vec![];
-                        for addr in addrs {
-                            fv_val.push(self.stack[self.bp + addr].clone());
+                    unsafe {
+                        let val =
+                            (**(*self.global_objects).borrow().get(name.as_str()).unwrap()).clone();
+                        if let Value::Cls(callee, addrs) = val {
+                            let mut fv_val = vec![];
+                            for addr in addrs {
+                                fv_val.push(self.stack[self.bp + addr].clone());
+                            }
+                            self.stack.push(Value::ClsSp(callee, fv_val));
+                        } else {
+                            self.stack.push(val);
                         }
-                        self.stack.push(Value::ClsSp(callee, fv_val));
-                    } else {
-                        self.stack.push(val);
                     }
                     pc += 1
                 }
                 Inst::SetLocal(ref n) => {
                     let val = self.stack.pop().unwrap();
                     self.stack[self.bp + *n] = val;
-                    pc += 1
+                    pc += 1;
                 }
-                Inst::SetGlobal(name) => {
-                    self.global_objects.insert(name, self.stack.pop().unwrap());
+                Inst::SetGlobal(name) => unsafe {
+                    **(*self.global_objects)
+                        .borrow_mut()
+                        .entry(name)
+                        .or_insert_with(|| alloc_for_value()) = self.stack.pop().unwrap();
                     pc += 1
-                }
+                },
                 Inst::GetMember => {
                     let member = self.stack.pop().unwrap();
                     if let Value::String(name) = member {
@@ -181,10 +227,28 @@ impl VM {
                             let member_name = CStr::from_ptr(name).to_str().unwrap();
                             let parent = self.stack.pop().unwrap();
                             if let Value::Object(map) = parent {
-                                match map.get(member_name) {
+                                match map.borrow().get(member_name) {
                                     Some(addr) => self.stack.push((**addr).clone()),
-                                    None => panic!(),
+                                    None => self.stack.push(Value::Undefined),
                                 }
+                            }
+                        }
+                    } else {
+                        panic!()
+                    }
+                    pc += 1
+                }
+                Inst::SetMember => {
+                    let member = self.stack.pop().unwrap();
+                    if let Value::String(name) = member {
+                        unsafe {
+                            let member_name = CStr::from_ptr(name).to_str().unwrap();
+                            let parent = self.stack.pop().unwrap();
+                            let val = self.stack.pop().unwrap();
+                            if let Value::Object(map) = parent {
+                                **map.borrow_mut()
+                                    .entry(member_name.to_string())
+                                    .or_insert_with(|| alloc_for_value()) = val;
                             }
                         }
                     } else {
@@ -207,6 +271,12 @@ impl VM {
                 _ => {}
             }
         }
+
+        ALLOCATED_MEM_LIST.with(|list| {
+            for p in (*list.borrow()).iter() {
+                unsafe { libc::free(*p as *mut libc::c_void) }
+            }
+        });
     }
 
     fn run_binary_op(&mut self, op: &Inst) {
@@ -227,6 +297,37 @@ impl VM {
                 &Inst::Ne => Value::Bool(n1 != n2),
                 _ => panic!(),
             }),
+            (Value::String(s1), Value::Number(n2)) => unsafe {
+                self.stack.push(match op {
+                    &Inst::Add => {
+                        let concat = format!("{}{}", CStr::from_ptr(s1).to_str().unwrap(), n2);
+                        Value::String(alloc_rawstring(concat.as_str()))
+                    }
+                    _ => panic!(),
+                })
+            },
+            (Value::Number(n1), Value::String(s2)) => unsafe {
+                self.stack.push(match op {
+                    &Inst::Add => {
+                        let concat = format!("{}{}", n1, CStr::from_ptr(s2).to_str().unwrap());
+                        Value::String(alloc_rawstring(concat.as_str()))
+                    }
+                    _ => panic!(),
+                })
+            },
+            (Value::String(s1), Value::String(s2)) => unsafe {
+                self.stack.push(match op {
+                    &Inst::Add => {
+                        let concat = format!(
+                            "{}{}",
+                            CStr::from_ptr(s1).to_str().unwrap(),
+                            CStr::from_ptr(s2).to_str().unwrap()
+                        );
+                        Value::String(alloc_rawstring(concat.as_str()))
+                    }
+                    _ => panic!(),
+                })
+            },
             _ => {}
         }
     }
@@ -281,6 +382,9 @@ impl VM {
                         }
                         Value::Number(ref n) => {
                             libc::printf(b"%.15g\0".as_ptr() as RawStringPtr, *n);
+                        }
+                        Value::Undefined => {
+                            libc::printf(b"undefined\0".as_ptr() as RawStringPtr);
                         }
                         _ => {}
                     }

@@ -1,7 +1,7 @@
 use lexer;
 use node::{BinOp, FormalParameter, FormalParameters, Node, UnaryOp};
-use token::{Keyword, Kind, Symbol};
 use std::collections::HashSet;
+use token::{Keyword, Kind, Symbol};
 
 #[derive(Clone, Debug)]
 pub struct Parser {
@@ -407,9 +407,18 @@ impl Parser {
     /// https://tc39.github.io/ecma262/#prod-LeftHandSideExpression
     // TODO: Implement all features.
     fn read_left_hand_side_expression(&mut self) -> Result<Node, ()> {
-        let lhs = self.read_call_expression()?;
+        let lhs = self.read_new_expression()?;
 
         Ok(lhs)
+    }
+
+    /// https://tc39.github.io/ecma262/#prod-NewExpression
+    fn read_new_expression(&mut self) -> Result<Node, ()> {
+        if self.lexer.skip(Kind::Keyword(Keyword::New)) {
+            Ok(Node::New(Box::new(self.read_new_expression()?)))
+        } else {
+            self.read_call_expression()
+        }
     }
 
     /// https://tc39.github.io/ecma262/#prod-CallExpression
@@ -471,7 +480,7 @@ impl Parser {
     /// https://tc39.github.io/ecma262/#prod-PrimaryExpression
     fn read_primary_expression(&mut self) -> Result<Node, ()> {
         match self.lexer.next()?.kind {
-            Kind::Keyword(Keyword::This) => unimplemented!(),
+            Kind::Keyword(Keyword::This) => Ok(Node::This),
             Kind::Identifier(ref i) if i == "true" => Ok(Node::Boolean(true)),
             Kind::Identifier(ref i) if i == "false" => Ok(Node::Boolean(false)),
             Kind::Identifier(ident) => Ok(Node::Identifier(ident)),
@@ -523,7 +532,12 @@ impl Parser {
         assert!(self.lexer.skip(Kind::Symbol(Symbol::OpeningBrace)));
         let body = self.read_statement_list()?;
 
-        Ok(Node::FunctionDecl(name, HashSet::new(), params, Box::new(body)))
+        Ok(Node::FunctionDecl(
+            name,
+            HashSet::new(),
+            params,
+            Box::new(body),
+        ))
     }
 
     fn read_formal_parameters(&mut self) -> Result<FormalParameters, ()> {

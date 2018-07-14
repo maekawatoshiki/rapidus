@@ -116,6 +116,6 @@ fn easy_run(file_name: &str) {
 
     println!("Result:");
     let mut vm = vm::VM::new();
-    vm.global_objects.extend(vm_codegen.global_varmap);
+    (*vm.global_objects).borrow_mut().extend(vm_codegen.global_varmap);
     vm.run(insts);
 }

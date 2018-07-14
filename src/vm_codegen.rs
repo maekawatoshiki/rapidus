@@ -1,7 +1,7 @@
 use id::IdGen;
 use node::{BinOp, FormalParameters, Node};
 use std::collections::HashSet;
-use vm::{alloc_rawstring, Inst, Value};
+use vm::{alloc_for_value, alloc_rawstring, HeapAddr, Inst, Value};
 
 use std::collections::HashMap;
 
@@ -41,7 +41,7 @@ impl ClosureInfo {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct VMCodeGen {
-    pub global_varmap: HashMap<String, Value>, // usize will be replaced with an appropriate type
+    pub global_varmap: HashMap<String, HeapAddr>, // usize will be replaced with an appropriate type
     pub local_varmap: Vec<HashMap<String, usize>>,
     pub functions: HashMap<String, FunctionInfo>,
     pub pending_closure_functions: HashMap<String, ClosureInfo>,
@@ -86,18 +86,17 @@ impl VMCodeGen {
         ) in &self.functions
         {
             let pos = insts.len();
-            if fv_stack_addr.len() > 0 {
-                self.global_varmap.insert(
-                    name.clone(),
-                    Value::Cls(Box::new(Value::Function(pos)), fv_stack_addr.clone()),
-                );
-            } else {
-                self.global_varmap
-                    .insert(name.clone(), Value::Function(pos));
+            unsafe {
+                let mem = alloc_for_value();
+                if fv_stack_addr.len() > 0 {
+                    *mem = Value::Cls(Box::new(Value::Function(pos)), fv_stack_addr.clone());
+                    self.global_varmap.insert(name.clone(), mem);
+                } else {
+                    *mem = Value::Function(pos);
+                    self.global_varmap.insert(name.clone(), mem);
+                }
             }
-            // if let Inst::Push(Value::Function(ref mut addr)) = insts[*pos_in_insts] {
-            //     *addr = pos
-            // }
+
             let mut func_insts = func_insts.clone();
             insts.append(&mut func_insts);
         }
@@ -121,7 +120,9 @@ impl VMCodeGen {
             &Node::Call(ref callee, ref args) => self.run_call(&*callee, args, insts),
             &Node::Member(ref parent, ref member) => self.run_member(&*parent, member, insts),
             &Node::Return(ref val) => self.run_return(val, insts),
+            &Node::New(ref expr) => self.run_new_expr(&*expr, insts),
             &Node::Identifier(ref name) => self.run_identifier(name, insts),
+            &Node::This => insts.push(Inst::PushThis),
             &Node::String(ref s) => insts.push(Inst::Push(Value::String(unsafe {
                 alloc_rawstring(s.as_str())
             }))),
@@ -221,6 +222,14 @@ impl VMCodeGen {
             insts.push(Inst::Push(Value::Undefined));
         }
         insts.push(Inst::Return);
+    }
+}
+
+impl VMCodeGen {
+    pub fn run_new_expr(&mut self, expr: &Node, insts: &mut Vec<Inst>) {
+        insts.push(Inst::NewS);
+        self.run(expr, insts);
+        insts.push(Inst::NewE);
     }
 }
 
@@ -338,6 +347,23 @@ impl VMCodeGen {
                 } else {
                     insts.push(Inst::SetGlobal(name.clone()));
                 }
+            }
+            &Node::Member(ref parent, ref member) => {
+                self.run(&*parent, insts);
+                unsafe {
+                    insts.push(Inst::Push(Value::String(alloc_rawstring(member.as_str()))));
+                }
+
+                insts.push(Inst::SetMember)
+                // fn run_member(&mut self, parent: &Node, member: &String, insts: &mut Vec<Inst>) {
+                //     self.run(parent, insts);
+                //
+                //     unsafe {
+                //         insts.push(Inst::Push(Value::String(alloc_rawstring(member.as_str()))));
+                //     }
+                //     insts.push(Inst::GetMember)
+                // }
+                //
             }
             _ => {}
         }
