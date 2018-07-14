@@ -33,9 +33,9 @@ pub enum Value {
     Number(f64),
     String(RawStringPtr),
     Function(usize),
-    Cls(Box<Value>, Vec<usize>),   // Function, Vec<free variable addr>
-    ClsSp(Box<Value>, Vec<Value>), // Function, Vec<value of free variable>
-    EmbeddedFunction(usize),       // unknown if usize == 0; specific function if usize > 0
+    Cls(Box<Value>, bool, Vec<usize>), // Function, use 'this'?, Vec<free variable addr>
+    ClsSp(Box<Value>, Vec<Value>),     // Function, Vec<value of free variable>
+    EmbeddedFunction(usize),           // unknown if usize == 0; specific function if usize > 0
     // Object(HashMap<String, HeapAddr>),
     Object(Rc<RefCell<HashMap<String, HeapAddr>>>),
 }
@@ -44,8 +44,8 @@ pub enum Value {
 pub enum Inst {
     PushThis,
     Push(Value),
-    NewS,
-    NewE,
+    NewThis,
+    DumpThis,
     Add,
     Sub,
     Mul,
@@ -138,19 +138,11 @@ impl VM {
                     pc = self.return_addr.pop().unwrap();
                     self.bp = self.bp_buf.pop().unwrap();
                 }
-                Inst::NewS => unsafe {
-                    let mut obj = HashMap::new();
-
-                    obj.insert("console".to_string(), {
-                        let mut map = HashMap::new();
-                        let obj = alloc_for_value();
-                        *obj = Value::Object(Rc::new(RefCell::new(map)));
-                        obj
-                    });
-                    let global_objects = Rc::new(RefCell::new(obj));
+                Inst::NewThis => unsafe {
+                    self.this.push(Rc::new(RefCell::new(HashMap::new())));
                     pc += 1;
                 },
-                Inst::NewE => {
+                Inst::DumpThis => {
                     self.this.pop();
                     pc += 1;
                 }
@@ -159,8 +151,8 @@ impl VM {
                     pc += 1;
                 }
                 Inst::PushThis => {
-                    self.stack
-                        .push(Value::Object((*self.this.last().unwrap()).clone()));
+                    let val = self.stack[self.bp + 0].clone();
+                    self.stack.push(val);
                     pc += 1;
                 }
                 ref op
@@ -181,8 +173,11 @@ impl VM {
                 }
                 Inst::GetLocal(ref n) => {
                     let val = self.stack[self.bp + *n].clone();
-                    if let Value::Cls(callee, addrs) = val {
+                    if let Value::Cls(callee, use_this, addrs) = val {
                         let mut fv_val = vec![];
+                        if use_this {
+                            fv_val.push(Value::Object(self.this.last().unwrap().clone()));
+                        }
                         for addr in addrs {
                             fv_val.push(self.stack[self.bp + addr].clone());
                         }
@@ -196,8 +191,11 @@ impl VM {
                     unsafe {
                         let val =
                             (**(*self.global_objects).borrow().get(name.as_str()).unwrap()).clone();
-                        if let Value::Cls(callee, addrs) = val {
+                        if let Value::Cls(callee, use_this, addrs) = val {
                             let mut fv_val = vec![];
+                            if use_this {
+                                fv_val.push(Value::Object(self.this.last().unwrap().clone()));
+                            }
                             for addr in addrs {
                                 fv_val.push(self.stack[self.bp + addr].clone());
                             }
@@ -228,7 +226,23 @@ impl VM {
                             let parent = self.stack.pop().unwrap();
                             if let Value::Object(map) = parent {
                                 match map.borrow().get(member_name) {
-                                    Some(addr) => self.stack.push((**addr).clone()),
+                                    Some(addr) => {
+                                        let val = (**addr).clone();
+                                        if let Value::Cls(callee, use_this, addrs) = val {
+                                            let mut fv_val = vec![];
+                                            if use_this {
+                                                fv_val.push(Value::Object(
+                                                    self.global_objects.clone(),
+                                                ));
+                                            }
+                                            for addr in addrs {
+                                                fv_val.push(self.stack[self.bp + addr].clone());
+                                            }
+                                            self.stack.push(Value::ClsSp(callee, fv_val))
+                                        } else {
+                                            self.stack.push(val)
+                                        }
+                                    }
                                     None => self.stack.push(Value::Undefined),
                                 }
                             }
@@ -246,7 +260,8 @@ impl VM {
                             let parent = self.stack.pop().unwrap();
                             let val = self.stack.pop().unwrap();
                             if let Value::Object(map) = parent {
-                                **map.borrow_mut()
+                                **map
+                                    .borrow_mut()
                                     .entry(member_name.to_string())
                                     .or_insert_with(|| alloc_for_value()) = val;
                             }

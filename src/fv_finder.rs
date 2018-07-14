@@ -6,6 +6,7 @@ use std::collections::{HashMap, HashSet};
 pub struct FreeVariableFinder {
     pub varmap: Vec<HashSet<String>>,
     pub cur_fv: HashSet<String>,
+    pub use_this: bool,
 }
 
 impl FreeVariableFinder {
@@ -15,6 +16,7 @@ impl FreeVariableFinder {
         FreeVariableFinder {
             varmap: vec![varmap],
             cur_fv: HashSet::new(),
+            use_this: false,
         }
     }
 
@@ -22,7 +24,8 @@ impl FreeVariableFinder {
         match node {
             &mut Node::StatementList(ref mut nodes) => {
                 for node in nodes {
-                    self.run(node)
+                    self.run(node);
+                    self.use_this = false;
                 }
             }
             _ => unreachable!(),
@@ -36,7 +39,13 @@ impl FreeVariableFinder {
                     self.run(node)
                 }
             }
-            &mut Node::FunctionDecl(ref name, ref mut fv, ref params, ref mut body) => {
+            &mut Node::FunctionDecl(
+                ref name,
+                ref mut use_this,
+                ref mut fv,
+                ref params,
+                ref mut body,
+            ) => {
                 self.varmap.push(HashSet::new());
                 if let &Some(ref name) = name {
                     self.varmap.last_mut().unwrap().insert(name.clone());
@@ -55,7 +64,7 @@ impl FreeVariableFinder {
                 let mut func_decl_index = vec![];
                 for (i, node) in body.iter_mut().enumerate() {
                     match node {
-                        &mut Node::FunctionDecl(ref name, _, _, _) => {
+                        &mut Node::FunctionDecl(ref name, _, _, _, _) => {
                             self.varmap
                                 .last_mut()
                                 .unwrap()
@@ -75,6 +84,7 @@ impl FreeVariableFinder {
                 }
 
                 *fv = self.cur_fv.clone();
+                *use_this = self.use_this;
 
                 self.varmap.pop();
                 if let &Some(ref name) = name {
@@ -101,6 +111,7 @@ impl FreeVariableFinder {
             &mut Node::Member(ref mut parent, _) => {
                 self.run(&mut *parent);
             }
+            &mut Node::This => self.use_this = true,
             &mut Node::Identifier(ref name) => {
                 if !self.varmap[0].contains(name.as_str())
                     && !self.varmap.last().unwrap().contains(name.as_str())
@@ -122,9 +133,9 @@ impl FreeVariableFinder {
                 self.run(&mut *cond);
                 self.run(&mut *body);
             }
-            &mut Node::Assign(ref dst, ref mut src) => {
-                match &**dst {
-                    &Node::Identifier(ref name) => {
+            &mut Node::Assign(ref mut dst, ref mut src) => {
+                match &mut **dst {
+                    &mut Node::Identifier(ref name) => {
                         if !self.varmap.iter().any(|v| v.contains(name.as_str())) {
                             // If such a variable didn't appear before, this assignment
                             // serves the declaration of it as a global variable.
@@ -135,7 +146,10 @@ impl FreeVariableFinder {
                             self.cur_fv.insert(name.clone());
                         }
                     }
-                    _ => {}
+                    &mut Node::Member(ref mut parent, _) => {
+                        self.run(parent);
+                    }
+                    _ => unimplemented!(),
                 }
                 self.run(&mut *src);
             }

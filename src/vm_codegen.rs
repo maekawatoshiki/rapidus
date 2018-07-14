@@ -8,6 +8,7 @@ use std::collections::HashMap;
 #[derive(Clone, Debug, PartialEq)]
 pub struct FunctionInfo {
     pub name: String,
+    pub use_this: bool,
     pub fv_stack_addr: Vec<usize>,
     pub insts: Vec<Inst>,
 }
@@ -15,14 +16,21 @@ pub struct FunctionInfo {
 #[derive(Clone, Debug, PartialEq)]
 pub struct ClosureInfo {
     pub name: String,
+    pub use_this: bool,
     pub fv_name: Vec<String>,
     pub insts: Vec<Inst>,
 }
 
 impl FunctionInfo {
-    pub fn new(name: String, fv_stack_addr: Vec<usize>, insts: Vec<Inst>) -> FunctionInfo {
+    pub fn new(
+        name: String,
+        use_this: bool,
+        fv_stack_addr: Vec<usize>,
+        insts: Vec<Inst>,
+    ) -> FunctionInfo {
         FunctionInfo {
             name: name,
+            use_this: use_this,
             insts: insts,
             fv_stack_addr: fv_stack_addr,
         }
@@ -30,9 +38,15 @@ impl FunctionInfo {
 }
 
 impl ClosureInfo {
-    pub fn new(name: String, fv_name: Vec<String>, insts: Vec<Inst>) -> ClosureInfo {
+    pub fn new(
+        name: String,
+        use_this: bool,
+        fv_name: Vec<String>,
+        insts: Vec<Inst>,
+    ) -> ClosureInfo {
         ClosureInfo {
             name: name,
+            use_this: use_this,
             insts: insts,
             fv_name: fv_name,
         }
@@ -80,6 +94,7 @@ impl VMCodeGen {
             _,
             FunctionInfo {
                 name,
+                use_this,
                 insts: func_insts,
                 fv_stack_addr,
             },
@@ -88,8 +103,12 @@ impl VMCodeGen {
             let pos = insts.len();
             unsafe {
                 let mem = alloc_for_value();
-                if fv_stack_addr.len() > 0 {
-                    *mem = Value::Cls(Box::new(Value::Function(pos)), fv_stack_addr.clone());
+                if fv_stack_addr.len() > 0 || *use_this {
+                    *mem = Value::Cls(
+                        Box::new(Value::Function(pos)),
+                        *use_this,
+                        fv_stack_addr.clone(),
+                    );
                     self.global_varmap.insert(name.clone(), mem);
                 } else {
                     *mem = Value::Function(pos);
@@ -105,8 +124,8 @@ impl VMCodeGen {
     fn run(&mut self, node: &Node, insts: &mut Vec<Inst>) {
         match node {
             &Node::StatementList(ref node_list) => self.run_statement_list(node_list, insts),
-            &Node::FunctionDecl(ref name, ref fv, ref params, ref body) => {
-                self.run_function_decl(name, fv, params, &*body)
+            &Node::FunctionDecl(ref name, ref use_this, ref fv, ref params, ref body) => {
+                self.run_function_decl(name, *use_this, fv, params, &*body)
             }
             &Node::VarDecl(ref name, ref init) => self.run_var_decl(name, init, insts),
             &Node::If(ref cond, ref then_, ref else_) => {
@@ -153,8 +172,10 @@ impl VMCodeGen {
                     unreachable!()
                 };
             }
-            self.functions
-                .insert(name, FunctionInfo::new(v.name, fv_stack_addr, v.insts));
+            self.functions.insert(
+                name,
+                FunctionInfo::new(v.name, v.use_this, fv_stack_addr, v.insts),
+            );
         }
         self.pending_closure_functions.clear();
     }
@@ -162,6 +183,7 @@ impl VMCodeGen {
     pub fn run_function_decl(
         &mut self,
         name: &Option<String>,
+        use_this: bool,
         fv: &HashSet<String>,
         params: &FormalParameters,
         body: &Node,
@@ -175,6 +197,10 @@ impl VMCodeGen {
 
         func_insts.push(Inst::AllocLocalVar(0, 0));
 
+        if use_this {
+            self.run_var_decl2(&"this".to_string(), &None, &mut func_insts);
+        }
+
         for name in fv {
             self.run_var_decl2(name, &None, &mut func_insts);
         }
@@ -183,7 +209,7 @@ impl VMCodeGen {
             self.run_var_decl2(&param.name, &param.init, &mut func_insts)
         }
 
-        let params_len = params.len() + fv.len();
+        let params_len = params.len() + fv.len() + if use_this { 1 } else { 0 };
 
         self.run(body, &mut func_insts);
 
@@ -209,6 +235,7 @@ impl VMCodeGen {
             name.clone(),
             ClosureInfo::new(
                 name.clone(),
+                use_this,
                 fv.iter().cloned().collect::<Vec<_>>(),
                 func_insts,
             ),
@@ -227,9 +254,9 @@ impl VMCodeGen {
 
 impl VMCodeGen {
     pub fn run_new_expr(&mut self, expr: &Node, insts: &mut Vec<Inst>) {
-        insts.push(Inst::NewS);
+        insts.push(Inst::NewThis);
         self.run(expr, insts);
-        insts.push(Inst::NewE);
+        insts.push(Inst::DumpThis);
     }
 }
 
@@ -355,15 +382,6 @@ impl VMCodeGen {
                 }
 
                 insts.push(Inst::SetMember)
-                // fn run_member(&mut self, parent: &Node, member: &String, insts: &mut Vec<Inst>) {
-                //     self.run(parent, insts);
-                //
-                //     unsafe {
-                //         insts.push(Inst::Push(Value::String(alloc_rawstring(member.as_str()))));
-                //     }
-                //     insts.push(Inst::GetMember)
-                // }
-                //
             }
             _ => {}
         }

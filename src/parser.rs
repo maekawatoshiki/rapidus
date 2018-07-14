@@ -534,6 +534,7 @@ impl Parser {
 
         Ok(Node::FunctionDecl(
             name,
+            false,
             HashSet::new(),
             params,
             Box::new(body),
