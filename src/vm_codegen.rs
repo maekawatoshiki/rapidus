@@ -14,7 +14,7 @@ pub struct FunctionInfo {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct ClosureInfo {
+pub struct PendingFunctionInfo {
     pub name: String,
     pub use_this: bool,
     pub fv_name: Vec<String>,
@@ -37,14 +37,14 @@ impl FunctionInfo {
     }
 }
 
-impl ClosureInfo {
+impl PendingFunctionInfo {
     pub fn new(
         name: String,
         use_this: bool,
         fv_name: Vec<String>,
         insts: Vec<Inst>,
-    ) -> ClosureInfo {
-        ClosureInfo {
+    ) -> PendingFunctionInfo {
+        PendingFunctionInfo {
             name: name,
             use_this: use_this,
             insts: insts,
@@ -58,7 +58,7 @@ pub struct VMCodeGen {
     pub global_varmap: HashMap<String, HeapAddr>, // usize will be replaced with an appropriate type
     pub local_varmap: Vec<HashMap<String, usize>>,
     pub functions: HashMap<String, FunctionInfo>,
-    pub pending_closure_functions: HashMap<String, ClosureInfo>,
+    pub pending_closure_functions: HashMap<String, PendingFunctionInfo>,
     pub local_var_stack_addr: IdGen,
     pub fv: Vec<Vec<String>>,
 }
@@ -236,7 +236,7 @@ impl VMCodeGen {
 
         self.pending_closure_functions.insert(
             name.clone(),
-            ClosureInfo::new(
+            PendingFunctionInfo::new(
                 name.clone(),
                 use_this,
                 fv.iter().cloned().collect::<Vec<_>>(),

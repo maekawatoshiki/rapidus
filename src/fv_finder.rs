@@ -23,8 +23,20 @@ impl FreeVariableFinder {
     pub fn run_toplevel(&mut self, node: &mut Node) {
         match node {
             &mut Node::StatementList(ref mut nodes) => {
-                for node in nodes {
-                    self.run(node);
+                let mut func_decl_index = vec![];
+
+                for (i, node) in nodes.iter_mut().enumerate() {
+                    match node {
+                        &mut Node::FunctionDecl(ref name, _, _, _, _) => {
+                            self.varmap[0].insert(name.clone());
+                            func_decl_index.push(i)
+                        }
+                        _ => self.run(node),
+                    }
+                }
+
+                for index in func_decl_index {
+                    self.run(&mut nodes[index]);
                     self.use_this = false;
                 }
             }
