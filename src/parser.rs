@@ -481,6 +481,11 @@ impl Parser {
     fn read_primary_expression(&mut self) -> Result<Node, ()> {
         match self.lexer.next()?.kind {
             Kind::Keyword(Keyword::This) => Ok(Node::This),
+            Kind::Symbol(Symbol::OpeningParen) => {
+                let x = self.read_expression();
+                self.lexer.skip(Kind::Symbol(Symbol::ClosingParen));
+                x
+            }
             Kind::Identifier(ref i) if i == "true" => Ok(Node::Boolean(true)),
             Kind::Identifier(ref i) if i == "false" => Ok(Node::Boolean(false)),
             Kind::Identifier(ident) => Ok(Node::Identifier(ident)),
@@ -500,6 +505,7 @@ impl Parser {
         }
 
         let expr = self.read_expression()?;
+        self.lexer.skip(Kind::Symbol(Symbol::Semicolon));
 
         Ok(Node::Return(Some(Box::new(expr))))
     }
