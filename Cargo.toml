@@ -7,6 +7,7 @@ authors = ["uint256_t <maekawatoshiki@github.com>"]
 clap = "*"
 bitflags = "*"
 libc = "0.2"
+rand = "*"
 
 [profile.dev]
 codegen-units = 16
