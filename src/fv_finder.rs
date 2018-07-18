@@ -9,6 +9,7 @@ pub struct FreeVariableFinder {
     pub cur_fv: HashSet<String>,
     pub mangled_function_name: Vec<HashMap<String, String>>,
     pub use_this: bool,
+    pub xorshift: XorShiftRng,
 }
 
 impl FreeVariableFinder {
@@ -20,6 +21,7 @@ impl FreeVariableFinder {
             cur_fv: HashSet::new(),
             mangled_function_name: vec![],
             use_this: false,
+            xorshift: XorShiftRng::new_unseeded(),
         }
     }
 
@@ -82,11 +84,7 @@ impl FreeVariableFinder {
                         &mut Node::FunctionDecl(ref mut name, _, _, _, _) => {
                             let nested = self.varmap.len() + 1 > 2;
                             let mangled_name = if nested {
-                                Some(format!(
-                                    "{}.{}",
-                                    name.clone(),
-                                    XorShiftRng::new_unseeded().next_u32()
-                                ))
+                                Some(format!("{}.{}", name.clone(), self.xorshift.next_u32()))
                             } else {
                                 None
                             };
