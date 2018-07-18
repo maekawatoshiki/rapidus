@@ -44,6 +44,7 @@ pub enum Value {
 pub enum Inst {
     PushThis,
     Push(Value),
+    PushMakeCls(Box<Value>, bool, Vec<usize>), // Function, use 'this'?, Vec<free variable addr>
     NewThis,
     DumpThis,
     Add,
@@ -155,6 +156,17 @@ impl VM {
                 &Inst::PushThis => {
                     let val = self.stack[self.bp].clone();
                     self.stack.push(val);
+                    pc += 1;
+                }
+                &Inst::PushMakeCls(ref callee, ref use_this, ref addrs) => {
+                    let mut fv_val = vec![];
+                    if *use_this {
+                        fv_val.push(Value::Object(self.this.last().unwrap().clone()));
+                    }
+                    for addr in addrs {
+                        fv_val.push(self.stack[self.bp + addr].clone());
+                    }
+                    self.stack.push(Value::Cls(callee.clone(), fv_val));
                     pc += 1;
                 }
                 ref op

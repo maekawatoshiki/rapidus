@@ -91,6 +91,8 @@ impl VMCodeGen {
 
         self.process_pending_functions();
 
+        let mut function_value_list = HashMap::new();
+
         for (
             _,
             FunctionInfo {
@@ -115,10 +117,27 @@ impl VMCodeGen {
                     *mem = Value::Function(pos);
                     self.global_varmap.insert(name.clone(), mem);
                 }
+                function_value_list.insert(name.clone(), (*mem).clone());
             }
 
             let mut func_insts = func_insts.clone();
             insts.append(&mut func_insts);
+        }
+
+        for inst in insts.iter_mut() {
+            let val = match inst {
+                Inst::GetGlobal(name) => function_value_list.get(name),
+                _ => None,
+            };
+
+            if let Some(val) = val {
+                match val {
+                    Value::MakeCls(callee, use_this, fv_addrs) => {
+                        *inst = Inst::PushMakeCls(callee.clone(), *use_this, fv_addrs.clone())
+                    }
+                    _ => *inst = Inst::Push(val.clone()),
+                }
+            }
         }
     }
 
