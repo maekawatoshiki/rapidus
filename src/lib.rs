@@ -8,3 +8,4 @@ pub mod id;
 pub mod fv_finder;
 
 extern crate libc;
+extern crate rand;

@@ -1,11 +1,13 @@
 use node::{FormalParameter, FormalParameters, Node};
 
+use rand::{RngCore, XorShiftRng};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone)]
 pub struct FreeVariableFinder {
     pub varmap: Vec<HashSet<String>>,
     pub cur_fv: HashSet<String>,
+    pub mangled_function_name: Vec<HashMap<String, String>>,
     pub use_this: bool,
 }
 
@@ -16,6 +18,7 @@ impl FreeVariableFinder {
         FreeVariableFinder {
             varmap: vec![varmap],
             cur_fv: HashSet::new(),
+            mangled_function_name: vec![],
             use_this: false,
         }
     }
@@ -52,7 +55,7 @@ impl FreeVariableFinder {
                 }
             }
             &mut Node::FunctionDecl(
-                ref name,
+                ref mut name,
                 ref mut use_this,
                 ref mut fv,
                 ref params,
@@ -71,13 +74,45 @@ impl FreeVariableFinder {
                     unreachable!()
                 };
 
+                self.mangled_function_name.push(HashMap::new());
+
                 let mut func_decl_index = vec![];
                 for (i, node) in body.iter_mut().enumerate() {
                     match node {
-                        &mut Node::FunctionDecl(ref name, _, _, _, _) => {
+                        &mut Node::FunctionDecl(ref mut name, _, _, _, _) => {
+                            let nested = self.varmap.len() + 1 > 2;
+                            let mangled_name = if nested {
+                                Some(format!(
+                                    "{}.{}",
+                                    name.clone(),
+                                    XorShiftRng::new_unseeded().next_u32()
+                                ))
+                            } else {
+                                None
+                            };
+
                             self.varmap.last_mut().unwrap().insert(name.clone());
+
+                            if let Some(ref mangled_name) = mangled_name {
+                                self.mangled_function_name
+                                    .last_mut()
+                                    .unwrap()
+                                    .insert(name.clone(), mangled_name.clone());
+                            }
+
+                            if nested {
+                                *name = mangled_name.clone().unwrap();
+                            }
+
                             func_decl_index.push(i)
                         }
+                        _ => {}
+                    }
+                }
+
+                for node in body.iter_mut() {
+                    match node {
+                        &mut Node::FunctionDecl(_, _, _, _, _) => {}
                         _ => self.run(node),
                     }
                 }
@@ -85,6 +120,8 @@ impl FreeVariableFinder {
                 for index in func_decl_index {
                     self.run(&mut body[index])
                 }
+
+                self.mangled_function_name.pop();
 
                 for v in self.varmap.last().unwrap() {
                     self.cur_fv.remove(v);
@@ -118,10 +155,17 @@ impl FreeVariableFinder {
                 self.run(&mut *parent);
             }
             &mut Node::This => self.use_this = true,
-            &mut Node::Identifier(ref name) => {
-                if !self.varmap[0].contains(name.as_str())
-                    && !self.varmap.last().unwrap().contains(name.as_str())
-                {
+            &mut Node::Identifier(ref mut name) => {
+                let is_fv_or_gv = !self.varmap[0].contains(name.as_str())
+                    && !self.varmap.last().unwrap().contains(name.as_str());
+
+                if let Some(mangled_function_name) = self.mangled_function_name.last() {
+                    if let Some(mangled_name) = mangled_function_name.get(name.as_str()) {
+                        *name = mangled_name.clone();
+                    }
+                }
+
+                if is_fv_or_gv {
                     if self.varmap.len() == 1 {
                         // toplevel
                         self.varmap[0].insert(name.clone());

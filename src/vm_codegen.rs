@@ -60,7 +60,6 @@ pub struct VMCodeGen {
     pub functions: HashMap<String, FunctionInfo>,
     pub pending_closure_functions: HashMap<String, PendingFunctionInfo>,
     pub local_var_stack_addr: IdGen,
-    pub fv: Vec<Vec<String>>,
 }
 
 impl VMCodeGen {
@@ -71,7 +70,6 @@ impl VMCodeGen {
             functions: HashMap::new(),
             pending_closure_functions: HashMap::new(),
             local_var_stack_addr: IdGen::new(),
-            fv: vec![vec![]],
         }
     }
 }
