@@ -233,34 +233,38 @@ impl VM {
                     pc += 1
                 },
                 &Inst::GetMember => {
-                    let member = self.stack.pop().unwrap();
-                    if let Value::String(name) = member {
-                        unsafe {
-                            let member_name = CStr::from_ptr(name).to_str().unwrap();
-                            let parent = self.stack.pop().unwrap();
-                            if let Value::Object(map) = parent {
-                                match map.borrow().get(member_name) {
-                                    Some(addr) => {
-                                        let val = (**addr).clone();
-                                        if let Value::MakeCls(callee, use_this, addrs) = val {
-                                            let mut fv_val = vec![];
-                                            if use_this {
-                                                fv_val.push(Value::Object(map.clone()));
-                                            }
-                                            for addr in addrs {
-                                                fv_val.push(self.stack[self.bp + addr].clone());
-                                            }
-                                            self.stack.push(Value::Cls(callee, fv_val))
-                                        } else {
-                                            self.stack.push(val)
-                                        }
-                                    }
-                                    None => self.stack.push(Value::Undefined),
-                                }
-                            }
+                    let member_name = {
+                        let member = self.stack.pop().unwrap();
+                        if let Value::String(name) = member {
+                            unsafe { CStr::from_ptr(name).to_str().unwrap() }
+                        } else {
+                            panic!("runtime err")
                         }
-                    } else {
-                        panic!()
+                    };
+                    let parent = self.stack.pop().unwrap();
+                    unsafe {
+                        if let Value::Object(map) = parent {
+                            match map.borrow().get(member_name) {
+                                Some(addr) => {
+                                    let val = (**addr).clone();
+                                    if let Value::MakeCls(callee, use_this, addrs) = val {
+                                        let mut fv_val = vec![];
+                                        if use_this {
+                                            fv_val.push(Value::Object(map.clone()));
+                                        }
+                                        for addr in addrs {
+                                            fv_val.push(self.stack[self.bp + addr].clone());
+                                        }
+                                        self.stack.push(Value::Cls(callee, fv_val))
+                                    } else {
+                                        self.stack.push(val)
+                                    }
+                                }
+                                None => self.stack.push(Value::Undefined),
+                            }
+                        } else {
+                            panic!("runtime err")
+                        }
                     }
                     pc += 1
                 }
@@ -392,7 +396,7 @@ impl VM {
                     callee = *callee_;
                 }
                 c => {
-                    println!("err: {:?}, pc = {}", c, pc);
+                    println!("Call: err: {:?}, pc = {}", c, pc);
                     break;
                 }
             }
