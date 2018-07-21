@@ -496,6 +496,41 @@ fn string() {
 }
 
 #[test]
+fn local_var_load() {
+    use parser;
+    let mut output = vec![];
+    VMCodeGen::new().compile(
+        &parser::Parser::new("var i; i".to_string()).next().unwrap(),
+        &mut output,
+    );
+    assert_eq!(
+        vec![Inst::AllocLocalVar(1, 1), Inst::GetLocal(1), Inst::End],
+        output
+    );
+}
+
+#[test]
+fn local_var_assign() {
+    use parser;
+    let mut output = vec![];
+    VMCodeGen::new().compile(
+        &parser::Parser::new("var i; i = 123".to_string())
+            .next()
+            .unwrap(),
+        &mut output,
+    );
+    assert_eq!(
+        vec![
+            Inst::AllocLocalVar(1, 1),
+            Inst::Push(Value::Number(123.0)),
+            Inst::SetLocal(1),
+            Inst::End,
+        ],
+        output
+    );
+}
+
+#[test]
 fn global_func_call() {
     use parser;
     for (args_s, mut args_i) in vec![
