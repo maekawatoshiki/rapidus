@@ -848,6 +848,35 @@ fn simple_expr_assign() {
 }
 
 #[test]
+fn simple_expr_new() {
+    let mut parser = Parser::new("new f(1)".to_string());
+    assert_eq!(
+        parser.next().unwrap(),
+        Node::StatementList(vec![Node::New(Box::new(Node::Call(
+            Box::new(Node::Identifier("f".to_string())),
+            vec![Node::Number(1.0)],
+        )))])
+    );
+}
+
+#[test]
+fn simple_expr_parentheses() {
+    let mut parser = Parser::new("2 * (1 + 3)".to_string());
+    assert_eq!(
+        parser.next().unwrap(),
+        Node::StatementList(vec![Node::BinaryOp(
+            Box::new(Node::Number(2.0)),
+            Box::new(Node::BinaryOp(
+                Box::new(Node::Number(1.0)),
+                Box::new(Node::Number(3.0)),
+                BinOp::Add,
+            )),
+            BinOp::Mul,
+        )])
+    );
+}
+
+#[test]
 fn call() {
     for (input, args) in [
         ("f()", vec![]),
@@ -918,6 +947,21 @@ fn block() {
             Box::new(Node::Number(1.0)),
         )])])
     );
+}
+
+#[test]
+fn return_() {
+    for (input, node) in [
+        ("return 1", Node::Return(Some(Box::new(Node::Number(1.0))))),
+        ("return;", Node::Return(None)),
+    ].iter()
+    {
+        let mut parser = Parser::new(input.to_string());
+        assert_eq!(
+            parser.next().unwrap(),
+            Node::StatementList(vec![node.clone()])
+        );
+    }
 }
 
 #[test]
