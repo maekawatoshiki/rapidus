@@ -429,35 +429,3 @@ impl VM {
     }
 }
 
-pub fn test() {
-    // let insts = vec![
-    //     Inst::GetGlobal("console".to_string()),
-    //     Inst::Push(Value::Data("log".to_string())),
-    //     Inst::GetMember,
-    //     Inst::Push(Value::String("hello".to_string())),
-    //     Inst::Call(1),
-    //     Inst::Push(Value::Number(123.0)),
-    //     Inst::SetGlobal("n".to_string()),
-    //     Inst::GetGlobal("console".to_string()),
-    //     Inst::Push(Value::Data("log".to_string())),
-    //     Inst::GetMember,
-    //     Inst::GetGlobal("n".to_string()),
-    //     Inst::Call(1),
-    // ];
-    let insts = vec![
-        Inst::Push(Value::Number(0.0)),
-        Inst::SetGlobal("n".to_string()),
-        Inst::GetGlobal("console".to_string()),
-        // Inst::Push(Value::Data("log".to_string())),
-        Inst::GetMember,
-        Inst::GetGlobal("n".to_string()),
-        Inst::Call(1),
-        Inst::GetGlobal("n".to_string()),
-        Inst::Push(Value::Number(1.0)),
-        Inst::Add,
-        Inst::SetGlobal("n".to_string()),
-        Inst::Jmp(2),
-    ];
-    let mut vm = VM::new();
-    vm.run(insts);
-}

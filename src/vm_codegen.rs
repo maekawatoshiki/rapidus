@@ -84,7 +84,7 @@ impl VMCodeGen {
         self.run(node, insts);
 
         if let Inst::AllocLocalVar(ref mut n, ref mut argc) = insts[pos] {
-            *n = self.local_var_stack_addr.get_cur_id();
+            *n = self.local_var_stack_addr.get_cur_id() - 1/*for this*/;
             *argc = 1; // for 'this'
         }
         insts.push(Inst::End);
@@ -439,22 +439,36 @@ impl VMCodeGen {
     }
 }
 
-pub fn test() {
-    use parser::Parser;
-    use vm::VM;
-    let mut node_list = vec![];
-    let mut parser = Parser::new("a = 123.456; console.log(a)".to_string());
-    while let Ok(ok) = parser.next() {
-        node_list.push(ok)
+#[test]
+fn binaryop() {
+    use parser;
+    for (op_s, op_i) in vec![
+        ("+", Inst::Add),
+        ("-", Inst::Sub),
+        ("*", Inst::Mul),
+        ("/", Inst::Div),
+        ("%", Inst::Rem),
+        ("<", Inst::Lt),
+        ("<=", Inst::Le),
+        (">", Inst::Gt),
+        (">=", Inst::Ge),
+        ("==", Inst::Eq),
+        ("!=", Inst::Ne),
+    ] {
+        let mut output = vec![];
+        VMCodeGen::new().compile(
+            &parser::Parser::new(format!("1 {} 2", op_s)).next().unwrap(),
+            &mut output,
+        );
+        assert_eq!(
+            vec![
+                Inst::AllocLocalVar(0, 1),
+                Inst::Push(Value::Number(1.0)),
+                Inst::Push(Value::Number(2.0)),
+                op_i,
+                Inst::End,
+            ],
+            output
+        );
     }
-    let mut vm_codegen = VMCodeGen::new();
-    let mut insts = vec![];
-    vm_codegen.compile(&node_list[0], &mut insts);
-    for inst in &insts {
-        println!("{:?}", inst);
-    }
-
-    println!("VM Test:");
-    let mut vm = VM::new();
-    vm.run(insts);
 }
