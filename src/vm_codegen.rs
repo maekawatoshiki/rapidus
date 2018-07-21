@@ -274,9 +274,9 @@ impl VMCodeGen {
 
 impl VMCodeGen {
     pub fn run_new_expr(&mut self, expr: &Node, insts: &mut Vec<Inst>) {
-        insts.push(Inst::NewThis);
+        insts.push(Inst::CreateThis);
         self.run(expr, insts);
-        insts.push(Inst::DumpThis);
+        insts.push(Inst::DumpCurrentThis);
     }
 }
 

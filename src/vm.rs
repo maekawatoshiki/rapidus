@@ -45,8 +45,8 @@ pub enum Inst {
     PushThis,
     Push(Value),
     PushMakeCls(Box<Value>, bool, Vec<usize>), // Function, use 'this'?, Vec<free variable addr>
-    NewThis,
-    DumpThis,
+    CreateThis,
+    DumpCurrentThis,
     Add,
     Sub,
     Mul,
@@ -141,11 +141,11 @@ impl VM {
                     pc = self.return_addr.pop().unwrap();
                     self.bp = self.bp_buf.pop().unwrap();
                 }
-                &Inst::NewThis => {
+                &Inst::CreateThis => {
                     self.this.push(Rc::new(RefCell::new(HashMap::new())));
                     pc += 1;
                 }
-                &Inst::DumpThis => {
+                &Inst::DumpCurrentThis => {
                     self.this.pop();
                     pc += 1;
                 }
@@ -245,9 +245,7 @@ impl VM {
                                         if let Value::MakeCls(callee, use_this, addrs) = val {
                                             let mut fv_val = vec![];
                                             if use_this {
-                                                fv_val.push(Value::Object(
-                                                    self.global_objects.clone(),
-                                                ));
+                                                fv_val.push(Value::Object(map.clone()));
                                             }
                                             for addr in addrs {
                                                 fv_val.push(self.stack[self.bp + addr].clone());
