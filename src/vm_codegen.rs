@@ -472,3 +472,58 @@ fn binaryop() {
         );
     }
 }
+
+#[test]
+fn string() {
+    use parser;
+    let mut output = vec![];
+    VMCodeGen::new().compile(
+        &parser::Parser::new("\"hello\"".to_string()).next().unwrap(),
+        &mut output,
+    );
+
+    // The address (of Value::String) cannot be compared...
+    // unsafe {
+    //     assert_eq!(
+    //         vec![
+    //             Inst::AllocLocalVar(0, 1),
+    //             Inst::Push(Value::String(alloc_rawstring("hello"))), <<-- X(
+    //             Inst::End,
+    //         ],
+    //         output
+    //     );
+    // }
+}
+
+#[test]
+fn global_func_call() {
+    use parser;
+    for (args_s, mut args_i) in vec![
+        ("", vec![]),
+        ("1", vec![Inst::Push(Value::Number(1.0))]),
+        (
+            "1, 2",
+            vec![
+                Inst::Push(Value::Number(1.0)),
+                Inst::Push(Value::Number(2.0)),
+            ],
+        ),
+    ] {
+        let mut output = vec![];
+        VMCodeGen::new().compile(
+            &parser::Parser::new(format!("f({})", args_s))
+                .next()
+                .unwrap(),
+            &mut output,
+        );
+        let mut expect = vec![Inst::AllocLocalVar(0, 1)];
+        let args_len = args_i.len();
+        expect.append(&mut args_i);
+        expect.append(&mut vec![
+            Inst::GetGlobal("f".to_string()),
+            Inst::Call(args_len),
+            Inst::End,
+        ]);
+        assert_eq!(expect, output);
+    }
+}
