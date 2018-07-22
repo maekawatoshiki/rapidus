@@ -156,9 +156,10 @@ impl FreeVariableFinder {
                 let is_fv_or_gv = !self.varmap[0].contains(name.as_str())
                     && !self.varmap.last().unwrap().contains(name.as_str());
 
-                if let Some(mangled_function_name) = self.mangled_function_name.last() {
+                for mangled_function_name in self.mangled_function_name.iter().rev() {
                     if let Some(mangled_name) = mangled_function_name.get(name.as_str()) {
                         *name = mangled_name.clone();
+                        break;
                     }
                 }
 
