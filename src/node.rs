@@ -23,6 +23,7 @@ impl FormalParameter {
 pub enum Node {
     StatementList(Vec<Node>),
     FunctionDecl(String, bool, HashSet<String>, FormalParameters, Box<Node>), // Name, Use 'this', fv, params, body
+    FunctionExpr(Option<String>, FormalParameters, Box<Node>), // Name, Use 'this', fv, params, body
     VarDecl(String, Option<Box<Node>>),
     Member(Box<Node>, String),
     New(Box<Node>),

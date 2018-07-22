@@ -6,6 +6,7 @@ pub mod vm;
 pub mod vm_codegen;
 pub mod id;
 pub mod fv_finder;
+pub mod extract_anony_func;
 
 extern crate libc;
 extern crate rand;

@@ -1,4 +1,5 @@
 extern crate rapidus;
+use rapidus::extract_anony_func;
 use rapidus::fv_finder;
 use rapidus::lexer;
 use rapidus::parser;
@@ -62,9 +63,10 @@ fn main() {
         }
 
         let mut node = nodes[0].clone();
+        extract_anony_func::AnonymousFunctionExtractor::new().run_toplevel(&mut node);
         fv_finder::FreeVariableFinder::new().run_toplevel(&mut node);
 
-        println!("{:?}", node);
+        println!("fv and ext {:?}", node);
         let mut vm_codegen = vm_codegen::VMCodeGen::new();
         let mut insts = vec![];
         vm_codegen.compile(&node, &mut insts);
@@ -104,6 +106,7 @@ fn easy_run(file_name: &str) {
         node_list.push(ok)
     }
 
+    extract_anony_func::AnonymousFunctionExtractor::new().run_toplevel(&mut node_list[0]);
     fv_finder::FreeVariableFinder::new().run_toplevel(&mut node_list[0]);
 
     let mut vm_codegen = vm_codegen::VMCodeGen::new();
@@ -116,6 +119,8 @@ fn easy_run(file_name: &str) {
 
     println!("Result:");
     let mut vm = vm::VM::new();
-    (*vm.global_objects).borrow_mut().extend(vm_codegen.global_varmap);
+    (*vm.global_objects)
+        .borrow_mut()
+        .extend(vm_codegen.global_varmap);
     vm.run(insts);
 }

@@ -481,6 +481,7 @@ impl Parser {
     fn read_primary_expression(&mut self) -> Result<Node, ()> {
         match self.lexer.next()?.kind {
             Kind::Keyword(Keyword::This) => Ok(Node::This),
+            Kind::Keyword(Keyword::Function) => self.read_function_expression(),
             Kind::Symbol(Symbol::OpeningParen) => {
                 let x = self.read_expression();
                 self.lexer.skip(Kind::Symbol(Symbol::ClosingParen));
@@ -494,6 +495,28 @@ impl Parser {
             Kind::LineTerminator => self.read_primary_expression(),
             e => unimplemented!("{:?}", e),
         }
+    }
+
+    /// https://tc39.github.io/ecma262/#prod-FunctionDeclaration
+    fn read_function_expression(&mut self) -> Result<Node, ()> {
+        let name = if let Kind::Identifier(name) = self.lexer.peek()?.kind {
+            self.lexer.next()?;
+            Some(name)
+        } else {
+            None
+        };
+
+        assert!(self.lexer.skip(Kind::Symbol(Symbol::OpeningParen)));
+        let params = self.read_formal_parameters()?;
+
+        assert!(self.lexer.skip(Kind::Symbol(Symbol::OpeningBrace)));
+        let body = self.read_statement_list()?;
+
+        Ok(Node::FunctionExpr(
+            name,
+            params,
+            Box::new(body),
+        ))
     }
 }
 

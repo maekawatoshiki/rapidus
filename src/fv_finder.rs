@@ -13,7 +13,7 @@ pub struct FreeVariableFinder {
 
 impl FreeVariableFinder {
     pub fn new() -> FreeVariableFinder {
-        let mut varmap = HashSet::new();
+        let mut varmap = HashSet::new(); // global
         varmap.insert("console".to_string());
         FreeVariableFinder {
             varmap: vec![varmap],
@@ -27,6 +27,7 @@ impl FreeVariableFinder {
         match node {
             &mut Node::StatementList(ref mut nodes) => {
                 let mut func_decl_index = vec![];
+                self.varmap.push(HashSet::new()); // main ( local )
 
                 for (i, node) in nodes.iter_mut().enumerate() {
                     match node {
@@ -80,7 +81,7 @@ impl FreeVariableFinder {
                 for (i, node) in body.iter_mut().enumerate() {
                     match node {
                         &mut Node::FunctionDecl(ref mut name, _, _, _, _) => {
-                            let nested = self.varmap.len() + 1 > 2;
+                            let nested = self.varmap.len() + 1 > 3;
                             let mangled_name = if nested {
                                 Some(format!("{}.{}", name.clone(), random::<u32>()))
                             } else {
@@ -162,7 +163,7 @@ impl FreeVariableFinder {
                 }
 
                 if is_fv_or_gv {
-                    if self.varmap.len() == 1 {
+                    if self.varmap.len() == 2 {
                         // toplevel
                         self.varmap[0].insert(name.clone());
                     } else {
