@@ -613,3 +613,51 @@ fn member_assign() {
         assert_eq!(output[5], Inst::End);
     }
 }
+
+#[test]
+fn while_() {
+    let mut output = vec![];
+    // JS: while(true) { }
+    let node = Node::StatementList(vec![Node::While(
+        Box::new(Node::Boolean(true)),
+        Box::new(Node::StatementList(vec![])),
+    )]);
+    VMCodeGen::new().compile(&node, &mut output);
+    assert_eq!(
+        vec![
+            Inst::AllocLocalVar(0, 1),
+            Inst::Push(Value::Bool(true)),
+            Inst::JmpIfFalse(2),
+            Inst::Jmp(-2),
+            Inst::End,
+        ],
+        output
+    );
+}
+
+#[test]
+fn if_() {
+    let mut output = vec![];
+    // JS: while(true) { }
+    let node = Node::StatementList(vec![Node::If(
+        Box::new(Node::BinaryOp(
+            Box::new(Node::Identifier("x".to_string())),
+            Box::new(Node::Number(3.0)),
+            BinOp::Lt,
+        )),
+        Box::new(Node::Nope),
+        Box::new(Node::Nope),
+    )]);
+    VMCodeGen::new().compile(&node, &mut output);
+    assert_eq!(
+        vec![
+            Inst::AllocLocalVar(0, 1),
+            Inst::GetGlobal("x".to_string()),
+            Inst::Push(Value::Number(3.0)),
+            Inst::Lt,
+            Inst::JmpIfFalse(1),
+            Inst::End,
+        ],
+        output
+    );
+}
