@@ -638,7 +638,7 @@ fn while_() {
 #[test]
 fn if_() {
     let mut output = vec![];
-    // JS: while(true) { }
+    // JS: if(x < 3) ; else ;
     let node = Node::StatementList(vec![Node::If(
         Box::new(Node::BinaryOp(
             Box::new(Node::Identifier("x".to_string())),
