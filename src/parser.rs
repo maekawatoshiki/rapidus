@@ -482,6 +482,7 @@ impl Parser {
         match self.lexer.next()?.kind {
             Kind::Keyword(Keyword::This) => Ok(Node::This),
             Kind::Keyword(Keyword::Function) => self.read_function_expression(),
+            Kind::Symbol(Symbol::Semicolon) => Ok(Node::Nope),
             Kind::Symbol(Symbol::OpeningParen) => {
                 let x = self.read_expression();
                 self.lexer.skip(Kind::Symbol(Symbol::ClosingParen));
