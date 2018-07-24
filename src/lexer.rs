@@ -55,6 +55,12 @@ impl Lexer {
             return Ok(self.buf.pop_front().unwrap());
         }
 
+        if self.starts_with("//") {
+            self.skip_line_comment()?;
+        } else if self.starts_with("/*") {
+            self.skip_normal_comment()?;
+        }
+
         match self.next_char()? {
             'a'...'z' | 'A'...'Z' | '_' => self.read_identifier(),
             '0'...'9' => self.read_number(),
@@ -70,7 +76,26 @@ impl Lexer {
 }
 
 impl Lexer {
-    pub fn read_identifier(&mut self) -> Result<Token, ()> {
+    fn skip_line_comment(&mut self) -> Result<(), ()> {
+        self.just_skip_while(|c| c != '\n')
+    }
+
+    fn skip_normal_comment(&mut self) -> Result<(), ()> {
+        let mut last_char_is_asterisk = false;
+        self.just_skip_while(|c| {
+            let end_of_comment = last_char_is_asterisk && c == '/';
+            if !end_of_comment {
+                last_char_is_asterisk = c == '*';
+            }
+            !end_of_comment
+        })?;
+        assert_eq!(self.skip_char()?, '/');
+        Ok(())
+    }
+}
+
+impl Lexer {
+    fn read_identifier(&mut self) -> Result<Token, ()> {
         let ident = self.skip_while(|c| c.is_alphanumeric() || c == '_')?;
         if let Some(keyword) = convert_reserved_keyword(ident.as_str()) {
             Ok(Token::new_keyword(keyword))
@@ -323,6 +348,16 @@ impl Lexer {
         Ok(s)
     }
 
+    fn just_skip_while<F>(&mut self, mut f: F) -> Result<(), ()>
+    where
+        F: FnMut(char) -> bool,
+    {
+        while !self.eof() && f(self.next_char()?) {
+            self.skip_char()?;
+        }
+        Ok(())
+    }
+
     fn skip_char(&mut self) -> Result<char, ()> {
         let mut iter = self.code[self.pos..].char_indices();
         let (_, cur_char) = iter.next().ok_or(())?;
@@ -337,6 +372,10 @@ impl Lexer {
             assert_eq!(self.skip_char()?, c);
         }
         Ok(f)
+    }
+
+    fn starts_with(&self, s: &str) -> bool {
+        self.code[self.pos..].starts_with(s)
     }
 
     fn next_char(&self) -> Result<char, ()> {
@@ -529,5 +568,26 @@ fn line_terminator() {
     assert_eq!(
         lexer.next().unwrap(),
         Token::new_identifier("world".to_string())
+    );
+}
+
+#[test]
+fn comment() {
+    let mut lexer = Lexer::new(
+        "x; // line comment
+                               /* multi-line
+                                * comment 
+                                */
+                               y"
+            .to_string(),
+    );
+    assert_eq!(
+        lexer.next().unwrap(),
+        Token::new_identifier("x".to_string())
+    );
+    assert_eq!(lexer.next().unwrap(), Token::new_symbol(Symbol::Semicolon));
+    assert_eq!(
+        lexer.next().unwrap(),
+        Token::new_identifier("y".to_string())
     );
 }
