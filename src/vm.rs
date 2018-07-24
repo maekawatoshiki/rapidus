@@ -44,6 +44,7 @@ pub enum Value {
 pub enum Inst {
     PushThis,
     Push(Value),
+    Pop,
     PushMakeCls(Box<Value>, bool, Vec<usize>), // Function, use 'this'?, Vec<free variable addr>
     CreateThis,
     DumpCurrentThis,
@@ -146,7 +147,11 @@ impl VM {
                     pc += 1;
                 }
                 &Inst::DumpCurrentThis => {
-                    self.this.pop();
+                    self.stack.push(Value::Object(self.this.pop().unwrap()));
+                    pc += 1;
+                }
+                &Inst::Pop => {
+                    self.stack.pop();
                     pc += 1;
                 }
                 &Inst::Push(ref val) => {
@@ -428,4 +433,3 @@ impl VM {
         }
     }
 }
-
