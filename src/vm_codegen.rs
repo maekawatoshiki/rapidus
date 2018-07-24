@@ -562,3 +562,54 @@ fn global_func_call() {
         assert_eq!(expect, output);
     }
 }
+
+#[test]
+fn member_load() {
+    use parser;
+    let mut output = vec![];
+    VMCodeGen::new().compile(
+        &parser::Parser::new("console.log".to_string())
+            .next()
+            .unwrap(),
+        &mut output,
+    );
+    unsafe {
+        assert_eq!(output[0], Inst::AllocLocalVar(0, 1));
+        assert_eq!(output[1], Inst::GetGlobal("console".to_string()));
+        if let Inst::Push(Value::String(s)) = output[2] {
+            use std::ffi::CStr;
+            assert!(CStr::from_ptr(s).to_str().unwrap() == "log")
+        } else {
+            panic!()
+        }
+        assert_eq!(output[3], Inst::GetMember);
+        assert_eq!(output[4], Inst::End);
+    }
+}
+
+#[test]
+fn member_assign() {
+    let mut output = vec![];
+    // JS: a.s = 123;
+    let node = Node::StatementList(vec![Node::Assign(
+        Box::new(Node::Member(
+            Box::new(Node::Identifier("a".to_string())),
+            "s".to_string(),
+        )),
+        Box::new(Node::Number(123.0)),
+    )]);
+    VMCodeGen::new().compile(&node, &mut output);
+    unsafe {
+        assert_eq!(output[0], Inst::AllocLocalVar(0, 1));
+        assert_eq!(output[1], Inst::Push(Value::Number(123.0)));
+        assert_eq!(output[2], Inst::GetGlobal("a".to_string()));
+        if let Inst::Push(Value::String(s)) = output[3] {
+            use std::ffi::CStr;
+            assert!(CStr::from_ptr(s).to_str().unwrap() == "s")
+        } else {
+            panic!()
+        }
+        assert_eq!(output[4], Inst::SetMember);
+        assert_eq!(output[5], Inst::End);
+    }
+}

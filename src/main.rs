@@ -66,7 +66,7 @@ fn main() {
         extract_anony_func::AnonymousFunctionExtractor::new().run_toplevel(&mut node);
         fv_finder::FreeVariableFinder::new().run_toplevel(&mut node);
 
-        println!("fv and ext {:?}", node);
+        println!("FreeVariableFinder and AnonymousFunctionExtractor:\n {:?}", node);
         let mut vm_codegen = vm_codegen::VMCodeGen::new();
         let mut insts = vec![];
         vm_codegen.compile(&node, &mut insts);
