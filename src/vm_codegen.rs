@@ -637,27 +637,52 @@ fn while_() {
 
 #[test]
 fn if_() {
-    let mut output = vec![];
-    // JS: if(x < 3) ; else ;
-    let node = Node::StatementList(vec![Node::If(
-        Box::new(Node::BinaryOp(
-            Box::new(Node::Identifier("x".to_string())),
-            Box::new(Node::Number(3.0)),
-            BinOp::Lt,
-        )),
-        Box::new(Node::Nope),
-        Box::new(Node::Nope),
-    )]);
-    VMCodeGen::new().compile(&node, &mut output);
-    assert_eq!(
-        vec![
-            Inst::AllocLocalVar(0, 1),
-            Inst::GetGlobal("x".to_string()),
-            Inst::Push(Value::Number(3.0)),
-            Inst::Lt,
-            Inst::JmpIfFalse(1),
-            Inst::End,
-        ],
-        output
-    );
+    for (node, expect) in vec![
+        (
+            // JS: if(x < 3) ; else ;
+            Node::If(
+                Box::new(Node::BinaryOp(
+                    Box::new(Node::Identifier("x".to_string())),
+                    Box::new(Node::Number(3.0)),
+                    BinOp::Lt,
+                )),
+                Box::new(Node::Nope),
+                Box::new(Node::Nope),
+            ),
+            vec![
+                Inst::AllocLocalVar(0, 1),
+                Inst::GetGlobal("x".to_string()),
+                Inst::Push(Value::Number(3.0)),
+                Inst::Lt,
+                Inst::JmpIfFalse(1),
+                Inst::End,
+            ],
+        ),
+        (
+            // JS: if(x < 3) ; else x;
+            Node::If(
+                Box::new(Node::BinaryOp(
+                    Box::new(Node::Identifier("x".to_string())),
+                    Box::new(Node::Number(3.0)),
+                    BinOp::Lt,
+                )),
+                Box::new(Node::Nope),
+                Box::new(Node::Identifier("x".to_string())),
+            ),
+            vec![
+                Inst::AllocLocalVar(0, 1),
+                Inst::GetGlobal("x".to_string()),
+                Inst::Push(Value::Number(3.0)),
+                Inst::Lt,
+                Inst::JmpIfFalse(2),
+                Inst::Jmp(2),
+                Inst::GetGlobal("x".to_string()),
+                Inst::End,
+            ],
+        ),
+    ] {
+        let mut output = vec![];
+        VMCodeGen::new().compile(&node, &mut output);
+        assert_eq!(expect, output);
+    }
 }
