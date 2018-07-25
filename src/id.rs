@@ -26,3 +26,19 @@ impl IdGen {
         self.id.pop();
     }
 }
+
+#[test]
+fn test() {
+    let mut idgen = IdGen::new();
+    assert_eq!(idgen.gen_id(), 0);
+    assert_eq!(idgen.gen_id(), 1);
+    assert_eq!(idgen.get_cur_id(), 2);
+    idgen.save();
+    assert_eq!(idgen.gen_id(), 0);
+    assert_eq!(idgen.gen_id(), 1);
+    assert_eq!(idgen.get_cur_id(), 2);
+    idgen.restore();
+    assert_eq!(idgen.gen_id(), 2);
+    assert_eq!(idgen.gen_id(), 3);
+    assert_eq!(idgen.get_cur_id(), 4);
+}
