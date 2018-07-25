@@ -687,3 +687,65 @@ fn if_() {
         assert_eq!(expect, output);
     }
 }
+
+#[test]
+fn function_decl1() {
+    let mut output = vec![];
+    // JS: function f() { return 1; }
+    let node = Node::StatementList(vec![Node::FunctionDecl(
+        "f".to_string(),
+        false,
+        HashSet::new(),
+        vec![],
+        Box::new(Node::StatementList(vec![Node::Return(Some(Box::new(
+            Node::Number(1.0),
+        )))])),
+    )]);
+    VMCodeGen::new().compile(&node, &mut output);
+    assert_eq!(
+        vec![
+            Inst::AllocLocalVar(0, 1),
+            Inst::End,
+            Inst::AllocLocalVar(0, 0),
+            Inst::Push(Value::Number(1.0)),
+            Inst::Return,
+        ],
+        output
+    );
+}
+
+#[test]
+fn function_decl2() {
+    use node::FormalParameter;
+    let mut output = vec![];
+    // JS: function f(x, y) { return x + y; }
+    let node = Node::StatementList(vec![Node::FunctionDecl(
+        "f".to_string(),
+        false,
+        HashSet::new(),
+        vec![
+            FormalParameter::new("x".to_string(), None),
+            FormalParameter::new("y".to_string(), None),
+        ],
+        Box::new(Node::StatementList(vec![Node::Return(Some(Box::new(
+            Node::BinaryOp(
+                Box::new(Node::Identifier("x".to_string())),
+                Box::new(Node::Identifier("y".to_string())),
+                BinOp::Add,
+            ),
+        )))])),
+    )]);
+    VMCodeGen::new().compile(&node, &mut output);
+    assert_eq!(
+        vec![
+            Inst::AllocLocalVar(0, 1),
+            Inst::End,
+            Inst::AllocLocalVar(0, 2),
+            Inst::GetLocal(0),
+            Inst::GetLocal(1),
+            Inst::Add,
+            Inst::Return,
+        ],
+        output
+    );
+}
