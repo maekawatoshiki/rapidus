@@ -523,14 +523,20 @@ impl Parser {
         let mut elements = vec![];
 
         loop {
-            // TODO: need a correct implementation
-            while self.lexer.skip(Kind::Symbol(Symbol::Comma)) {}
+            // TODO: Support all features.
+            while self.lexer.skip(Kind::Symbol(Symbol::Comma)) {
+                elements.push(Node::Nope);
+            }
+
             if self.lexer.skip(Kind::Symbol(Symbol::ClosingBoxBracket)) {
                 break;
             }
+
             if let Ok(elem) = self.read_assignment_expression() {
                 elements.push(elem);
             }
+
+            self.lexer.skip(Kind::Symbol(Symbol::Comma));
         }
 
         Ok(Node::Array(elements))
@@ -541,20 +547,19 @@ impl Parser {
         let mut elements = vec![];
 
         loop {
+            if self.lexer.skip(Kind::Symbol(Symbol::ClosingBrace)) {
+                break;
+            }
             if let Ok(elem) = self.read_property_definition() {
                 elements.push(elem);
             }
             self.lexer.skip(Kind::Symbol(Symbol::Comma));
-            if self.lexer.skip(Kind::Symbol(Symbol::ClosingBrace)) {
-                break;
-            }
         }
 
         Ok(Node::Object(elements))
     }
 
     /// https://tc39.github.io/ecma262/#prod-PropertyDefinition
-    /// TODO: Support all features.
     fn read_property_definition(&mut self) -> Result<PropertyDefinition, ()> {
         fn to_string(kind: Kind) -> String {
             match kind {
@@ -566,10 +571,19 @@ impl Parser {
         }
 
         let tok = self.lexer.next()?;
+
+        println!("{:?}", tok);
+
         if self.lexer.skip(Kind::Symbol(Symbol::Colon)) {
             let val = self.read_assignment_expression()?;
             return Ok(PropertyDefinition::Property(to_string(tok.kind), val));
         }
+
+        if let Kind::Identifier(name) = tok.kind {
+            return Ok(PropertyDefinition::IdentifierReference(name));
+        }
+
+        // TODO: Support all features.
         Err(())
     }
 }
@@ -706,6 +720,51 @@ fn identifier() {
     assert_eq!(
         parser.next().unwrap(),
         Node::StatementList(vec![Node::Identifier("variable".to_string())])
+    );
+}
+
+#[test]
+fn array1() {
+    let mut parser = Parser::new("[1, 2]".to_string());
+    assert_eq!(
+        parser.next().unwrap(),
+        Node::StatementList(vec![Node::Array(vec![
+            Node::Number(1.0),
+            Node::Number(2.0),
+        ])])
+    );
+}
+
+#[test]
+fn array2() {
+    let mut parser = Parser::new("[]".to_string());
+    assert_eq!(
+        parser.next().unwrap(),
+        Node::StatementList(vec![Node::Array(vec![])])
+    );
+}
+
+#[test]
+fn array3() {
+    let mut parser = Parser::new("[,,]".to_string());
+    assert_eq!(
+        parser.next().unwrap(),
+        Node::StatementList(vec![Node::Array(vec![Node::Nope, Node::Nope])])
+    );
+}
+
+#[test]
+fn object() {
+    let mut parser = Parser::new("a = {x: 123, 1.2: 456}".to_string());
+    assert_eq!(
+        parser.next().unwrap(),
+        Node::StatementList(vec![Node::Assign(
+            Box::new(Node::Identifier("a".to_string())),
+            Box::new(Node::Object(vec![
+                PropertyDefinition::Property("x".to_string(), Node::Number(123.0)),
+                PropertyDefinition::Property("1.2".to_string(), Node::Number(456.0)),
+            ])),
+        )])
     );
 }
 
