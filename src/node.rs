@@ -19,6 +19,13 @@ impl FormalParameter {
     }
 }
 
+// TODO: Support all features: https://tc39.github.io/ecma262/#prod-PropertyDefinition
+#[derive(Clone, Debug, PartialEq)]
+pub enum PropertyDefinition {
+    IdentifierReference(String),
+    Property(String, Node),
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Node {
     StatementList(Vec<Node>),
@@ -35,6 +42,8 @@ pub enum Node {
     BinaryOp(Box<Node>, Box<Node>, BinOp),
     TernaryOp(Box<Node>, Box<Node>, Box<Node>),
     Return(Option<Box<Node>>),
+    Array(Vec<Node>),
+    Object(Vec<PropertyDefinition>),
     Identifier(String),
     This,
     String(String),

@@ -1,5 +1,5 @@
 use lexer;
-use node::{BinOp, FormalParameter, FormalParameters, Node, UnaryOp};
+use node::{BinOp, FormalParameter, FormalParameters, Node, PropertyDefinition, UnaryOp};
 use std::collections::HashSet;
 use token::{Keyword, Kind, Symbol};
 
@@ -488,6 +488,8 @@ impl Parser {
                 self.lexer.skip(Kind::Symbol(Symbol::ClosingParen));
                 x
             }
+            Kind::Symbol(Symbol::OpeningBoxBracket) => self.read_array_literal(),
+            Kind::Symbol(Symbol::OpeningBrace) => self.read_object_literal(),
             Kind::Identifier(ref i) if i == "true" => Ok(Node::Boolean(true)),
             Kind::Identifier(ref i) if i == "false" => Ok(Node::Boolean(false)),
             Kind::Identifier(ident) => Ok(Node::Identifier(ident)),
@@ -513,11 +515,62 @@ impl Parser {
         assert!(self.lexer.skip(Kind::Symbol(Symbol::OpeningBrace)));
         let body = self.read_statement_list()?;
 
-        Ok(Node::FunctionExpr(
-            name,
-            params,
-            Box::new(body),
-        ))
+        Ok(Node::FunctionExpr(name, params, Box::new(body)))
+    }
+
+    /// https://tc39.github.io/ecma262/#prod-ArrayLiteral
+    fn read_array_literal(&mut self) -> Result<Node, ()> {
+        let mut elements = vec![];
+
+        loop {
+            // TODO: need a correct implementation
+            while self.lexer.skip(Kind::Symbol(Symbol::Comma)) {}
+            if self.lexer.skip(Kind::Symbol(Symbol::ClosingBoxBracket)) {
+                break;
+            }
+            if let Ok(elem) = self.read_assignment_expression() {
+                elements.push(elem);
+            }
+        }
+
+        Ok(Node::Array(elements))
+    }
+
+    /// https://tc39.github.io/ecma262/#prod-ObjectLiteral
+    fn read_object_literal(&mut self) -> Result<Node, ()> {
+        let mut elements = vec![];
+
+        loop {
+            if let Ok(elem) = self.read_property_definition() {
+                elements.push(elem);
+            }
+            self.lexer.skip(Kind::Symbol(Symbol::Comma));
+            if self.lexer.skip(Kind::Symbol(Symbol::ClosingBrace)) {
+                break;
+            }
+        }
+
+        Ok(Node::Object(elements))
+    }
+
+    /// https://tc39.github.io/ecma262/#prod-PropertyDefinition
+    /// TODO: Support all features.
+    fn read_property_definition(&mut self) -> Result<PropertyDefinition, ()> {
+        fn to_string(kind: Kind) -> String {
+            match kind {
+                Kind::Identifier(name) => name,
+                Kind::Number(n) => format!("{}", n),
+                Kind::String(s) => s,
+                _ => unimplemented!(),
+            }
+        }
+
+        let tok = self.lexer.next()?;
+        if self.lexer.skip(Kind::Symbol(Symbol::Colon)) {
+            let val = self.read_assignment_expression()?;
+            return Ok(PropertyDefinition::Property(to_string(tok.kind), val));
+        }
+        Err(())
     }
 }
 
