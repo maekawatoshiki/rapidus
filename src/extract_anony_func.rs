@@ -23,9 +23,6 @@ impl AnonymousFunctionExtractor {
                 for node in nodes.iter_mut() {
                     self.run(node)
                 }
-                for pending_anonymous_function in &self.pending_anonymous_function {
-                    nodes.push(pending_anonymous_function.clone())
-                }
             }
             _ => unreachable!(),
         }
@@ -47,6 +44,10 @@ impl AnonymousFunctionExtractor {
 
                 for node in body.iter_mut() {
                     self.run(node)
+                }
+
+                for pending_anonymous_function in &self.pending_anonymous_function {
+                    body.push(pending_anonymous_function.clone())
                 }
             }
             &mut Node::FunctionExpr(_, _, _) => {
