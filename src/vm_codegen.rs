@@ -106,12 +106,9 @@ impl VMCodeGen {
             let pos = insts.len();
             unsafe {
                 let mem = alloc_for_value();
-                if fv_stack_addr.len() > 0 || *use_this {
-                    *mem = Value::MakeCls(
-                        Box::new(Value::Function(pos)),
-                        *use_this,
-                        fv_stack_addr.clone(),
-                    );
+                assert!(fv_stack_addr.len() == 0);
+                if *use_this {
+                    *mem = Value::NeedThis(Box::new(Value::Function(pos)));
                     self.global_varmap.insert(name.clone(), mem);
                 } else {
                     *mem = Value::Function(pos);
@@ -132,8 +129,8 @@ impl VMCodeGen {
 
             if let Some(val) = val {
                 match val {
-                    Value::MakeCls(callee, use_this, fv_addrs) => {
-                        *inst = Inst::PushMakeCls(callee.clone(), *use_this, fv_addrs.clone())
+                    Value::NeedThis(callee) => {
+                        *inst = Inst::PushNeedThis(callee.clone())
                     }
                     _ => *inst = Inst::Push(val.clone()),
                 }
@@ -271,10 +268,13 @@ impl VMCodeGen {
 
 impl VMCodeGen {
     pub fn run_new_expr(&mut self, expr: &Node, insts: &mut Vec<Inst>) {
-        insts.push(Inst::CreateThis);
         self.run(expr, insts);
-        insts.push(Inst::Pop);
-        insts.push(Inst::DumpCurrentThis);
+        let args_count = if let Some(Inst::Call(args_count)) = insts.last() {
+            *args_count
+        } else {
+            unreachable!()
+        };
+        *insts.last_mut().unwrap() = Inst::Constract(args_count);
     }
 }
 

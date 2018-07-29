@@ -33,11 +33,10 @@ pub enum Value {
     Number(f64),
     String(RawStringPtr),
     Function(usize),
-    MakeCls(Box<Value>, bool, Vec<usize>), // Function, use 'this'?, Vec<free variable addr>
-    Cls(Box<Value>, Vec<Value>),           // Function, Vec<value of free variable>
-    EmbeddedFunction(usize),               // unknown if usize == 0; specific function if usize > 0
-    // Object(HashMap<String, HeapAddr>),
-    Object(Rc<RefCell<HashMap<String, HeapAddr>>>),
+    NeedThis(Box<Value>),
+    WithThis(Box<Value>, Box<Value>),               // Function, This
+    EmbeddedFunction(usize), // unknown if usize == 0; specific function if usize > 0
+    Object(Rc<RefCell<HashMap<String, HeapAddr>>>), // Object(HashMap<String, HeapAddr>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -45,9 +44,10 @@ pub enum Inst {
     PushThis,
     Push(Value),
     Pop,
-    PushMakeCls(Box<Value>, bool, Vec<usize>), // Function, use 'this'?, Vec<free variable addr>
+    PushNeedThis(Box<Value>),
     CreateThis,
     DumpCurrentThis,
+    Constract(usize),
     Add,
     Sub,
     Mul,
@@ -82,6 +82,7 @@ pub struct VM {
     pub sp_history: Vec<usize>,
     pub return_addr: Vec<isize>,
     pub this: Vec<Rc<RefCell<HashMap<String, HeapAddr>>>>,
+    pub insts: Vec<Inst>,
 }
 
 impl VM {
@@ -115,6 +116,7 @@ impl VM {
             sp_history: Vec::with_capacity(128),
             return_addr: Vec::with_capacity(128),
             this: vec![global_objects],
+            insts: vec![],
         }
     }
 }
@@ -122,8 +124,12 @@ impl VM {
 impl VM {
     pub fn run(&mut self, insts: Vec<Inst>) {
         let mut pc = 0isize;
+        self.do_run(&mut pc, &insts);
+    }
+
+    pub fn do_run(&mut self, pc: &mut isize, insts: &Vec<Inst>) {
         loop {
-            match &insts[pc as usize] {
+            match &insts[*pc as usize] {
                 &Inst::End => break,
                 &Inst::AllocLocalVar(ref n, ref argc) => {
                     self.bp_buf.push(self.bp);
@@ -132,47 +138,41 @@ impl VM {
                     for _ in 0..*n {
                         self.stack.push(Value::Undefined);
                     }
-                    pc += 1;
+                    *pc += 1;
                 }
                 &Inst::Return => {
                     let val = self.stack.pop().unwrap();
                     let former_sp = self.sp_history.pop().unwrap();
                     self.stack.truncate(former_sp);
                     self.stack.push(val);
-                    pc = self.return_addr.pop().unwrap();
+                    *pc = self.return_addr.pop().unwrap();
                     self.bp = self.bp_buf.pop().unwrap();
+                    return;
                 }
                 &Inst::CreateThis => {
                     self.this.push(Rc::new(RefCell::new(HashMap::new())));
-                    pc += 1;
+                    *pc += 1;
                 }
                 &Inst::DumpCurrentThis => {
                     self.stack.push(Value::Object(self.this.pop().unwrap()));
-                    pc += 1;
+                    *pc += 1;
                 }
                 &Inst::Pop => {
                     self.stack.pop();
-                    pc += 1;
+                    *pc += 1;
                 }
                 &Inst::Push(ref val) => {
                     self.stack.push(val.clone());
-                    pc += 1;
+                    *pc += 1;
                 }
                 &Inst::PushThis => {
                     let val = self.stack[self.bp].clone();
                     self.stack.push(val);
-                    pc += 1;
+                    *pc += 1;
                 }
-                &Inst::PushMakeCls(ref callee, ref use_this, ref addrs) => {
-                    let mut fv_val = vec![];
-                    if *use_this {
-                        fv_val.push(Value::Object(self.this.last().unwrap().clone()));
-                    }
-                    for addr in addrs {
-                        fv_val.push(self.stack[self.bp + addr].clone());
-                    }
-                    self.stack.push(Value::Cls(callee.clone(), fv_val));
-                    pc += 1;
+                &Inst::PushNeedThis(ref callee) => {
+                    self.stack.push(Value::NeedThis(callee.clone()));
+                    *pc += 1;
                 }
                 ref op
                     if *op == &Inst::Add
@@ -188,54 +188,32 @@ impl VM {
                         || *op == &Inst::Ne =>
                 {
                     self.run_binary_op(op);
-                    pc += 1;
+                    *pc += 1;
                 }
                 &Inst::GetLocal(ref n) => {
                     let val = self.stack[self.bp + *n].clone();
-                    if let Value::MakeCls(callee, use_this, addrs) = val {
-                        let mut fv_val = vec![];
-                        if use_this {
-                            fv_val.push(Value::Object(self.this.last().unwrap().clone()));
-                        }
-                        for addr in addrs {
-                            fv_val.push(self.stack[self.bp + addr].clone());
-                        }
-                        self.stack.push(Value::Cls(callee, fv_val));
-                    } else {
-                        self.stack.push(val);
-                    }
-                    pc += 1;
+                    self.stack.push(val);
+                    *pc += 1;
                 }
                 &Inst::GetGlobal(ref name) => {
                     unsafe {
                         let val =
                             (**(*self.global_objects).borrow().get(name.as_str()).unwrap()).clone();
-                        if let Value::MakeCls(callee, use_this, addrs) = val {
-                            let mut fv_val = vec![];
-                            if use_this {
-                                fv_val.push(Value::Object(self.this.last().unwrap().clone()));
-                            }
-                            for addr in addrs {
-                                fv_val.push(self.stack[self.bp + addr].clone());
-                            }
-                            self.stack.push(Value::Cls(callee, fv_val));
-                        } else {
-                            self.stack.push(val);
-                        }
+                        self.stack.push(val);
                     }
-                    pc += 1
+                    *pc += 1
                 }
                 &Inst::SetLocal(ref n) => {
                     let val = self.stack.pop().unwrap();
                     self.stack[self.bp + *n] = val;
-                    pc += 1;
+                    *pc += 1;
                 }
                 &Inst::SetGlobal(ref name) => unsafe {
                     **(*self.global_objects)
                         .borrow_mut()
                         .entry(name.to_string())
                         .or_insert_with(|| alloc_for_value()) = self.stack.pop().unwrap();
-                    pc += 1
+                    *pc += 1
                 },
                 &Inst::GetMember => {
                     let member_name = {
@@ -252,15 +230,11 @@ impl VM {
                             match map.borrow().get(member_name) {
                                 Some(addr) => {
                                     let val = (**addr).clone();
-                                    if let Value::MakeCls(callee, use_this, addrs) = val {
-                                        let mut fv_val = vec![];
-                                        if use_this {
-                                            fv_val.push(Value::Object(map.clone()));
-                                        }
-                                        for addr in addrs {
-                                            fv_val.push(self.stack[self.bp + addr].clone());
-                                        }
-                                        self.stack.push(Value::Cls(callee, fv_val))
+                                    if let Value::NeedThis(callee) = val {
+                                        self.stack.push(Value::WithThis(
+                                            callee,
+                                            Box::new(Value::Object(map.clone())),
+                                        ))
                                     } else {
                                         self.stack.push(val)
                                     }
@@ -271,7 +245,7 @@ impl VM {
                             panic!("runtime err")
                         }
                     }
-                    pc += 1
+                    *pc += 1
                 }
                 &Inst::SetMember => {
                     let member = self.stack.pop().unwrap();
@@ -290,18 +264,21 @@ impl VM {
                     } else {
                         panic!()
                     }
-                    pc += 1
+                    *pc += 1
                 }
                 &Inst::Call(argc) => {
-                    self.run_function(argc, &mut pc);
+                    self.run_function(argc, pc, insts);
                 }
-                &Inst::Jmp(dst) => pc += dst,
+                &Inst::Constract(argc) => {
+                    self.run_constract(argc, pc, insts);
+                }
+                &Inst::Jmp(dst) => *pc += dst,
                 &Inst::JmpIfFalse(dst) => {
                     let cond = self.stack.pop().unwrap();
                     if let Value::Bool(false) = cond {
-                        pc += dst
+                        *pc += dst
                     } else {
-                        pc += 1
+                        *pc += 1
                     }
                 }
                 _ => {}
@@ -370,8 +347,8 @@ impl VM {
     }
 
     #[inline]
-    fn run_function(&mut self, argc: usize, pc: &mut isize) {
-        let mut fv_vals = vec![];
+    fn run_function(&mut self, argc: usize, pc: &mut isize, insts: &Vec<Inst>) {
+        let mut this = None;
 
         let mut callee = self.stack.pop().unwrap();
 
@@ -389,15 +366,20 @@ impl VM {
                 }
                 Value::Function(dst) => {
                     self.return_addr.push(*pc + 1);
-                    for fv_val in fv_vals {
+                    if let Some(this) = this {
                         let pos = self.stack.len() - argc;
-                        self.stack.insert(pos, fv_val);
+                        self.stack.insert(pos, this);
                     }
                     *pc = dst as isize;
+                    self.do_run(pc, insts);
                     break;
                 }
-                Value::Cls(callee_, fv_vals_) => {
-                    fv_vals = fv_vals_;
+                Value::NeedThis(callee_) => {
+                    this = Some(Value::Object(self.global_objects.clone()));
+                    callee = *callee_;
+                }
+                Value::WithThis(callee_, this_) => {
+                    this = Some(*this_);
                     callee = *callee_;
                 }
                 c => {
@@ -429,6 +411,40 @@ impl VM {
                     }
                 }
                 libc::puts(b"\0".as_ptr() as RawStringPtr);
+            }
+        }
+    }
+
+    #[inline]
+    fn run_constract(&mut self, argc: usize, pc: &mut isize, insts: &Vec<Inst>) {
+        let mut callee = self.stack.pop().unwrap();
+
+        loop {
+            match callee {
+                Value::Function(dst) => {
+                    self.return_addr.push(*pc + 1);
+
+                    // insert new 'this'
+                    let pos = self.stack.len() - argc;
+                    let new_new = Rc::new(RefCell::new(HashMap::new()));
+                    self.stack.insert(pos, Value::Object(new_new.clone()));
+
+                    *pc = dst as isize;
+                    self.do_run(pc, insts);
+                    self.stack.pop(); // return value by func
+                    self.stack.push(Value::Object(new_new));
+                    break;
+                }
+                Value::NeedThis(callee_) => {
+                    callee = *callee_;
+                }
+                Value::WithThis(callee_, _this) => {
+                    callee = *callee_;
+                }
+                c => {
+                    println!("Call: err: {:?}, pc = {}", c, pc);
+                    break;
+                }
             }
         }
     }
