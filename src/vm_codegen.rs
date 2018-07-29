@@ -177,6 +177,8 @@ impl VMCodeGen {
         params: &FormalParameters,
         body: &Node,
     ) {
+        assert_eq!(fv.len(), 0);
+
         let name = name.clone();
 
         self.local_varmap.push(HashMap::new());
@@ -190,15 +192,11 @@ impl VMCodeGen {
             self.run_var_decl2(&"this".to_string(), &None, &mut func_insts);
         }
 
-        for name in fv {
-            self.run_var_decl2(name, &None, &mut func_insts);
-        }
-
         for param in params {
             self.run_var_decl2(&param.name, &param.init, &mut func_insts)
         }
 
-        let params_len = params.len() + fv.len() + if use_this { 1 } else { 0 };
+        let params_len = params.len() + if use_this { 1 } else { 0 };
 
         self.run(body, &mut func_insts);
 
@@ -217,8 +215,6 @@ impl VMCodeGen {
 
         self.local_var_stack_addr.restore();
         self.local_varmap.pop();
-
-        assert_eq!(fv.len(), 0);
 
         self.functions.insert(
             name.clone(),
