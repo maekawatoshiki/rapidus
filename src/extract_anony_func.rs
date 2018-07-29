@@ -5,7 +5,7 @@ use std::collections::HashSet;
 
 #[derive(Debug, Clone)]
 pub struct AnonymousFunctionExtractor {
-    pub pending_anonymous_function: Vec<Node>,
+    pub pending_anonymous_function: Vec<Vec<Node>>,
     pub mangled_anonymous_function_name: Vec<(String, String)>,
 }
 
@@ -42,13 +42,17 @@ impl AnonymousFunctionExtractor {
                     unreachable!()
                 };
 
+                self.pending_anonymous_function.push(vec![]);
+
                 for node in body.iter_mut() {
                     self.run(node)
                 }
 
-                for pending_anonymous_function in &self.pending_anonymous_function {
+                for pending_anonymous_function in self.pending_anonymous_function.last().unwrap() {
                     body.push(pending_anonymous_function.clone())
                 }
+
+                self.pending_anonymous_function.pop();
             }
             &mut Node::FunctionExpr(_, _, _) => {
                 if let Node::FunctionExpr(mut name, mut params, mut body) = node.clone() {
@@ -74,7 +78,7 @@ impl AnonymousFunctionExtractor {
 
                     self.mangled_anonymous_function_name.pop();
 
-                    self.pending_anonymous_function.push(Node::FunctionDecl(
+                    self.pending_anonymous_function.last_mut().unwrap().push(Node::FunctionDecl(
                         name_.clone(),
                         false,
                         HashSet::new(),

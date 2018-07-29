@@ -251,14 +251,11 @@ impl VMCodeGen {
         self.local_var_stack_addr.restore();
         self.local_varmap.pop();
 
-        self.pending_closure_functions.insert(
+        assert_eq!(fv.len(), 0);
+
+        self.functions.insert(
             name.clone(),
-            PendingFunctionInfo::new(
-                name.clone(),
-                use_this,
-                fv.iter().cloned().collect::<Vec<_>>(),
-                func_insts,
-            ),
+            FunctionInfo::new(name.clone(), use_this, vec![], func_insts),
         );
     }
 
