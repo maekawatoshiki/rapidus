@@ -9,7 +9,6 @@ use std::collections::HashMap;
 pub struct FunctionInfo {
     pub name: String,
     pub use_this: bool,
-    pub fv_stack_addr: Vec<usize>,
     pub insts: Vec<Inst>,
 }
 
@@ -25,14 +24,12 @@ impl FunctionInfo {
     pub fn new(
         name: String,
         use_this: bool,
-        fv_stack_addr: Vec<usize>,
         insts: Vec<Inst>,
     ) -> FunctionInfo {
         FunctionInfo {
             name: name,
             use_this: use_this,
             insts: insts,
-            fv_stack_addr: fv_stack_addr,
         }
     }
 }
@@ -58,7 +55,6 @@ pub struct VMCodeGen {
     pub global_varmap: HashMap<String, HeapAddr>, // usize will be replaced with an appropriate type
     pub local_varmap: Vec<HashMap<String, usize>>,
     pub functions: HashMap<String, FunctionInfo>,
-    pub pending_closure_functions: HashMap<String, PendingFunctionInfo>,
     pub local_var_stack_addr: IdGen,
 }
 
@@ -68,7 +64,6 @@ impl VMCodeGen {
             global_varmap: HashMap::new(),
             local_varmap: vec![HashMap::new()],
             functions: HashMap::new(),
-            pending_closure_functions: HashMap::new(),
             local_var_stack_addr: IdGen::new(),
         }
     }
@@ -89,8 +84,6 @@ impl VMCodeGen {
         }
         insts.push(Inst::End);
 
-        self.process_pending_functions();
-
         let mut function_value_list = HashMap::new();
 
         for (
@@ -99,14 +92,12 @@ impl VMCodeGen {
                 name,
                 use_this,
                 insts: func_insts,
-                fv_stack_addr,
             },
         ) in &self.functions
         {
             let pos = insts.len();
             unsafe {
                 let mem = alloc_for_value();
-                assert!(fv_stack_addr.len() == 0);
                 if *use_this {
                     *mem = Value::NeedThis(Box::new(Value::Function(pos)));
                     self.global_varmap.insert(name.clone(), mem);
@@ -178,25 +169,6 @@ impl VMCodeGen {
 }
 
 impl VMCodeGen {
-    fn process_pending_functions(&mut self) {
-        for (name, v) in self.pending_closure_functions.clone() {
-            let mut names = v.fv_name.clone();
-            let mut fv_stack_addr = vec![];
-            for name in names {
-                if let Some(p) = self.local_varmap.last().unwrap().get(name.as_str()) {
-                    fv_stack_addr.push(*p);
-                } else {
-                    unreachable!()
-                };
-            }
-            self.functions.insert(
-                name,
-                FunctionInfo::new(v.name, v.use_this, fv_stack_addr, v.insts),
-            );
-        }
-        self.pending_closure_functions.clear();
-    }
-
     pub fn run_function_decl(
         &mut self,
         name: &String,
@@ -243,8 +215,6 @@ impl VMCodeGen {
             *argc = params_len;
         }
 
-        self.process_pending_functions();
-
         self.local_var_stack_addr.restore();
         self.local_varmap.pop();
 
@@ -252,7 +222,7 @@ impl VMCodeGen {
 
         self.functions.insert(
             name.clone(),
-            FunctionInfo::new(name.clone(), use_this, vec![], func_insts),
+            FunctionInfo::new(name.clone(), use_this,  func_insts),
         );
     }
 

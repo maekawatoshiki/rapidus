@@ -60,13 +60,7 @@ impl FreeVariableSolver {
                     self.run(node)
                 }
             }
-            &mut Node::FunctionDecl(
-                ref mut name,
-                ref mut _use_this,
-                ref mut fv,
-                ref params,
-                ref mut body,
-            ) => {
+            &mut Node::FunctionDecl(_, _, _, _, ref mut body) => {
                 let mut body = if let &mut Node::StatementList(ref mut body) = &mut **body {
                     body
                 } else {
@@ -74,7 +68,7 @@ impl FreeVariableSolver {
                 };
 
                 let mut map = HashMap::new();
-                for (i, node) in body.iter_mut().enumerate() {
+                for node in body.iter_mut() {
                     if let &mut Node::FunctionDecl(_, _, ref mut fv, _, _) = node {
                         for name in fv.iter() {
                             if self.get_mangled_name(name.as_str()).is_none() {

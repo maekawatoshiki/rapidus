@@ -81,7 +81,6 @@ pub struct VM {
     pub bp: usize,
     pub sp_history: Vec<usize>,
     pub return_addr: Vec<isize>,
-    pub this: Vec<Rc<RefCell<HashMap<String, HeapAddr>>>>,
     pub insts: Vec<Inst>,
 }
 
@@ -115,7 +114,6 @@ impl VM {
             bp: 0,
             sp_history: Vec::with_capacity(128),
             return_addr: Vec::with_capacity(128),
-            this: vec![global_objects],
             insts: vec![],
         }
     }
@@ -148,14 +146,6 @@ impl VM {
                     *pc = self.return_addr.pop().unwrap();
                     self.bp = self.bp_buf.pop().unwrap();
                     return;
-                }
-                &Inst::CreateThis => {
-                    self.this.push(Rc::new(RefCell::new(HashMap::new())));
-                    *pc += 1;
-                }
-                &Inst::DumpCurrentThis => {
-                    self.stack.push(Value::Object(self.this.pop().unwrap()));
-                    *pc += 1;
                 }
                 &Inst::Pop => {
                     self.stack.pop();
