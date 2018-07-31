@@ -572,8 +572,6 @@ impl Parser {
 
         let tok = self.lexer.next()?;
 
-        println!("{:?}", tok);
-
         if self.lexer.skip(Kind::Symbol(Symbol::Colon)) {
             let val = self.read_assignment_expression()?;
             return Ok(PropertyDefinition::Property(to_string(tok.kind), val));

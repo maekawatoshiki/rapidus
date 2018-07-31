@@ -45,9 +45,8 @@ pub enum Inst {
     Push(Value),
     Pop,
     PushNeedThis(Box<Value>),
-    CreateThis,
-    DumpCurrentThis,
     Constract(usize),
+    CreateObject(usize),
     Add,
     Sub,
     Mul,
@@ -262,6 +261,9 @@ impl VM {
                 &Inst::Constract(argc) => {
                     self.run_constract(argc, pc, insts);
                 }
+                &Inst::CreateObject(len) => {
+                    self.run_create_object(len, pc);
+                }
                 &Inst::Jmp(dst) => *pc += dst,
                 &Inst::JmpIfFalse(dst) => {
                     let cond = self.stack.pop().unwrap();
@@ -437,5 +439,28 @@ impl VM {
                 }
             }
         }
+    }
+
+    #[inline]
+    fn run_create_object(&mut self, len: usize, pc: &mut isize) {
+        let mut map = HashMap::new();
+        for _ in 0..len {
+            let name = if let Value::String(name) = self.stack.pop().unwrap() {
+                name
+            } else {
+                panic!()
+            };
+            let val = self.stack.pop().unwrap();
+            map.insert(
+                unsafe { CStr::from_ptr(name).to_str().unwrap().to_string() },
+                unsafe {
+                    let p = alloc_for_value();
+                    *p = val.clone();
+                    p
+                },
+            );
+        }
+        self.stack.push(Value::Object(Rc::new(RefCell::new(map))));
+        *pc += 1;
     }
 }

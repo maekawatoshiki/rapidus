@@ -1,5 +1,5 @@
 use id::IdGen;
-use node::{BinOp, FormalParameters, Node};
+use node::{BinOp, FormalParameters, Node, PropertyDefinition};
 use std::collections::HashSet;
 use vm::{alloc_for_value, alloc_rawstring, HeapAddr, Inst, Value};
 
@@ -21,11 +21,7 @@ pub struct PendingFunctionInfo {
 }
 
 impl FunctionInfo {
-    pub fn new(
-        name: String,
-        use_this: bool,
-        insts: Vec<Inst>,
-    ) -> FunctionInfo {
+    pub fn new(name: String, use_this: bool, insts: Vec<Inst>) -> FunctionInfo {
         FunctionInfo {
             name: name,
             use_this: use_this,
@@ -120,9 +116,7 @@ impl VMCodeGen {
 
             if let Some(val) = val {
                 match val {
-                    Value::NeedThis(callee) => {
-                        *inst = Inst::PushNeedThis(callee.clone())
-                    }
+                    Value::NeedThis(callee) => *inst = Inst::PushNeedThis(callee.clone()),
                     _ => *inst = Inst::Push(val.clone()),
                 }
             }
@@ -148,6 +142,7 @@ impl VMCodeGen {
             &Node::Member(ref parent, ref member) => self.run_member(&*parent, member, insts),
             &Node::Return(ref val) => self.run_return(val, insts),
             &Node::New(ref expr) => self.run_new_expr(&*expr, insts),
+            &Node::Object(ref properties) => self.run_object_literal(properties, insts),
             &Node::Identifier(ref name) => self.run_identifier(name, insts),
             &Node::This => insts.push(Inst::PushThis),
             &Node::String(ref s) => insts.push(Inst::Push(Value::String(unsafe {
@@ -218,7 +213,7 @@ impl VMCodeGen {
 
         self.functions.insert(
             name.clone(),
-            FunctionInfo::new(name.clone(), use_this,  func_insts),
+            FunctionInfo::new(name.clone(), use_this, func_insts),
         );
     }
 
@@ -381,6 +376,24 @@ impl VMCodeGen {
         self.run(callee, insts);
 
         insts.push(Inst::Call(args.len()));
+    }
+}
+
+impl VMCodeGen {
+    fn run_object_literal(&mut self, properties: &Vec<PropertyDefinition>, insts: &mut Vec<Inst>) {
+        for property in properties {
+            match property {
+                PropertyDefinition::IdentifierReference(_) => unimplemented!(),
+                PropertyDefinition::Property(name, node) => {
+                    self.run(&node, insts);
+                    unsafe {
+                        insts.push(Inst::Push(Value::String(alloc_rawstring(name.as_str()))));
+                    }
+                }
+            }
+        }
+
+        insts.push(Inst::CreateObject(properties.len()));
     }
 }
 

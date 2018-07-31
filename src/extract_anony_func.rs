@@ -1,4 +1,4 @@
-use node::Node;
+use node::{Node, PropertyDefinition};
 
 use rand::random;
 use std::collections::HashSet;
@@ -78,13 +78,16 @@ impl AnonymousFunctionExtractor {
 
                     self.mangled_anonymous_function_name.pop();
 
-                    self.pending_anonymous_function.last_mut().unwrap().push(Node::FunctionDecl(
-                        name_.clone(),
-                        false,
-                        HashSet::new(),
-                        params,
-                        Box::new(Node::StatementList(body)),
-                    ));
+                    self.pending_anonymous_function
+                        .last_mut()
+                        .unwrap()
+                        .push(Node::FunctionDecl(
+                            name_.clone(),
+                            false,
+                            HashSet::new(),
+                            params,
+                            Box::new(Node::StatementList(body)),
+                        ));
                     *node = Node::Identifier(name_);
                 }
             }
