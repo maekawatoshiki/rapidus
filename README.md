@@ -8,8 +8,6 @@ A toy JavaScript engine
 
 # Run
 
-Currently, some examples can not run successfully (enter infinite loop) since the parser of Rapidus doesn't work well.
-
 ```sh
-$ cargo run example/~~~.js --easy-run
+$ cargo run example/XXX.js --easy-run
 ```
