@@ -725,3 +725,50 @@ fn function_decl2() {
         output
     );
 }
+
+#[test]
+fn new() {
+    let mut output = vec![];
+    // JS: new (function(){this.x = 123})
+    let node = Node::StatementList(vec![
+        Node::New(Box::new(Node::Call(
+            Box::new(Node::Identifier("anonymous.3035120513".to_string())),
+            vec![],
+        ))),
+        Node::FunctionDecl(
+            "anonymous.3035120513".to_string(),
+            true,
+            HashSet::new(),
+            vec![],
+            Box::new(Node::StatementList(vec![Node::Assign(
+                Box::new(Node::Member(Box::new(Node::This), "x".to_string())),
+                Box::new(Node::Number(123.0)),
+            )])),
+        ),
+    ]);
+    VMCodeGen::new().compile(&node, &mut output);
+    assert_eq!(
+        vec![
+            Inst::AllocLocalVar(0, 1),
+            Inst::PushNeedThis(Box::new(Value::Function(4))),
+            Inst::Constract(0),
+            Inst::End,
+            Inst::AllocLocalVar(0, 1),
+            Inst::Push(Value::Number(123.0)),
+            Inst::PushThis,
+        ],
+        output[0..7].to_vec(),
+    );
+    if let Inst::Push(Value::String(s)) = output[7] {
+        unsafe {
+            use std::ffi::CStr;
+            assert!(CStr::from_ptr(s).to_str().unwrap() == "x")
+        }
+    } else {
+        panic!()
+    }
+    assert_eq!(
+        vec![Inst::SetMember, Inst::Push(Value::Undefined), Inst::Return],
+        output[8..11].to_vec()
+    );
+}
