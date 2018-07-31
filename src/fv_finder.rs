@@ -1,4 +1,4 @@
-use node::Node;
+use node::{Node, PropertyDefinition};
 
 use rand::random;
 use std::collections::{HashMap, HashSet};
@@ -158,23 +158,28 @@ impl FreeVariableFinder {
                 self.run(&mut *parent);
             }
             &mut Node::This => self.use_this = true,
-            &mut Node::Identifier(ref mut name) => {
-                let is_cur_scope_var = self.varmap.last().unwrap().contains(name.as_str());
-                let varmap_len = self.varmap.len();
-                let is_already_appeared_var_but_not_in_cur_scope_or_global = self.varmap
-                    [1..varmap_len - 1]
-                    .iter()
-                    .any(|v| v.contains(name.as_str()));
-
-                for mangled_function_name in self.mangled_function_name.iter().rev() {
-                    if let Some(mangled_name) = mangled_function_name.get(name.as_str()) {
-                        *name = mangled_name.clone();
-                        break;
+            &mut Node::Identifier(ref mut name) => self.identifier(name),
+            &mut Node::Object(ref mut properties) => {
+                for property in properties.iter_mut() {
+                    let name_of_ident_ref =
+                        if let PropertyDefinition::IdentifierReference(name) = property.clone() {
+                            Some(name)
+                        } else {
+                            None
+                        };
+                    match property {
+                        &mut PropertyDefinition::IdentifierReference(_) => {
+                            let mut name_of_ident_ref = name_of_ident_ref.unwrap();
+                            *property = PropertyDefinition::Property(
+                                name_of_ident_ref.to_string(),
+                                Node::Identifier({
+                                    self.identifier(&mut name_of_ident_ref);
+                                    name_of_ident_ref
+                                }),
+                            );
+                        }
+                        &mut PropertyDefinition::Property(_, ref mut node) => self.run(node),
                     }
-                }
-
-                if !is_cur_scope_var && is_already_appeared_var_but_not_in_cur_scope_or_global {
-                    self.cur_fv.last_mut().unwrap().insert(name.clone());
                 }
             }
             &mut Node::If(ref mut cond, ref mut then, ref mut else_) => {
@@ -219,6 +224,25 @@ impl FreeVariableFinder {
                 self.run(&mut *else_);
             }
             _ => {}
+        }
+    }
+
+    fn identifier(&mut self, name: &mut String) {
+        let is_cur_scope_var = self.varmap.last().unwrap().contains(name.as_str());
+        let varmap_len = self.varmap.len();
+        let is_already_appeared_var_but_not_in_cur_scope_or_global = self.varmap[1..varmap_len - 1]
+            .iter()
+            .any(|v| v.contains(name.as_str()));
+
+        for mangled_function_name in self.mangled_function_name.iter().rev() {
+            if let Some(mangled_name) = mangled_function_name.get(name.as_str()) {
+                *name = mangled_name.clone();
+                break;
+            }
+        }
+
+        if !is_cur_scope_var && is_already_appeared_var_but_not_in_cur_scope_or_global {
+            self.cur_fv.last_mut().unwrap().insert(name.clone());
         }
     }
 }

@@ -12,7 +12,7 @@ pub struct AnonymousFunctionExtractor {
 impl AnonymousFunctionExtractor {
     pub fn new() -> AnonymousFunctionExtractor {
         AnonymousFunctionExtractor {
-            pending_anonymous_function: vec![],
+            pending_anonymous_function: vec![vec![]],
             mangled_anonymous_function_name: vec![],
         }
     }
@@ -22,6 +22,10 @@ impl AnonymousFunctionExtractor {
             &mut Node::StatementList(ref mut nodes) => {
                 for node in nodes.iter_mut() {
                     self.run(node)
+                }
+
+                for pending_anonymous_function in self.pending_anonymous_function.last().unwrap() {
+                    nodes.push(pending_anonymous_function.clone())
                 }
             }
             _ => unreachable!(),
@@ -140,6 +144,15 @@ impl AnonymousFunctionExtractor {
                     *ident = name.clone();
                 }
             }
+            &mut Node::Object(ref mut properties) => {
+                for property in properties.iter_mut() {
+                    match property {
+                        &mut PropertyDefinition::IdentifierReference(_) => {}
+                        &mut PropertyDefinition::Property(_, ref mut node) => self.run(node),
+                    }
+                }
+            }
+
             _ => {}
         }
     }

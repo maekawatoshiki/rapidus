@@ -1,4 +1,4 @@
-use node::Node;
+use node::{Node, PropertyDefinition};
 
 use rand::random;
 use std::collections::{HashMap, HashSet};
@@ -107,6 +107,14 @@ impl FreeVariableSolver {
             &mut Node::Identifier(ref mut name) => {
                 if let Some(name_) = self.get_mangled_name(name.as_str()) {
                     *name = name_;
+                }
+            }
+            &mut Node::Object(ref mut properties) => {
+                for property in properties.iter_mut() {
+                    match property {
+                        &mut PropertyDefinition::IdentifierReference(_) => unreachable!(),
+                        &mut PropertyDefinition::Property(_, ref mut node) => self.run(node),
+                    }
                 }
             }
             &mut Node::If(ref mut cond, ref mut then, ref mut else_) => {
