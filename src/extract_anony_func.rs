@@ -115,6 +115,10 @@ impl AnonymousFunctionExtractor {
             &mut Node::Member(ref mut parent, _) => {
                 self.run(&mut *parent);
             }
+            &mut Node::Index(ref mut parent, ref mut idx) => {
+                self.run(&mut *parent);
+                self.run(&mut *idx);
+            }
             &mut Node::If(ref mut cond, ref mut then, ref mut else_) => {
                 self.run(&mut *cond);
                 self.run(&mut *then);

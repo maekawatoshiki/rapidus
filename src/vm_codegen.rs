@@ -140,6 +140,7 @@ impl VMCodeGen {
             }
             &Node::Call(ref callee, ref args) => self.run_call(&*callee, args, insts),
             &Node::Member(ref parent, ref member) => self.run_member(&*parent, member, insts),
+            &Node::Index(ref parent, ref idx) => self.run_index(&*parent, &*idx, insts),
             &Node::Return(ref val) => self.run_return(val, insts),
             &Node::New(ref expr) => self.run_new_expr(&*expr, insts),
             &Node::Object(ref properties) => self.run_object_literal(properties, insts),
@@ -359,10 +360,14 @@ impl VMCodeGen {
                 unsafe {
                     insts.push(Inst::Push(Value::String(alloc_rawstring(member.as_str()))));
                 }
-
                 insts.push(Inst::SetMember)
             }
-            _ => {}
+            &Node::Index(ref parent, ref idx) => {
+                self.run(&*parent, insts);
+                self.run(&*idx, insts);
+                insts.push(Inst::SetMember)
+            }
+            _ => unimplemented!()
         }
     }
 }
@@ -404,6 +409,13 @@ impl VMCodeGen {
         unsafe {
             insts.push(Inst::Push(Value::String(alloc_rawstring(member.as_str()))));
         }
+        insts.push(Inst::GetMember)
+    }
+
+    fn run_index(&mut self, parent: &Node, idx: &Node, insts: &mut Vec<Inst>) {
+        self.run(parent, insts);
+
+        self.run(idx, insts);
         insts.push(Inst::GetMember)
     }
 

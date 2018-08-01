@@ -103,6 +103,10 @@ impl FreeVariableSolver {
             &mut Node::Member(ref mut parent, _) => {
                 self.run(&mut *parent);
             }
+            &mut Node::Index(ref mut parent, ref mut idx) => {
+                self.run(&mut *parent);
+                self.run(&mut *idx);
+            }
             &mut Node::This => self.use_this = true,
             &mut Node::Identifier(ref mut name) => {
                 if let Some(name_) = self.get_mangled_name(name.as_str()) {

@@ -33,6 +33,7 @@ pub enum Node {
     FunctionExpr(Option<String>, FormalParameters, Box<Node>), // Name, Use 'this', fv, params, body
     VarDecl(String, Option<Box<Node>>),
     Member(Box<Node>, String),
+    Index(Box<Node>, Box<Node>),
     New(Box<Node>),
     Call(Box<Node>, Vec<Node>),
     If(Box<Node>, Box<Node>, Box<Node>), // Cond, Then, Else

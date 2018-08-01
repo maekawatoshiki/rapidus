@@ -157,6 +157,10 @@ impl FreeVariableFinder {
             &mut Node::Member(ref mut parent, _) => {
                 self.run(&mut *parent);
             }
+            &mut Node::Index(ref mut parent, ref mut idx) => {
+                self.run(&mut *parent);
+                self.run(&mut *idx);
+            }
             &mut Node::This => self.use_this = true,
             &mut Node::Identifier(ref mut name) => self.identifier(name),
             &mut Node::Object(ref mut properties) => {
@@ -206,6 +210,10 @@ impl FreeVariableFinder {
                     }
                     &mut Node::Member(ref mut parent, _) => {
                         self.run(parent);
+                    }
+                    &mut Node::Index(ref mut parent, ref mut idx) => {
+                        self.run(parent);
+                        self.run(idx);
                     }
                     _ => unimplemented!(),
                 }

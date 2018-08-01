@@ -205,18 +205,11 @@ impl VM {
                     *pc += 1
                 },
                 &Inst::GetMember => {
-                    let member_name = {
-                        let member = self.stack.pop().unwrap();
-                        if let Value::String(name) = member {
-                            unsafe { CStr::from_ptr(name).to_str().unwrap() }
-                        } else {
-                            panic!("runtime err")
-                        }
-                    };
+                    let member = self.stack.pop().unwrap().to_string();
                     let parent = self.stack.pop().unwrap();
                     unsafe {
                         if let Value::Object(map) = parent {
-                            match map.borrow().get(member_name) {
+                            match map.borrow().get(member.as_str()) {
                                 Some(addr) => {
                                     let val = (**addr).clone();
                                     if let Value::NeedThis(callee) = val {
@@ -237,21 +230,16 @@ impl VM {
                     *pc += 1
                 }
                 &Inst::SetMember => {
-                    let member = self.stack.pop().unwrap();
-                    if let Value::String(name) = member {
+                    let member = self.stack.pop().unwrap().to_string();
+                    let parent = self.stack.pop().unwrap();
+                    let val = self.stack.pop().unwrap();
+                    if let Value::Object(map) = parent {
                         unsafe {
-                            let member_name = CStr::from_ptr(name).to_str().unwrap();
-                            let parent = self.stack.pop().unwrap();
-                            let val = self.stack.pop().unwrap();
-                            if let Value::Object(map) = parent {
-                                **map
-                                    .borrow_mut()
-                                    .entry(member_name.to_string())
-                                    .or_insert_with(|| alloc_for_value()) = val;
-                            }
+                            **map
+                                .borrow_mut()
+                                .entry(member)
+                                .or_insert_with(|| alloc_for_value()) = val;
                         }
-                    } else {
-                        panic!()
                     }
                     *pc += 1
                 }
@@ -462,5 +450,15 @@ impl VM {
         }
         self.stack.push(Value::Object(Rc::new(RefCell::new(map))));
         *pc += 1;
+    }
+}
+
+impl Value {
+    fn to_string(self) -> String {
+        match self {
+            Value::String(name) => unsafe { CStr::from_ptr(name).to_str().unwrap() }.to_string(),
+            Value::Number(n) => format!("{}", n),
+            _ => unimplemented!(),
+        }
     }
 }

@@ -8,3 +8,6 @@ var obj = {
 console.log( obj.hello )
 console.log( obj.a )
 obj.show_hello()
+console.log( obj[3.14] )
+obj[123] = 456
+console.log(obj[123])

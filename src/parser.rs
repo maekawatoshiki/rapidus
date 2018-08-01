@@ -436,6 +436,11 @@ impl Parser {
                     Kind::Identifier(name) => lhs = Node::Member(Box::new(lhs), name),
                     _ => panic!("error: expected identifier"),
                 },
+                Kind::Symbol(Symbol::OpeningBoxBracket) => {
+                    let idx = self.read_expression()?;
+                    assert!(self.lexer.skip(Kind::Symbol(Symbol::ClosingBoxBracket)));
+                    lhs = Node::Index(Box::new(lhs), Box::new(idx));
+                }
                 _ => {
                     self.lexer.unget(&tok);
                     break;
