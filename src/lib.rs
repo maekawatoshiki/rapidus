@@ -1,3 +1,5 @@
+#![feature(box_patterns)]
+
 pub mod lexer;
 pub mod node;
 pub mod parser;

@@ -32,7 +32,7 @@ pub enum Value {
     Bool(bool),
     Number(f64),
     String(RawStringPtr),
-    Function(usize),
+    Function(usize, Rc<RefCell<HashMap<String, HeapAddr>>>),
     NeedThis(Box<Value>),
     WithThis(Box<Value>, Box<Value>),               // Function, This
     EmbeddedFunction(usize), // unknown if usize == 0; specific function if usize > 0
@@ -207,11 +207,13 @@ impl VM {
                 &Inst::GetMember => {
                     let member = self.stack.pop().unwrap().to_string();
                     let parent = self.stack.pop().unwrap();
-                    unsafe {
-                        if let Value::Object(map) = parent {
+                    match parent {
+                        Value::Object(map)
+                        | Value::Function(_, map)
+                        | Value::NeedThis(box Value::Function(_, map)) => {
                             match map.borrow().get(member.as_str()) {
                                 Some(addr) => {
-                                    let val = (**addr).clone();
+                                    let val = unsafe { (**addr).clone() };
                                     if let Value::NeedThis(callee) = val {
                                         self.stack.push(Value::WithThis(
                                             callee,
@@ -223,9 +225,8 @@ impl VM {
                                 }
                                 None => self.stack.push(Value::Undefined),
                             }
-                        } else {
-                            panic!("runtime err")
                         }
+                        _ => unreachable!(),
                     }
                     *pc += 1
                 }
@@ -233,13 +234,16 @@ impl VM {
                     let member = self.stack.pop().unwrap().to_string();
                     let parent = self.stack.pop().unwrap();
                     let val = self.stack.pop().unwrap();
-                    if let Value::Object(map) = parent {
-                        unsafe {
+                    match parent {
+                        Value::Object(map)
+                        | Value::Function(_, map)
+                        | Value::NeedThis(box Value::Function(_, map)) => unsafe {
                             **map
                                 .borrow_mut()
                                 .entry(member)
                                 .or_insert_with(|| alloc_for_value()) = val;
-                        }
+                        },
+                        e => unreachable!("{:?}", e),
                     }
                     *pc += 1
                 }
@@ -344,7 +348,7 @@ impl VM {
                     *pc += 1;
                     break;
                 }
-                Value::Function(dst) => {
+                Value::Function(dst, _) => {
                     self.return_addr.push(*pc + 1);
                     if let Some(this) = this {
                         let pos = self.stack.len() - argc;
@@ -401,7 +405,7 @@ impl VM {
 
         loop {
             match callee {
-                Value::Function(dst) => {
+                Value::Function(dst, _) => {
                     self.return_addr.push(*pc + 1);
 
                     // insert new 'this'

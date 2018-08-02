@@ -4,6 +4,8 @@ use std::collections::HashSet;
 use vm::{alloc_for_value, alloc_rawstring, HeapAddr, Inst, Value};
 
 use std::collections::HashMap;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct FunctionInfo {
@@ -95,10 +97,14 @@ impl VMCodeGen {
             unsafe {
                 let mem = alloc_for_value();
                 if *use_this {
-                    *mem = Value::NeedThis(Box::new(Value::Function(pos)));
+                    *mem = Value::NeedThis(Box::new(Value::Function(
+                        pos,
+                        Rc::new(RefCell::new(HashMap::new())),
+                    )));
                     self.global_varmap.insert(name.clone(), mem);
                 } else {
-                    *mem = Value::Function(pos);
+                    *mem =
+                        Value::Function(pos, Rc::new(RefCell::new(HashMap::new())));
                     self.global_varmap.insert(name.clone(), mem);
                 }
                 function_value_list.insert(name.clone(), (*mem).clone());
@@ -367,7 +373,7 @@ impl VMCodeGen {
                 self.run(&*idx, insts);
                 insts.push(Inst::SetMember)
             }
-            _ => unimplemented!()
+            _ => unimplemented!(),
         }
     }
 }
