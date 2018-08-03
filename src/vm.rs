@@ -80,7 +80,6 @@ pub struct VM {
     pub bp: usize,
     pub sp_history: Vec<usize>,
     pub return_addr: Vec<isize>,
-    pub insts: Vec<Inst>,
 }
 
 impl VM {
@@ -113,7 +112,6 @@ impl VM {
             bp: 0,
             sp_history: Vec::with_capacity(128),
             return_addr: Vec::with_capacity(128),
-            insts: vec![],
         }
     }
 }
@@ -464,5 +462,183 @@ impl Value {
             Value::Number(n) => format!("{}", n),
             _ => unimplemented!(),
         }
+    }
+}
+
+pub struct VM2 {
+    pub global_objects: Rc<RefCell<HashMap<String, HeapAddr>>>,
+    pub stack: Vec<Value>,
+    pub bp_buf: Vec<usize>,
+    pub bp: usize,
+    pub sp_history: Vec<usize>,
+    pub return_addr: Vec<isize>,
+    op_table: [fn(&mut VM2, &Vec<u8>, &mut isize); 9],
+}
+
+impl VM2 {
+    pub fn new() -> VM2 {
+        let mut obj = HashMap::new();
+
+        unsafe {
+            let console_log_addr = alloc_for_value();
+            *console_log_addr = Value::EmbeddedFunction(1);
+
+            obj.insert("console".to_string(), {
+                let mut map = HashMap::new();
+                map.insert("log".to_string(), console_log_addr);
+                let obj = alloc_for_value();
+                *obj = Value::Object(Rc::new(RefCell::new(map)));
+                obj
+            });
+        }
+
+        let global_objects = Rc::new(RefCell::new(obj));
+
+        VM2 {
+            global_objects: global_objects.clone(),
+            stack: {
+                let mut stack = Vec::with_capacity(128);
+                stack.push(Value::Object(global_objects.clone()));
+                stack
+            },
+            bp_buf: Vec::with_capacity(128),
+            bp: 0,
+            sp_history: Vec::with_capacity(128),
+            return_addr: Vec::with_capacity(128),
+            op_table: [
+                end,
+                create_context,
+                push_int32,
+                add,
+                lt,
+                get_local,
+                set_local,
+                jmp_if_false,
+                jmp,
+            ],
+        }
+    }
+}
+
+impl VM2 {
+    pub fn run(&mut self, insts: Vec<u8>) {
+        let mut pc = 0isize;
+        self.do_run(&insts, &mut pc);
+        println!("stack trace: {:?}", self.stack);
+    }
+
+    pub fn do_run(&mut self, insts: &Vec<u8>, pc: &mut isize) {
+        while insts[*pc as usize] != 0x00 {
+            // println!("inst: {}", insts[*pc as usize]);
+            self.op_table[insts[*pc as usize] as usize](self, insts, pc);
+            // println!("stack trace: {:?} - {}", self.stack, *pc);
+        }
+    }
+}
+
+macro_rules! get_int32 {
+    ($var:ident, $insts:ident, $pc:ident) => {
+        let $var = (($insts[*$pc as usize + 3] as i32) << 24)
+            + (($insts[*$pc as usize + 2] as i32) << 16)
+            + (($insts[*$pc as usize + 1] as i32) << 8)
+            + ($insts[*$pc as usize + 0] as i32);
+        *$pc += 4; // n
+    };
+}
+
+macro_rules! get_uint32 {
+    ($var:ident, $insts:ident, $pc:ident) => {
+        let $var = (($insts[*$pc as usize + 3] as usize) << 24)
+            + (($insts[*$pc as usize + 2] as usize) << 16)
+            + (($insts[*$pc as usize + 1] as usize) << 8)
+            + ($insts[*$pc as usize + 0] as usize);
+        *$pc += 4; // n
+    };
+}
+
+fn end(self_: &mut VM2, insts: &Vec<u8>, pc: &mut isize) {}
+fn create_context(self_: &mut VM2, insts: &Vec<u8>, pc: &mut isize) {
+    *pc += 1; // create_context
+    get_uint32!(n, insts, pc);
+    get_uint32!(argc, insts, pc);
+    self_.bp_buf.push(self_.bp);
+    self_.sp_history.push(self_.stack.len() - argc);
+    self_.bp = self_.stack.len() - argc;
+    for _ in 0..n {
+        self_.stack.push(Value::Undefined);
+    }
+}
+fn push_int32(self_: &mut VM2, insts: &Vec<u8>, pc: &mut isize) {
+    *pc += 1; // push_int
+    let n = ((insts[*pc as usize + 3] as usize) << 24)
+        + ((insts[*pc as usize + 2] as usize) << 16)
+        + ((insts[*pc as usize + 1] as usize) << 8)
+        + (insts[*pc as usize + 0] as usize);
+    *pc += 4; // n
+    self_.stack.push(Value::Number(n as f64));
+}
+fn add(self_: &mut VM2, insts: &Vec<u8>, pc: &mut isize) {
+    *pc += 1; // add
+    let rhs = self_.stack.pop().unwrap();
+    let lhs = self_.stack.pop().unwrap();
+    match (lhs, rhs) {
+        (Value::Number(n1), Value::Number(n2)) => self_.stack.push(Value::Number(n1 + n2)),
+        (Value::String(s1), Value::Number(n2)) => unsafe {
+            self_.stack.push({
+                let concat = format!("{}{}", CStr::from_ptr(s1).to_str().unwrap(), n2);
+                Value::String(alloc_rawstring(concat.as_str()))
+            })
+        },
+        (Value::Number(n1), Value::String(s2)) => unsafe {
+            self_.stack.push({
+                let concat = format!("{}{}", n1, CStr::from_ptr(s2).to_str().unwrap());
+                Value::String(alloc_rawstring(concat.as_str()))
+            })
+        },
+        (Value::String(s1), Value::String(s2)) => unsafe {
+            self_.stack.push({
+                let concat = format!(
+                    "{}{}",
+                    CStr::from_ptr(s1).to_str().unwrap(),
+                    CStr::from_ptr(s2).to_str().unwrap()
+                );
+                Value::String(alloc_rawstring(concat.as_str()))
+            })
+        },
+        _ => {}
+    }
+}
+fn lt(self_: &mut VM2, insts: &Vec<u8>, pc: &mut isize) {
+    *pc += 1; // lt
+    let rhs = self_.stack.pop().unwrap();
+    let lhs = self_.stack.pop().unwrap();
+    match (lhs, rhs) {
+        (Value::Number(n1), Value::Number(n2)) => self_.stack.push(Value::Bool(n1 < n2)),
+        _ => unimplemented!(),
+    }
+}
+fn get_local(self_: &mut VM2, insts: &Vec<u8>, pc: &mut isize) {
+    *pc += 1; // get_local
+    get_uint32!(n, insts, pc);
+    let val = self_.stack[self_.bp + n].clone();
+    self_.stack.push(val);
+}
+fn set_local(self_: &mut VM2, insts: &Vec<u8>, pc: &mut isize) {
+    *pc += 1; // set_local
+    get_uint32!(n, insts, pc);
+    let val = self_.stack.pop().unwrap();
+    self_.stack[self_.bp + n] = val;
+}
+fn jmp(self_: &mut VM2, insts: &Vec<u8>, pc: &mut isize) {
+    *pc += 1; // jmp
+    get_int32!(dst, insts, pc);
+    *pc += dst as isize;
+}
+fn jmp_if_false(self_: &mut VM2, insts: &Vec<u8>, pc: &mut isize) {
+    *pc += 1; // jmp_if_false
+    get_int32!(dst, insts, pc);
+    let cond = self_.stack.pop().unwrap();
+    if let Value::Bool(false) = cond {
+        *pc += dst  as isize 
     }
 }
