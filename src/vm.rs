@@ -210,22 +210,20 @@ impl VM {
                     match parent {
                         Value::Object(map)
                         | Value::Function(_, map)
-                        | Value::NeedThis(box Value::Function(_, map)) => {
-                            match map.borrow().get(member.as_str()) {
-                                Some(addr) => {
-                                    let val = unsafe { (**addr).clone() };
-                                    if let Value::NeedThis(callee) = val {
-                                        self.stack.push(Value::WithThis(
-                                            callee,
-                                            Box::new(Value::Object(map.clone())),
-                                        ))
-                                    } else {
-                                        self.stack.push(val)
-                                    }
-                                }
-                                None => self.stack.push(Value::Undefined),
+                        | Value::NeedThis(box Value::Function(_, map)) => match map
+                            .borrow()
+                            .get(member.as_str())
+                        {
+                            Some(addr) => {
+                                let val = unsafe { (**addr).clone() };
+                                self.stack.push(if let Value::NeedThis(callee) = val {
+                                    Value::WithThis(callee, Box::new(Value::Object(map.clone())))
+                                } else {
+                                    val
+                                })
                             }
-                        }
+                            None => self.stack.push(Value::Undefined),
+                        },
                         _ => unreachable!(),
                     }
                     *pc += 1
