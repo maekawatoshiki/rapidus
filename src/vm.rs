@@ -639,6 +639,39 @@ fn jmp_if_false(self_: &mut VM2, insts: &Vec<u8>, pc: &mut isize) {
     get_int32!(dst, insts, pc);
     let cond = self_.stack.pop().unwrap();
     if let Value::Bool(false) = cond {
-        *pc += dst  as isize 
+        *pc += dst as isize
     }
+}
+
+#[rustfmt::skip]
+pub fn vm2_test() {
+    let mut vm2 = VM2::new();
+    vm2.run(vec![
+            0x01, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, // CreateContext 1, 2
+            0x02, 0x00, 0x00, 0x00, 0x00, // PushInt 0
+            0x06, 0x01, 0x00, 0x00, 0x00, // SetLocal 1
+            0x05, 0x01, 0x00, 0x00, 0x00, // GetLocal 1
+            0x02, 0x00, 0xe1, 0xf5, 0x05, // PushInt 100,000,000
+            0x04, // Lt
+            0x07, 0x15, 0x00, 0x00, 0x00, // JmpIfFalse 21
+            0x05, 0x01, 0x00, 0x00, 0x00, // GetLocal 1
+            0x02, 0x01, 0x00, 0x00, 0x00, // PushInt 1
+            0x03, // Add
+            0x06, 0x01, 0x00, 0x00, 0x00, // SetLocal 1
+            0x08, 0xdb, 0xff, 0xff, 0xff, // Jmp -37
+            0x00, // End
+    ]);
+    // AllocLocalVar(1, 1)
+    // Push(Number(0.0))
+    // SetLocal(1)
+    // GetLocal(1)
+    // Push(Number(100000000.0))
+    // Lt
+    // JmpIfFalse(6)
+    // GetLocal(1)
+    // Push(Number(1.0))
+    // Add
+    // SetLocal(1)
+    // Jmp(-8)
+    // End
 }

@@ -1,4 +1,5 @@
 #![feature(box_patterns)]
+#![feature(tool_attributes)]
 
 pub mod lexer;
 pub mod node;
