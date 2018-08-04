@@ -477,7 +477,7 @@ pub struct VM2 {
     pub constant_table: Vec<Value>,
     pub insts: Vec<u8>,
     pub pc: isize,
-    pub op_table: [fn(&mut VM2) -> bool; 13],
+    pub op_table: [fn(&mut VM2) -> bool; 14],
 }
 
 impl VM2 {
@@ -516,6 +516,7 @@ impl VM2 {
             op_table: [
                 end,
                 create_context,
+                push_int8,
                 push_int32,
                 push_const,
                 add,
@@ -534,17 +535,18 @@ impl VM2 {
 
 const END: u8 = 0x00;
 const CREATE_CONTEXT: u8 = 0x01;
-const PUSH_INT32: u8 = 0x02;
-const PUSH_CONST: u8 = 0x03;
-const ADD: u8 = 0x04;
-const SUB: u8 = 0x05;
-const LT: u8 = 0x06;
-const GET_LOCAL: u8 = 0x07;
-const SET_LOCAL: u8 = 0x08;
-const JMP_IF_FALSE: u8 = 0x09;
-const JMP: u8 = 0x0a;
-const CALL: u8 = 0x0b;
-const RETURN: u8 = 0x0c;
+const PUSH_INT8: u8 = 0x02;
+const PUSH_INT32: u8 = 0x03;
+const PUSH_CONST: u8 = 0x04;
+const ADD: u8 = 0x05;
+const SUB: u8 = 0x06;
+const LT: u8 = 0x07;
+const GET_LOCAL: u8 = 0x08;
+const SET_LOCAL: u8 = 0x09;
+const JMP_IF_FALSE: u8 = 0x0a;
+const JMP: u8 = 0x0b;
+const CALL: u8 = 0x0c;
+const RETURN: u8 = 0x0d;
 
 impl VM2 {
     pub fn run(&mut self, insts: Vec<u8>) {
@@ -565,36 +567,33 @@ impl VM2 {
     }
 }
 
-macro_rules! get_int32 {
-    ($var:ident, $insts:expr, $pc:expr) => {
-        let $var = (($insts[$pc as usize + 3] as i32) << 24)
-            + (($insts[$pc as usize + 2] as i32) << 16)
-            + (($insts[$pc as usize + 1] as i32) << 8)
-            + ($insts[$pc as usize + 0] as i32);
-        $pc += 4; // n
+macro_rules! get_int8 {
+    ($self:ident, $var:ident, $ty:ty) => {
+        let $var = $self.insts[$self.pc as usize] as $ty;
+        $self.pc += 1;
     };
 }
 
-macro_rules! get_uint32 {
-    ($var:ident, $insts:expr, $pc:expr) => {
-        let $var = (($insts[$pc as usize + 3] as usize) << 24)
-            + (($insts[$pc as usize + 2] as usize) << 16)
-            + (($insts[$pc as usize + 1] as usize) << 8)
-            + ($insts[$pc as usize + 0] as usize);
-        $pc += 4; // n
+macro_rules! get_int32 {
+    ($self:ident, $var:ident, $ty:ty) => {
+        let $var = (($self.insts[$self.pc as usize + 3] as $ty) << 24)
+            + (($self.insts[$self.pc as usize + 2] as $ty) << 16)
+            + (($self.insts[$self.pc as usize + 1] as $ty) << 8)
+            + ($self.insts[$self.pc as usize + 0] as $ty);
+        $self.pc += 4;
     };
 }
 
 #[inline]
-fn end(self_: &mut VM2) -> bool {
+fn end(_self: &mut VM2) -> bool {
     false
 }
 
 #[inline]
 fn create_context(self_: &mut VM2) -> bool {
     self_.pc += 1; // create_context
-    get_uint32!(n, self_.insts, self_.pc);
-    get_uint32!(argc, self_.insts, self_.pc);
+    get_int32!(self_, n, usize);
+    get_int32!(self_, argc, usize);
     self_.bp_buf.push(self_.bp);
     self_.sp_history.push(self_.stack.len() - argc);
     self_.bp = self_.stack.len() - argc;
@@ -605,9 +604,17 @@ fn create_context(self_: &mut VM2) -> bool {
 }
 
 #[inline]
+fn push_int8(self_: &mut VM2) -> bool {
+    self_.pc += 1; // push_int
+    get_int8!(self_, n, i32);
+    self_.stack.push(Value::Number(n as f64));
+    true
+}
+
+#[inline]
 fn push_int32(self_: &mut VM2) -> bool {
     self_.pc += 1; // push_int
-    get_int32!(n, self_.insts, self_.pc);
+    get_int32!(self_, n, i32);
     self_.stack.push(Value::Number(n as f64));
     true
 }
@@ -615,7 +622,7 @@ fn push_int32(self_: &mut VM2) -> bool {
 #[inline]
 fn push_const(self_: &mut VM2) -> bool {
     self_.pc += 1; // push_const
-    get_uint32!(n, self_.insts, self_.pc);
+    get_int32!(self_, n, usize);
     self_.stack.push(self_.constant_table[n].clone());
     true
 }
@@ -698,7 +705,7 @@ fn binary(self_: &mut VM2, op: &BinOp) {
 #[inline]
 fn get_local(self_: &mut VM2) -> bool {
     self_.pc += 1; // get_local
-    get_uint32!(n, self_.insts, self_.pc);
+    get_int32!(self_, n, usize);
     let val = self_.stack[self_.bp + n].clone();
     self_.stack.push(val);
     true
@@ -707,7 +714,7 @@ fn get_local(self_: &mut VM2) -> bool {
 #[inline]
 fn set_local(self_: &mut VM2) -> bool {
     self_.pc += 1; // set_local
-    get_uint32!(n, self_.insts, self_.pc);
+    get_int32!(self_, n, usize);
     let val = self_.stack.pop().unwrap();
     self_.stack[self_.bp + n] = val;
     true
@@ -716,18 +723,18 @@ fn set_local(self_: &mut VM2) -> bool {
 #[inline]
 fn jmp(self_: &mut VM2) -> bool {
     self_.pc += 1; // jmp
-    get_int32!(dst, self_.insts, self_.pc);
-    self_.pc += dst as isize;
+    get_int32!(self_, dst, isize);
+    self_.pc += dst;
     true
 }
 
 #[inline]
 fn jmp_if_false(self_: &mut VM2) -> bool {
     self_.pc += 1; // jmp_if_false
-    get_int32!(dst, self_.insts, self_.pc);
+    get_int32!(self_, dst, isize);
     let cond = self_.stack.pop().unwrap();
     if let Value::Bool(false) = cond {
-        self_.pc += dst as isize
+        self_.pc += dst
     }
     true
 }
@@ -735,7 +742,7 @@ fn jmp_if_false(self_: &mut VM2) -> bool {
 #[inline]
 fn call(self_: &mut VM2) -> bool {
     self_.pc += 1; // Call
-    get_uint32!(argc, self_.insts, self_.pc);
+    get_int32!(self_, argc, usize);
 
     let mut this = None;
 
@@ -818,7 +825,7 @@ fn return_(self_: &mut VM2) -> bool {
 #[rustfmt::skip]
 pub fn vm2_test() {
     let mut vm2 = VM2::new();
-    vm2.constant_table.push(Value::Function(25, Rc::new(RefCell::new(HashMap::new()))));
+    vm2.constant_table.push(Value::Function(22, Rc::new(RefCell::new(HashMap::new()))));
 
     // Loop for 100,000,000
     // AllocLocalVar(1, 1)
@@ -877,24 +884,24 @@ pub fn vm2_test() {
     // Return
     vm2.run(vec![
         CREATE_CONTEXT, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, // CreateContext 1, 1
-        PUSH_INT32, 0x23, 0x00, 0x00, 0x00, // PushInt 35
+        PUSH_INT8, 0x23, // PushInt 35
         PUSH_CONST, 0x00, 0x00, 0x00, 0x00, // PushConst 0
         CALL, 0x01, 0x00, 0x00, 0x00, // Call 1
         END, // End
         CREATE_CONTEXT, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, // CreateContext 0, 1
         GET_LOCAL, 0x00, 0x00, 0x00, 0x00, // GetLocal 0
-        PUSH_INT32, 0x02, 0x00, 0x00, 0x00, // PushInt 2
+        PUSH_INT8, 0x02, // PushInt 2
         LT, // Lt
-        JMP_IF_FALSE, 0x06, 0x00, 0x00, 0x00, // JmpIfFalse 6
-        PUSH_INT32, 0x01, 0x00, 0x00, 0x00, // PushInt 1
+        JMP_IF_FALSE, 0x03, 0x00, 0x00, 0x00, // JmpIfFalse 3
+        PUSH_INT8, 0x01, // PushInt 1
         RETURN, // Return
         GET_LOCAL, 0x00, 0x00, 0x00, 0x00, // GetLocal 0
-        PUSH_INT32, 0x01, 0x00, 0x00, 0x00, // PushInt 1
+        PUSH_INT8, 0x01, // PushInt 1
         SUB, // Sub
         PUSH_CONST, 0x00, 0x00, 0x00, 0x00, // PushConst 0
         CALL, 0x01, 0x00, 0x00, 0x00, // Call 1
         GET_LOCAL, 0x00, 0x00, 0x00, 0x00, // GetLocal 0
-        PUSH_INT32, 0x02, 0x00, 0x00, 0x00, // PushInt 2
+        PUSH_INT8, 0x02, // PushInt 2
         SUB, // Sub
         PUSH_CONST, 0x00, 0x00, 0x00, 0x00, // PushConst 0
         CALL, 0x01, 0x00, 0x00, 0x00, // Call 1
