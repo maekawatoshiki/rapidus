@@ -6,6 +6,8 @@ use std::cell::RefCell;
 use std::ffi::CStr;
 use std::rc::Rc;
 
+use node::BinOp;
+
 pub type HeapAddr = *mut Value;
 pub type ObjectAddr = *mut HashMap<String, HeapAddr>;
 pub type RawStringPtr = *mut libc::c_char;
@@ -472,7 +474,10 @@ pub struct VM2 {
     pub bp: usize,
     pub sp_history: Vec<usize>,
     pub return_addr: Vec<isize>,
-    op_table: [fn(&mut VM2, &Vec<u8>, &mut isize); 9],
+    pub constant_table: Vec<Value>,
+    pub insts: Vec<u8>,
+    pub pc: isize,
+    pub op_table: [fn(&mut VM2) -> bool; 13],
 }
 
 impl VM2 {
@@ -505,162 +510,317 @@ impl VM2 {
             bp: 0,
             sp_history: Vec::with_capacity(128),
             return_addr: Vec::with_capacity(128),
+            constant_table: vec![],
+            insts: vec![],
+            pc: 0isize,
             op_table: [
                 end,
                 create_context,
                 push_int32,
+                push_const,
                 add,
+                sub,
                 lt,
                 get_local,
                 set_local,
                 jmp_if_false,
                 jmp,
+                call,
+                return_,
             ],
         }
     }
 }
 
+const END: u8 = 0x00;
+const CREATE_CONTEXT: u8 = 0x01;
+const PUSH_INT32: u8 = 0x02;
+const PUSH_CONST: u8 = 0x03;
+const ADD: u8 = 0x04;
+const SUB: u8 = 0x05;
+const LT: u8 = 0x06;
+const GET_LOCAL: u8 = 0x07;
+const SET_LOCAL: u8 = 0x08;
+const JMP_IF_FALSE: u8 = 0x09;
+const JMP: u8 = 0x0a;
+const CALL: u8 = 0x0b;
+const RETURN: u8 = 0x0c;
+
 impl VM2 {
     pub fn run(&mut self, insts: Vec<u8>) {
-        let mut pc = 0isize;
-        self.do_run(&insts, &mut pc);
+        self.insts = insts;
+        self.do_run();
         println!("stack trace: {:?}", self.stack);
     }
 
-    pub fn do_run(&mut self, insts: &Vec<u8>, pc: &mut isize) {
-        while insts[*pc as usize] != 0x00 {
-            // println!("inst: {}", insts[*pc as usize]);
-            self.op_table[insts[*pc as usize] as usize](self, insts, pc);
-            // println!("stack trace: {:?} - {}", self.stack, *pc);
-        }
+    pub fn do_run(&mut self) {
+        while self.op_table[self.insts[self.pc as usize] as usize](self) {}
+        // loop {
+        //     println!("inst: {}", self.insts[self.pc as usize]);
+        //     if !self.op_table[self.insts[self.pc as usize] as usize](self) {
+        //         break;
+        //     }
+        //     // println!("stack trace: {:?} - {}", self.stack, *pc);
+        // }
     }
 }
 
 macro_rules! get_int32 {
-    ($var:ident, $insts:ident, $pc:ident) => {
-        let $var = (($insts[*$pc as usize + 3] as i32) << 24)
-            + (($insts[*$pc as usize + 2] as i32) << 16)
-            + (($insts[*$pc as usize + 1] as i32) << 8)
-            + ($insts[*$pc as usize + 0] as i32);
-        *$pc += 4; // n
+    ($var:ident, $insts:expr, $pc:expr) => {
+        let $var = (($insts[$pc as usize + 3] as i32) << 24)
+            + (($insts[$pc as usize + 2] as i32) << 16)
+            + (($insts[$pc as usize + 1] as i32) << 8)
+            + ($insts[$pc as usize + 0] as i32);
+        $pc += 4; // n
     };
 }
 
 macro_rules! get_uint32 {
-    ($var:ident, $insts:ident, $pc:ident) => {
-        let $var = (($insts[*$pc as usize + 3] as usize) << 24)
-            + (($insts[*$pc as usize + 2] as usize) << 16)
-            + (($insts[*$pc as usize + 1] as usize) << 8)
-            + ($insts[*$pc as usize + 0] as usize);
-        *$pc += 4; // n
+    ($var:ident, $insts:expr, $pc:expr) => {
+        let $var = (($insts[$pc as usize + 3] as usize) << 24)
+            + (($insts[$pc as usize + 2] as usize) << 16)
+            + (($insts[$pc as usize + 1] as usize) << 8)
+            + ($insts[$pc as usize + 0] as usize);
+        $pc += 4; // n
     };
 }
 
-fn end(self_: &mut VM2, insts: &Vec<u8>, pc: &mut isize) {}
-fn create_context(self_: &mut VM2, insts: &Vec<u8>, pc: &mut isize) {
-    *pc += 1; // create_context
-    get_uint32!(n, insts, pc);
-    get_uint32!(argc, insts, pc);
+#[inline]
+fn end(self_: &mut VM2) -> bool {
+    false
+}
+
+#[inline]
+fn create_context(self_: &mut VM2) -> bool {
+    self_.pc += 1; // create_context
+    get_uint32!(n, self_.insts, self_.pc);
+    get_uint32!(argc, self_.insts, self_.pc);
     self_.bp_buf.push(self_.bp);
     self_.sp_history.push(self_.stack.len() - argc);
     self_.bp = self_.stack.len() - argc;
     for _ in 0..n {
         self_.stack.push(Value::Undefined);
     }
+    true
 }
-fn push_int32(self_: &mut VM2, insts: &Vec<u8>, pc: &mut isize) {
-    *pc += 1; // push_int
-    let n = ((insts[*pc as usize + 3] as usize) << 24)
-        + ((insts[*pc as usize + 2] as usize) << 16)
-        + ((insts[*pc as usize + 1] as usize) << 8)
-        + (insts[*pc as usize + 0] as usize);
-    *pc += 4; // n
+
+#[inline]
+fn push_int32(self_: &mut VM2) -> bool {
+    self_.pc += 1; // push_int
+    get_int32!(n, self_.insts, self_.pc);
     self_.stack.push(Value::Number(n as f64));
+    true
 }
-fn add(self_: &mut VM2, insts: &Vec<u8>, pc: &mut isize) {
-    *pc += 1; // add
+
+#[inline]
+fn push_const(self_: &mut VM2) -> bool {
+    self_.pc += 1; // push_const
+    get_uint32!(n, self_.insts, self_.pc);
+    self_.stack.push(self_.constant_table[n].clone());
+    true
+}
+
+#[inline]
+fn add(self_: &mut VM2) -> bool {
+    self_.pc += 1; // add
+    binary(self_, &BinOp::Add);
+    true
+}
+
+#[inline]
+fn sub(self_: &mut VM2) -> bool {
+    self_.pc += 1; // sub
+    binary(self_, &BinOp::Sub);
+    true
+}
+
+#[inline]
+fn lt(self_: &mut VM2) -> bool {
+    self_.pc += 1; // lt
+    binary(self_, &BinOp::Lt);
+    true
+}
+
+#[inline]
+fn binary(self_: &mut VM2, op: &BinOp) {
     let rhs = self_.stack.pop().unwrap();
     let lhs = self_.stack.pop().unwrap();
     match (lhs, rhs) {
-        (Value::Number(n1), Value::Number(n2)) => self_.stack.push(Value::Number(n1 + n2)),
+        (Value::Number(n1), Value::Number(n2)) => self_.stack.push(match op {
+            &BinOp::Add => Value::Number(n1 + n2),
+            &BinOp::Sub => Value::Number(n1 - n2),
+            &BinOp::Mul => Value::Number(n1 * n2),
+            &BinOp::Div => Value::Number(n1 / n2),
+            &BinOp::Rem => Value::Number((n1 as i64 % n2 as i64) as f64),
+            &BinOp::Lt => Value::Bool(n1 < n2),
+            &BinOp::Gt => Value::Bool(n1 > n2),
+            &BinOp::Le => Value::Bool(n1 <= n2),
+            &BinOp::Ge => Value::Bool(n1 >= n2),
+            &BinOp::Eq => Value::Bool(n1 == n2),
+            &BinOp::Ne => Value::Bool(n1 != n2),
+            _ => panic!(),
+        }),
         (Value::String(s1), Value::Number(n2)) => unsafe {
-            self_.stack.push({
-                let concat = format!("{}{}", CStr::from_ptr(s1).to_str().unwrap(), n2);
-                Value::String(alloc_rawstring(concat.as_str()))
+            self_.stack.push(match op {
+                &BinOp::Add => {
+                    let concat = format!("{}{}", CStr::from_ptr(s1).to_str().unwrap(), n2);
+                    Value::String(alloc_rawstring(concat.as_str()))
+                }
+                _ => panic!(),
             })
         },
         (Value::Number(n1), Value::String(s2)) => unsafe {
-            self_.stack.push({
-                let concat = format!("{}{}", n1, CStr::from_ptr(s2).to_str().unwrap());
-                Value::String(alloc_rawstring(concat.as_str()))
+            self_.stack.push(match op {
+                &BinOp::Add => {
+                    let concat = format!("{}{}", n1, CStr::from_ptr(s2).to_str().unwrap());
+                    Value::String(alloc_rawstring(concat.as_str()))
+                }
+                _ => panic!(),
             })
         },
         (Value::String(s1), Value::String(s2)) => unsafe {
-            self_.stack.push({
-                let concat = format!(
-                    "{}{}",
-                    CStr::from_ptr(s1).to_str().unwrap(),
-                    CStr::from_ptr(s2).to_str().unwrap()
-                );
-                Value::String(alloc_rawstring(concat.as_str()))
+            self_.stack.push(match op {
+                &BinOp::Add => {
+                    let concat = format!(
+                        "{}{}",
+                        CStr::from_ptr(s1).to_str().unwrap(),
+                        CStr::from_ptr(s2).to_str().unwrap()
+                    );
+                    Value::String(alloc_rawstring(concat.as_str()))
+                }
+                _ => panic!(),
             })
         },
         _ => {}
     }
 }
-fn lt(self_: &mut VM2, insts: &Vec<u8>, pc: &mut isize) {
-    *pc += 1; // lt
-    let rhs = self_.stack.pop().unwrap();
-    let lhs = self_.stack.pop().unwrap();
-    match (lhs, rhs) {
-        (Value::Number(n1), Value::Number(n2)) => self_.stack.push(Value::Bool(n1 < n2)),
-        _ => unimplemented!(),
-    }
-}
-fn get_local(self_: &mut VM2, insts: &Vec<u8>, pc: &mut isize) {
-    *pc += 1; // get_local
-    get_uint32!(n, insts, pc);
+
+#[inline]
+fn get_local(self_: &mut VM2) -> bool {
+    self_.pc += 1; // get_local
+    get_uint32!(n, self_.insts, self_.pc);
     let val = self_.stack[self_.bp + n].clone();
     self_.stack.push(val);
+    true
 }
-fn set_local(self_: &mut VM2, insts: &Vec<u8>, pc: &mut isize) {
-    *pc += 1; // set_local
-    get_uint32!(n, insts, pc);
+
+#[inline]
+fn set_local(self_: &mut VM2) -> bool {
+    self_.pc += 1; // set_local
+    get_uint32!(n, self_.insts, self_.pc);
     let val = self_.stack.pop().unwrap();
     self_.stack[self_.bp + n] = val;
+    true
 }
-fn jmp(self_: &mut VM2, insts: &Vec<u8>, pc: &mut isize) {
-    *pc += 1; // jmp
-    get_int32!(dst, insts, pc);
-    *pc += dst as isize;
+
+#[inline]
+fn jmp(self_: &mut VM2) -> bool {
+    self_.pc += 1; // jmp
+    get_int32!(dst, self_.insts, self_.pc);
+    self_.pc += dst as isize;
+    true
 }
-fn jmp_if_false(self_: &mut VM2, insts: &Vec<u8>, pc: &mut isize) {
-    *pc += 1; // jmp_if_false
-    get_int32!(dst, insts, pc);
+
+#[inline]
+fn jmp_if_false(self_: &mut VM2) -> bool {
+    self_.pc += 1; // jmp_if_false
+    get_int32!(dst, self_.insts, self_.pc);
     let cond = self_.stack.pop().unwrap();
     if let Value::Bool(false) = cond {
-        *pc += dst as isize
+        self_.pc += dst as isize
     }
+    true
+}
+
+#[inline]
+fn call(self_: &mut VM2) -> bool {
+    self_.pc += 1; // Call
+    get_uint32!(argc, self_.insts, self_.pc);
+
+    let mut this = None;
+
+    let mut callee = self_.stack.pop().unwrap();
+
+    loop {
+        match callee {
+            Value::EmbeddedFunction(1) => {
+                let mut args = vec![];
+                for _ in 0..argc {
+                    args.push(self_.stack.pop().unwrap());
+                }
+                args.reverse();
+                console_log(args);
+                break;
+            }
+            Value::Function(dst, _) => {
+                self_.return_addr.push(self_.pc);
+                if let Some(this) = this {
+                    let pos = self_.stack.len() - argc;
+                    self_.stack.insert(pos, this);
+                }
+                self_.pc = dst as isize;
+                self_.do_run();
+                break;
+            }
+            Value::NeedThis(callee_) => {
+                this = Some(Value::Object(self_.global_objects.clone()));
+                callee = *callee_;
+            }
+            Value::WithThis(callee_, this_) => {
+                this = Some(*this_);
+                callee = *callee_;
+            }
+            c => {
+                println!("Call: err: {:?}, pc = {}", c, self_.pc);
+                break;
+            }
+        }
+    }
+
+    // EmbeddedFunction(1)
+    fn console_log(args: Vec<Value>) {
+        unsafe {
+            let args_len = args.len();
+            for i in 0..args_len {
+                match args[i] {
+                    Value::String(ref s) => {
+                        libc::printf(b"%s\0".as_ptr() as RawStringPtr, *s as RawStringPtr);
+                    }
+                    Value::Number(ref n) => {
+                        libc::printf(b"%.15g\0".as_ptr() as RawStringPtr, *n);
+                    }
+                    Value::Undefined => {
+                        libc::printf(b"undefined\0".as_ptr() as RawStringPtr);
+                    }
+                    _ => {}
+                }
+                if args_len - 1 != i {
+                    libc::printf(b" \0".as_ptr() as RawStringPtr);
+                }
+            }
+            libc::puts(b"\0".as_ptr() as RawStringPtr);
+        }
+    }
+    true
+}
+
+#[inline]
+fn return_(self_: &mut VM2) -> bool {
+    let val = self_.stack.pop().unwrap();
+    let former_sp = self_.sp_history.pop().unwrap();
+    self_.stack.truncate(former_sp);
+    self_.stack.push(val);
+    self_.pc = self_.return_addr.pop().unwrap();
+    self_.bp = self_.bp_buf.pop().unwrap();
+    false
 }
 
 #[rustfmt::skip]
 pub fn vm2_test() {
     let mut vm2 = VM2::new();
-    vm2.run(vec![
-            0x01, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, // CreateContext 1, 2
-            0x02, 0x00, 0x00, 0x00, 0x00, // PushInt 0
-            0x06, 0x01, 0x00, 0x00, 0x00, // SetLocal 1
-            0x05, 0x01, 0x00, 0x00, 0x00, // GetLocal 1
-            0x02, 0x00, 0xe1, 0xf5, 0x05, // PushInt 100,000,000
-            0x04, // Lt
-            0x07, 0x15, 0x00, 0x00, 0x00, // JmpIfFalse 21
-            0x05, 0x01, 0x00, 0x00, 0x00, // GetLocal 1
-            0x02, 0x01, 0x00, 0x00, 0x00, // PushInt 1
-            0x03, // Add
-            0x06, 0x01, 0x00, 0x00, 0x00, // SetLocal 1
-            0x08, 0xdb, 0xff, 0xff, 0xff, // Jmp -37
-            0x00, // End
-    ]);
+    vm2.constant_table.push(Value::Function(25, Rc::new(RefCell::new(HashMap::new()))));
+
+    // Loop for 100,000,000
     // AllocLocalVar(1, 1)
     // Push(Number(0.0))
     // SetLocal(1)
@@ -674,4 +834,71 @@ pub fn vm2_test() {
     // SetLocal(1)
     // Jmp(-8)
     // End
+    // vm2.run(vec![
+    //         CREATE_CONTEXT, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, // CreateContext 1, 1
+    //         PUSH_INT32, 0x00, 0x00, 0x00, 0x00, // PushInt 0
+    //         SET_LOCAL, 0x01, 0x00, 0x00, 0x00, // SetLocal 1
+    //         GET_LOCAL, 0x01, 0x00, 0x00, 0x00, // GetLocal 1
+    //         PUSH_INT32, 0x00, 0xe1, 0xf5, 0x05, // PushInt 100,000,000
+    //         LT, // Lt
+    //         JMP_IF_FALSE, 0x15, 0x00, 0x00, 0x00, // JmpIfFalse 21
+    //         GET_LOCAL, 0x01, 0x00, 0x00, 0x00, // GetLocal 1
+    //         PUSH_INT32, 0x01, 0x00, 0x00, 0x00, // PushInt 1
+    //         ADD, // Add
+    //         SET_LOCAL, 0x01, 0x00, 0x00, 0x00, // SetLocal 1
+    //         JMP, 0xdb, 0xff, 0xff, 0xff, // Jmp -37
+    //         END, // End
+    // ]);
+
+    // Fibo 10
+    // AllocLocalVar(0, 1)
+    // Push(Number(10.0))
+    // Push(Function(5, RefCell { value: {} }))
+    // Call(1)
+    // End
+    // AllocLocalVar(0, 1)
+    // GetLocal(0)
+    // Push(Number(2.0))
+    // Lt
+    // JmpIfFalse(3)
+    // Push(Number(1.0))
+    // Return
+    // GetLocal(0)
+    // Push(Number(1.0))
+    // Sub
+    // Push(Function(5, RefCell { value: {} }))
+    // Call(1) 
+    // GetLocal(0)
+    // Push(Number(2.0))
+    // Sub
+    // Push(Function(5, RefCell { value: {} }))
+    // Call(1)
+    // Add
+    // Return
+    vm2.run(vec![
+        CREATE_CONTEXT, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, // CreateContext 1, 1
+        PUSH_INT32, 0x23, 0x00, 0x00, 0x00, // PushInt 35
+        PUSH_CONST, 0x00, 0x00, 0x00, 0x00, // PushConst 0
+        CALL, 0x01, 0x00, 0x00, 0x00, // Call 1
+        END, // End
+        CREATE_CONTEXT, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, // CreateContext 0, 1
+        GET_LOCAL, 0x00, 0x00, 0x00, 0x00, // GetLocal 0
+        PUSH_INT32, 0x02, 0x00, 0x00, 0x00, // PushInt 2
+        LT, // Lt
+        JMP_IF_FALSE, 0x06, 0x00, 0x00, 0x00, // JmpIfFalse 6
+        PUSH_INT32, 0x01, 0x00, 0x00, 0x00, // PushInt 1
+        RETURN, // Return
+        GET_LOCAL, 0x00, 0x00, 0x00, 0x00, // GetLocal 0
+        PUSH_INT32, 0x01, 0x00, 0x00, 0x00, // PushInt 1
+        SUB, // Sub
+        PUSH_CONST, 0x00, 0x00, 0x00, 0x00, // PushConst 0
+        CALL, 0x01, 0x00, 0x00, 0x00, // Call 1
+        GET_LOCAL, 0x00, 0x00, 0x00, 0x00, // GetLocal 0
+        PUSH_INT32, 0x02, 0x00, 0x00, 0x00, // PushInt 2
+        SUB, // Sub
+        PUSH_CONST, 0x00, 0x00, 0x00, 0x00, // PushConst 0
+        CALL, 0x01, 0x00, 0x00, 0x00, // Call 1
+        ADD, // Add
+        RETURN, // Return
+    ]);
 }
