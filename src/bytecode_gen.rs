@@ -110,14 +110,14 @@ impl ByteCodeGen {
 
     pub fn gen_get_global(&mut self, name: String, insts: &mut Vec<u8>) {
         insts.push(GET_GLOBAL);
-        let id = self.const_table.value.len();
+        let id = self.const_table.string.len();
         self.const_table.string.push(name);
         self.gen_int32(id as i32, insts);
     }
 
     pub fn gen_set_global(&mut self, name: String, insts: &mut Vec<u8>) {
         insts.push(SET_GLOBAL);
-        let id = self.const_table.value.len();
+        let id = self.const_table.string.len();
         self.const_table.string.push(name);
         self.gen_int32(id as i32, insts);
     }
@@ -137,14 +137,14 @@ impl ByteCodeGen {
         self.gen_int32(argc as i32, insts);
     }
 
-    pub fn gen_jmp(&self, dst: u32, insts: &mut Vec<u8>) {
+    pub fn gen_jmp(&self, dst: i32, insts: &mut Vec<u8>) {
         insts.push(JMP);
-        self.gen_int32(dst as i32, insts);
+        self.gen_int32(dst, insts);
     }
 
-    pub fn gen_jmp_if_false(&self, dst: u32, insts: &mut Vec<u8>) {
+    pub fn gen_jmp_if_false(&self, dst: i32, insts: &mut Vec<u8>) {
         insts.push(JMP_IF_FALSE);
-        self.gen_int32(dst as i32, insts);
+        self.gen_int32(dst, insts);
     }
 
     pub fn gen_return(&self, insts: &mut Vec<u8>) {
@@ -158,16 +158,16 @@ impl ByteCodeGen {
     }
 
     pub fn gen_int32(&self, n: i32, insts: &mut Vec<u8>) {
-        insts.push(((n << 24) >> 24) as u8);
-        insts.push(((n << 16) >> 24) as u8);
-        insts.push(((n << 8) >> 24) as u8);
-        insts.push((n >> 24) as u8);
+        insts.push(((n >> 0) & 0xff as i32) as u8);
+        insts.push(((n >> 8) & 0xff as i32) as u8);
+        insts.push(((n >> 16) & 0xff as i32) as u8);
+        insts.push(((n >> 24) & 0xff as i32) as u8);
     }
 
     pub fn replace_int32(&self, n: i32, insts: &mut [u8]) {
-        insts[0] = ((n << 24) >> 24) as u8;
-        insts[1] = ((n << 16) >> 24) as u8;
-        insts[2] = ((n << 8) >> 24) as u8;
         insts[3] = (n >> 24) as u8;
+        insts[2] = (n >> 16) as u8;
+        insts[1] = (n >> 8) as u8;
+        insts[0] = (n >> 0) as u8;
     }
 }

@@ -35,7 +35,7 @@ fn main() {
         }
 
         vm::vm2_test();
-        
+
         return;
 
         let mut file_body = String::new();
@@ -125,15 +125,13 @@ fn easy_run(file_name: &str) {
     // }
 
     println!("Result:");
-    // let mut vm2 = vm::VM2::new();
-    // (*vm2.global_objects)
-    //     .borrow_mut()
-    //     .extend(vm_codegen.global_varmap);
-    // vm2.run(&insts);
 
-    let mut vm = vm::VM::new();
-    (*vm.global_objects)
+    // println!("{:?}", insts);
+
+    let mut vm2 = vm::VM2::new();
+    vm2.const_table = vm_codegen.bytecode_gen.const_table;
+    (*vm2.global_objects)
         .borrow_mut()
         .extend(vm_codegen.global_varmap);
-    vm.run(insts);
+    vm2.run(insts);
 }
