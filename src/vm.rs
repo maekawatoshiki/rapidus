@@ -465,9 +465,10 @@ pub struct VM2 {
     pub sp_history: Vec<usize>,
     pub return_addr: Vec<isize>,
     pub constant_table: Vec<Value>,
+    pub const_str_table: Vec<String>,
     pub insts: Vec<u8>,
     pub pc: isize,
-    pub op_table: [fn(&mut VM2) -> bool; 24],
+    pub op_table: [fn(&mut VM2) -> bool; 30],
 }
 
 impl VM2 {
@@ -501,11 +502,14 @@ impl VM2 {
             sp_history: Vec::with_capacity(128),
             return_addr: Vec::with_capacity(128),
             constant_table: vec![],
+            const_str_table: vec![],
             insts: vec![],
             pc: 0isize,
             op_table: [
                 end,
                 create_context,
+                constract,
+                create_object,
                 push_int8,
                 push_int32,
                 push_const,
@@ -522,6 +526,10 @@ impl VM2 {
                 ge,
                 eq,
                 ne,
+                get_member,
+                set_member,
+                get_global,
+                set_global,
                 get_local,
                 set_local,
                 jmp_if_false,
@@ -535,28 +543,34 @@ impl VM2 {
 
 const END: u8 = 0x00;
 const CREATE_CONTEXT: u8 = 0x01;
-const PUSH_INT8: u8 = 0x02;
-const PUSH_INT32: u8 = 0x03;
-const PUSH_CONST: u8 = 0x04;
-const PUSH_CONST_NEED_THIS: u8 = 0x05;
-const PUSH_THIS: u8 = 0x06;
-const ADD: u8 = 0x07;
-const SUB: u8 = 0x08;
-const MUL: u8 = 0x09;
-const DIV: u8 = 0x0a;
-const REM: u8 = 0x0b;
-const LT: u8 = 0x0c;
-const GT: u8 = 0x0d;
-const LE: u8 = 0x0e;
-const GE: u8 = 0x0f;
-const EQ: u8 = 0x10;
-const NE: u8 = 0x11;
-const GET_LOCAL: u8 = 0x12;
-const SET_LOCAL: u8 = 0x13;
-const JMP_IF_FALSE: u8 = 0x14;
-const JMP: u8 = 0x15;
-const CALL: u8 = 0x16;
-const RETURN: u8 = 0x17;
+const CONSTRACT: u8 = 0x02;
+const CREATE_OBJECT: u8 = 0x03;
+const PUSH_INT8: u8 = 0x04;
+const PUSH_INT32: u8 = 0x05;
+const PUSH_CONST: u8 = 0x06;
+const PUSH_CONST_NEED_THIS: u8 = 0x07;
+const PUSH_THIS: u8 = 0x08;
+const ADD: u8 = 0x09;
+const SUB: u8 = 0x0a;
+const MUL: u8 = 0x0b;
+const DIV: u8 = 0x0c;
+const REM: u8 = 0x0d;
+const LT: u8 = 0x0e;
+const GT: u8 = 0x0f;
+const LE: u8 = 0x10;
+const GE: u8 = 0x11;
+const EQ: u8 = 0x12;
+const NE: u8 = 0x13;
+const GET_MEMBER: u8 = 0x14;
+const SET_MEMBER: u8 = 0x15;
+const GET_GLOBAL: u8 = 0x16;
+const SET_GLOBAL: u8 = 0x17;
+const GET_LOCAL: u8 = 0x18;
+const SET_LOCAL: u8 = 0x19;
+const JMP_IF_FALSE: u8 = 0x1a;
+const JMP: u8 = 0x1b;
+const CALL: u8 = 0x1c;
+const RETURN: u8 = 0x1d;
 
 impl VM2 {
     pub fn run(&mut self, insts: Vec<u8>) {
@@ -610,6 +624,70 @@ fn create_context(self_: &mut VM2) -> bool {
     for _ in 0..n {
         self_.stack.push(Value::Undefined);
     }
+    true
+}
+
+#[inline]
+fn constract(self_: &mut VM2) -> bool {
+    self_.pc += 1; // constract
+    get_int32!(self_, argc, usize);
+
+    let mut callee = self_.stack.pop().unwrap();
+
+    loop {
+        match callee {
+            Value::Function(dst, _) => {
+                self_.return_addr.push(self_.pc);
+
+                // insert new 'this'
+                let pos = self_.stack.len() - argc;
+                let new_this = Rc::new(RefCell::new(HashMap::new()));
+                self_.stack.insert(pos, Value::Object(new_this.clone()));
+
+                self_.pc = dst as isize;
+                self_.do_run();
+                self_.stack.pop(); // return value by func
+                self_.stack.push(Value::Object(new_this));
+                break;
+            }
+            Value::NeedThis(callee_) => {
+                callee = *callee_;
+            }
+            Value::WithThis(callee_, _this) => {
+                callee = *callee_;
+            }
+            c => {
+                println!("Call: err: {:?}, pc = {}", c, self_.pc);
+                break;
+            }
+        }
+    }
+    true
+}
+
+#[inline]
+fn create_object(self_: &mut VM2) -> bool {
+    self_.pc += 1; // create_context
+    get_int32!(self_, len, usize);
+
+    let mut map = HashMap::new();
+    for _ in 0..len {
+        let name = if let Value::String(name) = self_.stack.pop().unwrap() {
+            name
+        } else {
+            panic!()
+        };
+        let val = self_.stack.pop().unwrap();
+        map.insert(
+            unsafe { CStr::from_ptr(name).to_str().unwrap().to_string() },
+            unsafe {
+                let p = alloc_for_value();
+                *p = val.clone();
+                p
+            },
+        );
+    }
+    self_.stack.push(Value::Object(Rc::new(RefCell::new(map))));
     true
 }
 
@@ -728,6 +806,81 @@ fn binary(self_: &mut VM2, op: &BinOp) {
         },
         _ => {}
     }
+}
+
+#[inline]
+fn get_member(self_: &mut VM2) -> bool {
+    self_.pc += 1; // get_global
+    let member = self_.stack.pop().unwrap().to_string();
+    let parent = self_.stack.pop().unwrap();
+    match parent {
+        Value::Object(map)
+        | Value::Function(_, map)
+        | Value::NeedThis(box Value::Function(_, map)) => match map.borrow().get(member.as_str()) {
+            Some(addr) => {
+                let val = unsafe { (**addr).clone() };
+                if let Value::NeedThis(callee) = val {
+                    self_.stack.push(Value::WithThis(
+                        callee,
+                        Box::new(Value::Object(map.clone())),
+                    ))
+                } else {
+                    self_.stack.push(val)
+                }
+            }
+            None => self_.stack.push(Value::Undefined),
+        },
+        _ => unreachable!(),
+    }
+    true
+}
+
+#[inline]
+fn set_member(self_: &mut VM2) -> bool {
+    self_.pc += 1; // get_global
+    let member = self_.stack.pop().unwrap().to_string();
+    let parent = self_.stack.pop().unwrap();
+    let val = self_.stack.pop().unwrap();
+    match parent {
+        Value::Object(map)
+        | Value::Function(_, map)
+        | Value::NeedThis(box Value::Function(_, map)) => unsafe {
+            **map
+                .borrow_mut()
+                .entry(member)
+                .or_insert_with(|| alloc_for_value()) = val;
+        },
+        e => unreachable!("{:?}", e),
+    }
+    true
+}
+
+#[inline]
+fn get_global(self_: &mut VM2) -> bool {
+    self_.pc += 1; // get_global
+    get_int32!(self_, n, usize);
+    unsafe {
+        let val = (**(*self_.global_objects)
+            .borrow()
+            .get(self_.const_str_table[n].as_str())
+            .unwrap())
+            .clone();
+        self_.stack.push(val);
+    }
+    true
+}
+
+#[inline]
+fn set_global(self_: &mut VM2) -> bool {
+    self_.pc += 1; // set_global
+    get_int32!(self_, n, usize);
+    unsafe {
+        **(*self_.global_objects)
+            .borrow_mut()
+            .entry(self_.const_str_table[n].clone())
+            .or_insert_with(|| alloc_for_value()) = self_.stack.pop().unwrap();
+    }
+    true
 }
 
 #[inline]
@@ -853,7 +1006,11 @@ fn return_(self_: &mut VM2) -> bool {
 #[rustfmt::skip]
 pub fn vm2_test() {
     let mut vm2 = VM2::new();
-    vm2.constant_table.push(Value::Function(22, Rc::new(RefCell::new(HashMap::new()))));
+    vm2.constant_table.push(Value::Function(38, Rc::new(RefCell::new(HashMap::new()))));
+    unsafe {
+        vm2.constant_table.push(Value::String(alloc_rawstring("log")));
+    }
+    vm2.const_str_table.push("console".to_string());
 
     // Loop for 100,000,000
     // AllocLocalVar(1, 1)
@@ -912,8 +1069,12 @@ pub fn vm2_test() {
     // Return
     vm2.run(vec![
         CREATE_CONTEXT, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, // CreateContext 1, 1
-        PUSH_INT8, 0x23, // PushInt 35
+        PUSH_INT8, 0x0a, // PushInt 10
         PUSH_CONST, 0x00, 0x00, 0x00, 0x00, // PushConst 0
+        CALL, 0x01, 0x00, 0x00, 0x00, // Call 1
+        GET_GLOBAL, 0x00, 0x00, 0x00, 0x00, // GetGlobal 0 (console)
+        PUSH_CONST, 0x01, 0x00, 0x00, 0x00, // PushConst 1 (log)
+        GET_MEMBER, // GetMember
         CALL, 0x01, 0x00, 0x00, 0x00, // Call 1
         END, // End
         CREATE_CONTEXT, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, // CreateContext 0, 1
