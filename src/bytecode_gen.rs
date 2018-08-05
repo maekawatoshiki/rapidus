@@ -1,5 +1,5 @@
 use vm::{
-    ConstantTable, PUSH_INT32, PUSH_INT8, Value, ADD, CALL, CONSTRACT, CREATE_CONTEXT,
+    ConstantTable, Inst, PUSH_INT32, PUSH_INT8, Value, ADD, CALL, CONSTRACT, CREATE_CONTEXT,
     CREATE_OBJECT, DIV, END, EQ, GE, GET_GLOBAL, GET_LOCAL, GET_MEMBER, GT, JMP, JMP_IF_FALSE, LE,
     LT, MUL, NE, PUSH_CONST, PUSH_THIS, REM, RETURN, SET_GLOBAL, SET_LOCAL, SET_MEMBER, SUB,
 };
@@ -48,7 +48,7 @@ impl ByteCodeGen {
         self.gen_int32(n, insts);
     }
 
-    pub fn gen_const(&mut self, val: Value, insts: &mut Vec<u8>) {
+    pub fn gen_push_const(&mut self, val: Value, insts: &mut Vec<u8>) {
         insts.push(PUSH_CONST);
         let id = self.const_table.value.len();
         self.const_table.value.push(val);
@@ -162,5 +162,50 @@ impl ByteCodeGen {
         insts[1] = ((n << 16) >> 24) as u8;
         insts[2] = ((n << 8) >> 24) as u8;
         insts[3] = (n >> 24) as u8;
+    }
+
+    // Convert VM::Inst into Bytecode
+
+    pub fn convert(&mut self, insts: &Vec<Inst>) -> Vec<u8> {
+        let mut output = vec![];
+        for inst in insts {
+            match inst {
+                Inst::PushThis => self.gen_push_this(&mut output),
+                Inst::Push(Value::Number(n)) if *n - (*n).floor() == 0.0 => {
+                    println!("here");
+                    self.gen_push_int32(*n as i32, &mut output)
+                }
+                Inst::Push(val) => self.gen_push_const(val.clone(), &mut output),
+                Inst::Constract(argc) => self.gen_constract(*argc, &mut output),
+                Inst::CreateObject(len) => self.gen_create_object(*len, &mut output),
+                Inst::Add => self.gen_add(&mut output),
+                Inst::Sub => self.gen_sub(&mut output),
+                Inst::Mul => self.gen_mul(&mut output),
+                Inst::Div => self.gen_div(&mut output),
+                Inst::Rem => self.gen_rem(&mut output),
+                Inst::Lt => self.gen_lt(&mut output),
+                Inst::Le => self.gen_le(&mut output),
+                Inst::Gt => self.gen_gt(&mut output),
+                Inst::Ge => self.gen_ge(&mut output),
+                Inst::Eq => self.gen_eq(&mut output),
+                Inst::Ne => self.gen_ne(&mut output),
+                Inst::GetMember => self.gen_get_member(&mut output),
+                Inst::SetMember => self.gen_set_member(&mut output),
+                Inst::GetGlobal(name) => self.gen_get_global(name.clone(), &mut output),
+                Inst::GetLocal(id) => self.gen_get_local(*id as u32, &mut output),
+                Inst::SetGlobal(name) => self.gen_set_global(name.clone(), &mut output),
+                Inst::SetLocal(id) => self.gen_set_local(*id as u32, &mut output),
+                Inst::Call(argc) => self.gen_call(*argc as u32, &mut output),
+                Inst::Jmp(dst) => self.gen_jmp(*dst as u32, &mut output),
+                Inst::JmpIfFalse(dst) => self.gen_jmp(*dst as u32, &mut output),
+                Inst::AllocLocalVar(n, argc) => {
+                    self.gen_create_context(*n as usize, *argc as usize, &mut output)
+                }
+                Inst::Return => self.gen_return(&mut output),
+                Inst::End => self.gen_end(&mut output),
+                _ => unimplemented!(),
+            }
+        }
+        output
     }
 }
