@@ -45,8 +45,6 @@ pub enum Value {
 pub enum Inst {
     PushThis,
     Push(Value),
-    Pop,
-    PushNeedThis(Box<Value>),
     Constract(usize),
     CreateObject(usize),
     Add,
@@ -146,10 +144,6 @@ impl VM {
                     self.bp = self.bp_buf.pop().unwrap();
                     return;
                 }
-                &Inst::Pop => {
-                    self.stack.pop();
-                    *pc += 1;
-                }
                 &Inst::Push(ref val) => {
                     self.stack.push(val.clone());
                     *pc += 1;
@@ -157,10 +151,6 @@ impl VM {
                 &Inst::PushThis => {
                     let val = self.stack[self.bp].clone();
                     self.stack.push(val);
-                    *pc += 1;
-                }
-                &Inst::PushNeedThis(ref callee) => {
-                    self.stack.push(Value::NeedThis(callee.clone()));
                     *pc += 1;
                 }
                 ref op
@@ -477,7 +467,7 @@ pub struct VM2 {
     pub constant_table: Vec<Value>,
     pub insts: Vec<u8>,
     pub pc: isize,
-    pub op_table: [fn(&mut VM2) -> bool; 14],
+    pub op_table: [fn(&mut VM2) -> bool; 24],
 }
 
 impl VM2 {
@@ -519,9 +509,19 @@ impl VM2 {
                 push_int8,
                 push_int32,
                 push_const,
+                push_const_need_this,
+                push_this,
                 add,
                 sub,
+                mul,
+                div,
+                rem,
                 lt,
+                gt,
+                le,
+                ge,
+                eq,
+                ne,
                 get_local,
                 set_local,
                 jmp_if_false,
@@ -538,15 +538,25 @@ const CREATE_CONTEXT: u8 = 0x01;
 const PUSH_INT8: u8 = 0x02;
 const PUSH_INT32: u8 = 0x03;
 const PUSH_CONST: u8 = 0x04;
-const ADD: u8 = 0x05;
-const SUB: u8 = 0x06;
-const LT: u8 = 0x07;
-const GET_LOCAL: u8 = 0x08;
-const SET_LOCAL: u8 = 0x09;
-const JMP_IF_FALSE: u8 = 0x0a;
-const JMP: u8 = 0x0b;
-const CALL: u8 = 0x0c;
-const RETURN: u8 = 0x0d;
+const PUSH_CONST_NEED_THIS: u8 = 0x05;
+const PUSH_THIS: u8 = 0x06;
+const ADD: u8 = 0x07;
+const SUB: u8 = 0x08;
+const MUL: u8 = 0x09;
+const DIV: u8 = 0x0a;
+const REM: u8 = 0x0b;
+const LT: u8 = 0x0c;
+const GT: u8 = 0x0d;
+const LE: u8 = 0x0e;
+const GE: u8 = 0x0f;
+const EQ: u8 = 0x10;
+const NE: u8 = 0x11;
+const GET_LOCAL: u8 = 0x12;
+const SET_LOCAL: u8 = 0x13;
+const JMP_IF_FALSE: u8 = 0x14;
+const JMP: u8 = 0x15;
+const CALL: u8 = 0x16;
+const RETURN: u8 = 0x17;
 
 impl VM2 {
     pub fn run(&mut self, insts: Vec<u8>) {
@@ -628,25 +638,43 @@ fn push_const(self_: &mut VM2) -> bool {
 }
 
 #[inline]
-fn add(self_: &mut VM2) -> bool {
-    self_.pc += 1; // add
-    binary(self_, &BinOp::Add);
+fn push_const_need_this(self_: &mut VM2) -> bool {
+    self_.pc += 1; // push_this
+    let val = self_.stack[self_.bp].clone();
+    self_.stack.push(val);
     true
 }
 
 #[inline]
-fn sub(self_: &mut VM2) -> bool {
-    self_.pc += 1; // sub
-    binary(self_, &BinOp::Sub);
+fn push_this(self_: &mut VM2) -> bool {
+    self_.pc += 1; // push_this
+    let val = self_.stack[self_.bp].clone();
+    self_.stack.push(val);
     true
 }
 
-#[inline]
-fn lt(self_: &mut VM2) -> bool {
-    self_.pc += 1; // lt
-    binary(self_, &BinOp::Lt);
-    true
+macro_rules! bin_op {
+    ($name:ident, $binop:ident) => {
+        #[inline]
+        fn $name(self_: &mut VM2) -> bool {
+            self_.pc += 1; // $name
+            binary(self_, &BinOp::$binop);
+            true
+        }
+    };
 }
+
+bin_op!(add, Add);
+bin_op!(sub, Sub);
+bin_op!(mul, Mul);
+bin_op!(div, Div);
+bin_op!(rem, Rem);
+bin_op!(lt, Lt);
+bin_op!(gt, Gt);
+bin_op!(le, Le);
+bin_op!(ge, Ge);
+bin_op!(eq, Eq);
+bin_op!(ne, Ne);
 
 #[inline]
 fn binary(self_: &mut VM2, op: &BinOp) {

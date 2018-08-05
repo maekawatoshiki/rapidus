@@ -3,8 +3,8 @@ use node::{BinOp, FormalParameters, Node, PropertyDefinition};
 use std::collections::HashSet;
 use vm::{alloc_for_value, alloc_rawstring, HeapAddr, Inst, Value};
 
-use std::collections::HashMap;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -103,8 +103,7 @@ impl VMCodeGen {
                     )));
                     self.global_varmap.insert(name.clone(), mem);
                 } else {
-                    *mem =
-                        Value::Function(pos, Rc::new(RefCell::new(HashMap::new())));
+                    *mem = Value::Function(pos, Rc::new(RefCell::new(HashMap::new())));
                     self.global_varmap.insert(name.clone(), mem);
                 }
                 function_value_list.insert(name.clone(), (*mem).clone());
@@ -122,7 +121,7 @@ impl VMCodeGen {
 
             if let Some(val) = val {
                 match val {
-                    Value::NeedThis(callee) => *inst = Inst::PushNeedThis(callee.clone()),
+                    Value::NeedThis(callee) => *inst = Inst::Push(Value::NeedThis(callee.clone())),
                     _ => *inst = Inst::Push(val.clone()),
                 }
             }
@@ -768,7 +767,10 @@ fn new() {
     assert_eq!(
         vec![
             Inst::AllocLocalVar(0, 1),
-            Inst::PushNeedThis(Box::new(Value::Function(4, Rc::new(RefCell::new(HashMap::new()))))),
+            Inst::PushNeedThis(Box::new(Value::Function(
+                4,
+                Rc::new(RefCell::new(HashMap::new())),
+            ))),
             Inst::Constract(0),
             Inst::End,
             Inst::AllocLocalVar(0, 1),
