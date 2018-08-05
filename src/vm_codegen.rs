@@ -767,10 +767,10 @@ fn new() {
     assert_eq!(
         vec![
             Inst::AllocLocalVar(0, 1),
-            Inst::PushNeedThis(Box::new(Value::Function(
+            Inst::Push(Value::NeedThis(Box::new(Value::Function(
                 4,
                 Rc::new(RefCell::new(HashMap::new())),
-            ))),
+            )))),
             Inst::Constract(0),
             Inst::End,
             Inst::AllocLocalVar(0, 1),
