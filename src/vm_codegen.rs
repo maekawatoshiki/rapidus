@@ -1,3 +1,4 @@
+use bytecode_gen::ByteCodeGen;
 use id::IdGen;
 use node::{BinOp, FormalParameters, Node, PropertyDefinition};
 use std::collections::HashSet;
@@ -48,12 +49,13 @@ impl PendingFunctionInfo {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct VMCodeGen {
     pub global_varmap: HashMap<String, HeapAddr>, // usize will be replaced with an appropriate type
     pub local_varmap: Vec<HashMap<String, usize>>,
     pub functions: HashMap<String, FunctionInfo>,
     pub local_var_stack_addr: IdGen,
+    pub bytecode_gen: ByteCodeGen,
 }
 
 impl VMCodeGen {
@@ -63,6 +65,7 @@ impl VMCodeGen {
             local_varmap: vec![HashMap::new()],
             functions: HashMap::new(),
             local_var_stack_addr: IdGen::new(),
+            bytecode_gen: ByteCodeGen::new(),
         }
     }
 }

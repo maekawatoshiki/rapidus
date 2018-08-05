@@ -7,6 +7,7 @@ pub mod parser;
 pub mod token;
 pub mod vm;
 pub mod vm_codegen;
+pub mod bytecode_gen;
 pub mod id;
 pub mod fv_finder;
 pub mod fv_solver;

@@ -457,6 +457,21 @@ impl Value {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct ConstantTable {
+    pub value: Vec<Value>,
+    pub string: Vec<String>,
+}
+
+impl ConstantTable {
+    pub fn new() -> ConstantTable {
+        ConstantTable {
+            value: vec![],
+            string: vec![],
+        }
+    }
+}
+
 pub struct VM2 {
     pub global_objects: Rc<RefCell<HashMap<String, HeapAddr>>>,
     pub stack: Vec<Value>,
@@ -464,11 +479,10 @@ pub struct VM2 {
     pub bp: usize,
     pub sp_history: Vec<usize>,
     pub return_addr: Vec<isize>,
-    pub constant_table: Vec<Value>,
-    pub const_str_table: Vec<String>,
+    pub const_table: ConstantTable,
     pub insts: Vec<u8>,
     pub pc: isize,
-    pub op_table: [fn(&mut VM2) -> bool; 30],
+    pub op_table: [fn(&mut VM2) -> bool; 29],
 }
 
 impl VM2 {
@@ -501,8 +515,7 @@ impl VM2 {
             bp: 0,
             sp_history: Vec::with_capacity(128),
             return_addr: Vec::with_capacity(128),
-            constant_table: vec![],
-            const_str_table: vec![],
+            const_table: ConstantTable::new(),
             insts: vec![],
             pc: 0isize,
             op_table: [
@@ -513,7 +526,6 @@ impl VM2 {
                 push_int8,
                 push_int32,
                 push_const,
-                push_const_need_this,
                 push_this,
                 add,
                 sub,
@@ -541,36 +553,35 @@ impl VM2 {
     }
 }
 
-const END: u8 = 0x00;
-const CREATE_CONTEXT: u8 = 0x01;
-const CONSTRACT: u8 = 0x02;
-const CREATE_OBJECT: u8 = 0x03;
-const PUSH_INT8: u8 = 0x04;
-const PUSH_INT32: u8 = 0x05;
-const PUSH_CONST: u8 = 0x06;
-const PUSH_CONST_NEED_THIS: u8 = 0x07;
-const PUSH_THIS: u8 = 0x08;
-const ADD: u8 = 0x09;
-const SUB: u8 = 0x0a;
-const MUL: u8 = 0x0b;
-const DIV: u8 = 0x0c;
-const REM: u8 = 0x0d;
-const LT: u8 = 0x0e;
-const GT: u8 = 0x0f;
-const LE: u8 = 0x10;
-const GE: u8 = 0x11;
-const EQ: u8 = 0x12;
-const NE: u8 = 0x13;
-const GET_MEMBER: u8 = 0x14;
-const SET_MEMBER: u8 = 0x15;
-const GET_GLOBAL: u8 = 0x16;
-const SET_GLOBAL: u8 = 0x17;
-const GET_LOCAL: u8 = 0x18;
-const SET_LOCAL: u8 = 0x19;
-const JMP_IF_FALSE: u8 = 0x1a;
-const JMP: u8 = 0x1b;
-const CALL: u8 = 0x1c;
-const RETURN: u8 = 0x1d;
+pub const END: u8 = 0x00;
+pub const CREATE_CONTEXT: u8 = 0x01;
+pub const CONSTRACT: u8 = 0x02;
+pub const CREATE_OBJECT: u8 = 0x03;
+pub const PUSH_INT8: u8 = 0x04;
+pub const PUSH_INT32: u8 = 0x05;
+pub const PUSH_CONST: u8 = 0x06;
+pub const PUSH_THIS: u8 = 0x07;
+pub const ADD: u8 = 0x08;
+pub const SUB: u8 = 0x09;
+pub const MUL: u8 = 0x0a;
+pub const DIV: u8 = 0x0b;
+pub const REM: u8 = 0x0c;
+pub const LT: u8 = 0x0d;
+pub const GT: u8 = 0x0e;
+pub const LE: u8 = 0x0f;
+pub const GE: u8 = 0x10;
+pub const EQ: u8 = 0x11;
+pub const NE: u8 = 0x12;
+pub const GET_MEMBER: u8 = 0x13;
+pub const SET_MEMBER: u8 = 0x14;
+pub const GET_GLOBAL: u8 = 0x15;
+pub const SET_GLOBAL: u8 = 0x16;
+pub const GET_LOCAL: u8 = 0x17;
+pub const SET_LOCAL: u8 = 0x18;
+pub const JMP_IF_FALSE: u8 = 0x19;
+pub const JMP: u8 = 0x1a;
+pub const CALL: u8 = 0x1b;
+pub const RETURN: u8 = 0x1c;
 
 impl VM2 {
     pub fn run(&mut self, insts: Vec<u8>) {
@@ -711,15 +722,7 @@ fn push_int32(self_: &mut VM2) -> bool {
 fn push_const(self_: &mut VM2) -> bool {
     self_.pc += 1; // push_const
     get_int32!(self_, n, usize);
-    self_.stack.push(self_.constant_table[n].clone());
-    true
-}
-
-#[inline]
-fn push_const_need_this(self_: &mut VM2) -> bool {
-    self_.pc += 1; // push_this
-    let val = self_.stack[self_.bp].clone();
-    self_.stack.push(val);
+    self_.stack.push(self_.const_table.value[n].clone());
     true
 }
 
@@ -862,7 +865,7 @@ fn get_global(self_: &mut VM2) -> bool {
     unsafe {
         let val = (**(*self_.global_objects)
             .borrow()
-            .get(self_.const_str_table[n].as_str())
+            .get(self_.const_table.string[n].as_str())
             .unwrap())
             .clone();
         self_.stack.push(val);
@@ -877,7 +880,7 @@ fn set_global(self_: &mut VM2) -> bool {
     unsafe {
         **(*self_.global_objects)
             .borrow_mut()
-            .entry(self_.const_str_table[n].clone())
+            .entry(self_.const_table.string[n].clone())
             .or_insert_with(|| alloc_for_value()) = self_.stack.pop().unwrap();
     }
     true
@@ -1006,11 +1009,11 @@ fn return_(self_: &mut VM2) -> bool {
 #[rustfmt::skip]
 pub fn vm2_test() {
     let mut vm2 = VM2::new();
-    vm2.constant_table.push(Value::Function(38, Rc::new(RefCell::new(HashMap::new()))));
+    vm2.const_table.value.push(Value::Function(38, Rc::new(RefCell::new(HashMap::new()))));
     unsafe {
-        vm2.constant_table.push(Value::String(alloc_rawstring("log")));
+        vm2.const_table.value.push(Value::String(alloc_rawstring("log")));
     }
-    vm2.const_str_table.push("console".to_string());
+    vm2.const_table.string.push("console".to_string());
 
     // Loop for 100,000,000
     // AllocLocalVar(1, 1)
