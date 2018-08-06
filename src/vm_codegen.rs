@@ -1,4 +1,4 @@
-use bytecode_gen::ByteCodeGen;
+use bytecode_gen::{ByteCode, ByteCodeGen};
 use id::IdGen;
 use node::{BinOp, FormalParameters, Node, PropertyDefinition};
 use std::collections::HashSet;
@@ -17,7 +17,7 @@ use std::rc::Rc;
 pub struct FunctionInfo {
     pub name: String,
     pub use_this: bool,
-    pub insts: Vec<u8>,
+    pub insts: ByteCode,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -25,11 +25,11 @@ pub struct PendingFunctionInfo {
     pub name: String,
     pub use_this: bool,
     pub fv_name: Vec<String>,
-    pub insts: Vec<u8>,
+    pub insts: ByteCode,
 }
 
 impl FunctionInfo {
-    pub fn new(name: String, use_this: bool, insts: Vec<u8>) -> FunctionInfo {
+    pub fn new(name: String, use_this: bool, insts: ByteCode) -> FunctionInfo {
         FunctionInfo {
             name: name,
             use_this: use_this,
@@ -43,7 +43,7 @@ impl PendingFunctionInfo {
         name: String,
         use_this: bool,
         fv_name: Vec<String>,
-        insts: Vec<u8>,
+        insts: ByteCode,
     ) -> PendingFunctionInfo {
         PendingFunctionInfo {
             name: name,
@@ -76,7 +76,7 @@ impl VMCodeGen {
 }
 
 impl VMCodeGen {
-    pub fn compile(&mut self, node: &Node, insts: &mut Vec<u8>) {
+    pub fn compile(&mut self, node: &Node, insts: &mut ByteCode) {
         let pos = insts.len();
         self.bytecode_gen.gen_create_context(0, 0, insts);
         // insts.push(Inst::AllocLocalVar(0, 0));
@@ -191,7 +191,7 @@ impl VMCodeGen {
         }
     }
 
-    fn run(&mut self, node: &Node, insts: &mut Vec<u8>) {
+    fn run(&mut self, node: &Node, insts: &mut ByteCode) {
         match node {
             &Node::StatementList(ref node_list) => self.run_statement_list(node_list, insts),
             &Node::FunctionDecl(ref name, ref use_this, ref fv, ref params, ref body) => {
@@ -233,7 +233,7 @@ impl VMCodeGen {
 }
 
 impl VMCodeGen {
-    pub fn run_statement_list(&mut self, node_list: &Vec<Node>, insts: &mut Vec<u8>) {
+    pub fn run_statement_list(&mut self, node_list: &Vec<Node>, insts: &mut ByteCode) {
         for node in node_list {
             self.run(node, insts)
         }
@@ -297,7 +297,7 @@ impl VMCodeGen {
         );
     }
 
-    pub fn run_return(&mut self, val: &Option<Box<Node>>, insts: &mut Vec<u8>) {
+    pub fn run_return(&mut self, val: &Option<Box<Node>>, insts: &mut ByteCode) {
         if let &Some(ref val) = val {
             self.run(&*val, insts)
         } else {
@@ -308,7 +308,7 @@ impl VMCodeGen {
 }
 
 impl VMCodeGen {
-    pub fn run_new_expr(&mut self, expr: &Node, insts: &mut Vec<u8>) {
+    pub fn run_new_expr(&mut self, expr: &Node, insts: &mut ByteCode) {
         self.run(expr, insts);
         let len = insts.len();
         if insts[len - 1 - 4] == CALL {
@@ -320,7 +320,7 @@ impl VMCodeGen {
 }
 
 impl VMCodeGen {
-    pub fn run_var_decl(&mut self, name: &String, init: &Option<Box<Node>>, insts: &mut Vec<u8>) {
+    pub fn run_var_decl(&mut self, name: &String, init: &Option<Box<Node>>, insts: &mut ByteCode) {
         let id = self.local_var_stack_addr.gen_id();
 
         self.local_varmap
@@ -334,7 +334,7 @@ impl VMCodeGen {
         }
     }
 
-    pub fn run_var_decl2(&mut self, name: &String, init: &Option<Node>, insts: &mut Vec<u8>) {
+    pub fn run_var_decl2(&mut self, name: &String, init: &Option<Node>, insts: &mut ByteCode) {
         let id = self.local_var_stack_addr.gen_id();
 
         self.local_varmap
@@ -350,7 +350,7 @@ impl VMCodeGen {
 }
 
 impl VMCodeGen {
-    pub fn run_if(&mut self, cond: &Node, then_: &Node, else_: &Node, insts: &mut Vec<u8>) {
+    pub fn run_if(&mut self, cond: &Node, then_: &Node, else_: &Node, insts: &mut ByteCode) {
         self.run(cond, insts);
 
         let cond_pos = insts.len() as isize;
@@ -384,7 +384,7 @@ impl VMCodeGen {
         }
     }
 
-    pub fn run_while(&mut self, cond: &Node, body: &Node, insts: &mut Vec<u8>) {
+    pub fn run_while(&mut self, cond: &Node, body: &Node, insts: &mut ByteCode) {
         let pos = insts.len() as isize;
 
         self.run(cond, insts);
@@ -407,7 +407,7 @@ impl VMCodeGen {
 }
 
 impl VMCodeGen {
-    pub fn run_binary_op(&mut self, lhs: &Node, rhs: &Node, op: &BinOp, insts: &mut Vec<u8>) {
+    pub fn run_binary_op(&mut self, lhs: &Node, rhs: &Node, op: &BinOp, insts: &mut ByteCode) {
         self.run(lhs, insts);
         self.run(rhs, insts);
         match op {
@@ -426,7 +426,7 @@ impl VMCodeGen {
         }
     }
 
-    pub fn run_assign(&mut self, dst: &Node, src: &Node, insts: &mut Vec<u8>) {
+    pub fn run_assign(&mut self, dst: &Node, src: &Node, insts: &mut ByteCode) {
         self.run(src, insts);
 
         match dst {
@@ -454,7 +454,7 @@ impl VMCodeGen {
 }
 
 impl VMCodeGen {
-    pub fn run_call(&mut self, callee: &Node, args: &Vec<Node>, insts: &mut Vec<u8>) {
+    pub fn run_call(&mut self, callee: &Node, args: &Vec<Node>, insts: &mut ByteCode) {
         for arg in args {
             self.run(arg, insts);
         }
@@ -466,7 +466,7 @@ impl VMCodeGen {
 }
 
 impl VMCodeGen {
-    fn run_object_literal(&mut self, properties: &Vec<PropertyDefinition>, insts: &mut Vec<u8>) {
+    fn run_object_literal(&mut self, properties: &Vec<PropertyDefinition>, insts: &mut ByteCode) {
         for property in properties {
             match property {
                 PropertyDefinition::IdentifierReference(_) => unimplemented!(),
@@ -484,7 +484,7 @@ impl VMCodeGen {
 }
 
 impl VMCodeGen {
-    fn run_member(&mut self, parent: &Node, member: &String, insts: &mut Vec<u8>) {
+    fn run_member(&mut self, parent: &Node, member: &String, insts: &mut ByteCode) {
         self.run(parent, insts);
 
         self.bytecode_gen
@@ -492,14 +492,14 @@ impl VMCodeGen {
         self.bytecode_gen.gen_get_member(insts);
     }
 
-    fn run_index(&mut self, parent: &Node, idx: &Node, insts: &mut Vec<u8>) {
+    fn run_index(&mut self, parent: &Node, idx: &Node, insts: &mut ByteCode) {
         self.run(parent, insts);
 
         self.run(idx, insts);
         self.bytecode_gen.gen_get_member(insts);
     }
 
-    fn run_identifier(&mut self, name: &String, insts: &mut Vec<u8>) {
+    fn run_identifier(&mut self, name: &String, insts: &mut ByteCode) {
         if let Some(p) = self.local_varmap.last().unwrap().get(name.as_str()) {
             self.bytecode_gen.gen_get_local(*p as u32, insts);
         } else {

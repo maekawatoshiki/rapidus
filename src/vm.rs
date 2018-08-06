@@ -5,6 +5,7 @@ use std::cell::RefCell;
 use std::ffi::CStr;
 use std::rc::Rc;
 
+use bytecode_gen::ByteCode;
 use node::BinOp;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -53,7 +54,7 @@ pub struct VM {
     pub sp_history: Vec<usize>,
     pub return_addr: Vec<isize>,
     pub const_table: ConstantTable,
-    pub insts: Vec<u8>,
+    pub insts: ByteCode,
     pub pc: isize,
     pub op_table: [fn(&mut VM) -> bool; 31],
 }
@@ -148,13 +149,13 @@ pub const GET_GLOBAL: u8 = 0x17;
 pub const SET_GLOBAL: u8 = 0x18;
 pub const GET_LOCAL: u8 = 0x19;
 pub const SET_LOCAL: u8 = 0x1a;
-pub const JMP_IF_FALSE: u8 = 0x1b; 
+pub const JMP_IF_FALSE: u8 = 0x1b;
 pub const JMP: u8 = 0x1c;
 pub const CALL: u8 = 0x1d;
 pub const RETURN: u8 = 0x1e;
 
 impl VM {
-    pub fn run(&mut self, insts: Vec<u8>) {
+    pub fn run(&mut self, insts: ByteCode) {
         self.insts = insts;
         self.do_run();
         // println!("stack trace: {:?}", self.stack);
@@ -616,7 +617,7 @@ fn return_(self_: &mut VM) -> bool {
 //     // Push(Number(1.0))
 //     // Sub
 //     // Push(Function(5, RefCell { value: {} }))
-//     // Call(1) 
+//     // Call(1)
 //     // GetLocal(0)
 //     // Push(Number(2.0))
 //     // Sub
