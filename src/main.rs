@@ -69,13 +69,15 @@ fn main() {
         fv_solver::FreeVariableSolver::new().run_toplevel(&mut node);
 
         println!("extract_anony_func, fv_finder, fv_solver:\n {:?}", node);
-        let mut vm_codegen = vm_codegen::VMCodeGen::new();
-        let mut insts = vec![];
-        vm_codegen.compile(&node, &mut insts);
 
-        for inst in insts.clone() {
-            println!("{:?}", inst);
-        }
+        // TODO: Implement Display for Bytecode(Vec<u8>)
+        // let mut vm_codegen = vm_codegen::VMCodeGen::new();
+        // let mut insts = vec![];
+        // vm_codegen.compile(&node, &mut insts);
+        //
+        // for inst in insts.clone() {
+        //     println!("{:?}", inst);
+        // }
 
         // println!("Result:");
         // let mut vm = vm::VM::new();
@@ -121,7 +123,11 @@ fn easy_run(file_name: &str) {
     // }
 
     println!("Result:");
+
+    // println!("{:?}", insts);
+
     let mut vm = vm::VM::new();
+    vm.const_table = vm_codegen.bytecode_gen.const_table;
     (*vm.global_objects)
         .borrow_mut()
         .extend(vm_codegen.global_varmap);
