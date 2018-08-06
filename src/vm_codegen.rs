@@ -2,11 +2,11 @@ use bytecode_gen::ByteCodeGen;
 use id::IdGen;
 use node::{BinOp, FormalParameters, Node, PropertyDefinition};
 use std::collections::HashSet;
-use vm::{HeapAddr, Inst, Value};
+use vm::Value;
 use vm::{
     PUSH_INT32, PUSH_INT8, ADD, CALL, CONSTRACT, CREATE_CONTEXT, CREATE_OBJECT, DIV, END, EQ, GE,
-    GET_GLOBAL, GET_LOCAL, GET_MEMBER, GT, JMP, JMP_IF_FALSE, LE, LT, MUL, NE, PUSH_FALSE,PUSH_TRUE,
-    PUSH_CONST, PUSH_THIS, REM, RETURN, SET_GLOBAL, SET_LOCAL, SET_MEMBER, SUB,
+    GET_GLOBAL, GET_LOCAL, GET_MEMBER, GT, JMP, JMP_IF_FALSE, LE, LT, MUL, NE, PUSH_CONST,
+    PUSH_FALSE, PUSH_THIS, PUSH_TRUE, REM, RETURN, SET_GLOBAL, SET_LOCAL, SET_MEMBER, SUB,
 };
 
 use std::cell::RefCell;

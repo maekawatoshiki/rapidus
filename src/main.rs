@@ -34,10 +34,6 @@ fn main() {
             return;
         }
 
-        vm::vm2_test();
-
-        return;
-
         let mut file_body = String::new();
 
         match OpenOptions::new().read(true).open(filename) {
@@ -73,13 +69,15 @@ fn main() {
         fv_solver::FreeVariableSolver::new().run_toplevel(&mut node);
 
         println!("extract_anony_func, fv_finder, fv_solver:\n {:?}", node);
-        let mut vm_codegen = vm_codegen::VMCodeGen::new();
-        let mut insts = vec![];
-        vm_codegen.compile(&node, &mut insts);
 
-        for inst in insts.clone() {
-            println!("{:?}", inst);
-        }
+        // TODO: Implement Display for Bytecode(Vec<u8>)
+        // let mut vm_codegen = vm_codegen::VMCodeGen::new();
+        // let mut insts = vec![];
+        // vm_codegen.compile(&node, &mut insts);
+        //
+        // for inst in insts.clone() {
+        //     println!("{:?}", inst);
+        // }
 
         // println!("Result:");
         // let mut vm = vm::VM::new();
@@ -128,10 +126,10 @@ fn easy_run(file_name: &str) {
 
     // println!("{:?}", insts);
 
-    let mut vm2 = vm::VM2::new();
-    vm2.const_table = vm_codegen.bytecode_gen.const_table;
-    (*vm2.global_objects)
+    let mut vm = vm::VM::new();
+    vm.const_table = vm_codegen.bytecode_gen.const_table;
+    (*vm.global_objects)
         .borrow_mut()
         .extend(vm_codegen.global_varmap);
-    vm2.run(insts);
+    vm.run(insts);
 }
