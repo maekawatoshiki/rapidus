@@ -5,12 +5,6 @@ use vm::{
     SET_MEMBER, SUB,
 };
 
-use std::boxed::Box;
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::ffi::CStr;
-use std::rc::Rc;
-
 pub type ByteCode = Vec<u8>;
 
 #[derive(Debug, Clone)]
@@ -175,5 +169,230 @@ impl ByteCodeGen {
         insts[2] = (n >> 16) as u8;
         insts[1] = (n >> 8) as u8;
         insts[0] = (n >> 0) as u8;
+    }
+}
+
+pub fn show(code: &ByteCode) {
+    let mut i = 0;
+    while i < code.len() {
+        match code[i] {
+            END => {
+                println!("{:02x}                        : End", END);
+                i += 1
+            }
+            CREATE_CONTEXT => {
+                println!(
+                    "{:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}: CreateContext",
+                    CREATE_CONTEXT,
+                    code[i + 1],
+                    code[i + 2],
+                    code[i + 3],
+                    code[i + 4],
+                    code[i + 5],
+                    code[i + 6],
+                    code[i + 7],
+                    code[i + 8],
+                );
+                i += 9
+            }
+            CONSTRACT => {
+                println!(
+                    "{:02x} {:02x} {:02x} {:02x} {:02x}           : Constract",
+                    CONSTRACT,
+                    code[i + 1],
+                    code[i + 2],
+                    code[i + 3],
+                    code[i + 4],
+                );
+                i += 5
+            }
+            CREATE_OBJECT => {
+                println!(
+                    "{:02x} {:02x} {:02x} {:02x} {:02x}           : CreateObject",
+                    CREATE_OBJECT,
+                    code[i + 1],
+                    code[i + 2],
+                    code[i + 3],
+                    code[i + 4],
+                );
+                i += 5
+            }
+            PUSH_INT8 => {
+                println!(
+                    "{:02x} {:02x}                     : PushInt8",
+                    PUSH_INT8,
+                    code[i + 1],
+                );
+                i += 2
+            }
+            PUSH_INT32 => {
+                println!(
+                    "{:02x} {:02x} {:02x} {:02x} {:02x}            : PushInt32",
+                    PUSH_INT32,
+                    code[i + 1],
+                    code[i + 2],
+                    code[i + 3],
+                    code[i + 4],
+                );
+                i += 5
+            }
+            PUSH_FALSE => {
+                println!("{:02x}                        : PushFalse", PUSH_FALSE,);
+                i += 1
+            }
+            PUSH_TRUE => {
+                println!("{:02x}                        : PushFalse", PUSH_TRUE,);
+                i += 1
+            }
+            PUSH_CONST => {
+                println!(
+                    "{:02x} {:02x} {:02x} {:02x} {:02x}            : PushConst",
+                    PUSH_CONST,
+                    code[i + 1],
+                    code[i + 2],
+                    code[i + 3],
+                    code[i + 4],
+                );
+                i += 5
+            }
+            PUSH_THIS => {
+                println!("{:02x}                        : PushThis", PUSH_THIS,);
+                i += 1
+            }
+            ADD => {
+                println!("{:02x}                        : Add", ADD);
+                i += 1
+            }
+            SUB => {
+                println!("{:02x}                        : Sub", SUB);
+                i += 1
+            }
+            MUL => {
+                println!("{:02x}                        : Mul", MUL);
+                i += 1
+            }
+            DIV => {
+                println!("{:02x}                        : Div", DIV);
+                i += 1
+            }
+            REM => {
+                println!("{:02x}                        : Rem", REM);
+                i += 1
+            }
+            LT => {
+                println!("{:02x}                        : Lt", LT);
+                i += 1
+            }
+            GT => {
+                println!("{:02x}                        : Gt", GT);
+                i += 1
+            }
+            LE => {
+                println!("{:02x}                        : Le", LE);
+                i += 1
+            }
+            GE => {
+                println!("{:02x}                        : Ge", GE);
+                i += 1
+            }
+            EQ => {
+                println!("{:02x}                        : Eq", EQ);
+                i += 1
+            }
+            NE => {
+                println!("{:02x}                        : Ne", NE);
+                i += 1
+            }
+            GET_MEMBER => {
+                println!("{:02x}                        : GetMember", GET_MEMBER);
+                i += 1
+            }
+            SET_MEMBER => {
+                println!("{:02x}                        : SetMember", SET_MEMBER);
+                i += 1
+            }
+            GET_GLOBAL => {
+                println!(
+                    "{:02x} {:02x} {:02x} {:02x} {:02x}            : GetGlobal",
+                    GET_GLOBAL,
+                    code[i + 1],
+                    code[i + 2],
+                    code[i + 3],
+                    code[i + 4],
+                );
+                i += 5
+            }
+            SET_GLOBAL => {
+                println!(
+                    "{:02x} {:02x} {:02x} {:02x} {:02x}            : SetGlobal",
+                    SET_GLOBAL,
+                    code[i + 1],
+                    code[i + 2],
+                    code[i + 3],
+                    code[i + 4],
+                );
+                i += 5
+            }
+            GET_LOCAL => {
+                println!(
+                    "{:02x} {:02x} {:02x} {:02x} {:02x}            : GetLocal",
+                    GET_LOCAL,
+                    code[i + 1],
+                    code[i + 2],
+                    code[i + 3],
+                    code[i + 4],
+                );
+                i += 5
+            }
+            SET_LOCAL => {
+                println!(
+                    "{:02x} {:02x} {:02x} {:02x} {:02x}            : SetLocal",
+                    SET_LOCAL,
+                    code[i + 1],
+                    code[i + 2],
+                    code[i + 3],
+                    code[i + 4],
+                );
+                i += 5
+            }
+            JMP_IF_FALSE => {
+                println!(
+                    "{:02x} {:02x} {:02x} {:02x} {:02x}            : JmpIfFalse",
+                    JMP_IF_FALSE,
+                    code[i + 1],
+                    code[i + 2],
+                    code[i + 3],
+                    code[i + 4],
+                );
+                i += 5
+            }
+            JMP => {
+                println!(
+                    "{:02x} {:02x} {:02x} {:02x} {:02x}            : Jmp",
+                    JMP,
+                    code[i + 1],
+                    code[i + 2],
+                    code[i + 3],
+                    code[i + 4],
+                );
+                i += 5
+            }
+            CALL => {
+                println!(
+                    "{:02x} {:02x} {:02x} {:02x} {:02x}            : Call",
+                    CALL,
+                    code[i + 1],
+                    code[i + 2],
+                    code[i + 3],
+                    code[i + 4],
+                );
+                i += 5
+            }
+            RETURN => {
+                println!("{:02x}                        : Return", RETURN);
+                i += 1
+            }
+            _ => unreachable!(),
+        }
     }
 }

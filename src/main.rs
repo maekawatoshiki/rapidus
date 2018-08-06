@@ -6,6 +6,7 @@ use rapidus::lexer;
 use rapidus::parser;
 use rapidus::vm;
 use rapidus::vm_codegen;
+use rapidus::bytecode_gen;
 
 extern crate clap;
 use clap::{App, Arg};
@@ -118,9 +119,7 @@ fn easy_run(file_name: &str) {
     let mut insts = vec![];
     vm_codegen.compile(&node_list[0], &mut insts);
 
-    // for inst in insts.clone() {
-    //     println!("{:?}", inst);
-    // }
+    // bytecode_gen::show(&insts);
 
     println!("Result:");
 

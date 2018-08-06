@@ -2,7 +2,6 @@ use std::boxed::Box;
 use std::collections::HashMap;
 
 use std::cell::RefCell;
-use std::ffi::CStr;
 use std::rc::Rc;
 
 use bytecode_gen::ByteCode;
@@ -56,7 +55,7 @@ pub struct VM {
     pub const_table: ConstantTable,
     pub insts: ByteCode,
     pub pc: isize,
-    pub op_table: [fn(&mut VM) -> bool; 31],
+    pub op_table: [fn(&mut VM); 31],
 }
 
 impl VM {
@@ -162,14 +161,15 @@ impl VM {
     }
 
     pub fn do_run(&mut self) {
-        while self.op_table[self.insts[self.pc as usize] as usize](self) {}
-        // loop {
-        //     println!("inst: {} - {}", self.insts[self.pc as usize], self.pc);
-        //     if !self.op_table[self.insts[self.pc as usize] as usize](self) {
-        //         break;
-        //     }
-        //     // println!("stack trace: {:?} - {}", self.stack, *pc);
-        // }
+        loop {
+            // println!("inst: {} - {}", self.insts[self.pc as usize], self.pc);
+            let code = self.insts[self.pc as usize];
+            self.op_table[code as usize](self);
+            if code == RETURN || code == END {
+                break;
+            }
+            // println!("stack trace: {:?} - {}", self.stack, *pc);
+        }
     }
 }
 
@@ -191,12 +191,10 @@ macro_rules! get_int32 {
 }
 
 #[inline]
-fn end(_self: &mut VM) -> bool {
-    false
-}
+fn end(_self: &mut VM) {}
 
 #[inline]
-fn create_context(self_: &mut VM) -> bool {
+fn create_context(self_: &mut VM) {
     self_.pc += 1; // create_context
     get_int32!(self_, n, usize);
     get_int32!(self_, argc, usize);
@@ -206,11 +204,10 @@ fn create_context(self_: &mut VM) -> bool {
     for _ in 0..n {
         self_.stack.push(Value::Undefined);
     }
-    true
 }
 
 #[inline]
-fn constract(self_: &mut VM) -> bool {
+fn constract(self_: &mut VM) {
     self_.pc += 1; // constract
     get_int32!(self_, argc, usize);
 
@@ -244,11 +241,10 @@ fn constract(self_: &mut VM) -> bool {
             }
         }
     }
-    true
 }
 
 #[inline]
-fn create_object(self_: &mut VM) -> bool {
+fn create_object(self_: &mut VM) {
     self_.pc += 1; // create_context
     get_int32!(self_, len, usize);
 
@@ -263,62 +259,54 @@ fn create_object(self_: &mut VM) -> bool {
         map.insert(name, val.clone());
     }
     self_.stack.push(Value::Object(Rc::new(RefCell::new(map))));
-    true
 }
 
 #[inline]
-fn push_int8(self_: &mut VM) -> bool {
+fn push_int8(self_: &mut VM) {
     self_.pc += 1; // push_int
     get_int8!(self_, n, i32);
     self_.stack.push(Value::Number(n as f64));
-    true
 }
 
 #[inline]
-fn push_int32(self_: &mut VM) -> bool {
+fn push_int32(self_: &mut VM) {
     self_.pc += 1; // push_int
     get_int32!(self_, n, i32);
     self_.stack.push(Value::Number(n as f64));
-    true
 }
 
 #[inline]
-fn push_false(self_: &mut VM) -> bool {
+fn push_false(self_: &mut VM) {
     self_.pc += 1; // push_false
     self_.stack.push(Value::Bool(false));
-    true
 }
 
 #[inline]
-fn push_true(self_: &mut VM) -> bool {
+fn push_true(self_: &mut VM) {
     self_.pc += 1; // push_true
     self_.stack.push(Value::Bool(true));
-    true
 }
 
 #[inline]
-fn push_const(self_: &mut VM) -> bool {
+fn push_const(self_: &mut VM) {
     self_.pc += 1; // push_const
     get_int32!(self_, n, usize);
     self_.stack.push(self_.const_table.value[n].clone());
-    true
 }
 
 #[inline]
-fn push_this(self_: &mut VM) -> bool {
+fn push_this(self_: &mut VM) {
     self_.pc += 1; // push_this
     let val = self_.stack[self_.bp].clone();
     self_.stack.push(val);
-    true
 }
 
 macro_rules! bin_op {
     ($name:ident, $binop:ident) => {
         #[inline]
-        fn $name(self_: &mut VM) -> bool {
+        fn $name(self_: &mut VM) {
             self_.pc += 1; // $name
             binary(self_, &BinOp::$binop);
-            true
         }
     };
 }
@@ -380,7 +368,7 @@ fn binary(self_: &mut VM, op: &BinOp) {
 }
 
 #[inline]
-fn get_member(self_: &mut VM) -> bool {
+fn get_member(self_: &mut VM) {
     self_.pc += 1; // get_global
     let member = self_.stack.pop().unwrap().to_string();
     let parent = self_.stack.pop().unwrap();
@@ -403,11 +391,10 @@ fn get_member(self_: &mut VM) -> bool {
         },
         _ => unreachable!(),
     }
-    true
 }
 
 #[inline]
-fn set_member(self_: &mut VM) -> bool {
+fn set_member(self_: &mut VM) {
     self_.pc += 1; // get_global
     let member = self_.stack.pop().unwrap().to_string();
     let parent = self_.stack.pop().unwrap();
@@ -422,11 +409,10 @@ fn set_member(self_: &mut VM) -> bool {
         }
         e => unreachable!("{:?}", e),
     }
-    true
 }
 
 #[inline]
-fn get_global(self_: &mut VM) -> bool {
+fn get_global(self_: &mut VM) {
     self_.pc += 1; // get_global
     get_int32!(self_, n, usize);
     let val = (*(*self_.global_objects)
@@ -435,59 +421,53 @@ fn get_global(self_: &mut VM) -> bool {
         .unwrap())
         .clone();
     self_.stack.push(val);
-    true
 }
 
 #[inline]
-fn set_global(self_: &mut VM) -> bool {
+fn set_global(self_: &mut VM) {
     self_.pc += 1; // set_global
     get_int32!(self_, n, usize);
     *(*self_.global_objects)
         .borrow_mut()
         .entry(self_.const_table.string[n].clone())
         .or_insert_with(|| Value::Undefined) = self_.stack.pop().unwrap();
-    true
 }
 
 #[inline]
-fn get_local(self_: &mut VM) -> bool {
+fn get_local(self_: &mut VM) {
     self_.pc += 1; // get_local
     get_int32!(self_, n, usize);
     let val = self_.stack[self_.bp + n].clone();
     self_.stack.push(val);
-    true
 }
 
 #[inline]
-fn set_local(self_: &mut VM) -> bool {
+fn set_local(self_: &mut VM) {
     self_.pc += 1; // set_local
     get_int32!(self_, n, usize);
     let val = self_.stack.pop().unwrap();
     self_.stack[self_.bp + n] = val;
-    true
 }
 
 #[inline]
-fn jmp(self_: &mut VM) -> bool {
+fn jmp(self_: &mut VM) {
     self_.pc += 1; // jmp
     get_int32!(self_, dst, i32);
     self_.pc += dst as isize;
-    true
 }
 
 #[inline]
-fn jmp_if_false(self_: &mut VM) -> bool {
+fn jmp_if_false(self_: &mut VM) {
     self_.pc += 1; // jmp_if_false
     get_int32!(self_, dst, i32);
     let cond = self_.stack.pop().unwrap();
     if let Value::Bool(false) = cond {
         self_.pc += dst as isize
     }
-    true
 }
 
 #[inline]
-fn call(self_: &mut VM) -> bool {
+fn call(self_: &mut VM) {
     self_.pc += 1; // Call
     get_int32!(self_, argc, usize);
 
@@ -533,34 +513,30 @@ fn call(self_: &mut VM) -> bool {
 
     // EmbeddedFunction(1)
     fn console_log(args: Vec<Value>) {
-        unsafe {
-            let args_len = args.len();
-            for i in 0..args_len {
-                match args[i] {
-                    Value::String(ref s) => print!("{}", s),
-                    Value::Number(ref n) => print!("{}", n),
-                    Value::Undefined => print!("undefined"),
-                    _ => {}
-                }
-                if args_len - 1 != i {
-                    print!(" ")
-                }
+        let args_len = args.len();
+        for i in 0..args_len {
+            match args[i] {
+                Value::String(ref s) => print!("{}", s),
+                Value::Number(ref n) => print!("{}", n),
+                Value::Undefined => print!("undefined"),
+                _ => {}
             }
-            println!()
+            if args_len - 1 != i {
+                print!(" ")
+            }
         }
+        println!()
     }
-    true
 }
 
 #[inline]
-fn return_(self_: &mut VM) -> bool {
+fn return_(self_: &mut VM) {
     let val = self_.stack.pop().unwrap();
     let former_sp = self_.sp_history.pop().unwrap();
     self_.stack.truncate(former_sp);
     self_.stack.push(val);
     self_.pc = self_.return_addr.pop().unwrap();
     self_.bp = self_.bp_buf.pop().unwrap();
-    false
 }
 
 // #[rustfmt::skip]
