@@ -1,8 +1,8 @@
 use vm::{
     ConstantTable, HeapAddr, Inst, PUSH_INT32, PUSH_INT8, Value, ADD, CALL, CONSTRACT,
     CREATE_CONTEXT, CREATE_OBJECT, DIV, END, EQ, GE, GET_GLOBAL, GET_LOCAL, GET_MEMBER, GT, JMP,
-    JMP_IF_FALSE, LE, LT, MUL, NE, PUSH_CONST, PUSH_THIS, REM, RETURN, SET_GLOBAL, SET_LOCAL,
-    SET_MEMBER, SUB,
+    JMP_IF_FALSE, LE, LT, MUL, NE, PUSH_CONST, PUSH_FALSE, PUSH_THIS, PUSH_TRUE, REM, RETURN,
+    SET_GLOBAL, SET_LOCAL, SET_MEMBER, SUB,
 };
 
 use std::boxed::Box;
@@ -53,6 +53,10 @@ impl ByteCodeGen {
     pub fn gen_push_int32(&self, n: i32, insts: &mut Vec<u8>) {
         insts.push(PUSH_INT32);
         self.gen_int32(n, insts);
+    }
+
+    pub fn gen_push_bool(&self, b: bool, insts: &mut Vec<u8>) {
+        insts.push(if b { PUSH_TRUE } else { PUSH_FALSE })
     }
 
     pub fn gen_push_const(&mut self, val: Value, insts: &mut Vec<u8>) {

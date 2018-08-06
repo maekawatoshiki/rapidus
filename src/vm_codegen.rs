@@ -5,8 +5,8 @@ use std::collections::HashSet;
 use vm::{HeapAddr, Inst, Value};
 use vm::{
     PUSH_INT32, PUSH_INT8, ADD, CALL, CONSTRACT, CREATE_CONTEXT, CREATE_OBJECT, DIV, END, EQ, GE,
-    GET_GLOBAL, GET_LOCAL, GET_MEMBER, GT, JMP, JMP_IF_FALSE, LE, LT, MUL, NE, PUSH_CONST,
-    PUSH_THIS, REM, RETURN, SET_GLOBAL, SET_LOCAL, SET_MEMBER, SUB,
+    GET_GLOBAL, GET_LOCAL, GET_MEMBER, GT, JMP, JMP_IF_FALSE, LE, LT, MUL, NE, PUSH_FALSE,PUSH_TRUE,
+    PUSH_CONST, PUSH_THIS, REM, RETURN, SET_GLOBAL, SET_LOCAL, SET_MEMBER, SUB,
 };
 
 use std::cell::RefCell;
@@ -132,6 +132,8 @@ impl VMCodeGen {
                 CREATE_OBJECT => i += 5,
                 PUSH_INT8 => i += 2,
                 PUSH_INT32 => i += 5,
+                PUSH_FALSE => i += 1,
+                PUSH_TRUE => i += 1,
                 PUSH_CONST => i += 5,
                 PUSH_THIS => i += 1,
                 ADD => i += 1,
@@ -159,7 +161,10 @@ impl VMCodeGen {
                             Value::NeedThis(callee) => {
                                 insts[i] = PUSH_CONST;
                                 let id = self.bytecode_gen.const_table.value.len();
-                                self.bytecode_gen.const_table.value.push(Value::NeedThis(Box::new(val.clone())));
+                                self.bytecode_gen
+                                    .const_table
+                                    .value
+                                    .push(Value::NeedThis(callee.clone()));
                                 self.bytecode_gen
                                     .replace_int32(id as i32, &mut insts[i + 1..i + 5]);
                             }
@@ -212,8 +217,16 @@ impl VMCodeGen {
             &Node::String(ref s) => self
                 .bytecode_gen
                 .gen_push_const(Value::String(s.clone()), insts),
+            &Node::Number(n) if n - n.floor() == 0.0 => {
+                // When 'n' is an integer
+                if -128.0 < n && n < 127.0 {
+                    self.bytecode_gen.gen_push_int8(n as i8, insts)
+                } else {
+                    self.bytecode_gen.gen_push_int32(n as i32, insts)
+                }
+            }
             &Node::Number(n) => self.bytecode_gen.gen_push_const(Value::Number(n), insts),
-            &Node::Boolean(b) => self.bytecode_gen.gen_push_const(Value::Bool(b), insts),
+            &Node::Boolean(b) => self.bytecode_gen.gen_push_bool(b, insts),
             _ => {}
         }
     }

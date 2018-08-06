@@ -470,7 +470,7 @@ pub struct VM2 {
     pub const_table: ConstantTable,
     pub insts: Vec<u8>,
     pub pc: isize,
-    pub op_table: [fn(&mut VM2) -> bool; 29],
+    pub op_table: [fn(&mut VM2) -> bool; 31],
 }
 
 impl VM2 {
@@ -506,6 +506,8 @@ impl VM2 {
                 create_object,
                 push_int8,
                 push_int32,
+                push_false,
+                push_true,
                 push_const,
                 push_this,
                 add,
@@ -540,29 +542,31 @@ pub const CONSTRACT: u8 = 0x02;
 pub const CREATE_OBJECT: u8 = 0x03;
 pub const PUSH_INT8: u8 = 0x04;
 pub const PUSH_INT32: u8 = 0x05;
-pub const PUSH_CONST: u8 = 0x06;
-pub const PUSH_THIS: u8 = 0x07;
-pub const ADD: u8 = 0x08;
-pub const SUB: u8 = 0x09;
-pub const MUL: u8 = 0x0a;
-pub const DIV: u8 = 0x0b;
-pub const REM: u8 = 0x0c;
-pub const LT: u8 = 0x0d;
-pub const GT: u8 = 0x0e;
-pub const LE: u8 = 0x0f;
-pub const GE: u8 = 0x10;
-pub const EQ: u8 = 0x11;
-pub const NE: u8 = 0x12;
-pub const GET_MEMBER: u8 = 0x13;
-pub const SET_MEMBER: u8 = 0x14;
-pub const GET_GLOBAL: u8 = 0x15;
-pub const SET_GLOBAL: u8 = 0x16;
-pub const GET_LOCAL: u8 = 0x17;
-pub const SET_LOCAL: u8 = 0x18;
-pub const JMP_IF_FALSE: u8 = 0x19; // 25
-pub const JMP: u8 = 0x1a;
-pub const CALL: u8 = 0x1b;
-pub const RETURN: u8 = 0x1c;
+pub const PUSH_FALSE: u8 = 0x06;
+pub const PUSH_TRUE: u8 = 0x07;
+pub const PUSH_CONST: u8 = 0x08;
+pub const PUSH_THIS: u8 = 0x09;
+pub const ADD: u8 = 0x0a;
+pub const SUB: u8 = 0x0b;
+pub const MUL: u8 = 0x0c;
+pub const DIV: u8 = 0x0d;
+pub const REM: u8 = 0x0e;
+pub const LT: u8 = 0x0f;
+pub const GT: u8 = 0x10;
+pub const LE: u8 = 0x11;
+pub const GE: u8 = 0x12;
+pub const EQ: u8 = 0x13;
+pub const NE: u8 = 0x14;
+pub const GET_MEMBER: u8 = 0x15;
+pub const SET_MEMBER: u8 = 0x16;
+pub const GET_GLOBAL: u8 = 0x17;
+pub const SET_GLOBAL: u8 = 0x18;
+pub const GET_LOCAL: u8 = 0x19;
+pub const SET_LOCAL: u8 = 0x1a;
+pub const JMP_IF_FALSE: u8 = 0x1b; 
+pub const JMP: u8 = 0x1c;
+pub const CALL: u8 = 0x1d;
+pub const RETURN: u8 = 0x1e;
 
 impl VM2 {
     pub fn run(&mut self, insts: Vec<u8>) {
@@ -689,6 +693,20 @@ fn push_int32(self_: &mut VM2) -> bool {
     self_.pc += 1; // push_int
     get_int32!(self_, n, i32);
     self_.stack.push(Value::Number(n as f64));
+    true
+}
+
+#[inline]
+fn push_false(self_: &mut VM2) -> bool {
+    self_.pc += 1; // push_false
+    self_.stack.push(Value::Bool(false));
+    true
+}
+
+#[inline]
+fn push_true(self_: &mut VM2) -> bool {
+    self_.pc += 1; // push_true
+    self_.stack.push(Value::Bool(true));
     true
 }
 
