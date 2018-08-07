@@ -2,20 +2,33 @@ use std::boxed::Box;
 use std::collections::HashMap;
 
 use std::cell::RefCell;
+use std::ffi::CStr;
 use std::rc::Rc;
+
+// use cpuprofiler::PROFILER;
+
+use libc;
 
 use bytecode_gen::ByteCode;
 use node::BinOp;
 
-#[derive(Clone, Debug, PartialEq)]
+pub type RawStringPtr = *mut libc::c_char;
+
+pub unsafe fn alloc_rawstring(s: &str) -> RawStringPtr {
+    let p = libc::calloc(1, s.len() + 2) as RawStringPtr;
+    libc::strncpy(p, s.as_ptr() as *const i8, s.len());
+    p
+}
+
+#[derive(Clone, Debug)]
 pub enum Value {
     Undefined,
     Bool(bool),
     Number(f64),
-    String(String),
+    String(RawStringPtr),
     Function(usize, Rc<RefCell<HashMap<String, Value>>>),
     NeedThis(Box<Value>),
-    WithThis(Box<Value>, Box<Value>),            // Function, This
+    WithThis(Box<(Value, Value)>),               // Function, This
     EmbeddedFunction(usize), // unknown if usize == 0; specific function if usize > 0
     Object(Rc<RefCell<HashMap<String, Value>>>), // Object(HashMap<String, Value>),
 }
@@ -23,7 +36,7 @@ pub enum Value {
 impl Value {
     fn to_string(self) -> String {
         match self {
-            Value::String(name) => name,
+            Value::String(name) => unsafe { CStr::from_ptr(name).to_str().unwrap() }.to_string(),
             Value::Number(n) => format!("{}", n),
             _ => unimplemented!(),
         }
@@ -48,10 +61,8 @@ impl ConstantTable {
 pub struct VM {
     pub global_objects: Rc<RefCell<HashMap<String, Value>>>,
     pub stack: Vec<Value>,
-    pub bp_buf: Vec<usize>,
     pub bp: usize,
-    pub sp_history: Vec<usize>,
-    pub return_addr: Vec<isize>,
+    pub history: Vec<(usize, usize, isize)>, // bp, sp, return_pc
     pub const_table: ConstantTable,
     pub insts: ByteCode,
     pub pc: isize,
@@ -77,10 +88,12 @@ impl VM {
                 stack.push(Value::Object(global_objects.clone()));
                 stack
             },
-            bp_buf: Vec::with_capacity(128),
             bp: 0,
-            sp_history: Vec::with_capacity(128),
-            return_addr: Vec::with_capacity(128),
+            history: {
+                let mut s = Vec::with_capacity(128);
+                s.push((0, 0, 0));
+                s
+            },
             const_table: ConstantTable::new(),
             insts: vec![],
             pc: 0isize,
@@ -156,7 +169,18 @@ pub const RETURN: u8 = 0x1e;
 impl VM {
     pub fn run(&mut self, insts: ByteCode) {
         self.insts = insts;
+        // Unlock the mutex and start the profiler
+        // PROFILER
+        //     .lock()
+        //     .unwrap()
+        //     .start("./my-prof.profile")
+        //     .expect("Couldn't start");
+
         self.do_run();
+
+        // Unwrap the mutex and stop the profiler
+        // PROFILER.lock().unwrap().stop().expect("Couldn't stop");
+
         // println!("stack trace: {:?}", self.stack);
     }
 
@@ -190,23 +214,27 @@ macro_rules! get_int32 {
     };
 }
 
-#[inline]
 fn end(_self: &mut VM) {}
 
-#[inline]
 fn create_context(self_: &mut VM) {
     self_.pc += 1; // create_context
     get_int32!(self_, n, usize);
     get_int32!(self_, argc, usize);
-    self_.bp_buf.push(self_.bp);
-    self_.sp_history.push(self_.stack.len() - argc);
-    self_.bp = self_.stack.len() - argc;
+    let stack_len = self_.stack.len();
+    if let Some((ref mut bp, ref mut sp, ref mut _return_pc)) = self_.history.last_mut() {
+        *bp = self_.bp;
+        *sp = stack_len - argc;
+    } else {
+        unreachable!()
+    };
+    self_.bp = stack_len - argc;
+
+    // This code is slower -> self_.stack.resize(stack_len + n, Value::Undefined);
     for _ in 0..n {
         self_.stack.push(Value::Undefined);
     }
 }
 
-#[inline]
 fn constract(self_: &mut VM) {
     self_.pc += 1; // constract
     get_int32!(self_, argc, usize);
@@ -216,7 +244,7 @@ fn constract(self_: &mut VM) {
     loop {
         match callee {
             Value::Function(dst, _) => {
-                self_.return_addr.push(self_.pc);
+                self_.history.push((0, 0, self_.pc));
 
                 // insert new 'this'
                 let pos = self_.stack.len() - argc;
@@ -232,8 +260,8 @@ fn constract(self_: &mut VM) {
             Value::NeedThis(callee_) => {
                 callee = *callee_;
             }
-            Value::WithThis(callee_, _this) => {
-                callee = *callee_;
+            Value::WithThis(box (callee_, _)) => {
+                callee = callee_;
             }
             c => {
                 println!("Call: err: {:?}, pc = {}", c, self_.pc);
@@ -243,7 +271,6 @@ fn constract(self_: &mut VM) {
     }
 }
 
-#[inline]
 fn create_object(self_: &mut VM) {
     self_.pc += 1; // create_context
     get_int32!(self_, len, usize);
@@ -251,7 +278,7 @@ fn create_object(self_: &mut VM) {
     let mut map = HashMap::new();
     for _ in 0..len {
         let name = if let Value::String(name) = self_.stack.pop().unwrap() {
-            name
+            unsafe { CStr::from_ptr(name).to_str().unwrap() }.to_string()
         } else {
             panic!()
         };
@@ -261,40 +288,34 @@ fn create_object(self_: &mut VM) {
     self_.stack.push(Value::Object(Rc::new(RefCell::new(map))));
 }
 
-#[inline]
 fn push_int8(self_: &mut VM) {
     self_.pc += 1; // push_int
     get_int8!(self_, n, i32);
     self_.stack.push(Value::Number(n as f64));
 }
 
-#[inline]
 fn push_int32(self_: &mut VM) {
     self_.pc += 1; // push_int
     get_int32!(self_, n, i32);
     self_.stack.push(Value::Number(n as f64));
 }
 
-#[inline]
 fn push_false(self_: &mut VM) {
     self_.pc += 1; // push_false
     self_.stack.push(Value::Bool(false));
 }
 
-#[inline]
 fn push_true(self_: &mut VM) {
     self_.pc += 1; // push_true
     self_.stack.push(Value::Bool(true));
 }
 
-#[inline]
 fn push_const(self_: &mut VM) {
     self_.pc += 1; // push_const
     get_int32!(self_, n, usize);
     self_.stack.push(self_.const_table.value[n].clone());
 }
 
-#[inline]
 fn push_this(self_: &mut VM) {
     self_.pc += 1; // push_this
     let val = self_.stack[self_.bp].clone();
@@ -303,7 +324,6 @@ fn push_this(self_: &mut VM) {
 
 macro_rules! bin_op {
     ($name:ident, $binop:ident) => {
-        #[inline]
         fn $name(self_: &mut VM) {
             self_.pc += 1; // $name
             binary(self_, &BinOp::$binop);
@@ -344,22 +364,34 @@ fn binary(self_: &mut VM, op: &BinOp) {
         }),
         (Value::String(s1), Value::Number(n2)) => self_.stack.push(match op {
             &BinOp::Add => {
-                let concat = format!("{}{}", s1, n2);
-                Value::String(concat)
+                let concat = format!(
+                    "{}{}",
+                    unsafe { CStr::from_ptr(s1).to_str().unwrap() }.to_string(),
+                    n2
+                );
+                unsafe { Value::String(alloc_rawstring(concat.as_str())) }
             }
             _ => panic!(),
         }),
         (Value::Number(n1), Value::String(s2)) => self_.stack.push(match op {
             &BinOp::Add => {
-                let concat = format!("{}{}", n1, s2);
-                Value::String(concat)
+                let concat = format!(
+                    "{}{}",
+                    n1,
+                    unsafe { CStr::from_ptr(s2).to_str().unwrap() }.to_string()
+                );
+                unsafe { Value::String(alloc_rawstring(concat.as_str())) }
             }
             _ => panic!(),
         }),
         (Value::String(s1), Value::String(s2)) => self_.stack.push(match op {
             &BinOp::Add => {
-                let concat = format!("{}{}", s1, s2);
-                Value::String(concat)
+                let concat = format!(
+                    "{}{}",
+                    unsafe { CStr::from_ptr(s1).to_str().unwrap() }.to_string(),
+                    unsafe { CStr::from_ptr(s2).to_str().unwrap() }.to_string()
+                );
+                unsafe { Value::String(alloc_rawstring(concat.as_str())) }
             }
             _ => panic!(),
         }),
@@ -367,7 +399,6 @@ fn binary(self_: &mut VM, op: &BinOp) {
     }
 }
 
-#[inline]
 fn get_member(self_: &mut VM) {
     self_.pc += 1; // get_global
     let member = self_.stack.pop().unwrap().to_string();
@@ -379,10 +410,10 @@ fn get_member(self_: &mut VM) {
             Some(addr) => {
                 let val = addr.clone();
                 if let Value::NeedThis(callee) = val {
-                    self_.stack.push(Value::WithThis(
-                        callee,
-                        Box::new(Value::Object(map.clone())),
-                    ))
+                    self_.stack.push(Value::WithThis(Box::new((
+                        *callee,
+                        Value::Object(map.clone()),
+                    ))))
                 } else {
                     self_.stack.push(val)
                 }
@@ -393,7 +424,6 @@ fn get_member(self_: &mut VM) {
     }
 }
 
-#[inline]
 fn set_member(self_: &mut VM) {
     self_.pc += 1; // get_global
     let member = self_.stack.pop().unwrap().to_string();
@@ -411,7 +441,6 @@ fn set_member(self_: &mut VM) {
     }
 }
 
-#[inline]
 fn get_global(self_: &mut VM) {
     self_.pc += 1; // get_global
     get_int32!(self_, n, usize);
@@ -423,7 +452,6 @@ fn get_global(self_: &mut VM) {
     self_.stack.push(val);
 }
 
-#[inline]
 fn set_global(self_: &mut VM) {
     self_.pc += 1; // set_global
     get_int32!(self_, n, usize);
@@ -433,7 +461,6 @@ fn set_global(self_: &mut VM) {
         .or_insert_with(|| Value::Undefined) = self_.stack.pop().unwrap();
 }
 
-#[inline]
 fn get_local(self_: &mut VM) {
     self_.pc += 1; // get_local
     get_int32!(self_, n, usize);
@@ -441,7 +468,6 @@ fn get_local(self_: &mut VM) {
     self_.stack.push(val);
 }
 
-#[inline]
 fn set_local(self_: &mut VM) {
     self_.pc += 1; // set_local
     get_int32!(self_, n, usize);
@@ -449,14 +475,12 @@ fn set_local(self_: &mut VM) {
     self_.stack[self_.bp + n] = val;
 }
 
-#[inline]
 fn jmp(self_: &mut VM) {
     self_.pc += 1; // jmp
     get_int32!(self_, dst, i32);
     self_.pc += dst as isize;
 }
 
-#[inline]
 fn jmp_if_false(self_: &mut VM) {
     self_.pc += 1; // jmp_if_false
     get_int32!(self_, dst, i32);
@@ -466,7 +490,6 @@ fn jmp_if_false(self_: &mut VM) {
     }
 }
 
-#[inline]
 fn call(self_: &mut VM) {
     self_.pc += 1; // Call
     get_int32!(self_, argc, usize);
@@ -487,7 +510,7 @@ fn call(self_: &mut VM) {
                 break;
             }
             Value::Function(dst, _) => {
-                self_.return_addr.push(self_.pc);
+                self_.history.push((0, 0, self_.pc));
                 if let Some(this) = this {
                     let pos = self_.stack.len() - argc;
                     self_.stack.insert(pos, this);
@@ -500,9 +523,9 @@ fn call(self_: &mut VM) {
                 this = Some(Value::Object(self_.global_objects.clone()));
                 callee = *callee_;
             }
-            Value::WithThis(callee_, this_) => {
-                this = Some(*this_);
-                callee = *callee_;
+            Value::WithThis(box callee_this) => {
+                this = Some(callee_this.0);
+                callee = callee_this.1;
             }
             c => {
                 println!("Call: err: {:?}, pc = {}", c, self_.pc);
@@ -513,30 +536,39 @@ fn call(self_: &mut VM) {
 
     // EmbeddedFunction(1)
     fn console_log(args: Vec<Value>) {
-        let args_len = args.len();
-        for i in 0..args_len {
-            match args[i] {
-                Value::String(ref s) => print!("{}", s),
-                Value::Number(ref n) => print!("{}", n),
-                Value::Undefined => print!("undefined"),
-                _ => {}
+        unsafe {
+            let args_len = args.len();
+            for i in 0..args_len {
+                match args[i] {
+                    Value::String(ref s) => {
+                        libc::printf(b"%s\0".as_ptr() as RawStringPtr, *s as RawStringPtr);
+                    }
+                    Value::Number(ref n) => {
+                        libc::printf(b"%.15g\0".as_ptr() as RawStringPtr, *n);
+                    }
+                    Value::Undefined => {
+                        libc::printf(b"undefined\0".as_ptr() as RawStringPtr);
+                    }
+                    _ => {}
+                }
+                if args_len - 1 != i {
+                    libc::printf(b" \0".as_ptr() as RawStringPtr);
+                }
             }
-            if args_len - 1 != i {
-                print!(" ")
-            }
+            libc::puts(b"\0".as_ptr() as RawStringPtr);
         }
-        println!()
     }
 }
 
-#[inline]
 fn return_(self_: &mut VM) {
-    let val = self_.stack.pop().unwrap();
-    let former_sp = self_.sp_history.pop().unwrap();
-    self_.stack.truncate(former_sp);
-    self_.stack.push(val);
-    self_.pc = self_.return_addr.pop().unwrap();
-    self_.bp = self_.bp_buf.pop().unwrap();
+    let len = self_.stack.len();
+    if let Some((bp, sp, return_pc)) = self_.history.pop() {
+        self_.stack.drain(sp..len - 1);
+        self_.pc = return_pc;
+        self_.bp = bp;
+    } else {
+        unreachable!()
+    }
 }
 
 // #[rustfmt::skip]

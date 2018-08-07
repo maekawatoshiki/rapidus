@@ -1,4 +1,5 @@
 extern crate rapidus;
+use rapidus::bytecode_gen;
 use rapidus::extract_anony_func;
 use rapidus::fv_finder;
 use rapidus::fv_solver;
@@ -6,7 +7,6 @@ use rapidus::lexer;
 use rapidus::parser;
 use rapidus::vm;
 use rapidus::vm_codegen;
-use rapidus::bytecode_gen;
 
 extern crate clap;
 use clap::{App, Arg};
@@ -71,14 +71,11 @@ fn main() {
 
         println!("extract_anony_func, fv_finder, fv_solver:\n {:?}", node);
 
-        // TODO: Implement Display for Bytecode(Vec<u8>)
-        // let mut vm_codegen = vm_codegen::VMCodeGen::new();
-        // let mut insts = vec![];
-        // vm_codegen.compile(&node, &mut insts);
-        //
-        // for inst in insts.clone() {
-        //     println!("{:?}", inst);
-        // }
+        let mut vm_codegen = vm_codegen::VMCodeGen::new();
+        let mut insts = vec![];
+        vm_codegen.compile(&node, &mut insts);
+
+        bytecode_gen::show(&insts);
 
         // println!("Result:");
         // let mut vm = vm::VM::new();

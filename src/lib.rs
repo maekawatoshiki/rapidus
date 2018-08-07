@@ -15,3 +15,4 @@ pub mod extract_anony_func;
 
 extern crate libc;
 extern crate rand;
+// extern crate cpuprofiler;

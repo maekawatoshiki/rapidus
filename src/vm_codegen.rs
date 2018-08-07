@@ -2,7 +2,7 @@ use bytecode_gen::{ByteCode, ByteCodeGen};
 use id::IdGen;
 use node::{BinOp, FormalParameters, Node, PropertyDefinition};
 use std::collections::HashSet;
-use vm::Value;
+use vm::{alloc_rawstring, Value};
 use vm::{
     PUSH_INT32, PUSH_INT8, ADD, CALL, CONSTRACT, CREATE_CONTEXT, CREATE_OBJECT, DIV, END, EQ, GE,
     GET_GLOBAL, GET_LOCAL, GET_MEMBER, GT, JMP, JMP_IF_FALSE, LE, LT, MUL, NE, PUSH_CONST,
@@ -216,7 +216,7 @@ impl VMCodeGen {
             &Node::This => self.bytecode_gen.gen_push_this(insts),
             &Node::String(ref s) => self
                 .bytecode_gen
-                .gen_push_const(Value::String(s.clone()), insts),
+                .gen_push_const(Value::String(unsafe { alloc_rawstring(s.as_str()) }), insts),
             &Node::Number(n) if n - n.floor() == 0.0 => {
                 // When 'n' is an integer
                 if -128.0 < n && n < 127.0 {
@@ -439,8 +439,10 @@ impl VMCodeGen {
             }
             &Node::Member(ref parent, ref member) => {
                 self.run(&*parent, insts);
-                self.bytecode_gen
-                    .gen_push_const(Value::String(member.clone()), insts);
+                self.bytecode_gen.gen_push_const(
+                    Value::String(unsafe { alloc_rawstring(member.as_str()) }),
+                    insts,
+                );
                 self.bytecode_gen.gen_set_member(insts);
             }
             &Node::Index(ref parent, ref idx) => {
@@ -472,8 +474,10 @@ impl VMCodeGen {
                 PropertyDefinition::IdentifierReference(_) => unimplemented!(),
                 PropertyDefinition::Property(name, node) => {
                     self.run(&node, insts);
-                    self.bytecode_gen
-                        .gen_push_const(Value::String(name.clone()), insts);
+                    self.bytecode_gen.gen_push_const(
+                        Value::String(unsafe { alloc_rawstring(name.as_str()) }),
+                        insts,
+                    );
                 }
             }
         }
@@ -487,8 +491,10 @@ impl VMCodeGen {
     fn run_member(&mut self, parent: &Node, member: &String, insts: &mut ByteCode) {
         self.run(parent, insts);
 
-        self.bytecode_gen
-            .gen_push_const(Value::String(member.clone()), insts);
+        self.bytecode_gen.gen_push_const(
+            Value::String(unsafe { alloc_rawstring(member.as_str()) }),
+            insts,
+        );
         self.bytecode_gen.gen_get_member(insts);
     }
 
