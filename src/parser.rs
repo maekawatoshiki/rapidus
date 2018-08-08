@@ -197,10 +197,27 @@ impl Parser {
     fn read_assignment_expression(&mut self) -> Result<Node, ()> {
         let mut lhs = self.read_conditional_expression()?;
         if let Ok(tok) = self.lexer.next() {
+            macro_rules! assignop {
+                ($op:ident) => { {
+                    lhs = Node::Assign(
+                        Box::new(lhs.clone()),
+                        Box::new(Node::BinaryOp(
+                            Box::new(lhs),
+                            Box::new(self.read_assignment_expression()?),
+                            BinOp::$op,
+                        )),
+                    );
+                } }
+            }
             match tok.kind {
                 Kind::Symbol(Symbol::Assign) => {
                     lhs = Node::Assign(Box::new(lhs), Box::new(self.read_assignment_expression()?))
                 }
+                Kind::Symbol(Symbol::AssignAdd) => assignop!(Add),
+                Kind::Symbol(Symbol::AssignSub) => assignop!(Sub),
+                Kind::Symbol(Symbol::AssignMul) => assignop!(Mul),
+                Kind::Symbol(Symbol::AssignDiv) => assignop!(Div),
+                Kind::Symbol(Symbol::AssignMod) => assignop!(Rem),
                 _ => self.lexer.unget(&tok),
             }
         }
