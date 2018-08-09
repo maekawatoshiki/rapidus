@@ -796,25 +796,25 @@ fn simple_expr_5arith() {
     assert_eq!(
         parser.next().unwrap(),
         Node::StatementList(vec![Node::BinaryOp(
-            Box::new(Node::Number(31.0)),
             Box::new(Node::BinaryOp(
+                Box::new(Node::Number(31.0)),
                 Box::new(Node::BinaryOp(
                     Box::new(Node::Number(26.0)),
                     Box::new(Node::Number(3.0)),
                     BinOp::Div,
                 )),
+                BinOp::Add,
+            )),
+            Box::new(Node::BinaryOp(
                 Box::new(Node::BinaryOp(
                     Box::new(Node::Number(1.0)),
-                    Box::new(Node::BinaryOp(
-                        Box::new(Node::Number(20.0)),
-                        Box::new(Node::Number(3.0)),
-                        BinOp::Rem,
-                    )),
+                    Box::new(Node::Number(20.0)),
                     BinOp::Mul,
                 )),
-                BinOp::Sub,
+                Box::new(Node::Number(3.0)),
+                BinOp::Rem,
             )),
-            BinOp::Add,
+            BinOp::Sub,
         )])
     );
 }
