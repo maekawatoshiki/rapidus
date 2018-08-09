@@ -198,7 +198,7 @@ impl Parser {
         let mut lhs = self.read_conditional_expression()?;
         if let Ok(tok) = self.lexer.next() {
             macro_rules! assignop {
-                ($op:ident) => { {
+                ($op:ident) => {{
                     lhs = Node::Assign(
                         Box::new(lhs.clone()),
                         Box::new(Node::BinaryOp(
@@ -207,7 +207,7 @@ impl Parser {
                             BinOp::$op,
                         )),
                     );
-                } }
+                }};
             }
             match tok.kind {
                 Kind::Symbol(Symbol::Assign) => {
@@ -992,15 +992,28 @@ fn simple_expr_unary() {
 }
 
 #[test]
+#[rustfmt::skip]
 fn simple_expr_assign() {
     let mut parser = Parser::new("v = 1".to_string());
-    assert_eq!(
-        parser.next().unwrap(),
-        Node::StatementList(vec![Node::Assign(
-            Box::new(Node::Identifier("v".to_string())),
-            Box::new(Node::Number(1.0)),
-        )])
-    );
+    macro_rules! f { ($expr:expr) => {
+        assert_eq!(
+            parser.next().unwrap(),
+            Node::StatementList(vec![Node::Assign(
+                Box::new(Node::Identifier("v".to_string())), Box::new($expr)
+            )])
+        );
+    } }
+    f!(Node::Number(1.0));
+    parser = Parser::new("v += 1".to_string());
+    f!(Node::BinaryOp(Box::new(Node::Identifier("v".to_string())), Box::new(Node::Number(1.0)), BinOp::Add));
+    parser = Parser::new("v -= 1".to_string());
+    f!(Node::BinaryOp(Box::new(Node::Identifier("v".to_string())), Box::new(Node::Number(1.0)), BinOp::Sub));
+    parser = Parser::new("v *= 1".to_string());
+    f!(Node::BinaryOp(Box::new(Node::Identifier("v".to_string())), Box::new(Node::Number(1.0)), BinOp::Mul));
+    parser = Parser::new("v /= 1".to_string());
+    f!(Node::BinaryOp(Box::new(Node::Identifier("v".to_string())), Box::new(Node::Number(1.0)), BinOp::Div));
+    parser = Parser::new("v %= 1".to_string());
+    f!(Node::BinaryOp(Box::new(Node::Identifier("v".to_string())), Box::new(Node::Number(1.0)), BinOp::Rem));
 }
 
 #[test]
