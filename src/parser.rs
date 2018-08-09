@@ -167,17 +167,17 @@ impl Parser {
 
 macro_rules! expression { ( $name:ident, $lower:ident, [ $( $op:path ),* ] ) => {
     fn $name (&mut self) -> Result<Node, ()> {
-        let lhs = self. $lower ()?;
-        if let Ok(tok) = self.lexer.next() {
+        let mut lhs = self. $lower ()?;
+        while let Ok(tok) = self.lexer.next() {
             match tok.kind {
                 Kind::Symbol(ref op) if $( op == &$op )||* => {
-                    return Ok(Node::BinaryOp(
+                    lhs = Node::BinaryOp(
                         Box::new(lhs),
-                        Box::new(self. $name ()?),
+                        Box::new(self. $lower ()?),
                         op.as_binop().unwrap(),
-                    ));
+                    );
                 }
-                _ => self.lexer.unget(&tok),
+                _ => { self.lexer.unget(&tok); break }
             }
         }
         Ok(lhs)
