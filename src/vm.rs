@@ -86,7 +86,7 @@ impl VM {
 
         VM {
             global_objects: global_objects.clone(),
-            jit: TracingJit::new(func_addr_in_bytecode_and_its_entity),
+            jit: unsafe { TracingJit::new(func_addr_in_bytecode_and_its_entity) },
             stack: {
                 let mut stack = Vec::with_capacity(128);
                 stack.push(Value::Object(global_objects.clone()));
@@ -521,7 +521,17 @@ fn call(self_: &mut VM) {
                 }
 
                 if args_all_number(&self_.stack, argc) {
-                    if let Some(x) = unsafe { self_.jit.can_jit(dst) } {}
+                    unsafe {
+                        if let Some(f) = self_.jit.can_jit(dst) {
+                            let mut args = vec![];
+                            for _ in 0..argc {
+                                args.push(self_.stack.pop().unwrap());
+                            }
+                            args.reverse();
+                            self_.stack.push(self_.jit.run_llvm_func(f, args));
+                            break;
+                        }
+                    }
                 }
 
                 self_.pc = dst as isize;
