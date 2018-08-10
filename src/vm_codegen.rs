@@ -20,36 +20,12 @@ pub struct FunctionInfo {
     pub insts: ByteCode,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct PendingFunctionInfo {
-    pub name: String,
-    pub use_this: bool,
-    pub fv_name: Vec<String>,
-    pub insts: ByteCode,
-}
-
 impl FunctionInfo {
     pub fn new(name: String, use_this: bool, insts: ByteCode) -> FunctionInfo {
         FunctionInfo {
             name: name,
             use_this: use_this,
             insts: insts,
-        }
-    }
-}
-
-impl PendingFunctionInfo {
-    pub fn new(
-        name: String,
-        use_this: bool,
-        fv_name: Vec<String>,
-        insts: ByteCode,
-    ) -> PendingFunctionInfo {
-        PendingFunctionInfo {
-            name: name,
-            use_this: use_this,
-            insts: insts,
-            fv_name: fv_name,
         }
     }
 }
