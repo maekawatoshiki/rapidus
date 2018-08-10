@@ -8,6 +8,7 @@ clap = "*"
 bitflags = "*"
 libc = "0.2"
 rand = "*"
+llvm-sys = "39.0.0"
 
 [profile.dev]
 codegen-units = 16

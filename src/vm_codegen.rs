@@ -14,18 +14,49 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct FunctionInfoForJIT {
+    pub name: String,
+    pub need_this: bool,
+    pub params: FormalParameters,
+    pub body: Node,
+}
+
+impl FunctionInfoForJIT {
+    pub fn new(
+        name: String,
+        need_this: bool,
+        params: FormalParameters,
+        body: Node,
+    ) -> FunctionInfoForJIT {
+        FunctionInfoForJIT {
+            name: name,
+            need_this: need_this,
+            params: params,
+            body: body,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct FunctionInfo {
     pub name: String,
     pub use_this: bool,
     pub insts: ByteCode,
+    pub info: FunctionInfoForJIT,
 }
 
 impl FunctionInfo {
-    pub fn new(name: String, use_this: bool, insts: ByteCode) -> FunctionInfo {
+    pub fn new(
+        name: String,
+        use_this: bool,
+        insts: ByteCode,
+        info: FunctionInfoForJIT,
+    ) -> FunctionInfo {
         FunctionInfo {
             name: name,
             use_this: use_this,
             insts: insts,
+            info: info,
         }
     }
 }
@@ -52,10 +83,14 @@ impl VMCodeGen {
 }
 
 impl VMCodeGen {
-    pub fn compile(&mut self, node: &Node, insts: &mut ByteCode) {
+    pub fn compile(
+        &mut self,
+        node: &Node,
+        insts: &mut ByteCode,
+        func_addr_in_bytecode_and_its_entity: &mut HashMap<usize, FunctionInfoForJIT>,
+    ) {
         let pos = insts.len();
         self.bytecode_gen.gen_create_context(0, 0, insts);
-        // insts.push(Inst::AllocLocalVar(0, 0));
 
         self.run_var_decl2(&"this".to_string(), &None, insts);
 
@@ -78,6 +113,7 @@ impl VMCodeGen {
                 name,
                 use_this,
                 insts: func_insts,
+                info,
             },
         ) in &self.functions
         {
@@ -94,6 +130,8 @@ impl VMCodeGen {
                 self.global_varmap.insert(name.clone(), val.clone());
             }
             function_value_list.insert(name.clone(), val.clone());
+
+            func_addr_in_bytecode_and_its_entity.insert(pos, info.clone());
 
             let mut func_insts = func_insts.clone();
             insts.append(&mut func_insts);
@@ -269,7 +307,12 @@ impl VMCodeGen {
 
         self.functions.insert(
             name.clone(),
-            FunctionInfo::new(name.clone(), use_this, func_insts),
+            FunctionInfo::new(
+                name.clone(),
+                use_this,
+                func_insts,
+                FunctionInfoForJIT::new(name.clone(), use_this, params.clone(), body.clone()),
+            ),
         );
     }
 

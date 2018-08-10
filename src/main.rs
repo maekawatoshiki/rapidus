@@ -11,6 +11,7 @@ use rapidus::vm_codegen;
 extern crate clap;
 use clap::{App, Arg};
 
+use std::collections::HashMap;
 use std::fs::OpenOptions;
 use std::io::prelude::*;
 
@@ -73,7 +74,8 @@ fn main() {
 
         let mut vm_codegen = vm_codegen::VMCodeGen::new();
         let mut insts = vec![];
-        vm_codegen.compile(&node, &mut insts);
+        let mut func_addr_in_bytecode_and_its_entity = HashMap::new();
+        vm_codegen.compile(&node, &mut insts, &mut func_addr_in_bytecode_and_its_entity);
 
         bytecode_gen::show(&insts);
 
@@ -114,7 +116,12 @@ fn easy_run(file_name: &str) {
 
     let mut vm_codegen = vm_codegen::VMCodeGen::new();
     let mut insts = vec![];
-    vm_codegen.compile(&node_list[0], &mut insts);
+    let mut func_addr_in_bytecode_and_its_entity = HashMap::new();
+    vm_codegen.compile(
+        &node_list[0],
+        &mut insts,
+        &mut func_addr_in_bytecode_and_its_entity,
+    );
 
     // bytecode_gen::show(&insts);
 
@@ -122,7 +129,7 @@ fn easy_run(file_name: &str) {
 
     // println!("{:?}", insts);
 
-    let mut vm = vm::VM::new();
+    let mut vm = vm::VM::new(func_addr_in_bytecode_and_its_entity);
     vm.const_table = vm_codegen.bytecode_gen.const_table;
     (*vm.global_objects)
         .borrow_mut()

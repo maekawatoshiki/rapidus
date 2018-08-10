@@ -10,7 +10,9 @@ use std::rc::Rc;
 use libc;
 
 use bytecode_gen::ByteCode;
+use jit::TracingJit;
 use node::BinOp;
+use vm_codegen::FunctionInfoForJIT;
 
 pub type RawStringPtr = *mut libc::c_char;
 
@@ -60,6 +62,7 @@ impl ConstantTable {
 
 pub struct VM {
     pub global_objects: Rc<RefCell<HashMap<String, Value>>>,
+    pub jit: TracingJit,
     pub stack: Vec<Value>,
     pub bp: usize,
     pub history: Vec<(usize, usize, isize)>, // bp, sp, return_pc
@@ -70,7 +73,7 @@ pub struct VM {
 }
 
 impl VM {
-    pub fn new() -> VM {
+    pub fn new(func_addr_in_bytecode_and_its_entity: HashMap<usize, FunctionInfoForJIT>) -> VM {
         let mut obj = HashMap::new();
 
         obj.insert("console".to_string(), {
@@ -83,6 +86,7 @@ impl VM {
 
         VM {
             global_objects: global_objects.clone(),
+            jit: TracingJit::new(func_addr_in_bytecode_and_its_entity),
             stack: {
                 let mut stack = Vec::with_capacity(128);
                 stack.push(Value::Object(global_objects.clone()));
@@ -515,6 +519,11 @@ fn call(self_: &mut VM) {
                     let pos = self_.stack.len() - argc;
                     self_.stack.insert(pos, this);
                 }
+
+                if args_all_number(&self_.stack, argc) {
+                    if let Some(x) = unsafe { self_.jit.can_jit(dst) } {}
+                }
+
                 self_.pc = dst as isize;
                 self_.do_run();
                 break;
@@ -557,6 +566,14 @@ fn call(self_: &mut VM) {
             }
             libc::puts(b"\0".as_ptr() as RawStringPtr);
         }
+    }
+
+    fn args_all_number(stack: &Vec<Value>, argc: usize) -> bool {
+        let stack_len = stack.len();
+        stack[stack_len - argc..stack_len].iter().all(|v| match v {
+            &Value::Number(_) => true,
+            _ => false,
+        })
     }
 }
 

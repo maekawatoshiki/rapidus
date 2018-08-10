@@ -172,6 +172,13 @@ impl ByteCodeGen {
     }
 }
 
+pub fn slice_to_int32(insts: &[u8]) -> i32 {
+    ((insts[3] as i32) << 24)
+        + ((insts[2] as i32) << 16)
+        + ((insts[1] as i32) << 8)
+        + (insts[0] as i32)
+}
+
 pub fn show(code: &ByteCode) {
     let mut i = 0;
     while i < code.len() {
