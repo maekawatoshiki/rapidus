@@ -6,6 +6,14 @@
 
 A toy JavaScript engine
 
+# Features 
+
+- Small
+- Support Tracing-JIT compiling 
+  - The functions fitting for the following rules are JIT-compiled. 
+    - Accessing only their arguments and local variables (not global variables) 
+    - Only Numbers and Booleans are used. 
+
 # Run
 
 ```sh
