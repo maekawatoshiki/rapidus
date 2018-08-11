@@ -4,15 +4,15 @@ function prime(n) {
     if (n % k == 0) {
       return false
     }
-    k = k + 1
+    k += 1
   }
   return true
 }
 
 var i = 2
-while (i < 100) {
+while (i < 100000) {
   if (prime(i)) {
     console.log(i, "is prime")
   }
-  i = i + 1
+  i += 1
 }
