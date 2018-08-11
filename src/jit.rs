@@ -33,13 +33,14 @@ impl CastIntoLLVMType for ValueType {
 #[derive(Debug, Clone)]
 pub struct TracingJit {
     func_addr_in_bytecode_and_its_entity: HashMap<usize, FunctionInfoForJIT>,
-    func_addr_in_bytecode_and_its_addr_in_llvm: HashMap<usize, fn(c: *mut f64) -> f64>,
+    func_addr_in_bytecode_and_its_addr_in_llvm: HashMap<usize, fn()>,
     return_ty_map: HashMap<usize, ValueType>,
     count: HashMap<usize, usize>,
     context: LLVMContextRef,
     module: LLVMModuleRef,
     builder: LLVMBuilderRef,
     exec_engine: llvm::execution_engine::LLVMExecutionEngineRef,
+    pass_manager: LLVMPassManagerRef,
     cur_func: Option<LLVMValueRef>,
 }
 
@@ -65,6 +66,15 @@ impl TracingJit {
             panic!()
         }
 
+        let pm = LLVMCreatePassManager();
+        llvm::transforms::scalar::LLVMAddTailCallEliminationPass(pm);
+        llvm::transforms::scalar::LLVMAddReassociatePass(pm);
+        llvm::transforms::scalar::LLVMAddGVNPass(pm);
+        llvm::transforms::scalar::LLVMAddInstructionCombiningPass(pm);
+        llvm::transforms::scalar::LLVMAddPromoteMemoryToRegisterPass(pm);
+        llvm::transforms::scalar::LLVMAddPromoteMemoryToRegisterPass(pm);
+        llvm::transforms::scalar::LLVMAddPromoteMemoryToRegisterPass(pm);
+
         TracingJit {
             func_addr_in_bytecode_and_its_entity: func_addr_in_bytecode_and_its_entity,
             func_addr_in_bytecode_and_its_addr_in_llvm: HashMap::new(),
@@ -74,6 +84,7 @@ impl TracingJit {
             module: module,
             builder: LLVMCreateBuilderInContext(context),
             exec_engine: ee,
+            pass_manager: pm,
             cur_func: None,
         }
     }
@@ -84,7 +95,11 @@ unsafe fn cur_bb_has_no_terminator(builder: LLVMBuilderRef) -> bool {
 }
 
 impl TracingJit {
-    pub unsafe fn can_jit(&mut self, pc: usize) -> Option<fn(c: *mut f64) -> f64> {
+    pub unsafe fn can_jit(&mut self, pc: usize) -> Option<fn()> {
+        if let Some(val) = self.func_addr_in_bytecode_and_its_addr_in_llvm.get(&pc) {
+            return Some(val.clone());
+        }
+
         if *self.count.entry(pc).or_insert(0) >= 10 {
             let info = self
                 .func_addr_in_bytecode_and_its_entity
@@ -96,10 +111,6 @@ impl TracingJit {
                 return None;
             }
 
-            if let Some(val) = self.func_addr_in_bytecode_and_its_addr_in_llvm.get(&pc) {
-                return Some(val.clone());
-            }
-
             if let Err(()) = self.gen_code(pc, &info) {
                 self.func_addr_in_bytecode_and_its_entity
                     .get_mut(&pc)
@@ -108,12 +119,11 @@ impl TracingJit {
                 return None;
             }
 
-            let f = ::std::mem::transmute::<u64, fn(c: *mut f64) -> f64>(
-                llvm::execution_engine::LLVMGetFunctionAddress(
+            let f =
+                ::std::mem::transmute::<u64, fn()>(llvm::execution_engine::LLVMGetFunctionAddress(
                     self.exec_engine,
                     CString::new(info.name.as_str()).unwrap().as_ptr(),
-                ),
-            );
+                ));
             // LLVMDumpModule(self.module);
             self.func_addr_in_bytecode_and_its_addr_in_llvm
                 .insert(pc, f);
@@ -132,11 +142,7 @@ impl TracingJit {
         };
     }
 
-    pub unsafe fn run_llvm_func(
-        &mut self,
-        f: fn(c: *mut f64) -> f64,
-        args: Vec<vm::Value>,
-    ) -> vm::Value {
+    pub unsafe fn run_llvm_func(&mut self, pc: usize, f: fn(), args: Vec<vm::Value>) -> vm::Value {
         let mut llvm_args = vec![];
         for arg in args {
             llvm_args.push(match arg {
@@ -145,28 +151,40 @@ impl TracingJit {
             });
         }
 
+        let func_ret_ty = self.return_ty_map.get(&pc).unwrap_or(&ValueType::Number);
+
         // By a bug of LLVM, llvm::execution_engine::runFunction can not be used.
         // So, all I can do is this:
-        let llvm_val = match llvm_args.len() {
-            0 => ::std::mem::transmute::<fn(c: *mut f64) -> f64, fn() -> f64>(f)(),
-            1 => {
-                ::std::mem::transmute::<fn(c: *mut f64) -> f64, fn(a1: f64) -> f64>(f)(llvm_args[0])
-            }
-            2 => ::std::mem::transmute::<fn(c: *mut f64) -> f64, fn(f64, f64) -> f64>(f)(
-                llvm_args[0],
-                llvm_args[1],
-            ),
-            3 => ::std::mem::transmute::<fn(c: *mut f64) -> f64, fn(f64, f64, f64) -> f64>(f)(
-                llvm_args[0],
-                llvm_args[1],
-                llvm_args[2],
-            ),
-            _ => unimplemented!("should be implemented.."),
-        };
-
-        let val = vm::Value::Number(llvm_val);
-
-        val
+        match func_ret_ty {
+            &ValueType::Number => vm::Value::Number(match llvm_args.len() {
+                0 => ::std::mem::transmute::<fn(), fn() -> f64>(f)(),
+                1 => ::std::mem::transmute::<fn(), fn(f64) -> f64>(f)(llvm_args[0]),
+                2 => ::std::mem::transmute::<fn(), fn(f64, f64) -> f64>(f)(
+                    llvm_args[0],
+                    llvm_args[1],
+                ),
+                3 => ::std::mem::transmute::<fn(), fn(f64, f64, f64) -> f64>(f)(
+                    llvm_args[0],
+                    llvm_args[1],
+                    llvm_args[2],
+                ),
+                _ => unimplemented!("should be implemented.."),
+            }),
+            &ValueType::Bool => vm::Value::Bool(match llvm_args.len() {
+                0 => ::std::mem::transmute::<fn(), fn() -> bool>(f)(),
+                1 => ::std::mem::transmute::<fn(), fn(f64) -> bool>(f)(llvm_args[0]),
+                2 => ::std::mem::transmute::<fn(), fn(f64, f64) -> bool>(f)(
+                    llvm_args[0],
+                    llvm_args[1],
+                ),
+                3 => ::std::mem::transmute::<fn(), fn(f64, f64, f64) -> bool>(f)(
+                    llvm_args[0],
+                    llvm_args[1],
+                    llvm_args[2],
+                ),
+                _ => unimplemented!("should be implemented.."),
+            }),
+        }
     }
 
     unsafe fn gen_code(
@@ -220,6 +238,8 @@ impl TracingJit {
             iter_bb = LLVMGetNextBasicBlock(iter_bb);
         }
 
+        LLVMRunPassManager(self.pass_manager, self.module);
+
         Ok(func)
     }
 
@@ -272,12 +292,53 @@ impl TracingJit {
                     self.gen(env, rhs)?,
                     CString::new("fsub").unwrap().as_ptr(),
                 )),
+                &BinOp::Mul => Ok(LLVMBuildFMul(
+                    self.builder,
+                    self.gen(env, lhs)?,
+                    self.gen(env, rhs)?,
+                    CString::new("fsub").unwrap().as_ptr(),
+                )),
+                &BinOp::Rem => Ok(LLVMBuildSIToFP(
+                    self.builder,
+                    LLVMBuildSRem(
+                        self.builder,
+                        LLVMBuildFPToSI(
+                            self.builder,
+                            self.gen(env, lhs)?,
+                            LLVMInt64Type(),
+                            CString::new("").unwrap().as_ptr(),
+                        ),
+                        LLVMBuildFPToSI(
+                            self.builder,
+                            self.gen(env, rhs)?,
+                            LLVMInt64Type(),
+                            CString::new("").unwrap().as_ptr(),
+                        ),
+                        CString::new("fsub").unwrap().as_ptr(),
+                    ),
+                    LLVMDoubleType(),
+                    CString::new("").unwrap().as_ptr(),
+                )),
                 &BinOp::Lt => Ok(LLVMBuildFCmp(
                     self.builder,
                     llvm::LLVMRealPredicate::LLVMRealOLT,
                     self.gen(env, lhs)?,
                     self.gen(env, rhs)?,
                     CString::new("flt").unwrap().as_ptr(),
+                )),
+                &BinOp::Le => Ok(LLVMBuildFCmp(
+                    self.builder,
+                    llvm::LLVMRealPredicate::LLVMRealOLE,
+                    self.gen(env, lhs)?,
+                    self.gen(env, rhs)?,
+                    CString::new("fle").unwrap().as_ptr(),
+                )),
+                &BinOp::Eq => Ok(LLVMBuildFCmp(
+                    self.builder,
+                    llvm::LLVMRealPredicate::LLVMRealOEQ,
+                    self.gen(env, lhs)?,
+                    self.gen(env, rhs)?,
+                    CString::new("feq").unwrap().as_ptr(),
                 )),
                 _ => panic!(),
             },
@@ -311,6 +372,40 @@ impl TracingJit {
 
                 Ok(ptr::null_mut())
             }
+            &Node::While(box ref cond, box ref body) => {
+                let func = self.cur_func.unwrap();
+
+                let bb_before_loop =
+                    LLVMAppendBasicBlock(func, CString::new("before_loop").unwrap().as_ptr());
+                let bb_loop = LLVMAppendBasicBlock(func, CString::new("loop").unwrap().as_ptr());
+                let bb_after_loop =
+                    LLVMAppendBasicBlock(func, CString::new("after_loop").unwrap().as_ptr());
+
+                LLVMBuildBr(self.builder, bb_before_loop);
+
+                LLVMPositionBuilderAtEnd(self.builder, bb_before_loop);
+                let cond_val_tmp = self.gen(env, cond)?;
+                let cond_val = cond_val_tmp;
+                LLVMBuildCondBr(self.builder, cond_val, bb_loop, bb_after_loop);
+
+                LLVMPositionBuilderAtEnd(self.builder, bb_loop);
+                self.gen(env, body)?;
+
+                if cur_bb_has_no_terminator(self.builder) {
+                    LLVMBuildBr(self.builder, bb_before_loop);
+                }
+
+                LLVMPositionBuilderAtEnd(self.builder, bb_after_loop);
+
+                Ok(ptr::null_mut())
+            }
+            &Node::VarDecl(ref name, ref init) => {
+                let var = self.declare_local_var(name, env);
+                if let Some(init) = init {
+                    LLVMBuildStore(self.builder, self.gen(env, &**init)?, var);
+                }
+                Ok(ptr::null_mut())
+            }
             &Node::Call(box ref callee, ref args) => {
                 let callee = if let Node::Identifier(name) = callee {
                     *env.get(name).unwrap()
@@ -329,6 +424,20 @@ impl TracingJit {
                     CString::new("").unwrap().as_ptr(),
                 ))
             }
+            &Node::Assign(box ref dst, box ref src) => {
+                let src = self.gen(env, src)?;
+                match dst {
+                    &Node::Identifier(ref name) => {
+                        if let Some(var_ptr) = env.get(name) {
+                            LLVMBuildStore(self.builder, src, *var_ptr);
+                        } else {
+                            panic!("variable not found");
+                        }
+                    }
+                    _ => unimplemented!(),
+                }
+                Ok(ptr::null_mut())
+            }
             &Node::Return(Some(box ref val)) => Ok(LLVMBuildRet(self.builder, self.gen(env, val)?)),
             &Node::Identifier(ref name) => Ok(LLVMBuildLoad(
                 self.builder,
@@ -336,6 +445,8 @@ impl TracingJit {
                 CString::new("").unwrap().as_ptr(),
             )),
             &Node::Number(f) => Ok(LLVMConstReal(LLVMDoubleType(), f)),
+            &Node::Boolean(true) => Ok(LLVMConstInt(LLVMInt1Type(), 1, 0)),
+            &Node::Boolean(false) => Ok(LLVMConstInt(LLVMInt1Type(), 0, 0)),
             &Node::Nope => Ok(ptr::null_mut()),
             _ => {
                 // Unsupported features

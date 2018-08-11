@@ -527,7 +527,7 @@ fn call(self_: &mut VM) {
                                 args.push(self_.stack.pop().unwrap());
                             }
                             args.reverse();
-                            self_.stack.push(self_.jit.run_llvm_func(f, args));
+                            self_.stack.push(self_.jit.run_llvm_func(dst, f, args));
                             break;
                         }
                     }
@@ -536,7 +536,9 @@ fn call(self_: &mut VM) {
                 self_.history.push((0, 0, self_.pc));
                 self_.pc = dst as isize;
                 self_.do_run();
-                self_.jit.register_return_type(dst, self_.stack.last().unwrap());
+                self_
+                    .jit
+                    .register_return_type(dst, self_.stack.last().unwrap());
                 break;
             }
             Value::NeedThis(callee_) => {
