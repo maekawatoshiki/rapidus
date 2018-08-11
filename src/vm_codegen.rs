@@ -19,6 +19,7 @@ pub struct FunctionInfoForJIT {
     pub need_this: bool,
     pub params: FormalParameters,
     pub body: Node,
+    pub cannot_jit: bool,
 }
 
 impl FunctionInfoForJIT {
@@ -33,6 +34,7 @@ impl FunctionInfoForJIT {
             need_this: need_this,
             params: params,
             body: body,
+            cannot_jit: false,
         }
     }
 }

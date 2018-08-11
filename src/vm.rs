@@ -268,7 +268,7 @@ fn constract(self_: &mut VM) {
                 callee = callee_;
             }
             c => {
-                println!("Call: err: {:?}, pc = {}", c, self_.pc);
+                println!("Constract: err: {:?}, pc = {}", c, self_.pc);
                 break;
             }
         }
@@ -514,7 +514,6 @@ fn call(self_: &mut VM) {
                 break;
             }
             Value::Function(dst, _) => {
-                self_.history.push((0, 0, self_.pc));
                 if let Some(this) = this {
                     let pos = self_.stack.len() - argc;
                     self_.stack.insert(pos, this);
@@ -534,8 +533,10 @@ fn call(self_: &mut VM) {
                     }
                 }
 
+                self_.history.push((0, 0, self_.pc));
                 self_.pc = dst as isize;
                 self_.do_run();
+                self_.jit.register_return_type(dst, self_.stack.last().unwrap());
                 break;
             }
             Value::NeedThis(callee_) => {
@@ -543,8 +544,8 @@ fn call(self_: &mut VM) {
                 callee = *callee_;
             }
             Value::WithThis(box callee_this) => {
-                this = Some(callee_this.0);
-                callee = callee_this.1;
+                this = Some(callee_this.1);
+                callee = callee_this.0;
             }
             c => {
                 println!("Call: err: {:?}, pc = {}", c, self_.pc);
