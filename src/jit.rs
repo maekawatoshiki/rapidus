@@ -1,4 +1,4 @@
-use node::Node;
+use node::{BinOp, Node};
 use vm;
 use vm_codegen::FunctionInfoForJIT;
 
@@ -99,7 +99,24 @@ impl TracingJit {
             });
         }
 
-        let llvm_val = f(llvm_args.as_mut_slice().as_mut_ptr());
+        // By a bug of LLVM, llvm::execution_engine::runFunction can not be used.
+        // So, all I can do is this:
+        let llvm_val = match llvm_args.len() {
+            0 => ::std::mem::transmute::<fn(c: *mut f64) -> f64, fn() -> f64>(f)(),
+            1 => {
+                ::std::mem::transmute::<fn(c: *mut f64) -> f64, fn(a1: f64) -> f64>(f)(llvm_args[0])
+            }
+            2 => ::std::mem::transmute::<fn(c: *mut f64) -> f64, fn(f64, f64) -> f64>(f)(
+                llvm_args[0],
+                llvm_args[1],
+            ),
+            3 => ::std::mem::transmute::<fn(c: *mut f64) -> f64, fn(f64, f64, f64) -> f64>(f)(
+                llvm_args[0],
+                llvm_args[1],
+                llvm_args[2],
+            ),
+            _ => unimplemented!("should be implemented.."),
+        };
 
         let val = vm::Value::Number(llvm_val);
 
@@ -109,7 +126,7 @@ impl TracingJit {
     unsafe fn gen_code(&mut self, info: &FunctionInfoForJIT) -> LLVMValueRef {
         let func_ty = LLVMFunctionType(
             LLVMDoubleType(),
-            vec![LLVMPointerType(LLVMDoubleType(), 0)]
+            vec![LLVMDoubleType()]
                 .repeat(info.params.len())
                 .as_mut_slice()
                 .as_mut_ptr(),
@@ -140,15 +157,7 @@ impl TracingJit {
                 LLVMDoubleType(),
                 CString::new("").unwrap().as_ptr(),
             );
-            LLVMBuildStore(
-                builder,
-                LLVMBuildLoad(
-                    builder,
-                    LLVMGetParam(func, i as u32),
-                    CString::new("").unwrap().as_ptr(),
-                ),
-                var,
-            );
+            LLVMBuildStore(builder, LLVMGetParam(func, i as u32), var);
             env.insert(arg.name.clone(), var);
         }
 
@@ -175,6 +184,35 @@ impl TracingJit {
                 }
                 ptr::null_mut()
             }
+            &Node::BinaryOp(box ref lhs, box ref rhs, ref op) => match op {
+                &BinOp::Add => LLVMBuildFAdd(
+                    self.builder,
+                    self.gen(env, lhs),
+                    self.gen(env, rhs),
+                    CString::new("fadd").unwrap().as_ptr(),
+                ),
+                &BinOp::Sub => LLVMBuildFSub(
+                    self.builder,
+                    self.gen(env, lhs),
+                    self.gen(env, rhs),
+                    CString::new("fsub").unwrap().as_ptr(),
+                ),
+                _ => panic!(),
+            },
+            // &Node::Call(box ref callee, ref args) => {
+            //     if let Node::Identifier(name) = callee {
+            // LLVMBuildCall(
+            //     self.builder,
+            //     llvm_func,
+            //     args_val_ptr,
+            //     args_len as u32,
+            //     CString::new("").unwrap().as_ptr(),
+            // ),
+            //         env.get(name).unwrap()
+            //     }else{
+            //         unimplemented!()
+            //     }
+            // }
             &Node::Return(Some(box ref val)) => LLVMBuildRet(self.builder, self.gen(env, val)),
             &Node::Identifier(ref name) => LLVMBuildLoad(
                 self.builder,

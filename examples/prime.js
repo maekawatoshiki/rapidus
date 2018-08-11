@@ -10,7 +10,7 @@ function prime(n) {
 }
 
 var i = 2
-while (i < 10000000) {
+while (i < 100000) {
   if (prime(i)) {
     console.log(i, "is prime")
   }

@@ -3,5 +3,5 @@ function fibo(x) {
   return fibo(x - 1) + fibo(x - 2)
 }
 
-var n = 10
+var n = 35
 console.log("fibo(", n, ") =", fibo(n))
