@@ -10,19 +10,50 @@ A toy JavaScript engine
 
 - Small
 - Support Tracing-JIT compiling 
-  - A function fitting for the following rules is JIT-compiled. 
+  - Currently, a function fitting for the following rules would be JIT-compiled. 
     - Accessing only its arguments and local variables (not global variables) 
     - Only Numbers and Booleans are used
     - Calling only itself
 
-# Run
+# Building from Source
 
+## Building on Linux
+
+1. Install dependencies
+  - LLVM 4.0
+  
 ```sh
-$ cargo run example/XXX.js --easy-run
+$ # e.g. Ubuntu or Debian
+$ apt-get install llvm-4.0
 ```
 
-- Use Dockerfile
+2. Test 
+
+```sh
+$ cargo test
+```
+
+3. Build
+
+```sh
+$ cargo run --release
+```
+
+4. Run
+
+```sh
+$ cargo run --release example/XXX.js --easy-run
+```
+
+## Building on other platforms
+
+I don't know.
+
+## Use Dockerfile
+
+- Docker image: uint256/rapidus
 
 ```sh
 $ docker build -t rapidus:1.0 .
+$ docker run -it rapidus:1.0
 ```
