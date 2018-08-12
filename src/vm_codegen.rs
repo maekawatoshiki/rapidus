@@ -142,29 +142,12 @@ impl VMCodeGen {
         let mut i = 0;
         while i < insts.len() {
             match insts[i] {
-                END => i += 1,
                 CREATE_CONTEXT => i += 9,
-                CONSTRACT => i += 5,
-                CREATE_OBJECT => i += 5,
+                CONSTRACT | CREATE_OBJECT | PUSH_CONST | PUSH_INT32 | SET_GLOBAL | GET_LOCAL
+                | SET_LOCAL | JMP_IF_FALSE | JMP | CALL => i += 5,
                 PUSH_INT8 => i += 2,
-                PUSH_INT32 => i += 5,
-                PUSH_FALSE => i += 1,
-                PUSH_TRUE => i += 1,
-                PUSH_CONST => i += 5,
-                PUSH_THIS => i += 1,
-                ADD => i += 1,
-                SUB => i += 1,
-                MUL => i += 1,
-                DIV => i += 1,
-                REM => i += 1,
-                LT => i += 1,
-                GT => i += 1,
-                LE => i += 1,
-                GE => i += 1,
-                EQ => i += 1,
-                NE => i += 1,
-                GET_MEMBER => i += 1,
-                SET_MEMBER => i += 1,
+                PUSH_FALSE | END | PUSH_TRUE | PUSH_THIS | ADD | SUB | MUL | DIV | REM | LT
+                | GT | LE | GE | EQ | NE | GET_MEMBER | RETURN | SET_MEMBER => i += 1,
                 GET_GLOBAL => {
                     let id = insts[i + 1] as i32
                         + ((insts[i + 2] as i32) << 8)
@@ -195,13 +178,6 @@ impl VMCodeGen {
                     }
                     i += 5;
                 }
-                SET_GLOBAL => i += 5,
-                GET_LOCAL => i += 5,
-                SET_LOCAL => i += 5,
-                JMP_IF_FALSE => i += 5,
-                JMP => i += 5,
-                CALL => i += 5,
-                RETURN => i += 1,
                 _ => unreachable!(),
             }
         }
