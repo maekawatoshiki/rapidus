@@ -1,8 +1,8 @@
 use vm::{
     ConstantTable, PUSH_INT32, PUSH_INT8, Value, ADD, CALL, CONSTRACT, CREATE_CONTEXT,
     CREATE_OBJECT, DIV, END, EQ, GE, GET_GLOBAL, GET_LOCAL, GET_MEMBER, GT, JMP, JMP_IF_FALSE, LE,
-    LT, MUL, NE, PUSH_CONST, PUSH_FALSE, PUSH_THIS, PUSH_TRUE, REM, RETURN, SET_GLOBAL, SET_LOCAL,
-    SET_MEMBER, SUB,
+    LT, MUL, NE, NEG, PUSH_CONST, PUSH_FALSE, PUSH_THIS, PUSH_TRUE, REM, RETURN, SET_GLOBAL,
+    SET_LOCAL, SET_MEMBER, SUB,
 };
 
 pub type ByteCode = Vec<u8>;
@@ -64,6 +64,10 @@ impl ByteCodeGen {
 
     pub fn gen_push_this(&self, insts: &mut ByteCode) {
         insts.push(PUSH_THIS);
+    }
+
+    pub fn gen_neg(&self, insts: &mut ByteCode) {
+        insts.push(NEG);
     }
 
     pub fn gen_add(&self, insts: &mut ByteCode) {
@@ -264,6 +268,10 @@ pub fn show(code: &ByteCode) {
             }
             PUSH_THIS => {
                 println!("{:02x}                        : PushThis", PUSH_THIS,);
+                i += 1
+            }
+            NEG => {
+                println!("{:02x}                        : Neg", NEG);
                 i += 1
             }
             ADD => {

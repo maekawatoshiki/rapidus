@@ -18,7 +18,7 @@ function mandelbrot(c_x, c_y, n) {
   return 0
 }
 
-var x_max = 2, x_min = 0 - 2, y_max = 1, y_min = 0 - 1, dx = 0.03, dy = 0.045;
+var x_max = 2, x_min = -2, y_max = 1, y_min = -1, dx = 0.03, dy = 0.045;
 var y = y_max;
 while (y > y_min) {
   var x = x_min;

@@ -66,7 +66,7 @@ pub struct VM {
     pub state: VMState,
     pub const_table: ConstantTable,
     pub insts: ByteCode,
-    pub op_table: [fn(&mut VM); 31],
+    pub op_table: [fn(&mut VM); 32],
 }
 
 pub struct VMState {
@@ -107,12 +107,12 @@ impl VM {
                     stack.push(Value::Object(global_objects.clone()));
                     stack
                 },
-                bp: 0,
                 history: {
                     let mut s = Vec::with_capacity(128);
                     s.push((0, 0, 0));
                     s
                 },
+                bp: 0,
                 pc: 0isize,
             },
             const_table: ConstantTable::new(),
@@ -128,6 +128,7 @@ impl VM {
                 push_true,
                 push_const,
                 push_this,
+                neg,
                 add,
                 sub,
                 mul,
@@ -164,27 +165,28 @@ pub const PUSH_FALSE: u8 = 0x06;
 pub const PUSH_TRUE: u8 = 0x07;
 pub const PUSH_CONST: u8 = 0x08;
 pub const PUSH_THIS: u8 = 0x09;
-pub const ADD: u8 = 0x0a;
-pub const SUB: u8 = 0x0b;
-pub const MUL: u8 = 0x0c;
-pub const DIV: u8 = 0x0d;
-pub const REM: u8 = 0x0e;
-pub const LT: u8 = 0x0f;
-pub const GT: u8 = 0x10;
-pub const LE: u8 = 0x11;
-pub const GE: u8 = 0x12;
-pub const EQ: u8 = 0x13;
-pub const NE: u8 = 0x14;
-pub const GET_MEMBER: u8 = 0x15;
-pub const SET_MEMBER: u8 = 0x16;
-pub const GET_GLOBAL: u8 = 0x17;
-pub const SET_GLOBAL: u8 = 0x18;
-pub const GET_LOCAL: u8 = 0x19;
-pub const SET_LOCAL: u8 = 0x1a;
-pub const JMP_IF_FALSE: u8 = 0x1b;
-pub const JMP: u8 = 0x1c;
-pub const CALL: u8 = 0x1d;
-pub const RETURN: u8 = 0x1e;
+pub const NEG: u8 = 0x0a;
+pub const ADD: u8 = 0x0b;
+pub const SUB: u8 = 0x0c;
+pub const MUL: u8 = 0x0d;
+pub const DIV: u8 = 0x0e;
+pub const REM: u8 = 0x0f;
+pub const LT: u8 = 0x10;
+pub const GT: u8 = 0x11;
+pub const LE: u8 = 0x12;
+pub const GE: u8 = 0x13;
+pub const EQ: u8 = 0x14;
+pub const NE: u8 = 0x15;
+pub const GET_MEMBER: u8 = 0x16;
+pub const SET_MEMBER: u8 = 0x17;
+pub const GET_GLOBAL: u8 = 0x18;
+pub const SET_GLOBAL: u8 = 0x19;
+pub const GET_LOCAL: u8 = 0x1a;
+pub const SET_LOCAL: u8 = 0x1b;
+pub const JMP_IF_FALSE: u8 = 0x1c;
+pub const JMP: u8 = 0x1d;
+pub const CALL: u8 = 0x1e;
+pub const RETURN: u8 = 0x1f;
 
 impl VM {
     pub fn run(&mut self, insts: ByteCode) {
@@ -239,13 +241,13 @@ fn create_context(self_: &mut VM) {
     get_int32!(self_, argc, usize);
 
     let stack_len = self_.state.stack.len();
-    self_.state.bp = stack_len - argc;
     if let Some((ref mut bp, ref mut sp, ref mut _return_pc)) = self_.state.history.last_mut() {
         *bp = self_.state.bp;
         *sp = stack_len - argc;
     } else {
         unreachable!()
     };
+    self_.state.bp = stack_len - argc;
 
     // This code is slower -> self_.state.stack.resize(stack_len + n, Value::Undefined);
     for _ in 0..n {
@@ -267,7 +269,10 @@ fn constract(self_: &mut VM) {
                 // insert new 'this'
                 let pos = self_.state.stack.len() - argc;
                 let new_this = Rc::new(RefCell::new(HashMap::new()));
-                self_.state.stack.insert(pos, Value::Object(new_this.clone()));
+                self_
+                    .state
+                    .stack
+                    .insert(pos, Value::Object(new_this.clone()));
 
                 self_.state.pc = dst as isize;
                 self_.do_run();
@@ -303,7 +308,10 @@ fn create_object(self_: &mut VM) {
         let val = self_.state.stack.pop().unwrap();
         map.insert(name, val.clone());
     }
-    self_.state.stack.push(Value::Object(Rc::new(RefCell::new(map))));
+    self_
+        .state
+        .stack
+        .push(Value::Object(Rc::new(RefCell::new(map))));
 }
 
 fn push_int8(self_: &mut VM) {
@@ -338,6 +346,15 @@ fn push_this(self_: &mut VM) {
     self_.state.pc += 1; // push_this
     let val = self_.state.stack[self_.state.bp].clone();
     self_.state.stack.push(val);
+}
+
+fn neg(self_: &mut VM) {
+    self_.state.pc += 1; // neg
+    let expr = self_.state.stack.last_mut().unwrap();
+    match expr {
+        &mut Value::Number(ref mut n) => *n = -*n,
+        _ => unimplemented!(),
+    }
 }
 
 macro_rules! bin_op {
@@ -545,7 +562,10 @@ fn call(self_: &mut VM) {
                                 args.push(self_.state.stack.pop().unwrap());
                             }
                             args.reverse();
-                            self_.state.stack.push(self_.jit.run_llvm_func(dst, f, args));
+                            self_
+                                .state
+                                .stack
+                                .push(self_.jit.run_llvm_func(dst, f, args));
                             break;
                         }
                     }

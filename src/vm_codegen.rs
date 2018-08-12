@@ -1,11 +1,11 @@
 use bytecode_gen::{ByteCode, ByteCodeGen};
 use id::IdGen;
-use node::{BinOp, FormalParameters, Node, PropertyDefinition};
+use node::{BinOp, FormalParameters, Node, PropertyDefinition, UnaryOp};
 use std::collections::HashSet;
 use vm::{alloc_rawstring, Value};
 use vm::{
     PUSH_INT32, PUSH_INT8, ADD, CALL, CONSTRACT, CREATE_CONTEXT, CREATE_OBJECT, DIV, END, EQ, GE,
-    GET_GLOBAL, GET_LOCAL, GET_MEMBER, GT, JMP, JMP_IF_FALSE, LE, LT, MUL, NE, PUSH_CONST,
+    GET_GLOBAL, GET_LOCAL, GET_MEMBER, GT, JMP, JMP_IF_FALSE, LE, LT, MUL, NE, NEG, PUSH_CONST,
     PUSH_FALSE, PUSH_THIS, PUSH_TRUE, REM, RETURN, SET_GLOBAL, SET_LOCAL, SET_MEMBER, SUB,
 };
 
@@ -147,7 +147,7 @@ impl VMCodeGen {
                 | SET_LOCAL | JMP_IF_FALSE | JMP | CALL => i += 5,
                 PUSH_INT8 => i += 2,
                 PUSH_FALSE | END | PUSH_TRUE | PUSH_THIS | ADD | SUB | MUL | DIV | REM | LT
-                | GT | LE | GE | EQ | NE | GET_MEMBER | RETURN | SET_MEMBER => i += 1,
+                | NEG | GT | LE | GE | EQ | NE | GET_MEMBER | RETURN | SET_MEMBER => i += 1,
                 GET_GLOBAL => {
                     let id = insts[i + 1] as i32
                         + ((insts[i + 2] as i32) << 8)
@@ -195,6 +195,7 @@ impl VMCodeGen {
             }
             &Node::While(ref cond, ref body) => self.run_while(&*cond, &*body, insts),
             &Node::Assign(ref dst, ref src) => self.run_assign(&*dst, &*src, insts),
+            &Node::UnaryOp(ref expr, ref op) => self.run_unary_op(&*expr, op, insts),
             &Node::BinaryOp(ref lhs, ref rhs, ref op) => {
                 self.run_binary_op(&*lhs, &*rhs, op, insts)
             }
@@ -404,6 +405,14 @@ impl VMCodeGen {
 }
 
 impl VMCodeGen {
+    pub fn run_unary_op(&mut self, expr: &Node, op: &UnaryOp, insts: &mut ByteCode) {
+        self.run(expr, insts);
+        match op {
+            &UnaryOp::Minus => self.bytecode_gen.gen_neg(insts),
+            _ => unimplemented!(),
+        }
+    }
+
     pub fn run_binary_op(&mut self, lhs: &Node, rhs: &Node, op: &BinOp, insts: &mut ByteCode) {
         self.run(lhs, insts);
         self.run(rhs, insts);
