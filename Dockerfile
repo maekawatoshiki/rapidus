@@ -13,4 +13,5 @@ ADD . /opt/rapidus
 
 WORKDIR /opt/rapidus
 
-RUN cargo test
+RUN rustup override set nightly \
+    cargo test
