@@ -333,6 +333,20 @@ impl TracingJit {
                     self.gen(env, rhs)?,
                     CString::new("fle").unwrap().as_ptr(),
                 )),
+                &BinOp::Gt => Ok(LLVMBuildFCmp(
+                    self.builder,
+                    llvm::LLVMRealPredicate::LLVMRealOGT,
+                    self.gen(env, lhs)?,
+                    self.gen(env, rhs)?,
+                    CString::new("fgt").unwrap().as_ptr(),
+                )),
+                &BinOp::Ge => Ok(LLVMBuildFCmp(
+                    self.builder,
+                    llvm::LLVMRealPredicate::LLVMRealOGE,
+                    self.gen(env, lhs)?,
+                    self.gen(env, rhs)?,
+                    CString::new("fge").unwrap().as_ptr(),
+                )),
                 &BinOp::Eq => Ok(LLVMBuildFCmp(
                     self.builder,
                     llvm::LLVMRealPredicate::LLVMRealOEQ,
