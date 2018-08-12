@@ -60,6 +60,39 @@ impl ConstantTable {
     }
 }
 
+pub const END: u8 = 0x00;
+pub const CREATE_CONTEXT: u8 = 0x01;
+pub const CONSTRACT: u8 = 0x02;
+pub const CREATE_OBJECT: u8 = 0x03;
+pub const PUSH_INT8: u8 = 0x04;
+pub const PUSH_INT32: u8 = 0x05;
+pub const PUSH_FALSE: u8 = 0x06;
+pub const PUSH_TRUE: u8 = 0x07;
+pub const PUSH_CONST: u8 = 0x08;
+pub const PUSH_THIS: u8 = 0x09;
+pub const NEG: u8 = 0x0a;
+pub const ADD: u8 = 0x0b;
+pub const SUB: u8 = 0x0c;
+pub const MUL: u8 = 0x0d;
+pub const DIV: u8 = 0x0e;
+pub const REM: u8 = 0x0f;
+pub const LT: u8 = 0x10;
+pub const GT: u8 = 0x11;
+pub const LE: u8 = 0x12;
+pub const GE: u8 = 0x13;
+pub const EQ: u8 = 0x14;
+pub const NE: u8 = 0x15;
+pub const GET_MEMBER: u8 = 0x16;
+pub const SET_MEMBER: u8 = 0x17;
+pub const GET_GLOBAL: u8 = 0x18;
+pub const SET_GLOBAL: u8 = 0x19;
+pub const GET_LOCAL: u8 = 0x1a;
+pub const SET_LOCAL: u8 = 0x1b;
+pub const JMP_IF_FALSE: u8 = 0x1c;
+pub const JMP: u8 = 0x1d;
+pub const CALL: u8 = 0x1e;
+pub const RETURN: u8 = 0x1f;
+
 pub struct VM {
     pub global_objects: Rc<RefCell<HashMap<String, Value>>>,
     pub jit: TracingJit,
@@ -72,8 +105,8 @@ pub struct VM {
 pub struct VMState {
     pub stack: Vec<Value>,
     pub bp: usize,
-    pub history: Vec<(usize, usize, isize)>, // bp, sp, return_pc
     pub pc: isize,
+    pub history: Vec<(usize, usize, isize)>, // bp, sp, return_pc
 }
 
 impl VM {
@@ -154,39 +187,6 @@ impl VM {
         }
     }
 }
-
-pub const END: u8 = 0x00;
-pub const CREATE_CONTEXT: u8 = 0x01;
-pub const CONSTRACT: u8 = 0x02;
-pub const CREATE_OBJECT: u8 = 0x03;
-pub const PUSH_INT8: u8 = 0x04;
-pub const PUSH_INT32: u8 = 0x05;
-pub const PUSH_FALSE: u8 = 0x06;
-pub const PUSH_TRUE: u8 = 0x07;
-pub const PUSH_CONST: u8 = 0x08;
-pub const PUSH_THIS: u8 = 0x09;
-pub const NEG: u8 = 0x0a;
-pub const ADD: u8 = 0x0b;
-pub const SUB: u8 = 0x0c;
-pub const MUL: u8 = 0x0d;
-pub const DIV: u8 = 0x0e;
-pub const REM: u8 = 0x0f;
-pub const LT: u8 = 0x10;
-pub const GT: u8 = 0x11;
-pub const LE: u8 = 0x12;
-pub const GE: u8 = 0x13;
-pub const EQ: u8 = 0x14;
-pub const NE: u8 = 0x15;
-pub const GET_MEMBER: u8 = 0x16;
-pub const SET_MEMBER: u8 = 0x17;
-pub const GET_GLOBAL: u8 = 0x18;
-pub const SET_GLOBAL: u8 = 0x19;
-pub const GET_LOCAL: u8 = 0x1a;
-pub const SET_LOCAL: u8 = 0x1b;
-pub const JMP_IF_FALSE: u8 = 0x1c;
-pub const JMP: u8 = 0x1d;
-pub const CALL: u8 = 0x1e;
-pub const RETURN: u8 = 0x1f;
 
 impl VM {
     pub fn run(&mut self, insts: ByteCode) {
