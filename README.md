@@ -20,3 +20,9 @@ A toy JavaScript engine
 ```sh
 $ cargo run example/XXX.js --easy-run
 ```
+
+- Use Dockerfile
+
+```sh
+$ docker build -t rapidus:1.0 .
+```
