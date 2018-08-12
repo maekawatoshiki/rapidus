@@ -63,13 +63,17 @@ impl ConstantTable {
 pub struct VM {
     pub global_objects: Rc<RefCell<HashMap<String, Value>>>,
     pub jit: TracingJit,
+    pub state: VMState,
+    pub const_table: ConstantTable,
+    pub insts: ByteCode,
+    pub op_table: [fn(&mut VM); 31],
+}
+
+pub struct VMState {
     pub stack: Vec<Value>,
     pub bp: usize,
     pub history: Vec<(usize, usize, isize)>, // bp, sp, return_pc
-    pub const_table: ConstantTable,
-    pub insts: ByteCode,
     pub pc: isize,
-    pub op_table: [fn(&mut VM); 31],
 }
 
 impl VM {
@@ -97,20 +101,22 @@ impl VM {
         VM {
             global_objects: global_objects.clone(),
             jit: unsafe { TracingJit::new(func_addr_in_bytecode_and_its_entity) },
-            stack: {
-                let mut stack = Vec::with_capacity(128);
-                stack.push(Value::Object(global_objects.clone()));
-                stack
-            },
-            bp: 0,
-            history: {
-                let mut s = Vec::with_capacity(128);
-                s.push((0, 0, 0));
-                s
+            state: VMState {
+                stack: {
+                    let mut stack = Vec::with_capacity(128);
+                    stack.push(Value::Object(global_objects.clone()));
+                    stack
+                },
+                bp: 0,
+                history: {
+                    let mut s = Vec::with_capacity(128);
+                    s.push((0, 0, 0));
+                    s
+                },
+                pc: 0isize,
             },
             const_table: ConstantTable::new(),
             insts: vec![],
-            pc: 0isize,
             op_table: [
                 end,
                 create_context,
@@ -194,14 +200,11 @@ impl VM {
 
         // Unwrap the mutex and stop the profiler
         // PROFILER.lock().unwrap().stop().expect("Couldn't stop");
-
-        // println!("stack trace: {:?}", self.stack);
     }
 
     pub fn do_run(&mut self) {
         loop {
-            // println!("inst: {} - {}", self.insts[self.pc as usize], self.pc);
-            let code = self.insts[self.pc as usize];
+            let code = self.insts[self.state.pc as usize];
             self.op_table[code as usize](self);
             if code == RETURN || code == END {
                 break;
@@ -213,62 +216,63 @@ impl VM {
 
 macro_rules! get_int8 {
     ($self:ident, $var:ident, $ty:ty) => {
-        let $var = $self.insts[$self.pc as usize] as $ty;
-        $self.pc += 1;
+        let $var = $self.insts[$self.state.pc as usize] as $ty;
+        $self.state.pc += 1;
     };
 }
 
 macro_rules! get_int32 {
     ($self:ident, $var:ident, $ty:ty) => {
-        let $var = (($self.insts[$self.pc as usize + 3] as $ty) << 24)
-            + (($self.insts[$self.pc as usize + 2] as $ty) << 16)
-            + (($self.insts[$self.pc as usize + 1] as $ty) << 8)
-            + ($self.insts[$self.pc as usize + 0] as $ty);
-        $self.pc += 4;
+        let $var = (($self.insts[$self.state.pc as usize + 3] as $ty) << 24)
+            + (($self.insts[$self.state.pc as usize + 2] as $ty) << 16)
+            + (($self.insts[$self.state.pc as usize + 1] as $ty) << 8)
+            + ($self.insts[$self.state.pc as usize + 0] as $ty);
+        $self.state.pc += 4;
     };
 }
 
 fn end(_self: &mut VM) {}
 
 fn create_context(self_: &mut VM) {
-    self_.pc += 1; // create_context
+    self_.state.pc += 1; // create_context
     get_int32!(self_, n, usize);
     get_int32!(self_, argc, usize);
-    let stack_len = self_.stack.len();
-    if let Some((ref mut bp, ref mut sp, ref mut _return_pc)) = self_.history.last_mut() {
-        *bp = self_.bp;
+
+    let stack_len = self_.state.stack.len();
+    self_.state.bp = stack_len - argc;
+    if let Some((ref mut bp, ref mut sp, ref mut _return_pc)) = self_.state.history.last_mut() {
+        *bp = self_.state.bp;
         *sp = stack_len - argc;
     } else {
         unreachable!()
     };
-    self_.bp = stack_len - argc;
 
-    // This code is slower -> self_.stack.resize(stack_len + n, Value::Undefined);
+    // This code is slower -> self_.state.stack.resize(stack_len + n, Value::Undefined);
     for _ in 0..n {
-        self_.stack.push(Value::Undefined);
+        self_.state.stack.push(Value::Undefined);
     }
 }
 
 fn constract(self_: &mut VM) {
-    self_.pc += 1; // constract
+    self_.state.pc += 1; // constract
     get_int32!(self_, argc, usize);
 
-    let mut callee = self_.stack.pop().unwrap();
+    let mut callee = self_.state.stack.pop().unwrap();
 
     loop {
         match callee {
             Value::Function(dst, _) => {
-                self_.history.push((0, 0, self_.pc));
+                self_.state.history.push((0, 0, self_.state.pc));
 
                 // insert new 'this'
-                let pos = self_.stack.len() - argc;
+                let pos = self_.state.stack.len() - argc;
                 let new_this = Rc::new(RefCell::new(HashMap::new()));
-                self_.stack.insert(pos, Value::Object(new_this.clone()));
+                self_.state.stack.insert(pos, Value::Object(new_this.clone()));
 
-                self_.pc = dst as isize;
+                self_.state.pc = dst as isize;
                 self_.do_run();
-                self_.stack.pop(); // return value by func
-                self_.stack.push(Value::Object(new_this));
+                self_.state.stack.pop(); // return value by func
+                self_.state.stack.push(Value::Object(new_this));
                 break;
             }
             Value::NeedThis(callee_) => {
@@ -278,7 +282,7 @@ fn constract(self_: &mut VM) {
                 callee = callee_;
             }
             c => {
-                println!("Constract: err: {:?}, pc = {}", c, self_.pc);
+                println!("Constract: err: {:?}, pc = {}", c, self_.state.pc);
                 break;
             }
         }
@@ -286,60 +290,60 @@ fn constract(self_: &mut VM) {
 }
 
 fn create_object(self_: &mut VM) {
-    self_.pc += 1; // create_context
+    self_.state.pc += 1; // create_context
     get_int32!(self_, len, usize);
 
     let mut map = HashMap::new();
     for _ in 0..len {
-        let name = if let Value::String(name) = self_.stack.pop().unwrap() {
+        let name = if let Value::String(name) = self_.state.stack.pop().unwrap() {
             unsafe { CStr::from_ptr(name).to_str().unwrap() }.to_string()
         } else {
             panic!()
         };
-        let val = self_.stack.pop().unwrap();
+        let val = self_.state.stack.pop().unwrap();
         map.insert(name, val.clone());
     }
-    self_.stack.push(Value::Object(Rc::new(RefCell::new(map))));
+    self_.state.stack.push(Value::Object(Rc::new(RefCell::new(map))));
 }
 
 fn push_int8(self_: &mut VM) {
-    self_.pc += 1; // push_int
+    self_.state.pc += 1; // push_int
     get_int8!(self_, n, i32);
-    self_.stack.push(Value::Number(n as f64));
+    self_.state.stack.push(Value::Number(n as f64));
 }
 
 fn push_int32(self_: &mut VM) {
-    self_.pc += 1; // push_int
+    self_.state.pc += 1; // push_int
     get_int32!(self_, n, i32);
-    self_.stack.push(Value::Number(n as f64));
+    self_.state.stack.push(Value::Number(n as f64));
 }
 
 fn push_false(self_: &mut VM) {
-    self_.pc += 1; // push_false
-    self_.stack.push(Value::Bool(false));
+    self_.state.pc += 1; // push_false
+    self_.state.stack.push(Value::Bool(false));
 }
 
 fn push_true(self_: &mut VM) {
-    self_.pc += 1; // push_true
-    self_.stack.push(Value::Bool(true));
+    self_.state.pc += 1; // push_true
+    self_.state.stack.push(Value::Bool(true));
 }
 
 fn push_const(self_: &mut VM) {
-    self_.pc += 1; // push_const
+    self_.state.pc += 1; // push_const
     get_int32!(self_, n, usize);
-    self_.stack.push(self_.const_table.value[n].clone());
+    self_.state.stack.push(self_.const_table.value[n].clone());
 }
 
 fn push_this(self_: &mut VM) {
-    self_.pc += 1; // push_this
-    let val = self_.stack[self_.bp].clone();
-    self_.stack.push(val);
+    self_.state.pc += 1; // push_this
+    let val = self_.state.stack[self_.state.bp].clone();
+    self_.state.stack.push(val);
 }
 
 macro_rules! bin_op {
     ($name:ident, $binop:ident) => {
         fn $name(self_: &mut VM) {
-            self_.pc += 1; // $name
+            self_.state.pc += 1; // $name
             binary(self_, &BinOp::$binop);
         }
     };
@@ -359,10 +363,10 @@ bin_op!(ne, Ne);
 
 #[inline]
 fn binary(self_: &mut VM, op: &BinOp) {
-    let rhs = self_.stack.pop().unwrap();
-    let lhs = self_.stack.pop().unwrap();
+    let rhs = self_.state.stack.pop().unwrap();
+    let lhs = self_.state.stack.pop().unwrap();
     match (lhs, rhs) {
-        (Value::Number(n1), Value::Number(n2)) => self_.stack.push(match op {
+        (Value::Number(n1), Value::Number(n2)) => self_.state.stack.push(match op {
             &BinOp::Add => Value::Number(n1 + n2),
             &BinOp::Sub => Value::Number(n1 - n2),
             &BinOp::Mul => Value::Number(n1 * n2),
@@ -376,7 +380,7 @@ fn binary(self_: &mut VM, op: &BinOp) {
             &BinOp::Ne => Value::Bool(n1 != n2),
             _ => panic!(),
         }),
-        (Value::String(s1), Value::Number(n2)) => self_.stack.push(match op {
+        (Value::String(s1), Value::Number(n2)) => self_.state.stack.push(match op {
             &BinOp::Add => {
                 let concat = format!(
                     "{}{}",
@@ -387,7 +391,7 @@ fn binary(self_: &mut VM, op: &BinOp) {
             }
             _ => panic!(),
         }),
-        (Value::Number(n1), Value::String(s2)) => self_.stack.push(match op {
+        (Value::Number(n1), Value::String(s2)) => self_.state.stack.push(match op {
             &BinOp::Add => {
                 let concat = format!(
                     "{}{}",
@@ -398,7 +402,7 @@ fn binary(self_: &mut VM, op: &BinOp) {
             }
             _ => panic!(),
         }),
-        (Value::String(s1), Value::String(s2)) => self_.stack.push(match op {
+        (Value::String(s1), Value::String(s2)) => self_.state.stack.push(match op {
             &BinOp::Add => {
                 let concat = format!(
                     "{}{}",
@@ -414,9 +418,9 @@ fn binary(self_: &mut VM, op: &BinOp) {
 }
 
 fn get_member(self_: &mut VM) {
-    self_.pc += 1; // get_global
-    let member = self_.stack.pop().unwrap().to_string();
-    let parent = self_.stack.pop().unwrap();
+    self_.state.pc += 1; // get_global
+    let member = self_.state.stack.pop().unwrap().to_string();
+    let parent = self_.state.stack.pop().unwrap();
     match parent {
         Value::Object(map)
         | Value::Function(_, map)
@@ -424,25 +428,25 @@ fn get_member(self_: &mut VM) {
             Some(addr) => {
                 let val = addr.clone();
                 if let Value::NeedThis(callee) = val {
-                    self_.stack.push(Value::WithThis(Box::new((
+                    self_.state.stack.push(Value::WithThis(Box::new((
                         *callee,
                         Value::Object(map.clone()),
                     ))))
                 } else {
-                    self_.stack.push(val)
+                    self_.state.stack.push(val)
                 }
             }
-            None => self_.stack.push(Value::Undefined),
+            None => self_.state.stack.push(Value::Undefined),
         },
         _ => unreachable!(),
     }
 }
 
 fn set_member(self_: &mut VM) {
-    self_.pc += 1; // get_global
-    let member = self_.stack.pop().unwrap().to_string();
-    let parent = self_.stack.pop().unwrap();
-    let val = self_.stack.pop().unwrap();
+    self_.state.pc += 1; // get_global
+    let member = self_.state.stack.pop().unwrap().to_string();
+    let parent = self_.state.stack.pop().unwrap();
+    let val = self_.state.stack.pop().unwrap();
     match parent {
         Value::Object(map)
         | Value::Function(_, map)
@@ -456,68 +460,68 @@ fn set_member(self_: &mut VM) {
 }
 
 fn get_global(self_: &mut VM) {
-    self_.pc += 1; // get_global
+    self_.state.pc += 1; // get_global
     get_int32!(self_, n, usize);
     let val = (*(*self_.global_objects)
         .borrow()
         .get(self_.const_table.string[n].as_str())
         .unwrap())
         .clone();
-    self_.stack.push(val);
+    self_.state.stack.push(val);
 }
 
 fn set_global(self_: &mut VM) {
-    self_.pc += 1; // set_global
+    self_.state.pc += 1; // set_global
     get_int32!(self_, n, usize);
     *(*self_.global_objects)
         .borrow_mut()
         .entry(self_.const_table.string[n].clone())
-        .or_insert_with(|| Value::Undefined) = self_.stack.pop().unwrap();
+        .or_insert_with(|| Value::Undefined) = self_.state.stack.pop().unwrap();
 }
 
 fn get_local(self_: &mut VM) {
-    self_.pc += 1; // get_local
+    self_.state.pc += 1; // get_local
     get_int32!(self_, n, usize);
-    let val = self_.stack[self_.bp + n].clone();
-    self_.stack.push(val);
+    let val = self_.state.stack[self_.state.bp + n].clone();
+    self_.state.stack.push(val);
 }
 
 fn set_local(self_: &mut VM) {
-    self_.pc += 1; // set_local
+    self_.state.pc += 1; // set_local
     get_int32!(self_, n, usize);
-    let val = self_.stack.pop().unwrap();
-    self_.stack[self_.bp + n] = val;
+    let val = self_.state.stack.pop().unwrap();
+    self_.state.stack[self_.state.bp + n] = val;
 }
 
 fn jmp(self_: &mut VM) {
-    self_.pc += 1; // jmp
+    self_.state.pc += 1; // jmp
     get_int32!(self_, dst, i32);
-    self_.pc += dst as isize;
+    self_.state.pc += dst as isize;
 }
 
 fn jmp_if_false(self_: &mut VM) {
-    self_.pc += 1; // jmp_if_false
+    self_.state.pc += 1; // jmp_if_false
     get_int32!(self_, dst, i32);
-    let cond = self_.stack.pop().unwrap();
+    let cond = self_.state.stack.pop().unwrap();
     if let Value::Bool(false) = cond {
-        self_.pc += dst as isize
+        self_.state.pc += dst as isize
     }
 }
 
 fn call(self_: &mut VM) {
-    self_.pc += 1; // Call
+    self_.state.pc += 1; // Call
     get_int32!(self_, argc, usize);
 
     let mut this = None;
 
-    let mut callee = self_.stack.pop().unwrap();
+    let mut callee = self_.state.stack.pop().unwrap();
 
     loop {
         match callee {
             Value::EmbeddedFunction(x) => {
                 let mut args = vec![];
                 for _ in 0..argc {
-                    args.push(self_.stack.pop().unwrap());
+                    args.push(self_.state.stack.pop().unwrap());
                 }
                 args.reverse();
                 match x {
@@ -529,30 +533,30 @@ fn call(self_: &mut VM) {
             }
             Value::Function(dst, _) => {
                 if let Some(this) = this {
-                    let pos = self_.stack.len() - argc;
-                    self_.stack.insert(pos, this);
+                    let pos = self_.state.stack.len() - argc;
+                    self_.state.stack.insert(pos, this);
                 }
 
-                if args_all_number(&self_.stack, argc) {
+                if args_all_number(&self_.state.stack, argc) {
                     unsafe {
                         if let Some(f) = self_.jit.can_jit(dst) {
                             let mut args = vec![];
                             for _ in 0..argc {
-                                args.push(self_.stack.pop().unwrap());
+                                args.push(self_.state.stack.pop().unwrap());
                             }
                             args.reverse();
-                            self_.stack.push(self_.jit.run_llvm_func(dst, f, args));
+                            self_.state.stack.push(self_.jit.run_llvm_func(dst, f, args));
                             break;
                         }
                     }
                 }
 
-                self_.history.push((0, 0, self_.pc));
-                self_.pc = dst as isize;
+                self_.state.history.push((0, 0, self_.state.pc));
+                self_.state.pc = dst as isize;
                 self_.do_run();
                 self_
                     .jit
-                    .register_return_type(dst, self_.stack.last().unwrap());
+                    .register_return_type(dst, self_.state.stack.last().unwrap());
                 break;
             }
             Value::NeedThis(callee_) => {
@@ -564,7 +568,7 @@ fn call(self_: &mut VM) {
                 callee = callee_this.0;
             }
             c => {
-                println!("Call: err: {:?}, pc = {}", c, self_.pc);
+                println!("Call: err: {:?}, pc = {}", c, self_.state.pc);
                 break;
             }
         }
@@ -629,11 +633,11 @@ fn call(self_: &mut VM) {
 }
 
 fn return_(self_: &mut VM) {
-    let len = self_.stack.len();
-    if let Some((bp, sp, return_pc)) = self_.history.pop() {
-        self_.stack.drain(sp..len - 1);
-        self_.pc = return_pc;
-        self_.bp = bp;
+    let len = self_.state.stack.len();
+    if let Some((bp, sp, return_pc)) = self_.state.history.pop() {
+        self_.state.stack.drain(sp..len - 1);
+        self_.state.pc = return_pc;
+        self_.state.bp = bp;
     } else {
         unreachable!()
     }
