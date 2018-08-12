@@ -10,9 +10,10 @@ A toy JavaScript engine
 
 - Small
 - Support Tracing-JIT compiling 
-  - The functions fitting for the following rules are JIT-compiled. 
-    - Accessing only their arguments and local variables (not global variables) 
-    - Only Numbers and Booleans are used. 
+  - A function fitting for the following rules is JIT-compiled. 
+    - Accessing only its arguments and local variables (not global variables) 
+    - Only Numbers and Booleans are used
+    - Calling only itself
 
 # Run
 
