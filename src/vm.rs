@@ -82,6 +82,16 @@ impl VM {
             Value::Object(Rc::new(RefCell::new(map)))
         });
 
+        obj.insert("process".to_string(), {
+            let mut map = HashMap::new();
+            map.insert("stdout".to_string(), {
+                let mut map = HashMap::new();
+                map.insert("write".to_string(), Value::EmbeddedFunction(2));
+                Value::Object(Rc::new(RefCell::new(map)))
+            });
+            Value::Object(Rc::new(RefCell::new(map)))
+        });
+
         let global_objects = Rc::new(RefCell::new(obj));
 
         VM {
@@ -504,13 +514,17 @@ fn call(self_: &mut VM) {
 
     loop {
         match callee {
-            Value::EmbeddedFunction(1) => {
+            Value::EmbeddedFunction(x) => {
                 let mut args = vec![];
                 for _ in 0..argc {
                     args.push(self_.stack.pop().unwrap());
                 }
                 args.reverse();
-                console_log(args);
+                match x {
+                    1 => console_log(args),
+                    2 => process_stdout_write(args),
+                    _ => panic!("unknown embedded function called"),
+                };
                 break;
             }
             Value::Function(dst, _) => {
@@ -578,6 +592,30 @@ fn call(self_: &mut VM) {
                 }
             }
             libc::puts(b"\0".as_ptr() as RawStringPtr);
+        }
+    }
+
+    // EmbeddedFunction(2)
+    fn process_stdout_write(args: Vec<Value>) {
+        unsafe {
+            let args_len = args.len();
+            for i in 0..args_len {
+                match args[i] {
+                    Value::String(ref s) => {
+                        libc::printf(b"%s\0".as_ptr() as RawStringPtr, *s as RawStringPtr);
+                    }
+                    Value::Number(ref n) => {
+                        libc::printf(b"%.15g\0".as_ptr() as RawStringPtr, *n);
+                    }
+                    Value::Undefined => {
+                        libc::printf(b"undefined\0".as_ptr() as RawStringPtr);
+                    }
+                    _ => {}
+                }
+                if args_len - 1 != i {
+                    libc::printf(b" \0".as_ptr() as RawStringPtr);
+                }
+            }
         }
     }
 

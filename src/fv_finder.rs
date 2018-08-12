@@ -15,6 +15,7 @@ impl FreeVariableFinder {
     pub fn new() -> FreeVariableFinder {
         let mut varmap = HashSet::new(); // global
         varmap.insert("console".to_string());
+        varmap.insert("process".to_string());
         FreeVariableFinder {
             varmap: vec![varmap],
             cur_fv: vec![HashSet::new()],
