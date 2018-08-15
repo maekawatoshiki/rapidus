@@ -1,6 +1,6 @@
 use bytecode_gen::{ByteCode, ByteCodeGen};
 use id::IdGen;
-use node::{BinOp, FormalParameters, Node, PropertyDefinition, UnaryOp};
+use node::{BinOp, FormalParameters, Node,NodeBase, PropertyDefinition, UnaryOp};
 use std::collections::HashSet;
 use vm::{alloc_rawstring, Value};
 use vm::{
@@ -184,33 +184,33 @@ impl VMCodeGen {
     }
 
     fn run(&mut self, node: &Node, insts: &mut ByteCode) {
-        match node {
-            &Node::StatementList(ref node_list) => self.run_statement_list(node_list, insts),
-            &Node::FunctionDecl(ref name, ref use_this, ref fv, ref params, ref body) => {
+        match &node.base {
+            &NodeBase::StatementList(ref node_list) => self.run_statement_list(node_list, insts),
+            &NodeBase::FunctionDecl(ref name, ref use_this, ref fv, ref params, ref body) => {
                 self.run_function_decl(name, *use_this, fv, params, &*body)
             }
-            &Node::VarDecl(ref name, ref init) => self.run_var_decl(name, init, insts),
-            &Node::If(ref cond, ref then_, ref else_) => {
+            &NodeBase::VarDecl(ref name, ref init) => self.run_var_decl(name, init, insts),
+            &NodeBase::If(ref cond, ref then_, ref else_) => {
                 self.run_if(&*cond, &*then_, &*else_, insts)
             }
-            &Node::While(ref cond, ref body) => self.run_while(&*cond, &*body, insts),
-            &Node::Assign(ref dst, ref src) => self.run_assign(&*dst, &*src, insts),
-            &Node::UnaryOp(ref expr, ref op) => self.run_unary_op(&*expr, op, insts),
-            &Node::BinaryOp(ref lhs, ref rhs, ref op) => {
+            &NodeBase::While(ref cond, ref body) => self.run_while(&*cond, &*body, insts),
+            &NodeBase::Assign(ref dst, ref src) => self.run_assign(&*dst, &*src, insts),
+            &NodeBase::UnaryOp(ref expr, ref op) => self.run_unary_op(&*expr, op, insts),
+            &NodeBase::BinaryOp(ref lhs, ref rhs, ref op) => {
                 self.run_binary_op(&*lhs, &*rhs, op, insts)
             }
-            &Node::Call(ref callee, ref args) => self.run_call(&*callee, args, insts),
-            &Node::Member(ref parent, ref member) => self.run_member(&*parent, member, insts),
-            &Node::Index(ref parent, ref idx) => self.run_index(&*parent, &*idx, insts),
-            &Node::Return(ref val) => self.run_return(val, insts),
-            &Node::New(ref expr) => self.run_new_expr(&*expr, insts),
-            &Node::Object(ref properties) => self.run_object_literal(properties, insts),
-            &Node::Identifier(ref name) => self.run_identifier(name, insts),
-            &Node::This => self.bytecode_gen.gen_push_this(insts),
-            &Node::String(ref s) => self
+            &NodeBase::Call(ref callee, ref args) => self.run_call(&*callee, args, insts),
+            &NodeBase::Member(ref parent, ref member) => self.run_member(&*parent, member, insts),
+            &NodeBase::Index(ref parent, ref idx) => self.run_index(&*parent, &*idx, insts),
+            &NodeBase::Return(ref val) => self.run_return(val, insts),
+            &NodeBase::New(ref expr) => self.run_new_expr(&*expr, insts),
+            &NodeBase::Object(ref properties) => self.run_object_literal(properties, insts),
+            &NodeBase::Identifier(ref name) => self.run_identifier(name, insts),
+            &NodeBase::This => self.bytecode_gen.gen_push_this(insts),
+            &NodeBase::String(ref s) => self
                 .bytecode_gen
                 .gen_push_const(Value::String(unsafe { alloc_rawstring(s.as_str()) }), insts),
-            &Node::Number(n) if n - n.floor() == 0.0 => {
+            &NodeBase::Number(n) if n - n.floor() == 0.0 => {
                 // When 'n' is an integer
                 if -128.0 < n && n < 127.0 {
                     self.bytecode_gen.gen_push_int8(n as i8, insts)
@@ -218,8 +218,8 @@ impl VMCodeGen {
                     self.bytecode_gen.gen_push_int32(n as i32, insts)
                 }
             }
-            &Node::Number(n) => self.bytecode_gen.gen_push_const(Value::Number(n), insts),
-            &Node::Boolean(b) => self.bytecode_gen.gen_push_bool(b, insts),
+            &NodeBase::Number(n) => self.bytecode_gen.gen_push_const(Value::Number(n), insts),
+            &NodeBase::Boolean(b) => self.bytecode_gen.gen_push_bool(b, insts),
             _ => {}
         }
     }
@@ -356,7 +356,7 @@ impl VMCodeGen {
 
         self.run(then_, insts);
 
-        if else_ == &Node::Nope {
+        if else_.base == NodeBase::Nope {
             let pos = insts.len() as isize;
             self.bytecode_gen.replace_int32(
                 (pos - cond_pos) as i32 - 5,
@@ -435,15 +435,15 @@ impl VMCodeGen {
     pub fn run_assign(&mut self, dst: &Node, src: &Node, insts: &mut ByteCode) {
         self.run(src, insts);
 
-        match dst {
-            &Node::Identifier(ref name) => {
+        match dst.base {
+            NodeBase::Identifier(ref name) => {
                 if let Some(p) = self.local_varmap.last().unwrap().get(name.as_str()) {
                     self.bytecode_gen.gen_set_local(*p as u32, insts);
                 } else {
                     self.bytecode_gen.gen_set_global(name.clone(), insts);
                 }
             }
-            &Node::Member(ref parent, ref member) => {
+            NodeBase::Member(ref parent, ref member) => {
                 self.run(&*parent, insts);
                 self.bytecode_gen.gen_push_const(
                     Value::String(unsafe { alloc_rawstring(member.as_str()) }),
@@ -451,7 +451,7 @@ impl VMCodeGen {
                 );
                 self.bytecode_gen.gen_set_member(insts);
             }
-            &Node::Index(ref parent, ref idx) => {
+            NodeBase::Index(ref parent, ref idx) => {
                 self.run(&*parent, insts);
                 self.run(&*idx, insts);
                 self.bytecode_gen.gen_set_member(insts);

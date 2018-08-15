@@ -1,7 +1,13 @@
 use lexer;
-use node::{BinOp, FormalParameter, FormalParameters, Node, PropertyDefinition, UnaryOp};
+use node::{BinOp, FormalParameter, FormalParameters, Node, NodeBase, PropertyDefinition, UnaryOp};
 use std::collections::HashSet;
 use token::{Keyword, Kind, Symbol};
+
+macro_rules! token_start_pos {
+    ($var:ident, $lexer:expr) => {
+        let $var = $lexer.pos;
+    };
+}
 
 #[derive(Clone, Debug)]
 pub struct Parser {
@@ -30,6 +36,7 @@ impl Parser {
 
 impl Parser {
     fn read_statement_list(&mut self) -> Result<Node, ()> {
+        token_start_pos!(pos, self.lexer);
         let mut items = vec![];
 
         loop {
@@ -51,7 +58,7 @@ impl Parser {
             self.lexer.skip(Kind::Symbol(Symbol::Semicolon));
         }
 
-        Ok(Node::StatementList(items))
+        Ok(Node::new(NodeBase::StatementList(items), pos))
     }
 
     fn read_statement_list_item(&mut self) -> Result<Node, ()> {
@@ -93,6 +100,7 @@ impl Parser {
 
     /// https://tc39.github.io/ecma262/#prod-VariableDeclarationList
     fn read_variable_declaration_list(&mut self) -> Result<Node, ()> {
+        token_start_pos!(pos, self.lexer);
         let mut list = vec![];
 
         loop {
@@ -102,23 +110,24 @@ impl Parser {
             }
         }
 
-        Ok(Node::StatementList(list))
+        Ok(Node::new(NodeBase::StatementList(list), pos))
     }
 
     /// https://tc39.github.io/ecma262/#prod-VariableDeclaration
     fn read_variable_declaration(&mut self) -> Result<Node, ()> {
+        token_start_pos!(pos, self.lexer);
         let name = match self.lexer.next()?.kind {
             Kind::Identifier(name) => name,
             _ => unimplemented!(),
         };
 
         if self.lexer.skip(Kind::Symbol(Symbol::Assign)) {
-            Ok(Node::VarDecl(
-                name,
-                Some(Box::new(self.read_initializer()?)),
+            Ok(Node::new(
+                NodeBase::VarDecl(name, Some(Box::new(self.read_initializer()?))),
+                pos,
             ))
         } else {
-            Ok(Node::VarDecl(name, None))
+            Ok(Node::new(NodeBase::VarDecl(name, None), pos))
         }
     }
 
@@ -130,6 +139,7 @@ impl Parser {
 
 impl Parser {
     fn read_if_statement(&mut self) -> Result<Node, ()> {
+        token_start_pos!(pos, self.lexer);
         assert_eq!(self.lexer.next()?.kind, Kind::Symbol(Symbol::OpeningParen));
         let cond = self.read_expression()?;
         assert_eq!(self.lexer.next()?.kind, Kind::Symbol(Symbol::ClosingParen));
@@ -139,29 +149,39 @@ impl Parser {
         if let Ok(expect_else_tok) = self.lexer.next() {
             if expect_else_tok.kind == Kind::Keyword(Keyword::Else) {
                 let else_ = self.read_statement()?;
-                return Ok(Node::If(Box::new(cond), Box::new(then_), Box::new(else_)));
+                return Ok(Node::new(
+                    NodeBase::If(Box::new(cond), Box::new(then_), Box::new(else_)),
+                    pos,
+                ));
             } else {
                 self.lexer.unget(&expect_else_tok);
             }
         }
 
-        Ok(Node::If(
-            Box::new(cond),
-            Box::new(then_),
-            Box::new(Node::Nope),
+        Ok(Node::new(
+            NodeBase::If(
+                Box::new(cond),
+                Box::new(then_),
+                Box::new(Node::new(NodeBase::Nope, 0)),
+            ),
+            pos,
         ))
     }
 }
 
 impl Parser {
     fn read_while_statement(&mut self) -> Result<Node, ()> {
+        token_start_pos!(pos, self.lexer);
         assert_eq!(self.lexer.next()?.kind, Kind::Symbol(Symbol::OpeningParen));
         let cond = self.read_expression()?;
         assert_eq!(self.lexer.next()?.kind, Kind::Symbol(Symbol::ClosingParen));
 
         let body = self.read_statement()?;
 
-        Ok(Node::While(Box::new(cond), Box::new(body)))
+        Ok(Node::new(
+            NodeBase::While(Box::new(cond), Box::new(body)),
+            pos,
+        ))
     }
 }
 
@@ -169,13 +189,14 @@ macro_rules! expression { ( $name:ident, $lower:ident, [ $( $op:path ),* ] ) => 
     fn $name (&mut self) -> Result<Node, ()> {
         let mut lhs = self. $lower ()?;
         while let Ok(tok) = self.lexer.next() {
+            token_start_pos!(pos, self.lexer);
             match tok.kind {
                 Kind::Symbol(ref op) if $( op == &$op )||* => {
-                    lhs = Node::BinaryOp(
+                    lhs = Node::new(NodeBase::BinaryOp(
                         Box::new(lhs),
                         Box::new(self. $lower ()?),
                         op.as_binop().unwrap(),
-                    );
+                    ), pos);
                 }
                 _ => { self.lexer.unget(&tok); break }
             }
@@ -195,23 +216,36 @@ impl Parser {
     /// https://tc39.github.io/ecma262/#prod-AssignmentExpression
     // TODO: Implement all features.
     fn read_assignment_expression(&mut self) -> Result<Node, ()> {
+        token_start_pos!(pos, self.lexer);
         let mut lhs = self.read_conditional_expression()?;
         if let Ok(tok) = self.lexer.next() {
             macro_rules! assignop {
                 ($op:ident) => {{
-                    lhs = Node::Assign(
-                        Box::new(lhs.clone()),
-                        Box::new(Node::BinaryOp(
-                            Box::new(lhs),
-                            Box::new(self.read_assignment_expression()?),
-                            BinOp::$op,
-                        )),
+                    lhs = Node::new(
+                        NodeBase::Assign(
+                            Box::new(lhs.clone()),
+                            Box::new(Node::new(
+                                NodeBase::BinaryOp(
+                                    Box::new(lhs),
+                                    Box::new(self.read_assignment_expression()?),
+                                    BinOp::$op,
+                                ),
+                                pos,
+                            )),
+                        ),
+                        pos,
                     );
                 }};
             }
             match tok.kind {
                 Kind::Symbol(Symbol::Assign) => {
-                    lhs = Node::Assign(Box::new(lhs), Box::new(self.read_assignment_expression()?))
+                    lhs = Node::new(
+                        NodeBase::Assign(
+                            Box::new(lhs),
+                            Box::new(self.read_assignment_expression()?),
+                        ),
+                        pos,
+                    )
                 }
                 Kind::Symbol(Symbol::AssignAdd) => assignop!(Add),
                 Kind::Symbol(Symbol::AssignSub) => assignop!(Sub),
@@ -226,16 +260,16 @@ impl Parser {
 
     /// https://tc39.github.io/ecma262/#prod-ConditionalExpression
     fn read_conditional_expression(&mut self) -> Result<Node, ()> {
+        token_start_pos!(pos, self.lexer);
         let lhs = self.read_logical_or_expression()?;
         if let Ok(tok) = self.lexer.next() {
             if let Kind::Symbol(Symbol::Question) = tok.kind {
                 let then_ = self.read_conditional_expression()?;
                 assert_eq!(self.lexer.next()?.kind, Kind::Symbol(Symbol::Colon));
                 let else_ = self.read_conditional_expression()?;
-                return Ok(Node::TernaryOp(
-                    Box::new(lhs),
-                    Box::new(then_),
-                    Box::new(else_),
+                return Ok(Node::new(
+                    NodeBase::TernaryOp(Box::new(lhs), Box::new(then_), Box::new(else_)),
+                    pos,
                 ));
             } else {
                 self.lexer.unget(&tok);
@@ -319,16 +353,21 @@ impl Parser {
         if self.is_unary_expression() {
             return self.read_unary_expression();
         }
+        token_start_pos!(pos, self.lexer);
         let lhs = self.read_update_expression()?;
-        if let Ok(tok) = self.lexer.next() {
+        while let Ok(tok) = self.lexer.next() {
             if let Kind::Symbol(Symbol::Exp) = tok.kind {
-                return Ok(Node::BinaryOp(
-                    Box::new(lhs),
-                    Box::new(self.read_exponentiation_expression()?),
-                    BinOp::Exp,
+                return Ok(Node::new(
+                    NodeBase::BinaryOp(
+                        Box::new(lhs),
+                        Box::new(self.read_update_expression()?),
+                        BinOp::Exp,
+                    ),
+                    pos,
                 ));
             } else {
                 self.lexer.unget(&tok);
+                break;
             }
         }
         Ok(lhs)
@@ -352,35 +391,36 @@ impl Parser {
 
     /// https://tc39.github.io/ecma262/#prod-UnaryExpression
     fn read_unary_expression(&mut self) -> Result<Node, ()> {
+        token_start_pos!(pos, self.lexer);
         let tok = self.lexer.next()?;
         match tok.kind {
-            Kind::Keyword(Keyword::Delete) => Ok(Node::UnaryOp(
-                Box::new(self.read_unary_expression()?),
-                UnaryOp::Delete,
+            Kind::Keyword(Keyword::Delete) => Ok(Node::new(
+                NodeBase::UnaryOp(Box::new(self.read_unary_expression()?), UnaryOp::Delete),
+                pos,
             )),
-            Kind::Keyword(Keyword::Void) => Ok(Node::UnaryOp(
-                Box::new(self.read_unary_expression()?),
-                UnaryOp::Void,
+            Kind::Keyword(Keyword::Void) => Ok(Node::new(
+                NodeBase::UnaryOp(Box::new(self.read_unary_expression()?), UnaryOp::Void),
+                pos,
             )),
-            Kind::Keyword(Keyword::Typeof) => Ok(Node::UnaryOp(
-                Box::new(self.read_unary_expression()?),
-                UnaryOp::Typeof,
+            Kind::Keyword(Keyword::Typeof) => Ok(Node::new(
+                NodeBase::UnaryOp(Box::new(self.read_unary_expression()?), UnaryOp::Typeof),
+                pos,
             )),
-            Kind::Symbol(Symbol::Add) => Ok(Node::UnaryOp(
-                Box::new(self.read_unary_expression()?),
-                UnaryOp::Plus,
+            Kind::Symbol(Symbol::Add) => Ok(Node::new(
+                NodeBase::UnaryOp(Box::new(self.read_unary_expression()?), UnaryOp::Plus),
+                pos,
             )),
-            Kind::Symbol(Symbol::Sub) => Ok(Node::UnaryOp(
-                Box::new(self.read_unary_expression()?),
-                UnaryOp::Minus,
+            Kind::Symbol(Symbol::Sub) => Ok(Node::new(
+                NodeBase::UnaryOp(Box::new(self.read_unary_expression()?), UnaryOp::Minus),
+                pos,
             )),
-            Kind::Symbol(Symbol::BitwiseNot) => Ok(Node::UnaryOp(
-                Box::new(self.read_unary_expression()?),
-                UnaryOp::BitwiseNot,
+            Kind::Symbol(Symbol::BitwiseNot) => Ok(Node::new(
+                NodeBase::UnaryOp(Box::new(self.read_unary_expression()?), UnaryOp::BitwiseNot),
+                pos,
             )),
-            Kind::Symbol(Symbol::Not) => Ok(Node::UnaryOp(
-                Box::new(self.read_unary_expression()?),
-                UnaryOp::Not,
+            Kind::Symbol(Symbol::Not) => Ok(Node::new(
+                NodeBase::UnaryOp(Box::new(self.read_unary_expression()?), UnaryOp::Not),
+                pos,
             )),
             _ => {
                 self.lexer.unget(&tok);
@@ -392,28 +432,46 @@ impl Parser {
     /// https://tc39.github.io/ecma262/#prod-UpdateExpression
     // TODO: Implement all features.
     fn read_update_expression(&mut self) -> Result<Node, ()> {
+        token_start_pos!(pos, self.lexer);
         let tok = self.lexer.next()?;
         match tok.kind {
             Kind::Symbol(Symbol::Inc) => {
-                return Ok(Node::UnaryOp(
-                    Box::new(self.read_left_hand_side_expression()?),
-                    UnaryOp::PrInc,
+                return Ok(Node::new(
+                    NodeBase::UnaryOp(
+                        Box::new(self.read_left_hand_side_expression()?),
+                        UnaryOp::PrInc,
+                    ),
+                    pos,
                 ))
             }
             Kind::Symbol(Symbol::Dec) => {
-                return Ok(Node::UnaryOp(
-                    Box::new(self.read_left_hand_side_expression()?),
-                    UnaryOp::PrDec,
+                return Ok(Node::new(
+                    NodeBase::UnaryOp(
+                        Box::new(self.read_left_hand_side_expression()?),
+                        UnaryOp::PrDec,
+                    ),
+                    pos,
                 ))
             }
             _ => self.lexer.unget(&tok),
         }
 
+        token_start_pos!(pos, self.lexer);
         let e = self.read_left_hand_side_expression()?;
         if let Ok(tok) = self.lexer.next() {
             match tok.kind {
-                Kind::Symbol(Symbol::Inc) => return Ok(Node::UnaryOp(Box::new(e), UnaryOp::PoInc)),
-                Kind::Symbol(Symbol::Dec) => return Ok(Node::UnaryOp(Box::new(e), UnaryOp::PoDec)),
+                Kind::Symbol(Symbol::Inc) => {
+                    return Ok(Node::new(
+                        NodeBase::UnaryOp(Box::new(e), UnaryOp::PoInc),
+                        pos,
+                    ))
+                }
+                Kind::Symbol(Symbol::Dec) => {
+                    return Ok(Node::new(
+                        NodeBase::UnaryOp(Box::new(e), UnaryOp::PoDec),
+                        pos,
+                    ))
+                }
                 _ => self.lexer.unget(&tok),
             }
         }
@@ -431,8 +489,12 @@ impl Parser {
 
     /// https://tc39.github.io/ecma262/#prod-NewExpression
     fn read_new_expression(&mut self) -> Result<Node, ()> {
+        token_start_pos!(pos, self.lexer);
         if self.lexer.skip(Kind::Keyword(Keyword::New)) {
-            Ok(Node::New(Box::new(self.read_new_expression()?)))
+            Ok(Node::new(
+                NodeBase::New(Box::new(self.read_new_expression()?)),
+                pos,
+            ))
         } else {
             self.read_call_expression()
         }
@@ -441,22 +503,27 @@ impl Parser {
     /// https://tc39.github.io/ecma262/#prod-CallExpression
     // TODO: Implement all features.
     fn read_call_expression(&mut self) -> Result<Node, ()> {
+        token_start_pos!(pos, self.lexer);
         let mut lhs = self.read_primary_expression()?;
 
         while let Ok(tok) = self.lexer.next() {
             match tok.kind {
                 Kind::Symbol(Symbol::OpeningParen) => {
                     let args = self.read_arguments()?;
-                    lhs = Node::Call(Box::new(lhs), args)
+                    lhs = Node::new(NodeBase::Call(Box::new(lhs), args), pos)
                 }
                 Kind::Symbol(Symbol::Point) => match self.lexer.next()?.kind {
-                    Kind::Identifier(name) => lhs = Node::Member(Box::new(lhs), name),
-                    _ => panic!("error: expected identifier"),
+                    Kind::Identifier(name) => {
+                        lhs = Node::new(NodeBase::Member(Box::new(lhs), name), pos)
+                    }
+                    _ => {
+                        panic!("error: expected identifier");
+                    }
                 },
                 Kind::Symbol(Symbol::OpeningBoxBracket) => {
                     let idx = self.read_expression()?;
                     assert!(self.lexer.skip(Kind::Symbol(Symbol::ClosingBoxBracket)));
-                    lhs = Node::Index(Box::new(lhs), Box::new(idx));
+                    lhs = Node::new(NodeBase::Index(Box::new(lhs), Box::new(idx)), pos);
                 }
                 _ => {
                     self.lexer.unget(&tok);
@@ -501,10 +568,11 @@ impl Parser {
 
     /// https://tc39.github.io/ecma262/#prod-PrimaryExpression
     fn read_primary_expression(&mut self) -> Result<Node, ()> {
+        token_start_pos!(pos, self.lexer);
         match self.lexer.next()?.kind {
-            Kind::Keyword(Keyword::This) => Ok(Node::This),
+            Kind::Keyword(Keyword::This) => Ok(Node::new(NodeBase::This, pos)),
             Kind::Keyword(Keyword::Function) => self.read_function_expression(),
-            Kind::Symbol(Symbol::Semicolon) => Ok(Node::Nope),
+            Kind::Symbol(Symbol::Semicolon) => Ok(Node::new(NodeBase::Nope, pos)),
             Kind::Symbol(Symbol::OpeningParen) => {
                 let x = self.read_expression();
                 self.lexer.skip(Kind::Symbol(Symbol::ClosingParen));
@@ -512,11 +580,11 @@ impl Parser {
             }
             Kind::Symbol(Symbol::OpeningBoxBracket) => self.read_array_literal(),
             Kind::Symbol(Symbol::OpeningBrace) => self.read_object_literal(),
-            Kind::Identifier(ref i) if i == "true" => Ok(Node::Boolean(true)),
-            Kind::Identifier(ref i) if i == "false" => Ok(Node::Boolean(false)),
-            Kind::Identifier(ident) => Ok(Node::Identifier(ident)),
-            Kind::String(s) => Ok(Node::String(s)),
-            Kind::Number(num) => Ok(Node::Number(num)),
+            Kind::Identifier(ref i) if i == "true" => Ok(Node::new(NodeBase::Boolean(true), pos)),
+            Kind::Identifier(ref i) if i == "false" => Ok(Node::new(NodeBase::Boolean(false), pos)),
+            Kind::Identifier(ident) => Ok(Node::new(NodeBase::Identifier(ident), pos)),
+            Kind::String(s) => Ok(Node::new(NodeBase::String(s), pos)),
+            Kind::Number(num) => Ok(Node::new(NodeBase::Number(num), pos)),
             Kind::LineTerminator => self.read_primary_expression(),
             e => unimplemented!("{:?}", e),
         }
@@ -524,6 +592,7 @@ impl Parser {
 
     /// https://tc39.github.io/ecma262/#prod-FunctionDeclaration
     fn read_function_expression(&mut self) -> Result<Node, ()> {
+        token_start_pos!(pos, self.lexer);
         let name = if let Kind::Identifier(name) = self.lexer.peek()?.kind {
             self.lexer.next()?;
             Some(name)
@@ -537,17 +606,21 @@ impl Parser {
         assert!(self.lexer.skip(Kind::Symbol(Symbol::OpeningBrace)));
         let body = self.read_statement_list()?;
 
-        Ok(Node::FunctionExpr(name, params, Box::new(body)))
+        Ok(Node::new(
+            NodeBase::FunctionExpr(name, params, Box::new(body)),
+            pos,
+        ))
     }
 
     /// https://tc39.github.io/ecma262/#prod-ArrayLiteral
     fn read_array_literal(&mut self) -> Result<Node, ()> {
+        token_start_pos!(pos, self.lexer);
         let mut elements = vec![];
 
         loop {
             // TODO: Support all features.
             while self.lexer.skip(Kind::Symbol(Symbol::Comma)) {
-                elements.push(Node::Nope);
+                elements.push(Node::new(NodeBase::Nope, pos));
             }
 
             if self.lexer.skip(Kind::Symbol(Symbol::ClosingBoxBracket)) {
@@ -561,11 +634,12 @@ impl Parser {
             self.lexer.skip(Kind::Symbol(Symbol::Comma));
         }
 
-        Ok(Node::Array(elements))
+        Ok(Node::new(NodeBase::Array(elements), pos))
     }
 
     /// https://tc39.github.io/ecma262/#prod-ObjectLiteral
     fn read_object_literal(&mut self) -> Result<Node, ()> {
+        token_start_pos!(pos, self.lexer);
         let mut elements = vec![];
 
         loop {
@@ -578,7 +652,7 @@ impl Parser {
             self.lexer.skip(Kind::Symbol(Symbol::Comma));
         }
 
-        Ok(Node::Object(elements))
+        Ok(Node::new(NodeBase::Object(elements), pos))
     }
 
     /// https://tc39.github.io/ecma262/#prod-PropertyDefinition
@@ -611,14 +685,15 @@ impl Parser {
 impl Parser {
     /// https://tc39.github.io/ecma262/#prod-ReturnStatement
     fn read_return_statement(&mut self) -> Result<Node, ()> {
+        token_start_pos!(pos, self.lexer);
         if self.lexer.skip(Kind::Symbol(Symbol::Semicolon)) {
-            return Ok(Node::Return(None));
+            return Ok(Node::new(NodeBase::Return(None), pos));
         }
 
         let expr = self.read_expression()?;
         self.lexer.skip(Kind::Symbol(Symbol::Semicolon));
 
-        Ok(Node::Return(Some(Box::new(expr))))
+        Ok(Node::new(NodeBase::Return(Some(Box::new(expr))), pos))
     }
 }
 
@@ -631,12 +706,13 @@ impl Parser {
         let tok = self.lexer.next()?;
         match tok.kind {
             Kind::Keyword(Keyword::Function) => self.read_function_declaration(),
-            _ => Ok(Node::Nope),
+            _ => unreachable!(),
         }
     }
 
     /// https://tc39.github.io/ecma262/#prod-FunctionDeclaration
     fn read_function_declaration(&mut self) -> Result<Node, ()> {
+        token_start_pos!(pos, self.lexer);
         let name = if let Kind::Identifier(name) = self.lexer.next()?.kind {
             name
         } else {
@@ -649,13 +725,13 @@ impl Parser {
         assert!(self.lexer.skip(Kind::Symbol(Symbol::OpeningBrace)));
         let body = self.read_statement_list()?;
 
-        Ok(Node::FunctionDecl(
+        Ok(Node::new(NodeBase::FunctionDecl(
             name,
             false,
             HashSet::new(),
             params,
             Box::new(body),
-        ))
+        ), pos))
     }
 
     fn read_formal_parameters(&mut self) -> Result<FormalParameters, ()> {

@@ -5,8 +5,9 @@ use std::collections::VecDeque;
 #[derive(Clone, Debug)]
 pub struct Lexer {
     code: String,
-    pos: usize,
+    line: usize,
     buf: VecDeque<Token>,
+    pub pos: usize,
 }
 
 impl Lexer {
@@ -14,6 +15,7 @@ impl Lexer {
         Lexer {
             code: code,
             pos: 0,
+            line: 1,
             buf: VecDeque::new(),
         }
     }
@@ -22,7 +24,10 @@ impl Lexer {
 impl Lexer {
     pub fn next(&mut self) -> Result<Token, ()> {
         match self.read_token() {
-            Ok(ref tok) if tok.kind == Kind::LineTerminator => self.next(),
+            Ok(ref tok) if tok.kind == Kind::LineTerminator => {
+                self.line += 1;
+                self.next()
+            }
             otherwise => otherwise,
         }
     }
@@ -386,6 +391,11 @@ impl Lexer {
         self.pos >= self.code.len()
     }
 }
+
+// impl Lexer {
+//     pub fn show_err(&self, pos:usize) {
+//     }
+// }
 
 #[test]
 fn number() {

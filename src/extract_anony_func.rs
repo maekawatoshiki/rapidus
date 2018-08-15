@@ -1,4 +1,4 @@
-use node::{Node, PropertyDefinition};
+use node::{Node, NodeBase, PropertyDefinition};
 
 use rand::random;
 use std::collections::HashSet;
@@ -18,8 +18,8 @@ impl AnonymousFunctionExtractor {
     }
 
     pub fn run_toplevel(&mut self, node: &mut Node) {
-        match node {
-            &mut Node::StatementList(ref mut nodes) => {
+        match &mut node.base {
+            &mut NodeBase::StatementList(ref mut nodes) => {
                 for node in nodes.iter_mut() {
                     self.run(node)
                 }
@@ -33,14 +33,14 @@ impl AnonymousFunctionExtractor {
     }
 
     fn run(&mut self, node: &mut Node) {
-        match node {
-            &mut Node::StatementList(ref mut nodes) => {
+        match node.base {
+            NodeBase::StatementList(ref mut nodes) => {
                 for node in nodes {
                     self.run(node)
                 }
             }
-            &mut Node::FunctionDecl(_, _, _, _, ref mut body) => {
-                let mut body = if let &mut Node::StatementList(ref mut body) = &mut **body {
+            NodeBase::FunctionDecl(_, _, _, _, ref mut body) => {
+                let mut body = if let &mut NodeBase::StatementList(ref mut body) = &mut body.base {
                     body
                 } else {
                     unreachable!()
@@ -58,8 +58,8 @@ impl AnonymousFunctionExtractor {
 
                 self.pending_anonymous_function.pop();
             }
-            &mut Node::FunctionExpr(_, _, _) => {
-                if let Node::FunctionExpr(mut name, mut params, mut body) = node.clone() {
+            NodeBase::FunctionExpr(_, _, _) => {
+                if let NodeBase::FunctionExpr(mut name, mut params, mut body) = node.clone().base {
                     let mut name_ = match name {
                         Some(name) => {
                             let new_name = format!("anonymous.{}.{}", name, random::<u32>());
@@ -70,7 +70,7 @@ impl AnonymousFunctionExtractor {
                         None => format!("anonymous.{}", random::<u32>()),
                     };
 
-                    let mut body = if let Node::StatementList(body) = *body {
+                    let mut body = if let NodeBase::StatementList(body) = body.base {
                         body
                     } else {
                         unreachable!()
@@ -85,70 +85,73 @@ impl AnonymousFunctionExtractor {
                     self.pending_anonymous_function
                         .last_mut()
                         .unwrap()
-                        .push(Node::FunctionDecl(
-                            name_.clone(),
-                            false,
-                            HashSet::new(),
-                            params,
-                            Box::new(Node::StatementList(body)),
+                        .push(Node::new(
+                            NodeBase::FunctionDecl(
+                                name_.clone(),
+                                false,
+                                HashSet::new(),
+                                params,
+                                Box::new(Node::new(NodeBase::StatementList(body), 0)),
+                            ),
+                            0,
                         ));
-                    *node = Node::Identifier(name_);
+                    *node = Node::new(NodeBase::Identifier(name_), 0);
                 }
             }
-            &mut Node::Call(ref mut callee, ref mut args) => {
+            NodeBase::Call(ref mut callee, ref mut args) => {
                 self.run(callee);
                 for arg in args {
                     self.run(arg)
                 }
             }
-            &mut Node::New(ref mut expr) => self.run(expr),
-            &mut Node::VarDecl(_, ref mut init) => {
+            NodeBase::New(ref mut expr) => self.run(expr),
+            NodeBase::VarDecl(_, ref mut init) => {
                 if let &mut Some(ref mut init) = init {
                     self.run(init)
                 }
             }
-            &mut Node::Return(ref mut val) => {
+            NodeBase::Return(ref mut val) => {
                 if let &mut Some(ref mut val) = val {
                     self.run(&mut **val)
                 }
             }
-            &mut Node::Member(ref mut parent, _) => {
+            NodeBase::Member(ref mut parent, _) => {
                 self.run(&mut *parent);
             }
-            &mut Node::Index(ref mut parent, ref mut idx) => {
+            NodeBase::Index(ref mut parent, ref mut idx) => {
                 self.run(&mut *parent);
                 self.run(&mut *idx);
             }
-            &mut Node::If(ref mut cond, ref mut then, ref mut else_) => {
+            NodeBase::If(ref mut cond, ref mut then, ref mut else_) => {
                 self.run(&mut *cond);
                 self.run(&mut *then);
                 self.run(&mut *else_);
             }
-            &mut Node::While(ref mut cond, ref mut body) => {
+            NodeBase::While(ref mut cond, ref mut body) => {
                 self.run(&mut *cond);
                 self.run(&mut *body);
             }
-            &mut Node::Assign(_, ref mut src) => {
+            NodeBase::Assign(_, ref mut src) => {
                 self.run(&mut *src);
             }
-            &mut Node::UnaryOp(ref mut expr, _) => {
+            NodeBase::UnaryOp(ref mut expr, _) => {
                 self.run(&mut *expr);
             }
-            &mut Node::BinaryOp(ref mut lhs, ref mut rhs, _) => {
+            NodeBase::BinaryOp(ref mut lhs, ref mut rhs, _) => {
                 self.run(&mut *lhs);
                 self.run(&mut *rhs);
             }
-            &mut Node::TernaryOp(ref mut cond, ref mut then, ref mut else_) => {
+            NodeBase::TernaryOp(ref mut cond, ref mut then, ref mut else_) => {
                 self.run(&mut *cond);
                 self.run(&mut *then);
                 self.run(&mut *else_);
             }
-            &mut Node::Identifier(ref mut ident) => {
+            NodeBase::Identifier(ref mut ident) => {
                 if let Some(name) = self.get_mangled_anonymous_function_name(ident.as_str()) {
                     *ident = name.clone();
                 }
             }
-            &mut Node::Object(ref mut properties) => {
+            NodeBase::Object(ref mut properties) => {
                 for property in properties.iter_mut() {
                     match property {
                         &mut PropertyDefinition::IdentifierReference(_) => {}

@@ -27,7 +27,7 @@ pub enum PropertyDefinition {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Node {
+pub enum NodeBase {
     StatementList(Vec<Node>),
     FunctionDecl(String, bool, HashSet<String>, FormalParameters, Box<Node>), // Name, Use 'this', fv, params, body
     FunctionExpr(Option<String>, FormalParameters, Box<Node>), // Name, Use 'this', fv, params, body
@@ -51,6 +51,21 @@ pub enum Node {
     Boolean(bool),
     Number(f64),
     Nope,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Node {
+    pub base: NodeBase,
+    pub pos: usize,
+}
+
+impl Node {
+    pub fn new(base: NodeBase, pos: usize) -> Node {
+        Node {
+            base: base,
+            pos: pos,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

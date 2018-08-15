@@ -1,4 +1,4 @@
-use node::{Node, PropertyDefinition};
+use node::{Node, NodeBase, PropertyDefinition};
 
 use rand::random;
 use std::collections::{HashMap, HashSet};
@@ -20,12 +20,12 @@ impl FreeVariableSolver {
     }
 
     pub fn run_toplevel(&mut self, node: &mut Node) {
-        match node {
-            &mut Node::StatementList(ref mut nodes) => {
+        match &mut node.base {
+            &mut NodeBase::StatementList(ref mut nodes) => {
                 let mut func_decl_index = vec![];
                 let mut map = HashMap::new();
                 for (i, node) in nodes.iter_mut().enumerate() {
-                    if let &mut Node::FunctionDecl(_, _, ref mut fv, _, _) = node {
+                    if let &mut NodeBase::FunctionDecl(_, _, ref mut fv, _, _) = &mut node.base {
                         for name in fv.iter() {
                             map.insert(
                                 name.clone(),
@@ -43,8 +43,8 @@ impl FreeVariableSolver {
                 }
 
                 for node in nodes.iter_mut() {
-                    match node {
-                        &mut Node::FunctionDecl(_, _, _, _, _) => {}
+                    match &mut node.base {
+                        &mut NodeBase::FunctionDecl(_, _, _, _, _) => {}
                         _ => self.run(node),
                     }
                 }
@@ -54,14 +54,15 @@ impl FreeVariableSolver {
     }
 
     fn run(&mut self, node: &mut Node) {
-        match node {
-            &mut Node::StatementList(ref mut nodes) => {
+        let mut node_cloned = node.clone();
+        match node.base {
+            NodeBase::StatementList(ref mut nodes) => {
                 for node in nodes {
                     self.run(node)
                 }
             }
-            &mut Node::FunctionDecl(_, _, _, _, ref mut body) => {
-                let mut body = if let &mut Node::StatementList(ref mut body) = &mut **body {
+            NodeBase::FunctionDecl(_, _, _, _, ref mut body) => {
+                let mut body = if let &mut NodeBase::StatementList(ref mut body) = &mut body.base {
                     body
                 } else {
                     unreachable!()
@@ -69,7 +70,7 @@ impl FreeVariableSolver {
 
                 let mut map = HashMap::new();
                 for node in body.iter_mut() {
-                    if let &mut Node::FunctionDecl(_, _, ref mut fv, _, _) = node {
+                    if let &mut NodeBase::FunctionDecl(_, _, ref mut fv, _, _) = &mut node.base {
                         for name in fv.iter() {
                             if self.get_mangled_name(name.as_str()).is_none() {
                                 map.insert(
@@ -89,31 +90,31 @@ impl FreeVariableSolver {
 
                 self.mangled_name.pop();
             }
-            &mut Node::Call(ref mut callee, ref mut args) => {
+            NodeBase::Call(ref mut callee, ref mut args) => {
                 self.run(callee);
                 for arg in args {
                     self.run(arg)
                 }
             }
-            &mut Node::Return(ref mut val) => {
+            NodeBase::Return(ref mut val) => {
                 if let &mut Some(ref mut val) = val {
                     self.run(&mut **val)
                 }
             }
-            &mut Node::Member(ref mut parent, _) => {
+            NodeBase::Member(ref mut parent, _) => {
                 self.run(&mut *parent);
             }
-            &mut Node::Index(ref mut parent, ref mut idx) => {
+            NodeBase::Index(ref mut parent, ref mut idx) => {
                 self.run(&mut *parent);
                 self.run(&mut *idx);
             }
-            &mut Node::This => self.use_this = true,
-            &mut Node::Identifier(ref mut name) => {
+            NodeBase::This => self.use_this = true,
+            NodeBase::Identifier(ref mut name) => {
                 if let Some(name_) = self.get_mangled_name(name.as_str()) {
                     *name = name_;
                 }
             }
-            &mut Node::Object(ref mut properties) => {
+            NodeBase::Object(ref mut properties) => {
                 for property in properties.iter_mut() {
                     match property {
                         &mut PropertyDefinition::IdentifierReference(_) => unreachable!(),
@@ -121,42 +122,42 @@ impl FreeVariableSolver {
                     }
                 }
             }
-            &mut Node::If(ref mut cond, ref mut then, ref mut else_) => {
+            NodeBase::If(ref mut cond, ref mut then, ref mut else_) => {
                 self.run(&mut *cond);
                 self.run(&mut *then);
                 self.run(&mut *else_);
             }
-            &mut Node::While(ref mut cond, ref mut body) => {
+            NodeBase::While(ref mut cond, ref mut body) => {
                 self.run(&mut *cond);
                 self.run(&mut *body);
             }
-            &mut Node::Assign(ref mut dst, ref mut src) => {
+            NodeBase::Assign(ref mut dst, ref mut src) => {
                 self.run(&mut *dst);
                 self.run(&mut *src);
             }
-            &mut Node::VarDecl(_, _) => {
-                if let Node::VarDecl(ref name, ref mut init) = node.clone() {
+            NodeBase::VarDecl(_, _) => {
+                if let NodeBase::VarDecl(ref name, ref mut init) = node_cloned.base {
                     if let Some(name) = self.get_mangled_name(name.as_str()) {
-                        *node = Node::Assign(
-                            Box::new(Node::Identifier(name)),
+                        node.base = NodeBase::Assign(
+                            Box::new(Node::new(NodeBase::Identifier(name), 0)),
                             if let &mut Some(ref mut init) = init {
                                 self.run(init);
                                 init.clone()
                             } else {
-                                Box::new(Node::Number(0.0))
+                                Box::new(Node::new(NodeBase::Number(0.0), 0))
                             },
-                        )
+                        );
                     }
                 }
             }
-            &mut Node::UnaryOp(ref mut expr, _) => {
+            NodeBase::UnaryOp(ref mut expr, _) => {
                 self.run(&mut *expr);
             }
-            &mut Node::BinaryOp(ref mut lhs, ref mut rhs, _) => {
+            NodeBase::BinaryOp(ref mut lhs, ref mut rhs, _) => {
                 self.run(&mut *lhs);
                 self.run(&mut *rhs);
             }
-            &mut Node::TernaryOp(ref mut cond, ref mut then, ref mut else_) => {
+            NodeBase::TernaryOp(ref mut cond, ref mut then, ref mut else_) => {
                 self.run(&mut *cond);
                 self.run(&mut *then);
                 self.run(&mut *else_);

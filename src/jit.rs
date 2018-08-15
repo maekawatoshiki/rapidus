@@ -1,4 +1,4 @@
-use node::{BinOp, Node};
+use node::{BinOp, Node, NodeBase};
 use vm;
 use vm_codegen::FunctionInfoForJIT;
 
@@ -272,14 +272,14 @@ impl TracingJit {
         env: &mut HashMap<String, LLVMValueRef>,
         node: &Node,
     ) -> Result<LLVMValueRef, ()> {
-        match node {
-            &Node::StatementList(ref list) => {
+        match node.base {
+            NodeBase::StatementList(ref list) => {
                 for elem in list {
                     self.gen(env, elem)?;
                 }
                 Ok(ptr::null_mut())
             }
-            &Node::BinaryOp(box ref lhs, box ref rhs, ref op) => match op {
+            NodeBase::BinaryOp(box ref lhs, box ref rhs, ref op) => match op {
                 &BinOp::Add => Ok(LLVMBuildFAdd(
                     self.builder,
                     self.gen(env, lhs)?,
@@ -356,7 +356,7 @@ impl TracingJit {
                 )),
                 _ => panic!(),
             },
-            &Node::If(box ref cond, box ref then, box ref else_) => {
+            NodeBase::If(box ref cond, box ref then, box ref else_) => {
                 let cond_val_tmp = self.gen(env, cond)?;
                 let cond_val = cond_val_tmp;
 
@@ -386,7 +386,7 @@ impl TracingJit {
 
                 Ok(ptr::null_mut())
             }
-            &Node::While(box ref cond, box ref body) => {
+            NodeBase::While(box ref cond, box ref body) => {
                 let func = self.cur_func.unwrap();
 
                 let bb_before_loop =
@@ -413,15 +413,15 @@ impl TracingJit {
 
                 Ok(ptr::null_mut())
             }
-            &Node::VarDecl(ref name, ref init) => {
+            NodeBase::VarDecl(ref name, ref init) => {
                 let var = self.declare_local_var(name, env);
                 if let Some(init) = init {
                     LLVMBuildStore(self.builder, self.gen(env, &**init)?, var);
                 }
                 Ok(ptr::null_mut())
             }
-            &Node::Call(box ref callee, ref args) => {
-                let callee = if let Node::Identifier(name) = callee {
+            NodeBase::Call(box ref callee, ref args) => {
+                let callee = if let NodeBase::Identifier(ref name) = callee.base {
                     *env.get(name).unwrap()
                 } else {
                     unreachable!()
@@ -438,10 +438,10 @@ impl TracingJit {
                     CString::new("").unwrap().as_ptr(),
                 ))
             }
-            &Node::Assign(box ref dst, box ref src) => {
+            NodeBase::Assign(box ref dst, box ref src) => {
                 let src = self.gen(env, src)?;
-                match dst {
-                    &Node::Identifier(ref name) => {
+                match dst.base {
+                    NodeBase::Identifier(ref name) => {
                         if let Some(var_ptr) = env.get(name) {
                             LLVMBuildStore(self.builder, src, *var_ptr);
                         } else {
@@ -452,16 +452,18 @@ impl TracingJit {
                 }
                 Ok(ptr::null_mut())
             }
-            &Node::Return(Some(box ref val)) => Ok(LLVMBuildRet(self.builder, self.gen(env, val)?)),
-            &Node::Identifier(ref name) => Ok(LLVMBuildLoad(
+            NodeBase::Return(Some(box ref val)) => {
+                Ok(LLVMBuildRet(self.builder, self.gen(env, val)?))
+            }
+            NodeBase::Identifier(ref name) => Ok(LLVMBuildLoad(
                 self.builder,
                 *env.get(name).unwrap(),
                 CString::new("").unwrap().as_ptr(),
             )),
-            &Node::Number(f) => Ok(LLVMConstReal(LLVMDoubleType(), f)),
-            &Node::Boolean(true) => Ok(LLVMConstInt(LLVMInt1Type(), 1, 0)),
-            &Node::Boolean(false) => Ok(LLVMConstInt(LLVMInt1Type(), 0, 0)),
-            &Node::Nope => Ok(ptr::null_mut()),
+            NodeBase::Number(f) => Ok(LLVMConstReal(LLVMDoubleType(), f)),
+            NodeBase::Boolean(true) => Ok(LLVMConstInt(LLVMInt1Type(), 1, 0)),
+            NodeBase::Boolean(false) => Ok(LLVMConstInt(LLVMInt1Type(), 0, 0)),
+            NodeBase::Nope => Ok(ptr::null_mut()),
             _ => {
                 // Unsupported features
                 Err(())
