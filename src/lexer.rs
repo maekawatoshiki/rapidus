@@ -393,7 +393,33 @@ impl Lexer {
 }
 
 // impl Lexer {
-//     pub fn show_err(&self, pos:usize) {
+//     pub fn get_surrounding_code_with_err_point(&self, pos: usize) -> String {
+//         let code = self.code;
+//         let peek_pos = pos;
+//         let start_pos = {
+//             let mut p = peek_pos as i32;
+//             while p >= 0 && code[p as usize] as char != '\n' {
+//                 p -= 1;
+//             }
+//             p += 1; // '\n'
+//             p as usize
+//         };
+//         let end_pos = {
+//             let mut p = peek_pos as i32;
+//             while p < code.len() as i32 && code[p as usize] as char != '\n' {
+//                 p += 1;
+//             }
+//             p as usize
+//         };
+//         let surrounding_code = String::from_utf8(code[start_pos..end_pos].to_vec())
+//             .unwrap()
+//             .to_string();
+//         let mut err_point = String::new();
+//         for _ in 0..(peek_pos - start_pos) {
+//             err_point.push(' ');
+//         }
+//         err_point.push('^');
+//         surrounding_code + "\n" + err_point.as_str()
 //     }
 // }
 
