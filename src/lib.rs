@@ -18,4 +18,5 @@ pub mod extract_anony_func;
 extern crate libc;
 extern crate rand;
 extern crate llvm_sys as llvm;
+extern crate ansi_term;
 // extern crate cpuprofiler;

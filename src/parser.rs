@@ -3,6 +3,8 @@ use node::{BinOp, FormalParameter, FormalParameters, Node, NodeBase, PropertyDef
 use std::collections::HashSet;
 use token::{Keyword, Kind, Symbol};
 
+use ansi_term::Colour;
+
 macro_rules! token_start_pos {
     ($var:ident, $lexer:expr) => {
         let $var = $lexer.pos;
@@ -19,6 +21,16 @@ impl Parser {
         Parser {
             lexer: lexer::Lexer::new(code),
         }
+    }
+
+    fn show_error_at(&self, pos: usize, msg: &str) -> ! {
+        println!(
+            "{} {}\n{}",
+            Colour::Red.bold().paint("error:"),
+            msg,
+            self.lexer.get_code_around_err_point(pos)
+        );
+        panic!()
     }
 }
 
@@ -507,6 +519,8 @@ impl Parser {
         let mut lhs = self.read_primary_expression()?;
 
         while let Ok(tok) = self.lexer.next() {
+            let pos_ = self.lexer.pos;
+
             match tok.kind {
                 Kind::Symbol(Symbol::OpeningParen) => {
                     let args = self.read_arguments()?;
@@ -516,9 +530,7 @@ impl Parser {
                     Kind::Identifier(name) => {
                         lhs = Node::new(NodeBase::Member(Box::new(lhs), name), pos)
                     }
-                    _ => {
-                        panic!("error: expected identifier");
-                    }
+                    _ => self.show_error_at(pos_, "expect identifier"),
                 },
                 Kind::Symbol(Symbol::OpeningBoxBracket) => {
                     let idx = self.read_expression()?;
@@ -716,7 +728,7 @@ impl Parser {
         let name = if let Kind::Identifier(name) = self.lexer.next()?.kind {
             name
         } else {
-            panic!("expected function name")
+            self.show_error_at(pos, "expect function name")
         };
 
         assert!(self.lexer.skip(Kind::Symbol(Symbol::OpeningParen)));
