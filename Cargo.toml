@@ -9,6 +9,7 @@ bitflags = "*"
 libc = "0.2"
 rand = "*"
 llvm-sys = "40.0.0"
+ansi_term = "0.9.0"
 
 [profile.dev]
 codegen-units = 16
