@@ -43,6 +43,8 @@ pub enum NodeBase {
     BinaryOp(Box<Node>, Box<Node>, BinOp),
     TernaryOp(Box<Node>, Box<Node>, Box<Node>),
     Return(Option<Box<Node>>),
+    Break,
+    Continue,
     Array(Vec<Node>),
     Object(Vec<PropertyDefinition>),
     Identifier(String),

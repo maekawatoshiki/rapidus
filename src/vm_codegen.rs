@@ -1,6 +1,6 @@
 use bytecode_gen::{ByteCode, ByteCodeGen};
 use id::IdGen;
-use node::{BinOp, FormalParameters, Node,NodeBase, PropertyDefinition, UnaryOp};
+use node::{BinOp, FormalParameters, Node, NodeBase, PropertyDefinition, UnaryOp};
 use std::collections::HashSet;
 use vm::{alloc_rawstring, Value};
 use vm::{
@@ -64,12 +64,43 @@ impl FunctionInfo {
 }
 
 #[derive(Clone, Debug)]
+pub struct Labels {
+    continue_labels: Vec<isize>,
+    break_jmp_list: Vec<isize>,
+}
+
+impl Labels {
+    pub fn new() -> Labels {
+        Labels {
+            continue_labels: vec![],
+            break_jmp_list: vec![],
+        }
+    }
+
+    fn replace_break_jmps(
+        &mut self,
+        bytecode_gen: &mut ByteCodeGen,
+        insts: &mut ByteCode,
+        break_label_pos: isize,
+    ) {
+        for jmp_pos in &self.break_jmp_list {
+            bytecode_gen.replace_int32(
+                (break_label_pos - jmp_pos) as i32 - 5,
+                &mut insts[*jmp_pos as usize + 1..*jmp_pos as usize + 5],
+            );
+        }
+        self.break_jmp_list.pop();
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct VMCodeGen {
     pub global_varmap: HashMap<String, Value>, // usize will be replaced with an appropriate type
     pub local_varmap: Vec<HashMap<String, usize>>,
     pub functions: HashMap<String, FunctionInfo>,
     pub local_var_stack_addr: IdGen,
     pub bytecode_gen: ByteCodeGen,
+    pub labels: Labels,
 }
 
 impl VMCodeGen {
@@ -80,6 +111,7 @@ impl VMCodeGen {
             functions: HashMap::new(),
             local_var_stack_addr: IdGen::new(),
             bytecode_gen: ByteCodeGen::new(),
+            labels: Labels::new(),
         }
     }
 }
@@ -203,6 +235,8 @@ impl VMCodeGen {
             &NodeBase::Member(ref parent, ref member) => self.run_member(&*parent, member, insts),
             &NodeBase::Index(ref parent, ref idx) => self.run_index(&*parent, &*idx, insts),
             &NodeBase::Return(ref val) => self.run_return(val, insts),
+            &NodeBase::Break => self.run_break(insts),
+            &NodeBase::Continue => self.run_continue(insts),
             &NodeBase::New(ref expr) => self.run_new_expr(&*expr, insts),
             &NodeBase::Object(ref properties) => self.run_object_literal(properties, insts),
             &NodeBase::Identifier(ref name) => self.run_identifier(name, insts),
@@ -306,6 +340,21 @@ impl VMCodeGen {
 }
 
 impl VMCodeGen {
+    pub fn run_break(&mut self, insts: &mut ByteCode) {
+        let break_jmp_pos = insts.len() as isize;
+        self.bytecode_gen.gen_jmp(0, insts);
+        self.labels.break_jmp_list.push(break_jmp_pos);
+    }
+
+    pub fn run_continue(&mut self, insts: &mut ByteCode) {
+        let continue_jmp_pos = insts.len() as isize;
+        let continue_label_pos = self.labels.continue_labels.last().unwrap();
+        self.bytecode_gen
+            .gen_jmp((continue_label_pos - continue_jmp_pos - 5) as i32, insts);
+    }
+}
+
+impl VMCodeGen {
     pub fn run_new_expr(&mut self, expr: &Node, insts: &mut ByteCode) {
         self.run(expr, insts);
         let len = insts.len();
@@ -384,6 +433,7 @@ impl VMCodeGen {
 
     pub fn run_while(&mut self, cond: &Node, body: &Node, insts: &mut ByteCode) {
         let pos = insts.len() as isize;
+        self.labels.continue_labels.push(pos);
 
         self.run(cond, insts);
 
@@ -395,6 +445,11 @@ impl VMCodeGen {
         let loop_pos = insts.len() as isize;
         self.bytecode_gen
             .gen_jmp((pos - loop_pos) as i32 - 5, insts);
+
+        let break_label_pos = insts.len() as isize;
+        self.labels
+            .replace_break_jmps(&mut self.bytecode_gen, insts, break_label_pos);
+        self.labels.continue_labels.pop();
 
         let pos = insts.len() as isize;
         self.bytecode_gen.replace_int32(

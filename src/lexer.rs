@@ -480,14 +480,8 @@ fn identifier() {
 #[test]
 fn string() {
     let mut lexer = Lexer::new("'aaa' \"bbb\"".to_string());
-    assert_eq!(
-        lexer.next().unwrap().kind,
-        Kind::String("aaa".to_string())
-    );
-    assert_eq!(
-        lexer.next().unwrap().kind,
-        Kind::String("bbb".to_string())
-    );
+    assert_eq!(lexer.next().unwrap().kind, Kind::String("aaa".to_string()));
+    assert_eq!(lexer.next().unwrap().kind, Kind::String("bbb".to_string()));
 }
 
 #[test]
@@ -653,7 +647,10 @@ fn comment() {
                                y"
             .to_string(),
     );
-    assert_eq!(lexer.next().unwrap().kind, Kind::Identifier("x".to_string()));
+    assert_eq!(
+        lexer.next().unwrap().kind,
+        Kind::Identifier("x".to_string())
+    );
     assert_eq!(lexer.next().unwrap().kind, Kind::Symbol(Symbol::Semicolon));
     assert_eq!(
         lexer.next().unwrap().kind,

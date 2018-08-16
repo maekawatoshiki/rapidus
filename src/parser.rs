@@ -104,6 +104,8 @@ impl Parser {
             Kind::Keyword(Keyword::Var) => self.read_variable_statement(),
             Kind::Keyword(Keyword::While) => self.read_while_statement(),
             Kind::Keyword(Keyword::Return) => self.read_return_statement(),
+            Kind::Keyword(Keyword::Break) => self.read_break_statement(),
+            Kind::Keyword(Keyword::Continue) => self.read_continue_statement(),
             Kind::Symbol(Symbol::OpeningBrace) => self.read_block_statement(),
             _ => {
                 self.lexer.unget(&tok);
@@ -216,6 +218,18 @@ impl Parser {
             NodeBase::While(Box::new(cond), Box::new(body)),
             pos,
         ))
+    }
+}
+
+impl Parser {
+    fn read_break_statement(&mut self) -> Result<Node, ()> {
+        let pos = self.lexer.pos - "break".len();
+        return Ok(Node::new(NodeBase::Break, pos));
+    }
+
+    fn read_continue_statement(&mut self) -> Result<Node, ()> {
+        let pos = self.lexer.pos - "continue".len();
+        return Ok(Node::new(NodeBase::Continue, pos));
     }
 }
 
@@ -1431,6 +1445,48 @@ fn block() {
                     3,
                 )]),
                 1,
+            )]),
+            0
+        )
+    );
+}
+
+#[test]
+fn break_() {
+    let mut parser = Parser::new("while(1){break}".to_string());
+    assert_eq!(
+        parser.next().unwrap(),
+        Node::new(
+            NodeBase::StatementList(vec![Node::new(
+                NodeBase::While(
+                    Box::new(Node::new(NodeBase::Number(1.0), 6)),
+                    Box::new(Node::new(
+                        NodeBase::StatementList(vec![Node::new(NodeBase::Break, 9)]),
+                        9,
+                    )),
+                ),
+                5,
+            )]),
+            0
+        )
+    );
+}
+
+#[test]
+fn continue_() {
+    let mut parser = Parser::new("while(1){continue}".to_string());
+    assert_eq!(
+        parser.next().unwrap(),
+        Node::new(
+            NodeBase::StatementList(vec![Node::new(
+                NodeBase::While(
+                    Box::new(Node::new(NodeBase::Number(1.0), 6)),
+                    Box::new(Node::new(
+                        NodeBase::StatementList(vec![Node::new(NodeBase::Continue, 9)]),
+                        9,
+                    )),
+                ),
+                5,
             )]),
             0
         )
