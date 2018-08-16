@@ -44,6 +44,8 @@ pub struct TracingJit {
     exec_engine: llvm::execution_engine::LLVMExecutionEngineRef,
     pass_manager: LLVMPassManagerRef,
     cur_func: Option<LLVMValueRef>,
+    break_labels: Vec<LLVMBasicBlockRef>,
+    continue_labels: Vec<LLVMBasicBlockRef>,
 }
 
 impl TracingJit {
@@ -88,6 +90,8 @@ impl TracingJit {
             exec_engine: ee,
             pass_manager: pm,
             cur_func: None,
+            break_labels: vec![],
+            continue_labels: vec![],
         }
     }
 }
@@ -404,6 +408,9 @@ impl TracingJit {
                 let bb_after_loop =
                     LLVMAppendBasicBlock(func, CString::new("after_loop").unwrap().as_ptr());
 
+                self.break_labels.push(bb_before_loop);
+                self.continue_labels.push(bb_loop);
+
                 LLVMBuildBr(self.builder, bb_before_loop);
 
                 LLVMPositionBuilderAtEnd(self.builder, bb_before_loop);
@@ -420,6 +427,29 @@ impl TracingJit {
 
                 LLVMPositionBuilderAtEnd(self.builder, bb_after_loop);
 
+                self.break_labels.pop();
+                self.continue_labels.pop();
+
+                Ok(ptr::null_mut())
+            }
+            NodeBase::Break => {
+                let break_bb = if let Some(bb) = self.break_labels.last() {
+                    *bb
+                } else {
+                    println!("JIT error: break not in loop");
+                    return Err(());
+                };
+                LLVMBuildBr(self.builder, break_bb);
+                Ok(ptr::null_mut())
+            }
+            NodeBase::Continue => {
+                let continue_bb = if let Some(bb) = self.continue_labels.last() {
+                    *bb
+                } else {
+                    println!("JIT error: break not in loop");
+                    return Err(());
+                };
+                LLVMBuildBr(self.builder, continue_bb);
                 Ok(ptr::null_mut())
             }
             NodeBase::VarDecl(ref name, ref init) => {
@@ -433,7 +463,7 @@ impl TracingJit {
                 let callee = if let NodeBase::Identifier(ref name) = callee.base {
                     *env.get(name).unwrap()
                 } else {
-                    unreachable!()
+                    return Err(());
                 };
                 let mut llvm_args = vec![];
                 for arg in args {
@@ -484,7 +514,7 @@ impl TracingJit {
 impl TracingJit {
     #[inline]
     fn func_called_enough_times(&mut self, pc: usize) -> bool {
-        *self.count.entry(pc).or_insert(0) >= 10
+        *self.count.entry(pc).or_insert(0) >= 0
     }
 
     #[inline]
