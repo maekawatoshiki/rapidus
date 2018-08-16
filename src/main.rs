@@ -11,6 +11,10 @@ use rapidus::vm_codegen;
 extern crate clap;
 use clap::{App, Arg};
 
+extern crate nix;
+use nix::sys::wait::*;
+use nix::unistd::*;
+
 use std::collections::HashMap;
 use std::fs::OpenOptions;
 use std::io::prelude::*;
@@ -23,16 +27,16 @@ fn main() {
         .author("uint256_t")
         .about("A toy JavaScript engine")
         .arg(
-            Arg::with_name("easyrun")
-                .help("Enable easy-run")
-                .long("easy-run"),
+            Arg::with_name("debug")
+                .help("Show useful information for debugging")
+                .long("debug"),
         )
         .arg(Arg::with_name("file").help("Input file name").index(1));
     let app_matches = app.clone().get_matches();
 
     if let Some(filename) = app_matches.value_of("file") {
-        if app_matches.is_present("easyrun") {
-            easy_run(filename);
+        if !app_matches.is_present("debug") {
+            run(filename);
             return;
         }
 
@@ -89,50 +93,70 @@ fn main() {
     }
 }
 
-fn easy_run(file_name: &str) {
-    let mut file_body = String::new();
+fn run(file_name: &str) {
+    match fork() {
+        Ok(ForkResult::Parent { child, .. }) => match waitpid(child, None) {
+            Ok(ok) => match ok {
+                WaitStatus::Exited(_, _) => {} // exited successfully
+                WaitStatus::Signaled(pid, status, _) => {
+                    // We can do anything (like calling destructors) here.
+                    println!("signal: pid={:?}, status={:?}", pid, status)
+                }
+                e => panic!("Rapidus Internal Error: VM exited abnormally!: {:?}", e),
+            },
+            Err(e) => panic!("Rapidus Internal Error: waitpid failed: {:?}", e),
+        },
+        Ok(ForkResult::Child) => {
+            let mut file_body = String::new();
 
-    match OpenOptions::new().read(true).open(file_name) {
-        Ok(mut ok) => ok
-            .read_to_string(&mut file_body)
-            .ok()
-            .expect("cannot read file"),
-        Err(e) => {
-            println!("error: {}", e);
-            return;
+            match OpenOptions::new().read(true).open(file_name) {
+                Ok(mut ok) => ok
+                    .read_to_string(&mut file_body)
+                    .ok()
+                    .expect("cannot read file"),
+                Err(e) => {
+                    println!("error: {}", e);
+                    return;
+                }
+            };
+
+            let mut parser = parser::Parser::new(file_body);
+
+            let mut node_list = vec![];
+            while let Ok(ok) = parser.next() {
+                node_list.push(ok)
+            }
+
+            if node_list.len() == 0 {
+                return;
+            }
+
+            extract_anony_func::AnonymousFunctionExtractor::new().run_toplevel(&mut node_list[0]);
+            fv_finder::FreeVariableFinder::new().run_toplevel(&mut node_list[0]);
+            fv_solver::FreeVariableSolver::new().run_toplevel(&mut node_list[0]);
+
+            let mut vm_codegen = vm_codegen::VMCodeGen::new();
+            let mut insts = vec![];
+            let mut func_addr_in_bytecode_and_its_entity = HashMap::new();
+            vm_codegen.compile(
+                &node_list[0],
+                &mut insts,
+                &mut func_addr_in_bytecode_and_its_entity,
+            );
+
+            // bytecode_gen::show(&insts);
+
+            println!("Result:");
+
+            // println!("{:?}", insts);
+
+            let mut vm = vm::VM::new(func_addr_in_bytecode_and_its_entity);
+            vm.const_table = vm_codegen.bytecode_gen.const_table;
+            (*vm.global_objects)
+                .borrow_mut()
+                .extend(vm_codegen.global_varmap);
+            vm.run(insts);
         }
-    };
-
-    let mut parser = parser::Parser::new(file_body);
-
-    let mut node_list = vec![];
-    while let Ok(ok) = parser.next() {
-        node_list.push(ok)
+        Err(e) => panic!("Rapidus Internal Error: fork failed: {:?}", e),
     }
-
-    extract_anony_func::AnonymousFunctionExtractor::new().run_toplevel(&mut node_list[0]);
-    fv_finder::FreeVariableFinder::new().run_toplevel(&mut node_list[0]);
-    fv_solver::FreeVariableSolver::new().run_toplevel(&mut node_list[0]);
-
-    let mut vm_codegen = vm_codegen::VMCodeGen::new();
-    let mut insts = vec![];
-    let mut func_addr_in_bytecode_and_its_entity = HashMap::new();
-    vm_codegen.compile(
-        &node_list[0],
-        &mut insts,
-        &mut func_addr_in_bytecode_and_its_entity,
-    );
-
-    // bytecode_gen::show(&insts);
-
-    println!("Result:");
-
-    // println!("{:?}", insts);
-
-    let mut vm = vm::VM::new(func_addr_in_bytecode_and_its_entity);
-    vm.const_table = vm_codegen.bytecode_gen.const_table;
-    (*vm.global_objects)
-        .borrow_mut()
-        .extend(vm_codegen.global_varmap);
-    vm.run(insts);
 }

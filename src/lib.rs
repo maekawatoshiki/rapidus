@@ -19,4 +19,5 @@ extern crate libc;
 extern crate rand;
 extern crate llvm_sys as llvm;
 extern crate ansi_term;
+extern crate nix;
 // extern crate cpuprofiler;
