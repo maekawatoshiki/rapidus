@@ -11,6 +11,8 @@ use llvm::prelude::*;
 use std::ffi::CString;
 use std::ptr;
 
+const MAX_FUNCTION_PARAMS: usize = 3;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ValueType {
     Number,
@@ -100,7 +102,7 @@ impl TracingJit {
             return Some(val.clone());
         }
 
-        if *self.count.entry(pc).or_insert(0) >= 10 {
+        if self.func_called_enough_times(pc) {
             let info = self
                 .func_addr_in_bytecode_and_its_entity
                 .get(&pc)
@@ -111,6 +113,8 @@ impl TracingJit {
                 return None;
             }
 
+            // If gen_code fails, it means the function can't be JIT-compiled and should never be
+            // compiled. (cannot_jit = true)
             if let Err(()) = self.gen_code(pc, &info) {
                 self.func_addr_in_bytecode_and_its_entity
                     .get_mut(&pc)
@@ -130,7 +134,7 @@ impl TracingJit {
             return Some(f);
         }
 
-        *self.count.get_mut(&pc).unwrap() += 1;
+        self.inc_times_func_called(pc);
         None
     }
 
@@ -155,6 +159,7 @@ impl TracingJit {
 
         // By a bug of LLVM, llvm::execution_engine::runFunction can not be used.
         // So, all I can do is this:
+        // TODO: MAX_FUNCTION_PARAMS is too small?
         match func_ret_ty {
             &ValueType::Number => vm::Value::Number(match llvm_args.len() {
                 0 => ::std::mem::transmute::<fn(), fn() -> f64>(f)(),
@@ -192,6 +197,10 @@ impl TracingJit {
         pc: usize,
         info: &FunctionInfoForJIT,
     ) -> Result<LLVMValueRef, ()> {
+        if info.params.len() > MAX_FUNCTION_PARAMS {
+            return Err(());
+        }
+
         let func_ret_ty = if let Some(ty) = self.return_ty_map.get(&pc) {
             ty.to_llvmty()
         } else {
@@ -469,5 +478,17 @@ impl TracingJit {
                 Err(())
             }
         }
+    }
+}
+
+impl TracingJit {
+    #[inline]
+    fn func_called_enough_times(&mut self, pc: usize) -> bool {
+        *self.count.entry(pc).or_insert(0) >= 10
+    }
+
+    #[inline]
+    fn inc_times_func_called(&mut self, pc: usize) {
+        *self.count.get_mut(&pc).unwrap() += 1;
     }
 }

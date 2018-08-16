@@ -622,7 +622,7 @@ impl Parser {
                     self.show_error_at(
                         self.lexer.pos_line_list.last().unwrap().0,
                         ErrorMsgKind::Normal,
-                        "expect ')' p",
+                        "expect ')'",
                     );
                 }
                 x
