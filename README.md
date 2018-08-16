@@ -42,7 +42,7 @@ $ cargo run --release
 4. Run
 
 ```sh
-$ cargo run --release example/XXX.js --easy-run
+$ cargo run --release example/XXX.js
 ```
 
 ## Building on other platforms
