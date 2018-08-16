@@ -1,4 +1,5 @@
 use lexer;
+use lexer::ErrorMsgKind;
 use node::{BinOp, FormalParameter, FormalParameters, Node, NodeBase, PropertyDefinition, UnaryOp};
 use std::collections::HashSet;
 use token::{Keyword, Kind, Symbol};
@@ -23,12 +24,18 @@ impl Parser {
         }
     }
 
-    fn show_error_at(&self, pos: usize, msg: &str) -> ! {
+    fn show_error_at(&self, pos: usize, kind: ErrorMsgKind, msg: &str) -> ! {
         println!(
-            "{} {}\n{}",
-            Colour::Red.bold().paint("error:"),
+            "{}({}): {}\n{}",
+            Colour::Red.bold().paint("error"),
+            self.lexer
+                .pos_line_list
+                .iter()
+                .find(|(p, _)| *p == pos)
+                .unwrap()
+                .1,
             msg,
-            self.lexer.get_code_around_err_point(pos)
+            self.lexer.get_code_around_err_point(pos, kind)
         );
         panic!()
     }
@@ -36,7 +43,16 @@ impl Parser {
 
 impl Parser {
     pub fn next(&mut self) -> Result<Node, ()> {
-        self.read_script()
+        let x = self.read_script();
+        // match x.clone() {
+        //     Ok(_) => {}
+        //     Err(_) => self.show_error_at(
+        //         self.lexer.pos_line_list.last().unwrap().0,
+        //         ErrorMsgKind::Normal,
+        //         "reach unexpected EOF",
+        //     ),
+        // };
+        x
     }
 }
 
@@ -152,9 +168,15 @@ impl Parser {
 impl Parser {
     fn read_if_statement(&mut self) -> Result<Node, ()> {
         token_start_pos!(pos, self.lexer);
-        assert_eq!(self.lexer.next()?.kind, Kind::Symbol(Symbol::OpeningParen));
+        let oparen = self.lexer.next()?;
+        if oparen.kind != Kind::Symbol(Symbol::OpeningParen) {
+            self.show_error_at(oparen.pos, ErrorMsgKind::LastToken, "expect '('");
+        }
         let cond = self.read_expression()?;
-        assert_eq!(self.lexer.next()?.kind, Kind::Symbol(Symbol::ClosingParen));
+        let cparen = self.lexer.next()?;
+        if cparen.kind != Kind::Symbol(Symbol::ClosingParen) {
+            self.show_error_at(cparen.pos, ErrorMsgKind::LastToken, "expect ')'");
+        }
 
         let then_ = self.read_statement()?;
 
@@ -530,11 +552,13 @@ impl Parser {
                     Kind::Identifier(name) => {
                         lhs = Node::new(NodeBase::Member(Box::new(lhs), name), pos)
                     }
-                    _ => self.show_error_at(pos_, "expect identifier"),
+                    _ => self.show_error_at(pos_, ErrorMsgKind::Normal, "expect identifier"),
                 },
                 Kind::Symbol(Symbol::OpeningBoxBracket) => {
                     let idx = self.read_expression()?;
-                    assert!(self.lexer.skip(Kind::Symbol(Symbol::ClosingBoxBracket)));
+                    if !self.lexer.skip(Kind::Symbol(Symbol::ClosingBoxBracket)) {
+                        self.show_error_at(self.lexer.pos, ErrorMsgKind::Normal, "expect ']'");
+                    }
                     lhs = Node::new(NodeBase::Index(Box::new(lhs), Box::new(idx)), pos);
                 }
                 _ => {
@@ -557,11 +581,15 @@ impl Parser {
         }
 
         let mut args = vec![];
+        let mut pos = 0;
         loop {
             match self.lexer.next() {
                 Ok(ref tok) if tok.kind == Kind::Symbol(Symbol::ClosingParen) => break,
-                Ok(tok) => self.lexer.unget(&tok),
-                Err(_) => break,
+                Ok(tok) => {
+                    pos = tok.pos;
+                    self.lexer.unget(&tok)
+                }
+                Err(_) => self.show_error_at(pos, ErrorMsgKind::LastToken, "reach unexpected EOF"),
             }
 
             if let Ok(arg) = self.read_assignment_expression() {
@@ -569,9 +597,12 @@ impl Parser {
             }
 
             match self.lexer.next() {
-                Ok(ref tok) if tok.kind == Kind::Symbol(Symbol::Comma) => {}
-                Ok(tok) => self.lexer.unget(&tok),
-                _ => break,
+                Ok(ref tok) if tok.kind == Kind::Symbol(Symbol::Comma) => pos = tok.pos,
+                Ok(tok) => {
+                    pos = tok.pos;
+                    self.lexer.unget(&tok)
+                }
+                Err(_) => self.show_error_at(pos, ErrorMsgKind::LastToken, "reach unexpected EOF"),
             }
         }
 
@@ -580,25 +611,35 @@ impl Parser {
 
     /// https://tc39.github.io/ecma262/#prod-PrimaryExpression
     fn read_primary_expression(&mut self) -> Result<Node, ()> {
-        token_start_pos!(pos, self.lexer);
-        match self.lexer.next()?.kind {
-            Kind::Keyword(Keyword::This) => Ok(Node::new(NodeBase::This, pos)),
+        let tok = self.lexer.next()?;
+        match tok.kind {
+            Kind::Keyword(Keyword::This) => Ok(Node::new(NodeBase::This, tok.pos)),
             Kind::Keyword(Keyword::Function) => self.read_function_expression(),
-            Kind::Symbol(Symbol::Semicolon) => Ok(Node::new(NodeBase::Nope, pos)),
+            Kind::Symbol(Symbol::Semicolon) => Ok(Node::new(NodeBase::Nope, tok.pos)),
             Kind::Symbol(Symbol::OpeningParen) => {
                 let x = self.read_expression();
-                self.lexer.skip(Kind::Symbol(Symbol::ClosingParen));
+                if !self.lexer.skip(Kind::Symbol(Symbol::ClosingParen)) {
+                    self.show_error_at(
+                        self.lexer.pos_line_list.last().unwrap().0,
+                        ErrorMsgKind::Normal,
+                        "expect ')' p",
+                    );
+                }
                 x
             }
             Kind::Symbol(Symbol::OpeningBoxBracket) => self.read_array_literal(),
             Kind::Symbol(Symbol::OpeningBrace) => self.read_object_literal(),
-            Kind::Identifier(ref i) if i == "true" => Ok(Node::new(NodeBase::Boolean(true), pos)),
-            Kind::Identifier(ref i) if i == "false" => Ok(Node::new(NodeBase::Boolean(false), pos)),
-            Kind::Identifier(ident) => Ok(Node::new(NodeBase::Identifier(ident), pos)),
-            Kind::String(s) => Ok(Node::new(NodeBase::String(s), pos)),
-            Kind::Number(num) => Ok(Node::new(NodeBase::Number(num), pos)),
+            Kind::Identifier(ref i) if i == "true" => {
+                Ok(Node::new(NodeBase::Boolean(true), tok.pos))
+            }
+            Kind::Identifier(ref i) if i == "false" => {
+                Ok(Node::new(NodeBase::Boolean(false), tok.pos))
+            }
+            Kind::Identifier(ident) => Ok(Node::new(NodeBase::Identifier(ident), tok.pos)),
+            Kind::String(s) => Ok(Node::new(NodeBase::String(s), tok.pos)),
+            Kind::Number(num) => Ok(Node::new(NodeBase::Number(num), tok.pos)),
             Kind::LineTerminator => self.read_primary_expression(),
-            e => unimplemented!("{:?}", e),
+            _ => self.show_error_at(tok.pos, ErrorMsgKind::LastToken, "unexpected token"),
         }
     }
 
@@ -728,7 +769,7 @@ impl Parser {
         let name = if let Kind::Identifier(name) = self.lexer.next()?.kind {
             name
         } else {
-            self.show_error_at(pos, "expect function name")
+            self.show_error_at(pos, ErrorMsgKind::Normal, "expect function name")
         };
 
         assert!(self.lexer.skip(Kind::Symbol(Symbol::OpeningParen)));
@@ -765,10 +806,15 @@ impl Parser {
 
     // TODO: Support all features: https://tc39.github.io/ecma262/#prod-FormalParameter
     pub fn read_formal_parameter(&mut self) -> Result<FormalParameter, ()> {
+        token_start_pos!(pos, self.lexer);
         let name = if let Kind::Identifier(name) = self.lexer.next()?.kind {
             name
         } else {
-            panic!()
+            self.show_error_at(
+                pos,
+                ErrorMsgKind::Normal,
+                "expect identifier (unsupported feature)",
+            );
         };
         // TODO: Implement initializer.
         Ok(FormalParameter::new(name, None))
@@ -798,7 +844,7 @@ fn number() {
     assert_eq!(
         parser.next().unwrap(),
         Node::new(
-            NodeBase::StatementList(vec![Node::new(NodeBase::Number(12345.0), 5)]),
+            NodeBase::StatementList(vec![Node::new(NodeBase::Number(12345.0), 0)]),
             0
         )
     );
@@ -810,7 +856,7 @@ fn string() {
     assert_eq!(
         parser.next().unwrap(),
         Node::new(
-            NodeBase::StatementList(vec![Node::new(NodeBase::String("aaa".to_string()), 5)]),
+            NodeBase::StatementList(vec![Node::new(NodeBase::String("aaa".to_string()), 0)]),
             0
         )
     );
@@ -822,7 +868,7 @@ fn boolean() {
     assert_eq!(
         parser.next().unwrap(),
         Node::new(
-            NodeBase::StatementList(vec![Node::new(NodeBase::Boolean(true), 4)]),
+            NodeBase::StatementList(vec![Node::new(NodeBase::Boolean(true), 0)]),
             0
         )
     );
@@ -836,7 +882,7 @@ fn identifier() {
         Node::new(
             NodeBase::StatementList(vec![Node::new(
                 NodeBase::Identifier("variable".to_string()),
-                8,
+                0,
             )]),
             0
         )
@@ -851,8 +897,8 @@ fn array1() {
         Node::new(
             NodeBase::StatementList(vec![Node::new(
                 NodeBase::Array(vec![
-                    Node::new(NodeBase::Number(1.0), 2),
-                    Node::new(NodeBase::Number(2.0), 5),
+                    Node::new(NodeBase::Number(1.0), 1),
+                    Node::new(NodeBase::Number(2.0), 4),
                 ]),
                 1,
             )]),
@@ -899,16 +945,16 @@ fn object() {
         Node::new(
             NodeBase::StatementList(vec![Node::new(
                 NodeBase::Assign(
-                    Box::new(Node::new(NodeBase::Identifier("a".to_string()), 1)),
+                    Box::new(Node::new(NodeBase::Identifier("a".to_string()), 0)),
                     Box::new(Node::new(
                         NodeBase::Object(vec![
                             PropertyDefinition::Property(
                                 "x".to_string(),
-                                Node::new(NodeBase::Number(123.0), 11),
+                                Node::new(NodeBase::Number(123.0), 8),
                             ),
                             PropertyDefinition::Property(
                                 "1.2".to_string(),
-                                Node::new(NodeBase::Number(456.0), 21),
+                                Node::new(NodeBase::Number(456.0), 18),
                             ),
                         ]),
                         5,
@@ -933,11 +979,11 @@ fn simple_expr_5arith() {
                 NodeBase::BinaryOp(
                     Box::new(Node::new(
                         NodeBase::BinaryOp(
-                            Box::new(Node::new(NodeBase::Number(31.0), 2)),
+                            Box::new(Node::new(NodeBase::Number(31.0), 0)),
                             Box::new(Node::new(
                                 NodeBase::BinaryOp(
-                                    Box::new(Node::new(NodeBase::Number(26.0), 7)),
-                                    Box::new(Node::new(NodeBase::Number(3.0), 11)),
+                                    Box::new(Node::new(NodeBase::Number(26.0), 5)),
+                                    Box::new(Node::new(NodeBase::Number(3.0), 10)),
                                     BinOp::Div,
                                 ),
                                 9,
@@ -950,13 +996,13 @@ fn simple_expr_5arith() {
                         NodeBase::BinaryOp(
                             Box::new(Node::new(
                                 NodeBase::BinaryOp(
-                                    Box::new(Node::new(NodeBase::Number(1.0), 15)),
-                                    Box::new(Node::new(NodeBase::Number(20.0), 20)),
+                                    Box::new(Node::new(NodeBase::Number(1.0), 14)),
+                                    Box::new(Node::new(NodeBase::Number(20.0), 18)),
                                     BinOp::Mul,
                                 ),
                                 17,
                             )),
-                            Box::new(Node::new(NodeBase::Number(3.0), 24)),
+                            Box::new(Node::new(NodeBase::Number(3.0), 23)),
                             BinOp::Rem,
                         ),
                         22,
@@ -973,10 +1019,10 @@ fn simple_expr_5arith() {
 #[test]
 fn simple_expr_eq() {
     for (input, op, last_pos) in [
-        ("1 + 2 == 3", BinOp::Eq, 10),
-        ("1 + 2 != 3", BinOp::Ne, 10),
-        ("1 + 2 === 3", BinOp::SEq, 11),
-        ("1 + 2 !== 3", BinOp::SNe, 11),
+        ("1 + 2 == 3", BinOp::Eq, 9),
+        ("1 + 2 != 3", BinOp::Ne, 9),
+        ("1 + 2 === 3", BinOp::SEq, 10),
+        ("1 + 2 !== 3", BinOp::SNe, 10),
     ].iter()
     {
         let mut parser = Parser::new(input.to_string());
@@ -986,8 +1032,8 @@ fn simple_expr_eq() {
                     NodeBase::BinaryOp(
                         Box::new(Node::new(
                             NodeBase::BinaryOp(
-                                Box::new(Node::new(NodeBase::Number(1.0), 1)),
-                                Box::new(Node::new(NodeBase::Number(2.0), 5)),
+                                Box::new(Node::new(NodeBase::Number(1.0), 0)),
+                                Box::new(Node::new(NodeBase::Number(2.0), 4)),
                                 BinOp::Add,
                             ),
                             3,
@@ -995,7 +1041,7 @@ fn simple_expr_eq() {
                         Box::new(Node::new(NodeBase::Number(3.0), *last_pos)),
                         op.clone(),
                     ),
-                    *last_pos - 2,
+                    *last_pos - 1,
                 )]),
                 0
             ),
@@ -1008,10 +1054,10 @@ fn simple_expr_eq() {
 fn simple_expr_rel() {
     //1 5 3 9 7 0
     for (input, op, last_pos) in [
-        ("1 + 2 < 3", BinOp::Lt, 9),
-        ("1 + 2 > 3", BinOp::Gt, 9),
-        ("1 + 2 <= 3", BinOp::Le, 10),
-        ("1 + 2 >= 3", BinOp::Ge, 10),
+        ("1 + 2 < 3", BinOp::Lt, 8),
+        ("1 + 2 > 3", BinOp::Gt, 8),
+        ("1 + 2 <= 3", BinOp::Le, 9),
+        ("1 + 2 >= 3", BinOp::Ge, 9),
     ].iter()
     {
         let mut parser = Parser::new(input.to_string());
@@ -1021,8 +1067,8 @@ fn simple_expr_rel() {
                     NodeBase::BinaryOp(
                         Box::new(Node::new(
                             NodeBase::BinaryOp(
-                                Box::new(Node::new(NodeBase::Number(1.0), 1)),
-                                Box::new(Node::new(NodeBase::Number(2.0), 5)),
+                                Box::new(Node::new(NodeBase::Number(1.0), 0)),
+                                Box::new(Node::new(NodeBase::Number(2.0), 4)),
                                 BinOp::Add,
                             ),
                             3,
@@ -1030,7 +1076,7 @@ fn simple_expr_rel() {
                         Box::new(Node::new(NodeBase::Number(3.0), *last_pos)),
                         op.clone(),
                     ),
-                    *last_pos - 2,
+                    *last_pos - 1,
                 )]),
                 0
             ),
@@ -1051,14 +1097,14 @@ fn simple_expr_cond() {
                 NodeBase::TernaryOp(
                     Box::new(Node::new(
                         NodeBase::BinaryOp(
-                            Box::new(Node::new(NodeBase::Identifier("n".to_string()), 1)),
-                            Box::new(Node::new(NodeBase::Number(1.0), 6)),
+                            Box::new(Node::new(NodeBase::Identifier("n".to_string()), 0)),
+                            Box::new(Node::new(NodeBase::Number(1.0), 5)),
                             BinOp::Eq,
                         ),
                         4,
                     )),
-                    Box::new(Node::new(NodeBase::Number(2.0), 10)),
-                    Box::new(Node::new(NodeBase::Identifier("max".to_string()), 16)),
+                    Box::new(Node::new(NodeBase::Number(2.0), 9)),
+                    Box::new(Node::new(NodeBase::Identifier("max".to_string()), 13)),
                 ),
                 1,
             )]),
@@ -1078,8 +1124,8 @@ fn simple_expr_logical_or() {
             Node::new(
                 NodeBase::StatementList(vec![Node::new(
                     NodeBase::BinaryOp(
-                        Box::new(Node::new(NodeBase::Number(1.0), 1)),
-                        Box::new(Node::new(NodeBase::Number(0.0), 6)),
+                        Box::new(Node::new(NodeBase::Number(1.0), 0)),
+                        Box::new(Node::new(NodeBase::Number(0.0), 5)),
                         op.clone(),
                     ),
                     4,
@@ -1105,8 +1151,8 @@ fn simple_expr_bitwise_and() {
             Node::new(
                 NodeBase::StatementList(vec![Node::new(
                     NodeBase::BinaryOp(
-                        Box::new(Node::new(NodeBase::Number(1.0), 1)),
-                        Box::new(Node::new(NodeBase::Number(3.0), 5)),
+                        Box::new(Node::new(NodeBase::Number(1.0), 0)),
+                        Box::new(Node::new(NodeBase::Number(3.0), 4)),
                         op.clone(),
                     ),
                     3,
@@ -1133,10 +1179,10 @@ fn simple_expr_shift() {
             Node::new(
                 NodeBase::StatementList(vec![Node::new(
                     NodeBase::BinaryOp(
-                        Box::new(Node::new(NodeBase::Number(1.0), 1)),
+                        Box::new(Node::new(NodeBase::Number(1.0), 0)),
                         Box::new(Node::new(
                             NodeBase::Number(2.0),
-                            if op == &BinOp::ZFShr { 7 } else { 6 },
+                            if op == &BinOp::ZFShr { 6 } else { 5 },
                         )),
                         op.clone(),
                     ),
@@ -1158,8 +1204,8 @@ fn simple_expr_exp() {
             Node::new(
                 NodeBase::StatementList(vec![Node::new(
                     NodeBase::BinaryOp(
-                        Box::new(Node::new(NodeBase::Number(2.0), 1)),
-                        Box::new(Node::new(NodeBase::Number(5.0), 4)),
+                        Box::new(Node::new(NodeBase::Number(2.0), 0)),
+                        Box::new(Node::new(NodeBase::Number(5.0), 3)),
                         op.clone(),
                     ),
                     1,
@@ -1173,17 +1219,17 @@ fn simple_expr_exp() {
 #[test]
 fn simple_expr_unary() {
     for (input, op, pos, pos2) in [
-        ("delete a", UnaryOp::Delete, 8, 6),
-        ("void a", UnaryOp::Void, 6, 4),
-        ("typeof a", UnaryOp::Typeof, 8, 6),
-        ("+a", UnaryOp::Plus, 2, 1),
-        ("-a", UnaryOp::Minus, 2, 1),
-        ("~a", UnaryOp::BitwiseNot, 2, 1),
-        ("!a", UnaryOp::Not, 2, 1),
-        ("++a", UnaryOp::PrInc, 3, 2),
-        ("--a", UnaryOp::PrDec, 3, 2),
-        ("a++", UnaryOp::PoInc, 1, 1),
-        ("a--", UnaryOp::PoDec, 1, 1),
+        ("delete a", UnaryOp::Delete, 7, 6),
+        ("void a", UnaryOp::Void, 5, 4),
+        ("typeof a", UnaryOp::Typeof, 7, 6),
+        ("+a", UnaryOp::Plus, 1, 1),
+        ("-a", UnaryOp::Minus, 1, 1),
+        ("~a", UnaryOp::BitwiseNot, 1, 1),
+        ("!a", UnaryOp::Not, 1, 1),
+        ("++a", UnaryOp::PrInc, 2, 2),
+        ("--a", UnaryOp::PrDec, 2, 2),
+        ("a++", UnaryOp::PoInc, 0, 1),
+        ("a--", UnaryOp::PoDec, 0, 1),
     ].iter()
     {
         let mut parser = Parser::new(input.to_string());
@@ -1210,27 +1256,27 @@ fn simple_expr_assign() {
     macro_rules! f { ($expr:expr) => {
         assert_eq!(
             Node::new(NodeBase::StatementList(vec![Node::new(NodeBase::Assign(
-                Box::new(Node::new(NodeBase::Identifier("v".to_string()), 1)), Box::new($expr)
+                Box::new(Node::new(NodeBase::Identifier("v".to_string()), 0)), Box::new($expr)
             ), 1)]), 0),
             parser.next().unwrap()
         );
     } }
-    f!(Node::new(NodeBase::Number(1.0), 5));
+    f!(Node::new(NodeBase::Number(1.0), 4));
     parser = Parser::new("v += 1".to_string());
-    f!(Node::new(NodeBase::BinaryOp(Box::new(Node::new(NodeBase::Identifier("v".to_string()), 1)), 
-                                    Box::new(Node::new(NodeBase::Number(1.0), 6)), BinOp::Add), 1));
+    f!(Node::new(NodeBase::BinaryOp(Box::new(Node::new(NodeBase::Identifier("v".to_string()), 0)), 
+                                    Box::new(Node::new(NodeBase::Number(1.0), 5)), BinOp::Add), 1));
     parser = Parser::new("v -= 1".to_string());
-    f!(Node::new(NodeBase::BinaryOp(Box::new(Node::new(NodeBase::Identifier("v".to_string()), 1)), 
-                                    Box::new(Node::new(NodeBase::Number(1.0), 6)), BinOp::Sub), 1));
+    f!(Node::new(NodeBase::BinaryOp(Box::new(Node::new(NodeBase::Identifier("v".to_string()), 0)), 
+                                    Box::new(Node::new(NodeBase::Number(1.0), 5)), BinOp::Sub), 1));
     parser = Parser::new("v *= 1".to_string());
-    f!(Node::new(NodeBase::BinaryOp(Box::new(Node::new(NodeBase::Identifier("v".to_string()), 1)), 
-                                    Box::new(Node::new(NodeBase::Number(1.0), 6)), BinOp::Mul), 1));
+    f!(Node::new(NodeBase::BinaryOp(Box::new(Node::new(NodeBase::Identifier("v".to_string()), 0)), 
+                                    Box::new(Node::new(NodeBase::Number(1.0), 5)), BinOp::Mul), 1));
     parser = Parser::new("v /= 1".to_string());
-    f!(Node::new(NodeBase::BinaryOp(Box::new(Node::new(NodeBase::Identifier("v".to_string()), 1)), 
-                                    Box::new(Node::new(NodeBase::Number(1.0), 6)), BinOp::Div), 1));
+    f!(Node::new(NodeBase::BinaryOp(Box::new(Node::new(NodeBase::Identifier("v".to_string()), 0)), 
+                                    Box::new(Node::new(NodeBase::Number(1.0), 5)), BinOp::Div), 1));
     parser = Parser::new("v %= 1".to_string());
-    f!(Node::new(NodeBase::BinaryOp(Box::new(Node::new(NodeBase::Identifier("v".to_string()), 1)), 
-                                    Box::new(Node::new(NodeBase::Number(1.0), 6)), BinOp::Rem), 1));
+    f!(Node::new(NodeBase::BinaryOp(Box::new(Node::new(NodeBase::Identifier("v".to_string()), 0)), 
+                                    Box::new(Node::new(NodeBase::Number(1.0), 5)), BinOp::Rem), 1));
 }
 
 #[test]
@@ -1241,8 +1287,8 @@ fn simple_expr_new() {
             NodeBase::StatementList(vec![Node::new(
                 NodeBase::New(Box::new(Node::new(
                     NodeBase::Call(
-                        Box::new(Node::new(NodeBase::Identifier("f".to_string()), 5)),
-                        vec![Node::new(NodeBase::Number(1.0), 7)],
+                        Box::new(Node::new(NodeBase::Identifier("f".to_string()), 4)),
+                        vec![Node::new(NodeBase::Number(1.0), 6)],
                     ),
                     5,
                 ))),
@@ -1262,11 +1308,11 @@ fn simple_expr_parentheses() {
         Node::new(
             NodeBase::StatementList(vec![Node::new(
                 NodeBase::BinaryOp(
-                    Box::new(Node::new(NodeBase::Number(2.0), 1)),
+                    Box::new(Node::new(NodeBase::Number(2.0), 0)),
                     Box::new(Node::new(
                         NodeBase::BinaryOp(
-                            Box::new(Node::new(NodeBase::Number(1.0), 6)),
-                            Box::new(Node::new(NodeBase::Number(3.0), 10)),
+                            Box::new(Node::new(NodeBase::Number(1.0), 5)),
+                            Box::new(Node::new(NodeBase::Number(3.0), 9)),
                             BinOp::Add,
                         ),
                         8,
@@ -1284,8 +1330,8 @@ fn simple_expr_parentheses() {
 fn call() {
     for (input, args) in [
         ("f()", vec![]),
-        ("f(1, 2, 3)", vec![(1, 3), (2, 6), (3, 9)]),
-        ("f(1, 2,)", vec![(1, 3), (2, 6)]),
+        ("f(1, 2, 3)", vec![(1, 2), (2, 5), (3, 8)]),
+        ("f(1, 2,)", vec![(1, 2), (2, 5)]),
     ].iter()
     {
         let mut parser = Parser::new(input.to_string());
@@ -1294,7 +1340,7 @@ fn call() {
             Node::new(
                 NodeBase::StatementList(vec![Node::new(
                     NodeBase::Call(
-                        Box::new(Node::new(NodeBase::Identifier("f".to_string()), 1)),
+                        Box::new(Node::new(NodeBase::Identifier("f".to_string()), 0)),
                         args.iter()
                             .map(|(n, pos)| Node::new(NodeBase::Number(*n as f64), *pos))
                             .collect(),
@@ -1316,7 +1362,7 @@ fn member() {
                 NodeBase::Member(
                     Box::new(Node::new(
                         NodeBase::Member(
-                            Box::new(Node::new(NodeBase::Identifier("a".to_string()), 1)),
+                            Box::new(Node::new(NodeBase::Identifier("a".to_string()), 0)),
                             "b".to_string(),
                         ),
                         1,
@@ -1330,7 +1376,7 @@ fn member() {
             "console.log",
             Node::new(
                 NodeBase::Member(
-                    Box::new(Node::new(NodeBase::Identifier("console".to_string()), 7)),
+                    Box::new(Node::new(NodeBase::Identifier("console".to_string()), 0)),
                     "log".to_string(),
                 ),
                 7,
@@ -1358,7 +1404,7 @@ fn var_decl() {
                     Node::new(
                         NodeBase::VarDecl(
                             "b".to_string(),
-                            Some(Box::new(Node::new(NodeBase::Number(21.0), 13))),
+                            Some(Box::new(Node::new(NodeBase::Number(21.0), 11))),
                         ),
                         6,
                     ),
@@ -1379,8 +1425,8 @@ fn block() {
             NodeBase::StatementList(vec![Node::new(
                 NodeBase::StatementList(vec![Node::new(
                     NodeBase::Assign(
-                        Box::new(Node::new(NodeBase::Identifier("a".to_string()), 3)),
-                        Box::new(Node::new(NodeBase::Number(1.0), 5)),
+                        Box::new(Node::new(NodeBase::Identifier("a".to_string()), 2)),
+                        Box::new(Node::new(NodeBase::Number(1.0), 4)),
                     ),
                     3,
                 )]),
@@ -1397,7 +1443,7 @@ fn return_() {
         (
             "return 1",
             Node::new(
-                NodeBase::Return(Some(Box::new(Node::new(NodeBase::Number(1.0), 8)))),
+                NodeBase::Return(Some(Box::new(Node::new(NodeBase::Number(1.0), 7)))),
                 6,
             ),
         ),
@@ -1430,14 +1476,14 @@ fn if_() {
                 NodeBase::If(
                     Box::new(Node::new(
                         NodeBase::BinaryOp(
-                            Box::new(Node::new(NodeBase::Identifier("x".to_string()), 5)),
-                            Box::new(Node::new(NodeBase::Number(2.0), 10)),
+                            Box::new(Node::new(NodeBase::Identifier("x".to_string()), 4)),
+                            Box::new(Node::new(NodeBase::Number(2.0), 9)),
                             BinOp::Le,
                         ),
                         8,
                     )),
-                    Box::new(Node::new(NodeBase::Identifier("then_stmt".to_string()), 34)),
-                    Box::new(Node::new(NodeBase::Identifier("else_stmt".to_string()), 71)),
+                    Box::new(Node::new(NodeBase::Identifier("then_stmt".to_string()), 25)),
+                    Box::new(Node::new(NodeBase::Identifier("else_stmt".to_string()), 62)),
                 ),
                 2,
             )]),
@@ -1453,13 +1499,13 @@ fn if_() {
                 NodeBase::If(
                     Box::new(Node::new(
                         NodeBase::BinaryOp(
-                            Box::new(Node::new(NodeBase::Identifier("x".to_string()), 5)),
-                            Box::new(Node::new(NodeBase::Number(2.0), 10)),
+                            Box::new(Node::new(NodeBase::Identifier("x".to_string()), 4)),
+                            Box::new(Node::new(NodeBase::Number(2.0), 9)),
                             BinOp::Le,
                         ),
                         8,
                     )),
-                    Box::new(Node::new(NodeBase::Identifier("then_stmt".to_string()), 21)),
+                    Box::new(Node::new(NodeBase::Identifier("then_stmt".to_string()), 12)),
                     Box::new(Node::new(NodeBase::Nope, 0)),
                 ),
                 2,
@@ -1477,7 +1523,7 @@ fn while_() {
         Node::new(
             NodeBase::StatementList(vec![Node::new(
                 NodeBase::While(
-                    Box::new(Node::new(NodeBase::Boolean(true), 11)),
+                    Box::new(Node::new(NodeBase::Boolean(true), 7)),
                     Box::new(Node::new(NodeBase::StatementList(vec![]), 14)),
                 ),
                 5,
@@ -1518,8 +1564,8 @@ fn function_decl() {
                         NodeBase::StatementList(vec![Node::new(
                             NodeBase::Return(Some(Box::new(Node::new(
                                 NodeBase::BinaryOp(
-                                    Box::new(Node::new(NodeBase::Identifier("x".to_string()), 27)),
-                                    Box::new(Node::new(NodeBase::Identifier("y".to_string()), 31)),
+                                    Box::new(Node::new(NodeBase::Identifier("x".to_string()), 26)),
+                                    Box::new(Node::new(NodeBase::Identifier("y".to_string()), 30)),
                                     BinOp::Add,
                                 ),
                                 29,

@@ -3,6 +3,7 @@ use node::BinOp;
 #[derive(Clone, Debug, PartialEq)]
 pub struct Token {
     pub kind: Kind,
+    pub pos: usize,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -102,39 +103,45 @@ pub enum Symbol {
 }
 
 impl Token {
-    pub fn new_number(f: f64) -> Token {
+    pub fn new_number(f: f64, pos: usize) -> Token {
         Token {
             kind: Kind::Number(f),
+            pos: pos,
         }
     }
 
-    pub fn new_identifier(ident: String) -> Token {
+    pub fn new_identifier(ident: String, pos: usize) -> Token {
         Token {
             kind: Kind::Identifier(ident),
+            pos: pos,
         }
     }
 
-    pub fn new_keyword(keyword: Keyword) -> Token {
+    pub fn new_keyword(keyword: Keyword, pos: usize) -> Token {
         Token {
             kind: Kind::Keyword(keyword),
+            pos: pos,
         }
     }
 
-    pub fn new_string(s: String) -> Token {
+    pub fn new_string(s: String, pos: usize) -> Token {
         Token {
             kind: Kind::String(s),
+            pos: pos,
         }
     }
 
-    pub fn new_symbol(symbol: Symbol) -> Token {
+    pub fn new_symbol(symbol: Symbol, pos: usize) -> Token {
         Token {
             kind: Kind::Symbol(symbol),
+            pos: pos,
         }
     }
 
-    pub fn new_line_terminator() -> Token {
+    pub fn new_line_terminator(pos: usize) -> Token {
         Token {
             kind: Kind::LineTerminator,
+            pos: pos,
         }
     }
 }
