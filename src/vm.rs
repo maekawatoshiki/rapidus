@@ -102,7 +102,7 @@ pub struct VM {
     pub const_table: ConstantTable,
     pub insts: ByteCode,
     pub op_table: [fn(&mut VM); 33],
-    pub builtin_functions: [unsafe fn(Vec<Value>); 2],
+    pub builtin_functions: [unsafe fn(Vec<Value>); 3],
 }
 
 pub struct VMState {
@@ -188,7 +188,7 @@ impl VM {
                 call,
                 return_,
             ],
-            builtin_functions: [console_log, process_stdout_write],
+            builtin_functions: [console_log, process_stdout_write, array_push],
         }
     }
 }
@@ -336,6 +336,10 @@ fn create_array(self_: &mut VM) {
         Rc::new(RefCell::new({
             let mut map = HashMap::new();
             map.insert("length".to_string(), Value::Number(len as f64));
+            map.insert(
+                "push".to_string(),
+                Value::NeedThis(Box::new(Value::EmbeddedFunction(2))),
+            );
             map
         })),
     ));
@@ -465,7 +469,7 @@ fn get_member(self_: &mut VM) {
     self_.state.pc += 1; // get_global
     let member = self_.state.stack.pop().unwrap();
     let parent = self_.state.stack.pop().unwrap();
-    match parent {
+    match parent.clone() {
         Value::Object(map)
         | Value::Function(_, map)
         | Value::NeedThis(box Value::Function(_, map)) => {
@@ -505,10 +509,10 @@ fn get_member(self_: &mut VM) {
                     Some(addr) => {
                         let val = addr.clone();
                         if let Value::NeedThis(callee) = val {
-                            self_.state.stack.push(Value::WithThis(Box::new((
-                                *callee,
-                                Value::Object(map.clone()),
-                            ))))
+                            self_
+                                .state
+                                .stack
+                                .push(Value::WithThis(Box::new((*callee, parent))))
                         } else {
                             self_.state.stack.push(val)
                         }
@@ -538,7 +542,20 @@ fn set_member(self_: &mut VM) {
             match member {
                 // Index
                 Value::Number(n) if n - n.floor() == 0.0 => {
-                    (*arr).borrow_mut()[n as usize] = val;
+                    if let Value::Number(ref mut length) =
+                        (*map).borrow_mut().get_mut("length").unwrap()
+                    {
+                        let mut arr = (*arr).borrow_mut();
+                        if n as usize >= *length as usize {
+                            *length = n;
+                            unsafe {
+                                arr.set_len(n as usize);
+                            };
+                        }
+                        arr[n as usize] = val;
+                    } else {
+                        unreachable!()
+                    };
                 }
                 _ => {
                     *map.borrow_mut()
@@ -616,6 +633,9 @@ fn call(self_: &mut VM) {
                     args.push(self_.state.stack.pop().unwrap());
                 }
                 args.reverse();
+                if let Some(this) = this {
+                    args.insert(0, this)
+                }
                 unsafe { self_.builtin_functions[x](args) };
                 break;
             }
@@ -757,6 +777,21 @@ unsafe fn debug_print(val: &Value) {
         }
         _ => {}
     }
+}
+
+// EmbeddedFunction(2)
+unsafe fn array_push(args: Vec<Value>) {
+    if let Value::Array(ref elems, ref this) = args[0] {
+        let mut elems = (*elems).borrow_mut();
+        for val in args[1..].iter() {
+            elems.push(val.clone());
+        }
+        if let Value::Number(ref mut length) = *(*this).borrow_mut().get_mut("length").unwrap() {
+            *length += args[1..].len() as f64;
+        }
+    } else {
+        unreachable!()
+    };
 }
 
 // #[rustfmt::skip]
