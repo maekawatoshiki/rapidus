@@ -97,7 +97,9 @@ fn run(file_name: &str) {
     match fork() {
         Ok(ForkResult::Parent { child, .. }) => match waitpid(child, None) {
             Ok(ok) => match ok {
-                WaitStatus::Exited(_, _) => {} // exited successfully
+                WaitStatus::Exited(_, status) => if status != 0 {
+                    println!("exited. status: {}", status)
+                }, // exited successfully
                 WaitStatus::Signaled(pid, status, _) => {
                     // We can do anything (like calling destructors) here.
                     println!("signal: pid={:?}, status={:?}", pid, status)
@@ -110,10 +112,12 @@ fn run(file_name: &str) {
             let mut file_body = String::new();
 
             match OpenOptions::new().read(true).open(file_name) {
-                Ok(mut ok) => ok
-                    .read_to_string(&mut file_body)
-                    .ok()
-                    .expect("cannot read file"),
+                Ok(mut ok) => match ok.read_to_string(&mut file_body).ok() {
+                    Some(x) => x,
+                    None => {
+                        panic!("error: cannot read file");
+                    }
+                },
                 Err(e) => {
                     println!("error: {}", e);
                     return;
