@@ -2,7 +2,7 @@ use std::boxed::Box;
 use std::collections::HashMap;
 
 use std::cell::RefCell;
-use std::ffi::CStr;
+use std::ffi::{CStr, CString};
 use std::rc::Rc;
 
 // use cpuprofiler::PROFILER;
@@ -22,7 +22,7 @@ pub unsafe fn alloc_rawstring(s: &str) -> RawStringPtr {
     p
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     Undefined,
     Bool(bool),
@@ -100,6 +100,7 @@ pub struct VM {
     pub const_table: ConstantTable,
     pub insts: ByteCode,
     pub op_table: [fn(&mut VM); 32],
+    pub builtin_functions: [unsafe fn(Vec<Value>); 2],
 }
 
 pub struct VMState {
@@ -115,7 +116,7 @@ impl VM {
 
         obj.insert("console".to_string(), {
             let mut map = HashMap::new();
-            map.insert("log".to_string(), Value::EmbeddedFunction(1));
+            map.insert("log".to_string(), Value::EmbeddedFunction(0));
             Value::Object(Rc::new(RefCell::new(map)))
         });
 
@@ -123,7 +124,7 @@ impl VM {
             let mut map = HashMap::new();
             map.insert("stdout".to_string(), {
                 let mut map = HashMap::new();
-                map.insert("write".to_string(), Value::EmbeddedFunction(2));
+                map.insert("write".to_string(), Value::EmbeddedFunction(1));
                 Value::Object(Rc::new(RefCell::new(map)))
             });
             Value::Object(Rc::new(RefCell::new(map)))
@@ -184,6 +185,7 @@ impl VM {
                 call,
                 return_,
             ],
+            builtin_functions: [console_log, process_stdout_write],
         }
     }
 }
@@ -276,8 +278,10 @@ fn constract(self_: &mut VM) {
 
                 self_.state.pc = dst as isize;
                 self_.do_run();
-                self_.state.stack.pop(); // return value by func
-                self_.state.stack.push(Value::Object(new_this));
+                if self_.state.stack.last().unwrap() == &Value::Undefined {
+                    self_.state.stack.pop();
+                    self_.state.stack.push(Value::Object(new_this));
+                }
                 break;
             }
             Value::NeedThis(callee_) => {
@@ -541,11 +545,7 @@ fn call(self_: &mut VM) {
                     args.push(self_.state.stack.pop().unwrap());
                 }
                 args.reverse();
-                match x {
-                    1 => console_log(args),
-                    2 => process_stdout_write(args),
-                    _ => panic!("unknown embedded function called"),
-                };
+                unsafe { self_.builtin_functions[x](args) };
                 break;
             }
             Value::Function(dst, _) => {
@@ -594,55 +594,6 @@ fn call(self_: &mut VM) {
         }
     }
 
-    // EmbeddedFunction(1)
-    fn console_log(args: Vec<Value>) {
-        unsafe {
-            let args_len = args.len();
-            for i in 0..args_len {
-                match args[i] {
-                    Value::String(ref s) => {
-                        libc::printf(b"%s\0".as_ptr() as RawStringPtr, *s as RawStringPtr);
-                    }
-                    Value::Number(ref n) => {
-                        libc::printf(b"%.15g\0".as_ptr() as RawStringPtr, *n);
-                    }
-                    Value::Undefined => {
-                        libc::printf(b"undefined\0".as_ptr() as RawStringPtr);
-                    }
-                    _ => {}
-                }
-                if args_len - 1 != i {
-                    libc::printf(b" \0".as_ptr() as RawStringPtr);
-                }
-            }
-            libc::puts(b"\0".as_ptr() as RawStringPtr);
-        }
-    }
-
-    // EmbeddedFunction(2)
-    fn process_stdout_write(args: Vec<Value>) {
-        unsafe {
-            let args_len = args.len();
-            for i in 0..args_len {
-                match args[i] {
-                    Value::String(ref s) => {
-                        libc::printf(b"%s\0".as_ptr() as RawStringPtr, *s as RawStringPtr);
-                    }
-                    Value::Number(ref n) => {
-                        libc::printf(b"%.15g\0".as_ptr() as RawStringPtr, *n);
-                    }
-                    Value::Undefined => {
-                        libc::printf(b"undefined\0".as_ptr() as RawStringPtr);
-                    }
-                    _ => {}
-                }
-                if args_len - 1 != i {
-                    libc::printf(b" \0".as_ptr() as RawStringPtr);
-                }
-            }
-        }
-    }
-
     fn args_all_number(stack: &Vec<Value>, argc: usize) -> bool {
         let stack_len = stack.len();
         stack[stack_len - argc..stack_len].iter().all(|v| match v {
@@ -660,6 +611,80 @@ fn return_(self_: &mut VM) {
         self_.state.bp = bp;
     } else {
         unreachable!()
+    }
+}
+
+// EmbeddedFunction(0)
+unsafe fn console_log(args: Vec<Value>) {
+    let args_len = args.len();
+    for i in 0..args_len {
+        match args[i] {
+            Value::String(ref s) => {
+                libc::printf(b"%s\0".as_ptr() as RawStringPtr, *s as RawStringPtr);
+            }
+            Value::Number(ref n) => {
+                libc::printf(b"%.15g\0".as_ptr() as RawStringPtr, *n);
+            }
+            Value::Object(_) => debug_print(&args[i]),
+            Value::Undefined => {
+                libc::printf(b"undefined\0".as_ptr() as RawStringPtr);
+            }
+            _ => {}
+        }
+        if args_len - 1 != i {
+            libc::printf(b" \0".as_ptr() as RawStringPtr);
+        }
+    }
+    libc::puts(b"\0".as_ptr() as RawStringPtr);
+}
+
+// EmbeddedFunction(1)
+unsafe fn process_stdout_write(args: Vec<Value>) {
+    let args_len = args.len();
+    for i in 0..args_len {
+        match args[i] {
+            Value::String(ref s) => {
+                libc::printf(b"%s\0".as_ptr() as RawStringPtr, *s as RawStringPtr);
+            }
+            Value::Number(ref n) => {
+                libc::printf(b"%.15g\0".as_ptr() as RawStringPtr, *n);
+            }
+            Value::Undefined => {
+                libc::printf(b"undefined\0".as_ptr() as RawStringPtr);
+            }
+            _ => {}
+        }
+        if args_len - 1 != i {
+            libc::printf(b" \0".as_ptr() as RawStringPtr);
+        }
+    }
+}
+
+unsafe fn debug_print(val: &Value) {
+    match val {
+        &Value::String(ref s) => {
+            libc::printf("'%s'\0".as_ptr() as RawStringPtr, *s as RawStringPtr);
+        }
+        &Value::Number(ref n) => {
+            libc::printf("%.15g\0".as_ptr() as RawStringPtr, *n);
+        }
+        &Value::Object(ref values) => {
+            libc::printf("{ \0".as_ptr() as RawStringPtr);
+            for (key, val) in &*(*values).borrow() {
+                libc::printf(
+                    "'%s'\0".as_ptr() as RawStringPtr,
+                    CString::new(key.as_str()).unwrap().into_raw(),
+                );
+                libc::printf(": \0".as_ptr() as RawStringPtr);
+                debug_print(&val);
+                libc::printf(", \0".as_ptr() as RawStringPtr);
+            }
+            libc::printf("}\0".as_ptr() as RawStringPtr);
+        }
+        &Value::Undefined => {
+            libc::printf(b"undefined\0".as_ptr() as RawStringPtr);
+        }
+        _ => {}
     }
 }
 
