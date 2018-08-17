@@ -408,7 +408,7 @@ pub enum ErrorMsgKind {
 }
 
 impl Lexer {
-    pub fn get_code_around_err_point(&self, mut pos: usize, kind: ErrorMsgKind) -> String {
+    pub fn get_code_around_err_point(&self, mut pos: usize, kind: ErrorMsgKind) -> (String, usize) {
         match kind {
             ErrorMsgKind::LastToken => {
                 let mut last = 0;
@@ -449,7 +449,7 @@ impl Lexer {
             err_point.push(' ');
         }
         err_point.push('^');
-        surrounding_code + "\n" + err_point.as_str()
+        (surrounding_code + "\n" + err_point.as_str(), pos)
     }
 }
 

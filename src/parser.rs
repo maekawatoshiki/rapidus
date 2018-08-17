@@ -25,6 +25,7 @@ impl Parser {
     }
 
     fn show_error_at(&self, pos: usize, kind: ErrorMsgKind, msg: &str) -> ! {
+        let (source_at_err_point, pos) = self.lexer.get_code_around_err_point(pos, kind);
         println!(
             "{}({}): {}\n{}",
             Colour::Red.bold().paint("error"),
@@ -35,7 +36,7 @@ impl Parser {
                 .unwrap()
                 .1,
             msg,
-            self.lexer.get_code_around_err_point(pos, kind)
+            source_at_err_point,
         );
         panic!()
     }

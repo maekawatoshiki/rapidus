@@ -102,7 +102,8 @@ fn run(file_name: &str) {
                 }, // exited successfully
                 WaitStatus::Signaled(pid, status, _) => {
                     // We can do anything (like calling destructors) here.
-                    println!("signal: pid={:?}, status={:?}", pid, status)
+                    println!("child: pid={:?}, status={:?}", pid, status);
+                    println!("Rapidus Internal Error: segmentation fault");
                 }
                 e => panic!("Rapidus Internal Error: VM exited abnormally!: {:?}", e),
             },
