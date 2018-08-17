@@ -514,7 +514,7 @@ impl TracingJit {
 impl TracingJit {
     #[inline]
     fn func_called_enough_times(&mut self, pc: usize) -> bool {
-        *self.count.entry(pc).or_insert(0) >= 0
+        *self.count.entry(pc).or_insert(0) >= 10
     }
 
     #[inline]
