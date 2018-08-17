@@ -33,6 +33,7 @@ pub enum Value {
     WithThis(Box<(Value, Value)>),               // Function, This
     EmbeddedFunction(usize), // unknown if usize == 0; specific function if usize > 0
     Object(Rc<RefCell<HashMap<String, Value>>>), // Object(HashMap<String, Value>),
+    Array(Rc<RefCell<Vec<Value>>>, Rc<RefCell<HashMap<String, Value>>>), // Array, HashMap
 }
 
 impl Value {
@@ -64,34 +65,35 @@ pub const END: u8 = 0x00;
 pub const CREATE_CONTEXT: u8 = 0x01;
 pub const CONSTRACT: u8 = 0x02;
 pub const CREATE_OBJECT: u8 = 0x03;
-pub const PUSH_INT8: u8 = 0x04;
-pub const PUSH_INT32: u8 = 0x05;
-pub const PUSH_FALSE: u8 = 0x06;
-pub const PUSH_TRUE: u8 = 0x07;
-pub const PUSH_CONST: u8 = 0x08;
-pub const PUSH_THIS: u8 = 0x09;
-pub const NEG: u8 = 0x0a;
-pub const ADD: u8 = 0x0b;
-pub const SUB: u8 = 0x0c;
-pub const MUL: u8 = 0x0d;
-pub const DIV: u8 = 0x0e;
-pub const REM: u8 = 0x0f;
-pub const LT: u8 = 0x10;
-pub const GT: u8 = 0x11;
-pub const LE: u8 = 0x12;
-pub const GE: u8 = 0x13;
-pub const EQ: u8 = 0x14;
-pub const NE: u8 = 0x15;
-pub const GET_MEMBER: u8 = 0x16;
-pub const SET_MEMBER: u8 = 0x17;
-pub const GET_GLOBAL: u8 = 0x18;
-pub const SET_GLOBAL: u8 = 0x19;
-pub const GET_LOCAL: u8 = 0x1a;
-pub const SET_LOCAL: u8 = 0x1b;
-pub const JMP_IF_FALSE: u8 = 0x1c;
-pub const JMP: u8 = 0x1d;
-pub const CALL: u8 = 0x1e;
-pub const RETURN: u8 = 0x1f;
+pub const CREATE_ARRAY: u8 = 0x04;
+pub const PUSH_INT8: u8 = 0x05;
+pub const PUSH_INT32: u8 = 0x06;
+pub const PUSH_FALSE: u8 = 0x07;
+pub const PUSH_TRUE: u8 = 0x08;
+pub const PUSH_CONST: u8 = 0x09;
+pub const PUSH_THIS: u8 = 0x0a;
+pub const NEG: u8 = 0x0b;
+pub const ADD: u8 = 0x0c;
+pub const SUB: u8 = 0x0d;
+pub const MUL: u8 = 0x0e;
+pub const DIV: u8 = 0x0f;
+pub const REM: u8 = 0x10;
+pub const LT: u8 = 0x11;
+pub const GT: u8 = 0x12;
+pub const LE: u8 = 0x13;
+pub const GE: u8 = 0x14;
+pub const EQ: u8 = 0x15;
+pub const NE: u8 = 0x16;
+pub const GET_MEMBER: u8 = 0x17;
+pub const SET_MEMBER: u8 = 0x18;
+pub const GET_GLOBAL: u8 = 0x19;
+pub const SET_GLOBAL: u8 = 0x1a;
+pub const GET_LOCAL: u8 = 0x1b;
+pub const SET_LOCAL: u8 = 0x1c;
+pub const JMP_IF_FALSE: u8 = 0x1d;
+pub const JMP: u8 = 0x1e;
+pub const CALL: u8 = 0x1f;
+pub const RETURN: u8 = 0x20;
 
 pub struct VM {
     pub global_objects: Rc<RefCell<HashMap<String, Value>>>,
@@ -99,7 +101,7 @@ pub struct VM {
     pub state: VMState,
     pub const_table: ConstantTable,
     pub insts: ByteCode,
-    pub op_table: [fn(&mut VM); 32],
+    pub op_table: [fn(&mut VM); 33],
     pub builtin_functions: [unsafe fn(Vec<Value>); 2],
 }
 
@@ -156,6 +158,7 @@ impl VM {
                 create_context,
                 constract,
                 create_object,
+                create_array,
                 push_int8,
                 push_int32,
                 push_false,
@@ -318,6 +321,26 @@ fn create_object(self_: &mut VM) {
         .push(Value::Object(Rc::new(RefCell::new(map))));
 }
 
+fn create_array(self_: &mut VM) {
+    self_.state.pc += 1; // create_context
+    get_int32!(self_, len, usize);
+
+    let mut arr = vec![];
+    for _ in 0..len {
+        let val = self_.state.stack.pop().unwrap();
+        arr.push(val);
+    }
+
+    self_.state.stack.push(Value::Array(
+        Rc::new(RefCell::new(arr)),
+        Rc::new(RefCell::new({
+            let mut map = HashMap::new();
+            map.insert("length".to_string(), Value::Number(len as f64));
+            map
+        })),
+    ));
+}
+
 fn push_int8(self_: &mut VM) {
     self_.state.pc += 1; // push_int
     get_int8!(self_, n, i32);
@@ -440,32 +463,67 @@ fn binary(self_: &mut VM, op: &BinOp) {
 
 fn get_member(self_: &mut VM) {
     self_.state.pc += 1; // get_global
-    let member = self_.state.stack.pop().unwrap().to_string();
+    let member = self_.state.stack.pop().unwrap();
     let parent = self_.state.stack.pop().unwrap();
     match parent {
         Value::Object(map)
         | Value::Function(_, map)
-        | Value::NeedThis(box Value::Function(_, map)) => match map.borrow().get(member.as_str()) {
-            Some(addr) => {
-                let val = addr.clone();
-                if let Value::NeedThis(callee) = val {
-                    self_.state.stack.push(Value::WithThis(Box::new((
-                        *callee,
-                        Value::Object(map.clone()),
-                    ))))
-                } else {
-                    self_.state.stack.push(val)
+        | Value::NeedThis(box Value::Function(_, map)) => {
+            match map.borrow().get(member.to_string().as_str()) {
+                Some(addr) => {
+                    let val = addr.clone();
+                    if let Value::NeedThis(callee) = val {
+                        self_.state.stack.push(Value::WithThis(Box::new((
+                            *callee,
+                            Value::Object(map.clone()),
+                        ))))
+                    } else {
+                        self_.state.stack.push(val)
+                    }
                 }
+                None => self_.state.stack.push(Value::Undefined),
             }
-            None => self_.state.stack.push(Value::Undefined),
-        },
+        }
+        Value::Array(arr, map) => {
+            match member {
+                // Index
+                Value::Number(n) if n - n.floor() == 0.0 => {
+                    let length =
+                        if let Value::Number(length) = (*map).borrow().get("length").unwrap() {
+                            *length as usize
+                        } else {
+                            unreachable!()
+                        };
+                    let arr = (*arr).borrow();
+                    if n as usize >= length {
+                        self_.state.stack.push(Value::Undefined);
+                    } else {
+                        self_.state.stack.push(arr[n as usize].clone())
+                    }
+                }
+                _ => match map.borrow().get(member.to_string().as_str()) {
+                    Some(addr) => {
+                        let val = addr.clone();
+                        if let Value::NeedThis(callee) = val {
+                            self_.state.stack.push(Value::WithThis(Box::new((
+                                *callee,
+                                Value::Object(map.clone()),
+                            ))))
+                        } else {
+                            self_.state.stack.push(val)
+                        }
+                    }
+                    None => self_.state.stack.push(Value::Undefined),
+                },
+            }
+        }
         _ => unreachable!(),
     }
 }
 
 fn set_member(self_: &mut VM) {
     self_.state.pc += 1; // get_global
-    let member = self_.state.stack.pop().unwrap().to_string();
+    let member = self_.state.stack.pop().unwrap();
     let parent = self_.state.stack.pop().unwrap();
     let val = self_.state.stack.pop().unwrap();
     match parent {
@@ -473,8 +531,21 @@ fn set_member(self_: &mut VM) {
         | Value::Function(_, map)
         | Value::NeedThis(box Value::Function(_, map)) => {
             *map.borrow_mut()
-                .entry(member)
+                .entry(member.to_string())
                 .or_insert_with(|| Value::Undefined) = val;
+        }
+        Value::Array(arr, map) => {
+            match member {
+                // Index
+                Value::Number(n) if n - n.floor() == 0.0 => {
+                    (*arr).borrow_mut()[n as usize] = val;
+                }
+                _ => {
+                    *map.borrow_mut()
+                        .entry(member.to_string())
+                        .or_insert_with(|| Value::Undefined) = val
+                }
+            }
         }
         e => unreachable!("{:?}", e),
     }

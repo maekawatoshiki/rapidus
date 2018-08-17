@@ -4,9 +4,10 @@ use node::{BinOp, FormalParameters, Node, NodeBase, PropertyDefinition, UnaryOp}
 use std::collections::HashSet;
 use vm::{alloc_rawstring, Value};
 use vm::{
-    PUSH_INT32, PUSH_INT8, ADD, CALL, CONSTRACT, CREATE_CONTEXT, CREATE_OBJECT, DIV, END, EQ, GE,
-    GET_GLOBAL, GET_LOCAL, GET_MEMBER, GT, JMP, JMP_IF_FALSE, LE, LT, MUL, NE, NEG, PUSH_CONST,
-    PUSH_FALSE, PUSH_THIS, PUSH_TRUE, REM, RETURN, SET_GLOBAL, SET_LOCAL, SET_MEMBER, SUB,
+    PUSH_INT32, PUSH_INT8, ADD, CALL, CONSTRACT, CREATE_ARRAY, CREATE_CONTEXT, CREATE_OBJECT, DIV,
+    END, EQ, GE, GET_GLOBAL, GET_LOCAL, GET_MEMBER, GT, JMP, JMP_IF_FALSE, LE, LT, MUL, NE, NEG,
+    PUSH_CONST, PUSH_FALSE, PUSH_THIS, PUSH_TRUE, REM, RETURN, SET_GLOBAL, SET_LOCAL, SET_MEMBER,
+    SUB,
 };
 
 use std::cell::RefCell;
@@ -176,7 +177,7 @@ impl VMCodeGen {
             match insts[i] {
                 CREATE_CONTEXT => i += 9,
                 CONSTRACT | CREATE_OBJECT | PUSH_CONST | PUSH_INT32 | SET_GLOBAL | GET_LOCAL
-                | SET_LOCAL | JMP_IF_FALSE | JMP | CALL => i += 5,
+                | CREATE_ARRAY | SET_LOCAL | JMP_IF_FALSE | JMP | CALL => i += 5,
                 PUSH_INT8 => i += 2,
                 PUSH_FALSE | END | PUSH_TRUE | PUSH_THIS | ADD | SUB | MUL | DIV | REM | LT
                 | NEG | GT | LE | GE | EQ | NE | GET_MEMBER | RETURN | SET_MEMBER => i += 1,
@@ -239,6 +240,7 @@ impl VMCodeGen {
             &NodeBase::Continue => self.run_continue(insts),
             &NodeBase::New(ref expr) => self.run_new_expr(&*expr, insts),
             &NodeBase::Object(ref properties) => self.run_object_literal(properties, insts),
+            &NodeBase::Array(ref properties) => self.run_array_literal(properties, insts),
             &NodeBase::Identifier(ref name) => self.run_identifier(name, insts),
             &NodeBase::This => self.bytecode_gen.gen_push_this(insts),
             &NodeBase::String(ref s) => self
@@ -545,6 +547,15 @@ impl VMCodeGen {
 
         self.bytecode_gen
             .gen_create_object(properties.len() as usize, insts);
+    }
+
+    fn run_array_literal(&mut self, elems: &Vec<Node>, insts: &mut ByteCode) {
+        for elem in elems.iter().rev() {
+            self.run(elem, insts);
+        }
+
+        self.bytecode_gen
+            .gen_create_array(elems.len() as usize, insts);
     }
 }
 

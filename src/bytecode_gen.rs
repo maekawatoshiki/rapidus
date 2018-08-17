@@ -1,8 +1,8 @@
 use vm::{
-    ConstantTable, PUSH_INT32, PUSH_INT8, Value, ADD, CALL, CONSTRACT, CREATE_CONTEXT,
-    CREATE_OBJECT, DIV, END, EQ, GE, GET_GLOBAL, GET_LOCAL, GET_MEMBER, GT, JMP, JMP_IF_FALSE, LE,
-    LT, MUL, NE, NEG, PUSH_CONST, PUSH_FALSE, PUSH_THIS, PUSH_TRUE, REM, RETURN, SET_GLOBAL,
-    SET_LOCAL, SET_MEMBER, SUB,
+    ConstantTable, PUSH_INT32, PUSH_INT8, Value, ADD, CALL, CONSTRACT, CREATE_ARRAY,
+    CREATE_CONTEXT, CREATE_OBJECT, DIV, END, EQ, GE, GET_GLOBAL, GET_LOCAL, GET_MEMBER, GT, JMP,
+    JMP_IF_FALSE, LE, LT, MUL, NE, NEG, PUSH_CONST, PUSH_FALSE, PUSH_THIS, PUSH_TRUE, REM, RETURN,
+    SET_GLOBAL, SET_LOCAL, SET_MEMBER, SUB,
 };
 
 pub type ByteCode = Vec<u8>;
@@ -38,6 +38,11 @@ impl ByteCodeGen {
 
     pub fn gen_create_object(&self, len: usize, insts: &mut ByteCode) {
         insts.push(CREATE_OBJECT);
+        self.gen_int32(len as i32, insts);
+    }
+
+    pub fn gen_create_array(&self, len: usize, insts: &mut ByteCode) {
+        insts.push(CREATE_ARRAY);
         self.gen_int32(len as i32, insts);
     }
 
