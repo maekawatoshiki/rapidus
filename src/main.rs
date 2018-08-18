@@ -72,6 +72,7 @@ fn main() {
         let mut node = nodes[0].clone();
         extract_anony_func::AnonymousFunctionExtractor::new().run_toplevel(&mut node);
         fv_finder::FreeVariableFinder::new().run_toplevel(&mut node);
+        println!("extract_anony_func, fv_finder:\n {:?}", node);
         fv_solver::FreeVariableSolver::new().run_toplevel(&mut node);
 
         println!("extract_anony_func, fv_finder, fv_solver:\n {:?}", node);

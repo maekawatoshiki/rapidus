@@ -48,6 +48,8 @@ impl FreeVariableSolver {
                         _ => self.run(node),
                     }
                 }
+
+                self.mangled_name.pop();
             }
             _ => unreachable!(),
         }
@@ -111,6 +113,7 @@ impl FreeVariableSolver {
             NodeBase::This => self.use_this = true,
             NodeBase::Identifier(ref mut name) => {
                 if let Some(name_) = self.get_mangled_name(name.as_str()) {
+                    println!("replace {} with {}", name, name_);
                     *name = name_;
                 }
             }
@@ -134,6 +137,13 @@ impl FreeVariableSolver {
             NodeBase::Assign(ref mut dst, ref mut src) => {
                 self.run(&mut *dst);
                 self.run(&mut *src);
+            }
+            NodeBase::VarDecl(ref name, ref mut init)
+                if self.get_mangled_name(name.as_str()).is_none() =>
+            {
+                if let &mut Some(ref mut init) = init {
+                    self.run(init);
+                }
             }
             NodeBase::VarDecl(_, _) => {
                 if let NodeBase::VarDecl(ref name, ref mut init) = node_cloned.base {

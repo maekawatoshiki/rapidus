@@ -102,7 +102,7 @@ pub struct VM {
     pub const_table: ConstantTable,
     pub insts: ByteCode,
     pub op_table: [fn(&mut VM); 33],
-    pub builtin_functions: [unsafe fn(Vec<Value>); 3],
+    pub builtin_functions: [unsafe fn(Vec<Value>, &mut VM); 4],
 }
 
 pub struct VMState {
@@ -129,6 +129,12 @@ impl VM {
                 map.insert("write".to_string(), Value::EmbeddedFunction(1));
                 Value::Object(Rc::new(RefCell::new(map)))
             });
+            Value::Object(Rc::new(RefCell::new(map)))
+        });
+
+        obj.insert("Math".to_string(), {
+            let mut map = HashMap::new();
+            map.insert("floor".to_string(), Value::EmbeddedFunction(3));
             Value::Object(Rc::new(RefCell::new(map)))
         });
 
@@ -188,7 +194,7 @@ impl VM {
                 call,
                 return_,
             ],
-            builtin_functions: [console_log, process_stdout_write, array_push],
+            builtin_functions: [console_log, process_stdout_write, array_push, math_floor],
         }
     }
 }
@@ -636,7 +642,7 @@ fn call(self_: &mut VM) {
                 if let Some(this) = this {
                     args.insert(0, this)
                 }
-                unsafe { self_.builtin_functions[x](args) };
+                unsafe { self_.builtin_functions[x](args, self_) };
                 break;
             }
             Value::Function(dst, _) => {
@@ -706,7 +712,7 @@ fn return_(self_: &mut VM) {
 }
 
 // EmbeddedFunction(0)
-unsafe fn console_log(args: Vec<Value>) {
+unsafe fn console_log(args: Vec<Value>, _: &mut VM) {
     let args_len = args.len();
     for i in 0..args_len {
         match args[i] {
@@ -730,7 +736,7 @@ unsafe fn console_log(args: Vec<Value>) {
 }
 
 // EmbeddedFunction(1)
-unsafe fn process_stdout_write(args: Vec<Value>) {
+unsafe fn process_stdout_write(args: Vec<Value>, _: &mut VM) {
     let args_len = args.len();
     for i in 0..args_len {
         match args[i] {
@@ -780,7 +786,7 @@ unsafe fn debug_print(val: &Value) {
 }
 
 // EmbeddedFunction(2)
-unsafe fn array_push(args: Vec<Value>) {
+unsafe fn array_push(args: Vec<Value>, _: &mut VM) {
     if let Value::Array(ref elems, ref this) = args[0] {
         let mut elems = (*elems).borrow_mut();
         for val in args[1..].iter() {
@@ -792,6 +798,13 @@ unsafe fn array_push(args: Vec<Value>) {
     } else {
         unreachable!()
     };
+}
+
+// EmbeddedFunction(3)
+unsafe fn math_floor(args: Vec<Value>, self_: &mut VM) {
+    if let Value::Number(f) = args[0] {
+        self_.state.stack.push(Value::Number(f.floor()))
+    }
 }
 
 // #[rustfmt::skip]
