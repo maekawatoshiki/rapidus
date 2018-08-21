@@ -287,10 +287,7 @@ fn constract(self_: &mut VM) {
 
                 self_.state.pc = dst as isize;
                 self_.do_run();
-                if self_.state.stack.last().unwrap() == &Value::Undefined {
-                    self_.state.stack.pop();
-                    self_.state.stack.push(Value::Object(new_this));
-                }
+                *self_.state.stack.last_mut().unwrap() = Value::Object(new_this);
                 break;
             }
             Value::NeedThis(callee_) => {
@@ -527,7 +524,7 @@ fn get_member(self_: &mut VM) {
                 },
             }
         }
-        _ => unreachable!(),
+        e => unreachable!("{:?}", e),
     }
 }
 
