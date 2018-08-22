@@ -5,9 +5,9 @@ use std::collections::HashSet;
 use vm::{alloc_rawstring, Value};
 use vm::{
     PUSH_INT32, PUSH_INT8, ADD, CALL, CONSTRACT, CREATE_ARRAY, CREATE_CONTEXT, CREATE_OBJECT, DIV,
-    END, EQ, GE, GET_GLOBAL, GET_LOCAL, GET_MEMBER, GT, JMP, JMP_IF_FALSE, LE, LT, MUL, NE, NEG,
-    PUSH_CONST, PUSH_FALSE, PUSH_THIS, PUSH_TRUE, REM, RETURN, SET_GLOBAL, SET_LOCAL, SET_MEMBER,
-    SUB,
+    END, EQ, GE, GET_ARG_LOCAL, GET_GLOBAL, GET_LOCAL, GET_MEMBER, GT, JMP, JMP_IF_FALSE, LE, LT,
+    MUL, NE, NEG, PUSH_CONST, PUSH_FALSE, PUSH_THIS, PUSH_TRUE, REM, RETURN, SET_ARG_LOCAL,
+    SET_GLOBAL, SET_LOCAL, SET_MEMBER, SUB,
 };
 
 use std::cell::RefCell;
@@ -97,9 +97,10 @@ impl Labels {
 #[derive(Clone, Debug)]
 pub struct VMCodeGen {
     pub global_varmap: HashMap<String, Value>, // usize will be replaced with an appropriate type
-    pub local_varmap: Vec<HashMap<String, usize>>,
+    pub local_varmap: Vec<HashMap<String, (bool, usize)>>, // hashmap<name, (is_arg_var, id)>
     pub functions: HashMap<String, FunctionInfo>,
     pub local_var_stack_addr: IdGen,
+    pub arguemnt_var_addr: IdGen,
     pub bytecode_gen: ByteCodeGen,
     pub labels: Labels,
 }
@@ -111,6 +112,7 @@ impl VMCodeGen {
             local_varmap: vec![HashMap::new()],
             functions: HashMap::new(),
             local_var_stack_addr: IdGen::new(),
+            arguemnt_var_addr: IdGen::new(),
             bytecode_gen: ByteCodeGen::new(),
             labels: Labels::new(),
         }
@@ -125,9 +127,9 @@ impl VMCodeGen {
         func_addr_in_bytecode_and_its_entity: &mut HashMap<usize, FunctionInfoForJIT>,
     ) {
         let pos = insts.len();
-        self.bytecode_gen.gen_create_context(0, 0, insts);
+        self.bytecode_gen.gen_create_context(0, insts);
 
-        self.run_var_decl2(&"this".to_string(), &None, insts);
+        self.run_arg_var_decl(&"this".to_string(), &None, insts);
 
         self.run(node, insts);
 
@@ -173,9 +175,10 @@ impl VMCodeGen {
         let mut i = 0;
         while i < insts.len() {
             match insts[i] {
-                CREATE_CONTEXT => i += 9,
+                CREATE_CONTEXT => i += 5,
                 CONSTRACT | CREATE_OBJECT | PUSH_CONST | PUSH_INT32 | SET_GLOBAL | GET_LOCAL
-                | CREATE_ARRAY | SET_LOCAL | JMP_IF_FALSE | JMP | CALL => i += 5,
+                | SET_ARG_LOCAL | GET_ARG_LOCAL | CREATE_ARRAY | SET_LOCAL | JMP_IF_FALSE | JMP
+                | CALL => i += 5,
                 PUSH_INT8 => i += 2,
                 PUSH_FALSE | END | PUSH_TRUE | PUSH_THIS | ADD | SUB | MUL | DIV | REM | LT
                 | NEG | GT | LE | GE | EQ | NE | GET_MEMBER | RETURN | SET_MEMBER => i += 1,
@@ -282,20 +285,19 @@ impl VMCodeGen {
 
         self.local_varmap.push(HashMap::new());
         self.local_var_stack_addr.save();
+        self.arguemnt_var_addr.save();
 
         let mut func_insts = vec![];
 
-        self.bytecode_gen.gen_create_context(0, 0, &mut func_insts);
+        self.bytecode_gen.gen_create_context(0, &mut func_insts);
 
         if use_this {
-            self.run_var_decl2(&"this".to_string(), &None, &mut func_insts);
+            self.run_arg_var_decl(&"this".to_string(), &None, &mut func_insts);
         }
 
         for param in params {
-            self.run_var_decl2(&param.name, &param.init, &mut func_insts)
+            self.run_arg_var_decl(&param.name, &param.init, &mut func_insts)
         }
-
-        let params_len = params.len() + if use_this { 1 } else { 0 };
 
         self.run(body, &mut func_insts);
 
@@ -314,6 +316,7 @@ impl VMCodeGen {
         );
 
         self.local_var_stack_addr.restore();
+        self.arguemnt_var_addr.restore();
         self.local_varmap.pop();
 
         self.functions.insert(
@@ -371,7 +374,7 @@ impl VMCodeGen {
         self.local_varmap
             .last_mut()
             .unwrap()
-            .insert(name.clone(), id);
+            .insert(name.clone(), (false, id));
 
         if let &Some(ref init) = init {
             self.run(&*init, insts);
@@ -379,13 +382,13 @@ impl VMCodeGen {
         }
     }
 
-    pub fn run_var_decl2(&mut self, name: &String, init: &Option<Node>, insts: &mut ByteCode) {
-        let id = self.local_var_stack_addr.gen_id();
+    pub fn run_arg_var_decl(&mut self, name: &String, init: &Option<Node>, insts: &mut ByteCode) {
+        let id = self.arguemnt_var_addr.gen_id();
 
         self.local_varmap
             .last_mut()
             .unwrap()
-            .insert(name.clone(), id);
+            .insert(name.clone(), (true, id));
 
         if let &Some(ref init) = init {
             self.run(init, insts);
@@ -490,8 +493,12 @@ impl VMCodeGen {
 
         match dst.base {
             NodeBase::Identifier(ref name) => {
-                if let Some(p) = self.local_varmap.last().unwrap().get(name.as_str()) {
-                    self.bytecode_gen.gen_set_local(*p as u32, insts);
+                if let Some((is_arg, p)) = self.local_varmap.last().unwrap().get(name.as_str()) {
+                    if *is_arg {
+                        self.bytecode_gen.gen_set_arg_local(*p as u32, insts);
+                    } else {
+                        self.bytecode_gen.gen_set_local(*p as u32, insts);
+                    }
                 } else {
                     self.bytecode_gen.gen_set_global(name.clone(), insts);
                 }
@@ -574,8 +581,12 @@ impl VMCodeGen {
     }
 
     fn run_identifier(&mut self, name: &String, insts: &mut ByteCode) {
-        if let Some(p) = self.local_varmap.last().unwrap().get(name.as_str()) {
-            self.bytecode_gen.gen_get_local(*p as u32, insts);
+        if let Some((is_arg, p)) = self.local_varmap.last().unwrap().get(name.as_str()) {
+            if *is_arg {
+                self.bytecode_gen.gen_get_arg_local(*p as u32, insts);
+            } else {
+                self.bytecode_gen.gen_get_local(*p as u32, insts);
+            }
         } else {
             self.bytecode_gen.gen_get_global(name.clone(), insts);
         }

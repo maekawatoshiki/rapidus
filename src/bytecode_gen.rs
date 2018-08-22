@@ -1,8 +1,8 @@
 use vm::{
     ConstantTable, PUSH_INT32, PUSH_INT8, Value, ADD, CALL, CONSTRACT, CREATE_ARRAY,
-    CREATE_CONTEXT, CREATE_OBJECT, DIV, END, EQ, GE, GET_GLOBAL, GET_LOCAL, GET_MEMBER, GT, JMP,
-    JMP_IF_FALSE, LE, LT, MUL, NE, NEG, PUSH_CONST, PUSH_FALSE, PUSH_THIS, PUSH_TRUE, REM, RETURN,
-    SET_GLOBAL, SET_LOCAL, SET_MEMBER, SUB,
+    CREATE_CONTEXT, CREATE_OBJECT, DIV, END, EQ, GE, GET_ARG_LOCAL, GET_GLOBAL, GET_LOCAL,
+    GET_MEMBER, GT, JMP, JMP_IF_FALSE, LE, LT, MUL, NE, NEG, PUSH_CONST, PUSH_FALSE, PUSH_THIS,
+    PUSH_TRUE, REM, RETURN, SET_ARG_LOCAL, SET_GLOBAL, SET_LOCAL, SET_MEMBER, SUB,
 };
 
 pub type ByteCode = Vec<u8>;
@@ -25,9 +25,9 @@ impl ByteCodeGen {
         insts.push(END);
     }
 
-    pub fn gen_create_context(&self, n: usize, argc: usize, insts: &mut ByteCode) {
+    pub fn gen_create_context(&self, num_local_var: usize, insts: &mut ByteCode) {
         insts.push(CREATE_CONTEXT);
-        self.gen_int32(n as i32, insts);
+        self.gen_int32(num_local_var as i32, insts);
     }
 
     pub fn gen_constract(&self, argc: usize, insts: &mut ByteCode) {
@@ -140,6 +140,16 @@ impl ByteCodeGen {
         self.gen_int32(id as i32, insts);
     }
 
+    pub fn gen_get_arg_local(&self, id: u32, insts: &mut ByteCode) {
+        insts.push(GET_ARG_LOCAL);
+        self.gen_int32(id as i32, insts);
+    }
+
+    pub fn gen_set_arg_local(&self, id: u32, insts: &mut ByteCode) {
+        insts.push(SET_ARG_LOCAL);
+        self.gen_int32(id as i32, insts);
+    }
+
     pub fn gen_call(&self, argc: u32, insts: &mut ByteCode) {
         insts.push(CALL);
         self.gen_int32(argc as i32, insts);
@@ -198,7 +208,7 @@ pub fn show(code: &ByteCode) {
             }
             CREATE_CONTEXT => {
                 println!("CreateContext");
-                i += 9
+                i += 5
             }
             CONSTRACT => {
                 println!("Constract");
@@ -302,6 +312,14 @@ pub fn show(code: &ByteCode) {
             }
             SET_LOCAL => {
                 println!("SetLocal",);
+                i += 5
+            }
+            GET_ARG_LOCAL => {
+                println!("GetArgLocal",);
+                i += 5
+            }
+            SET_ARG_LOCAL => {
+                println!("SetArgLocal",);
                 i += 5
             }
             JMP_IF_FALSE => {

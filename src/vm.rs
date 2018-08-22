@@ -115,10 +115,12 @@ pub const GET_GLOBAL: u8 = 0x19;
 pub const SET_GLOBAL: u8 = 0x1a;
 pub const GET_LOCAL: u8 = 0x1b;
 pub const SET_LOCAL: u8 = 0x1c;
-pub const JMP_IF_FALSE: u8 = 0x1d;
-pub const JMP: u8 = 0x1e;
-pub const CALL: u8 = 0x1f;
-pub const RETURN: u8 = 0x20;
+pub const GET_ARG_LOCAL: u8 = 0x1d;
+pub const SET_ARG_LOCAL: u8 = 0x1e;
+pub const JMP_IF_FALSE: u8 = 0x1f;
+pub const JMP: u8 = 0x20;
+pub const CALL: u8 = 0x21;
+pub const RETURN: u8 = 0x22;
 
 pub struct VM {
     pub global_objects: Rc<RefCell<HashMap<String, Value>>>,
@@ -126,15 +128,16 @@ pub struct VM {
     pub state: VMState,
     pub const_table: ConstantTable,
     pub insts: ByteCode,
-    pub op_table: [fn(&mut VM); 33],
+    pub op_table: [fn(&mut VM); 35],
     pub builtin_functions: [unsafe fn(Vec<Value>, &mut VM); 4],
 }
 
 pub struct VMState {
     pub stack: Vec<Value>,
     pub bp: usize,
+    pub lp: usize,
     pub pc: isize,
-    pub history: Vec<(usize, usize, isize)>, // bp, sp, return_pc
+    pub history: Vec<(usize, usize, usize, isize)>, // bp, lp, sp, return_pc
 }
 
 impl VM {
@@ -177,10 +180,11 @@ impl VM {
                 },
                 history: {
                     let mut s = Vec::with_capacity(128);
-                    s.push((0, 0, 0));
+                    s.push((0, 0, 0, 0));
                     s
                 },
                 bp: 0,
+                lp: 0,
                 pc: 0isize,
             },
             const_table: ConstantTable::new(),
@@ -215,6 +219,8 @@ impl VM {
                 set_global,
                 get_local,
                 set_local,
+                get_arg_local,
+                set_arg_local,
                 jmp_if_false,
                 jmp,
                 call,
@@ -274,7 +280,7 @@ fn end(_self: &mut VM) {}
 
 fn create_context(self_: &mut VM) {
     self_.state.pc += 1; // create_context
-    get_int32!(self_, n, usize);
+    get_int32!(self_, num_local_var, usize);
     let argc = if let Value::Number(argc) = self_.state.stack.pop().unwrap() {
         argc as usize
     } else {
@@ -282,16 +288,20 @@ fn create_context(self_: &mut VM) {
     };
 
     let stack_len = self_.state.stack.len();
-    if let Some((ref mut bp, ref mut sp, ref mut _return_pc)) = self_.state.history.last_mut() {
+    if let Some((ref mut bp, ref mut lp, ref mut sp, ref mut _return_pc)) =
+        self_.state.history.last_mut()
+    {
         *bp = self_.state.bp;
+        *lp = self_.state.lp;
         *sp = stack_len - argc;
     } else {
         unreachable!()
     };
     self_.state.bp = stack_len - argc;
+    self_.state.lp = stack_len;
 
     // This code is slower -> self_.state.stack.resize(stack_len + n, Value::Undefined);
-    for _ in 0..(n as isize - argc as isize).abs() {
+    for _ in 0..num_local_var {
         self_.state.stack.push(Value::Undefined);
     }
 }
@@ -305,7 +315,7 @@ fn constract(self_: &mut VM) {
     loop {
         match callee {
             Value::Function(dst, _) => {
-                self_.state.history.push((0, 0, self_.state.pc));
+                self_.state.history.push((0, 0, 0, self_.state.pc));
 
                 // insert new 'this'
                 let pos = self_.state.stack.len() - argc;
@@ -609,12 +619,26 @@ fn set_global(self_: &mut VM) {
 fn get_local(self_: &mut VM) {
     self_.state.pc += 1; // get_local
     get_int32!(self_, n, usize);
-    let val = self_.state.stack[self_.state.bp + n].clone();
+    let val = self_.state.stack[self_.state.lp + n].clone();
     self_.state.stack.push(val);
 }
 
 fn set_local(self_: &mut VM) {
     self_.state.pc += 1; // set_local
+    get_int32!(self_, n, usize);
+    let val = self_.state.stack.pop().unwrap();
+    self_.state.stack[self_.state.lp + n] = val;
+}
+
+fn get_arg_local(self_: &mut VM) {
+    self_.state.pc += 1; // get_arg_local
+    get_int32!(self_, n, usize);
+    let val = self_.state.stack[self_.state.bp + n].clone();
+    self_.state.stack.push(val);
+}
+
+fn set_arg_local(self_: &mut VM) {
+    self_.state.pc += 1; // set_arg_local
     get_int32!(self_, n, usize);
     let val = self_.state.stack.pop().unwrap();
     self_.state.stack[self_.state.bp + n] = val;
@@ -682,7 +706,7 @@ fn call(self_: &mut VM) {
                     }
                 }
 
-                self_.state.history.push((0, 0, self_.state.pc));
+                self_.state.history.push((0, 0, 0, self_.state.pc));
                 self_.state.pc = dst as isize;
                 self_.state.stack.push(Value::Number(argc as f64));
                 self_.do_run();
@@ -717,10 +741,11 @@ fn call(self_: &mut VM) {
 
 fn return_(self_: &mut VM) {
     let len = self_.state.stack.len();
-    if let Some((bp, sp, return_pc)) = self_.state.history.pop() {
+    if let Some((bp, lp, sp, return_pc)) = self_.state.history.pop() {
         self_.state.stack.drain(sp..len - 1);
         self_.state.pc = return_pc;
         self_.state.bp = bp;
+        self_.state.lp = lp;
     } else {
         unreachable!()
     }
