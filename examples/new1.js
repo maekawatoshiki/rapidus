@@ -5,7 +5,7 @@ function NumMaker(init_val) {
 }
 
 console.log("NumMaker(1) =", NumMaker(1))
-var nm = new NumMaker(10)
-console.log(nm.value)
-nm.increment()
-console.log(nm.value)
+// var nm = new NumMaker(10)
+// console.log(nm.value)
+// nm.increment()
+// console.log(nm.value)

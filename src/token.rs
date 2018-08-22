@@ -18,6 +18,8 @@ pub enum Kind {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Keyword {
+    Abstract,
+    Arguments,
     Break,
     Case,
     Catch,
@@ -189,6 +191,8 @@ impl Symbol {
 
 pub fn convert_reserved_keyword(keyword: &str) -> Option<Keyword> {
     match keyword {
+        "abstract" => Some(Keyword::Abstract),
+        "arguments" => Some(Keyword::Arguments),
         "break" => Some(Keyword::Break),
         "case" => Some(Keyword::Case),
         "catch" => Some(Keyword::Catch),

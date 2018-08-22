@@ -629,6 +629,7 @@ impl Parser {
         let tok = self.lexer.next()?;
         match tok.kind {
             Kind::Keyword(Keyword::This) => Ok(Node::new(NodeBase::This, tok.pos)),
+            Kind::Keyword(Keyword::Arguments) => Ok(Node::new(NodeBase::Arguments, tok.pos)),
             Kind::Keyword(Keyword::Function) => self.read_function_expression(),
             Kind::Symbol(Symbol::Semicolon) => Ok(Node::new(NodeBase::Nope, tok.pos)),
             Kind::Symbol(Symbol::OpeningParen) => {

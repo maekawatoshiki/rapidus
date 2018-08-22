@@ -59,6 +59,7 @@ pub enum Value {
     EmbeddedFunction(usize), // unknown if usize == 0; specific function if usize > 0
     Object(Rc<RefCell<HashMap<String, Value>>>), // Object(HashMap<String, Value>),
     Array(Rc<RefCell<ArrayValue>>),
+    Arguments,
 }
 
 impl Value {
@@ -97,30 +98,31 @@ pub const PUSH_FALSE: u8 = 0x07;
 pub const PUSH_TRUE: u8 = 0x08;
 pub const PUSH_CONST: u8 = 0x09;
 pub const PUSH_THIS: u8 = 0x0a;
-pub const NEG: u8 = 0x0b;
-pub const ADD: u8 = 0x0c;
-pub const SUB: u8 = 0x0d;
-pub const MUL: u8 = 0x0e;
-pub const DIV: u8 = 0x0f;
-pub const REM: u8 = 0x10;
-pub const LT: u8 = 0x11;
-pub const GT: u8 = 0x12;
-pub const LE: u8 = 0x13;
-pub const GE: u8 = 0x14;
-pub const EQ: u8 = 0x15;
-pub const NE: u8 = 0x16;
-pub const GET_MEMBER: u8 = 0x17;
-pub const SET_MEMBER: u8 = 0x18;
-pub const GET_GLOBAL: u8 = 0x19;
-pub const SET_GLOBAL: u8 = 0x1a;
-pub const GET_LOCAL: u8 = 0x1b;
-pub const SET_LOCAL: u8 = 0x1c;
-pub const GET_ARG_LOCAL: u8 = 0x1d;
-pub const SET_ARG_LOCAL: u8 = 0x1e;
-pub const JMP_IF_FALSE: u8 = 0x1f;
-pub const JMP: u8 = 0x20;
-pub const CALL: u8 = 0x21;
-pub const RETURN: u8 = 0x22;
+pub const PUSH_ARGUMENTS: u8 = 0x0b;
+pub const NEG: u8 = 0x0c;
+pub const ADD: u8 = 0x0d;
+pub const SUB: u8 = 0x0e;
+pub const MUL: u8 = 0x0f;
+pub const DIV: u8 = 0x10;
+pub const REM: u8 = 0x11;
+pub const LT: u8 = 0x12;
+pub const GT: u8 = 0x13;
+pub const LE: u8 = 0x14;
+pub const GE: u8 = 0x15;
+pub const EQ: u8 = 0x16;
+pub const NE: u8 = 0x17;
+pub const GET_MEMBER: u8 = 0x18;
+pub const SET_MEMBER: u8 = 0x19;
+pub const GET_GLOBAL: u8 = 0x1a;
+pub const SET_GLOBAL: u8 = 0x1b;
+pub const GET_LOCAL: u8 = 0x1c;
+pub const SET_LOCAL: u8 = 0x1d;
+pub const GET_ARG_LOCAL: u8 = 0x1e;
+pub const SET_ARG_LOCAL: u8 = 0x1f;
+pub const JMP_IF_FALSE: u8 = 0x20;
+pub const JMP: u8 = 0x21;
+pub const CALL: u8 = 0x22;
+pub const RETURN: u8 = 0x23;
 
 pub struct VM {
     pub global_objects: Rc<RefCell<HashMap<String, Value>>>,
@@ -128,7 +130,7 @@ pub struct VM {
     pub state: VMState,
     pub const_table: ConstantTable,
     pub insts: ByteCode,
-    pub op_table: [fn(&mut VM); 35],
+    pub op_table: [fn(&mut VM); 36],
     pub builtin_functions: [unsafe fn(Vec<Value>, &mut VM); 4],
 }
 
@@ -201,6 +203,7 @@ impl VM {
                 push_true,
                 push_const,
                 push_this,
+                push_arguments,
                 neg,
                 add,
                 sub,
@@ -415,6 +418,11 @@ fn push_this(self_: &mut VM) {
     self_.state.stack.push(val);
 }
 
+fn push_arguments(self_: &mut VM) {
+    self_.state.pc += 1; // push_arguments
+    self_.state.stack.push(Value::Arguments);
+}
+
 fn neg(self_: &mut VM) {
     self_.state.pc += 1; // neg
     let expr = self_.state.stack.last_mut().unwrap();
@@ -555,6 +563,26 @@ fn get_member(self_: &mut VM) {
                 },
             }
         }
+        Value::Arguments => {
+            match member {
+                // Index
+                Value::Number(n) if n - n.floor() == 0.0 => {
+                    let val = self_.state.stack[self_.state.bp + n as usize].clone();
+                    self_.state.stack.push(val);
+                    // TODO
+                    // let arr = &map.elems;
+                    // if n as usize >= map.length {
+                    //     self_.state.stack.push(Value::Undefined);
+                    // } else {
+                    //     self_.state.stack.push(arr[n as usize].clone())
+                    // }
+                }
+                Value::String(s) if unsafe { CStr::from_ptr(s).to_str().unwrap() } == "length" => {
+                    self_.state.stack.push(Value::Number(self_.state.lp as f64- self_.state.bp as f64));
+                }
+                _ => self_.state.stack.push(Value::Undefined),
+            }
+        }
         e => unreachable!("{:?}", e),
     }
 }
@@ -590,6 +618,22 @@ fn set_member(self_: &mut VM) {
                         .entry(member.to_string())
                         .or_insert_with(|| Value::Undefined) = val
                 }
+            }
+        }
+        Value::Arguments => {
+            match member {
+                // Index
+                Value::Number(n) if n - n.floor() == 0.0 => {
+                    self_.state.stack[self_.state.bp + n as usize] = val;
+                    // TODO
+                    // let arr = &map.elems;
+                    // if n as usize >= map.length {
+                    //     self_.state.stack.push(Value::Undefined);
+                    // } else {
+                    //     self_.state.stack.push(arr[n as usize].clone())
+                    // }
+                }
+                _ => {}
             }
         }
         e => unreachable!("{:?}", e),

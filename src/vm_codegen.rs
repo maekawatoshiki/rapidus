@@ -6,8 +6,8 @@ use vm::{alloc_rawstring, Value};
 use vm::{
     PUSH_INT32, PUSH_INT8, ADD, CALL, CONSTRACT, CREATE_ARRAY, CREATE_CONTEXT, CREATE_OBJECT, DIV,
     END, EQ, GE, GET_ARG_LOCAL, GET_GLOBAL, GET_LOCAL, GET_MEMBER, GT, JMP, JMP_IF_FALSE, LE, LT,
-    MUL, NE, NEG, PUSH_CONST, PUSH_FALSE, PUSH_THIS, PUSH_TRUE, REM, RETURN, SET_ARG_LOCAL,
-    SET_GLOBAL, SET_LOCAL, SET_MEMBER, SUB,
+    MUL, NE, NEG, PUSH_ARGUMENTS, PUSH_CONST, PUSH_FALSE, PUSH_THIS, PUSH_TRUE, REM, RETURN,
+    SET_ARG_LOCAL, SET_GLOBAL, SET_LOCAL, SET_MEMBER, SUB,
 };
 
 use std::cell::RefCell;
@@ -141,6 +141,29 @@ impl VMCodeGen {
         self.bytecode_gen.gen_end(insts);
 
         let mut function_value_list = HashMap::new();
+        {
+            function_value_list.insert("console".to_string(), {
+                let mut map = HashMap::new();
+                map.insert("log".to_string(), Value::EmbeddedFunction(0));
+                Value::Object(Rc::new(RefCell::new(map)))
+            });
+
+            function_value_list.insert("process".to_string(), {
+                let mut map = HashMap::new();
+                map.insert("stdout".to_string(), {
+                    let mut map = HashMap::new();
+                    map.insert("write".to_string(), Value::EmbeddedFunction(1));
+                    Value::Object(Rc::new(RefCell::new(map)))
+                });
+                Value::Object(Rc::new(RefCell::new(map)))
+            });
+
+            function_value_list.insert("Math".to_string(), {
+                let mut map = HashMap::new();
+                map.insert("floor".to_string(), Value::EmbeddedFunction(3));
+                Value::Object(Rc::new(RefCell::new(map)))
+            });
+        }
 
         for (
             _,
@@ -181,7 +204,8 @@ impl VMCodeGen {
                 | CALL => i += 5,
                 PUSH_INT8 => i += 2,
                 PUSH_FALSE | END | PUSH_TRUE | PUSH_THIS | ADD | SUB | MUL | DIV | REM | LT
-                | NEG | GT | LE | GE | EQ | NE | GET_MEMBER | RETURN | SET_MEMBER => i += 1,
+                | PUSH_ARGUMENTS | NEG | GT | LE | GE | EQ | NE | GET_MEMBER | RETURN
+                | SET_MEMBER => i += 1,
                 GET_GLOBAL => {
                     let id = insts[i + 1] as i32
                         + ((insts[i + 2] as i32) << 8)
@@ -244,6 +268,7 @@ impl VMCodeGen {
             &NodeBase::Array(ref properties) => self.run_array_literal(properties, insts),
             &NodeBase::Identifier(ref name) => self.run_identifier(name, insts),
             &NodeBase::This => self.bytecode_gen.gen_push_this(insts),
+            &NodeBase::Arguments => self.bytecode_gen.gen_push_arguments(insts),
             &NodeBase::String(ref s) => self
                 .bytecode_gen
                 .gen_push_const(Value::String(unsafe { alloc_rawstring(s.as_str()) }), insts),

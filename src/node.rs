@@ -49,6 +49,7 @@ pub enum NodeBase {
     Object(Vec<PropertyDefinition>),
     Identifier(String),
     This,
+    Arguments,
     String(String),
     Boolean(bool),
     Number(f64),
