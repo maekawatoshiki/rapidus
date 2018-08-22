@@ -132,11 +132,9 @@ impl VMCodeGen {
         self.run(node, insts);
 
         self.bytecode_gen.replace_int32(
-            self.local_var_stack_addr.get_cur_id() as i32 - 1, /* for this */
+            self.local_var_stack_addr.get_cur_id() as i32,
             &mut insts[pos + 1..pos + 5],
         );
-        self.bytecode_gen
-            .replace_int32(1 /* for this */, &mut insts[pos + 5..pos + 9]);
 
         self.bytecode_gen.gen_end(insts);
 
@@ -311,11 +309,9 @@ impl VMCodeGen {
         }
 
         self.bytecode_gen.replace_int32(
-            (self.local_var_stack_addr.get_cur_id() - params_len) as i32,
+            self.local_var_stack_addr.get_cur_id() as i32,
             &mut func_insts[1..5],
         );
-        self.bytecode_gen
-            .replace_int32(params_len as i32, &mut func_insts[5..9]);
 
         self.local_var_stack_addr.restore();
         self.local_varmap.pop();

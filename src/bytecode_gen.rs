@@ -28,7 +28,6 @@ impl ByteCodeGen {
     pub fn gen_create_context(&self, n: usize, argc: usize, insts: &mut ByteCode) {
         insts.push(CREATE_CONTEXT);
         self.gen_int32(n as i32, insts);
-        self.gen_int32(argc as i32, insts);
     }
 
     pub fn gen_constract(&self, argc: usize, insts: &mut ByteCode) {

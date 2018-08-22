@@ -172,6 +172,7 @@ impl VM {
                 stack: {
                     let mut stack = Vec::with_capacity(128);
                     stack.push(Value::Object(global_objects.clone()));
+                    stack.push(Value::Number(1.0));
                     stack
                 },
                 history: {
@@ -274,7 +275,11 @@ fn end(_self: &mut VM) {}
 fn create_context(self_: &mut VM) {
     self_.state.pc += 1; // create_context
     get_int32!(self_, n, usize);
-    get_int32!(self_, argc, usize);
+    let argc = if let Value::Number(argc) = self_.state.stack.pop().unwrap() {
+        argc as usize
+    } else {
+        unreachable!()
+    };
 
     let stack_len = self_.state.stack.len();
     if let Some((ref mut bp, ref mut sp, ref mut _return_pc)) = self_.state.history.last_mut() {
@@ -286,7 +291,7 @@ fn create_context(self_: &mut VM) {
     self_.state.bp = stack_len - argc;
 
     // This code is slower -> self_.state.stack.resize(stack_len + n, Value::Undefined);
-    for _ in 0..n {
+    for _ in 0..(n as isize - argc as isize).abs() {
         self_.state.stack.push(Value::Undefined);
     }
 }
@@ -311,6 +316,7 @@ fn constract(self_: &mut VM) {
                     .insert(pos, Value::Object(new_this.clone()));
 
                 self_.state.pc = dst as isize;
+                self_.state.stack.push(Value::Number(argc as f64 + 1.0));
                 self_.do_run();
                 *self_.state.stack.last_mut().unwrap() = Value::Object(new_this);
                 break;
@@ -632,6 +638,7 @@ fn jmp_if_false(self_: &mut VM) {
 fn call(self_: &mut VM) {
     self_.state.pc += 1; // Call
     get_int32!(self_, argc, usize);
+    let mut argc = argc;
 
     let mut this = None;
 
@@ -654,6 +661,7 @@ fn call(self_: &mut VM) {
             Value::Function(dst, _) => {
                 if let Some(this) = this {
                     let pos = self_.state.stack.len() - argc;
+                    argc += 1;
                     self_.state.stack.insert(pos, this);
                 }
 
@@ -676,6 +684,7 @@ fn call(self_: &mut VM) {
 
                 self_.state.history.push((0, 0, self_.state.pc));
                 self_.state.pc = dst as isize;
+                self_.state.stack.push(Value::Number(argc as f64));
                 self_.do_run();
                 self_
                     .jit
