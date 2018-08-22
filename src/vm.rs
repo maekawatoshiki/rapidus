@@ -23,6 +23,31 @@ pub unsafe fn alloc_rawstring(s: &str) -> RawStringPtr {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct ArrayValue {
+    pub elems: Vec<Value>,
+    pub length: usize,
+    pub obj: HashMap<String, Value>,
+}
+
+impl ArrayValue {
+    pub fn new(arr: Vec<Value>) -> ArrayValue {
+        let len = arr.len();
+        ArrayValue {
+            elems: arr,
+            length: len,
+            obj: {
+                let mut map = HashMap::new();
+                map.insert(
+                    "push".to_string(),
+                    Value::NeedThis(Box::new(Value::EmbeddedFunction(2))),
+                );
+                map
+            },
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     Undefined,
     Bool(bool),
@@ -33,7 +58,7 @@ pub enum Value {
     WithThis(Box<(Value, Value)>),               // Function, This
     EmbeddedFunction(usize), // unknown if usize == 0; specific function if usize > 0
     Object(Rc<RefCell<HashMap<String, Value>>>), // Object(HashMap<String, Value>),
-    Array(Rc<RefCell<Vec<Value>>>, Rc<RefCell<HashMap<String, Value>>>), // Array, HashMap
+    Array(Rc<RefCell<ArrayValue>>),
 }
 
 impl Value {
@@ -41,7 +66,7 @@ impl Value {
         match self {
             Value::String(name) => unsafe { CStr::from_ptr(name).to_str().unwrap() }.to_string(),
             Value::Number(n) => format!("{}", n),
-            _ => unimplemented!(),
+            e => unimplemented!("{:?}", e),
         }
     }
 }
@@ -334,18 +359,10 @@ fn create_array(self_: &mut VM) {
         arr.push(val);
     }
 
-    self_.state.stack.push(Value::Array(
-        Rc::new(RefCell::new(arr)),
-        Rc::new(RefCell::new({
-            let mut map = HashMap::new();
-            map.insert("length".to_string(), Value::Number(len as f64));
-            map.insert(
-                "push".to_string(),
-                Value::NeedThis(Box::new(Value::EmbeddedFunction(2))),
-            );
-            map
-        })),
-    ));
+    self_
+        .state
+        .stack
+        .push(Value::Array(Rc::new(RefCell::new(ArrayValue::new(arr)))));
 }
 
 fn push_int8(self_: &mut VM) {
@@ -491,24 +508,22 @@ fn get_member(self_: &mut VM) {
                 None => self_.state.stack.push(Value::Undefined),
             }
         }
-        Value::Array(arr, map) => {
+        Value::Array(map) => {
+            let mut map = map.borrow_mut();
             match member {
                 // Index
                 Value::Number(n) if n - n.floor() == 0.0 => {
-                    let length =
-                        if let Value::Number(length) = (*map).borrow().get("length").unwrap() {
-                            *length as usize
-                        } else {
-                            unreachable!()
-                        };
-                    let arr = (*arr).borrow();
-                    if n as usize >= length {
+                    let arr = &map.elems;
+                    if n as usize >= map.length {
                         self_.state.stack.push(Value::Undefined);
                     } else {
                         self_.state.stack.push(arr[n as usize].clone())
                     }
                 }
-                _ => match map.borrow().get(member.to_string().as_str()) {
+                Value::String(s) if unsafe { CStr::from_ptr(s).to_str().unwrap() } == "length" => {
+                    self_.state.stack.push(Value::Number(map.length as f64));
+                }
+                _ => match map.obj.get(member.to_string().as_str()) {
                     Some(addr) => {
                         let val = addr.clone();
                         if let Value::NeedThis(callee) = val {
@@ -541,27 +556,21 @@ fn set_member(self_: &mut VM) {
                 .entry(member.to_string())
                 .or_insert_with(|| Value::Undefined) = val;
         }
-        Value::Array(arr, map) => {
+        Value::Array(map) => {
+            let mut map = map.borrow_mut();
             match member {
                 // Index
                 Value::Number(n) if n - n.floor() == 0.0 => {
-                    if let Value::Number(ref mut length) =
-                        (*map).borrow_mut().get_mut("length").unwrap()
-                    {
-                        let mut arr = (*arr).borrow_mut();
-                        if n as usize >= *length as usize {
-                            *length = n;
-                            unsafe {
-                                arr.set_len(n as usize);
-                            };
-                        }
-                        arr[n as usize] = val;
-                    } else {
-                        unreachable!()
-                    };
+                    if n as usize >= map.length as usize {
+                        map.length = n as usize;
+                        unsafe {
+                            map.elems.set_len(n as usize);
+                        };
+                    }
+                    map.elems[n as usize] = val;
                 }
                 _ => {
-                    *map.borrow_mut()
+                    *map.obj
                         .entry(member.to_string())
                         .or_insert_with(|| Value::Undefined) = val
                 }
@@ -784,14 +793,13 @@ unsafe fn debug_print(val: &Value) {
 
 // EmbeddedFunction(2)
 unsafe fn array_push(args: Vec<Value>, _: &mut VM) {
-    if let Value::Array(ref elems, ref this) = args[0] {
-        let mut elems = (*elems).borrow_mut();
+    if let Value::Array(ref map) = args[0] {
+        let mut map = map.borrow_mut();
+        // let mut elems = &mut map.elems;
         for val in args[1..].iter() {
-            elems.push(val.clone());
+            map.elems.push(val.clone());
         }
-        if let Value::Number(ref mut length) = *(*this).borrow_mut().get_mut("length").unwrap() {
-            *length += args[1..].len() as f64;
-        }
+        map.length += args[1..].len();
     } else {
         unreachable!()
     };
