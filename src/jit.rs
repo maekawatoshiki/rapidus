@@ -106,7 +106,7 @@ impl TracingJit {
             return Some(val.clone());
         }
 
-        if self.func_called_enough_times(pc) {
+        if self.func_is_called_enough_times(pc) {
             let info = self
                 .func_addr_in_bytecode_and_its_entity
                 .get(&pc)
@@ -513,7 +513,7 @@ impl TracingJit {
 
 impl TracingJit {
     #[inline]
-    fn func_called_enough_times(&mut self, pc: usize) -> bool {
+    fn func_is_called_enough_times(&mut self, pc: usize) -> bool {
         *self.count.entry(pc).or_insert(0) >= 10
     }
 

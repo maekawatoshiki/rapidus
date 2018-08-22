@@ -567,18 +567,17 @@ fn get_member(self_: &mut VM) {
             match member {
                 // Index
                 Value::Number(n) if n - n.floor() == 0.0 => {
-                    let val = self_.state.stack[self_.state.bp + n as usize].clone();
-                    self_.state.stack.push(val);
-                    // TODO
-                    // let arr = &map.elems;
-                    // if n as usize >= map.length {
-                    //     self_.state.stack.push(Value::Undefined);
-                    // } else {
-                    //     self_.state.stack.push(arr[n as usize].clone())
-                    // }
+                    let idx = self_.state.bp + n as usize;
+                    if idx < self_.state.lp {
+                        let val = self_.state.stack[idx].clone();
+                        self_.state.stack.push(val);
+                    }
                 }
                 Value::String(s) if unsafe { CStr::from_ptr(s).to_str().unwrap() } == "length" => {
-                    self_.state.stack.push(Value::Number(self_.state.lp as f64- self_.state.bp as f64));
+                    self_
+                        .state
+                        .stack
+                        .push(Value::Number(self_.state.lp as f64 - self_.state.bp as f64));
                 }
                 _ => self_.state.stack.push(Value::Undefined),
             }
@@ -624,14 +623,10 @@ fn set_member(self_: &mut VM) {
             match member {
                 // Index
                 Value::Number(n) if n - n.floor() == 0.0 => {
-                    self_.state.stack[self_.state.bp + n as usize] = val;
-                    // TODO
-                    // let arr = &map.elems;
-                    // if n as usize >= map.length {
-                    //     self_.state.stack.push(Value::Undefined);
-                    // } else {
-                    //     self_.state.stack.push(arr[n as usize].clone())
-                    // }
+                    let idx = self_.state.bp + n as usize;
+                    if idx < self_.state.lp {
+                        self_.state.stack[idx] = val;
+                    }
                 }
                 _ => {}
             }
