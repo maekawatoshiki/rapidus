@@ -102,6 +102,7 @@ pub enum Symbol {
     AssignLAnd,
     AssignLOr,
     Hash,
+    Rest,
 }
 
 impl Token {

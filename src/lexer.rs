@@ -323,13 +323,24 @@ impl Lexer {
             ']' => symbol = Symbol::ClosingBoxBracket,
             '{' => symbol = Symbol::OpeningBrace,
             '}' => symbol = Symbol::ClosingBrace,
-            '.' => symbol = Symbol::Point,
             ',' => symbol = Symbol::Comma,
             ';' => symbol = Symbol::Semicolon,
             ':' => symbol = Symbol::Colon,
             '~' => symbol = Symbol::BitwiseNot,
             '?' => symbol = Symbol::Question,
             '#' => symbol = Symbol::Hash,
+            '.' => {
+                if self.skip_char_if_any('.')? {
+                    symbol = if self.skip_char_if_any('.')? {
+                        Symbol::Rest
+                    } else {
+                        // TODO: better error handler needed
+                        return Err(())
+                    }
+                } else {
+                    symbol = Symbol::Point
+                }
+            }
             _ => {}
         };
 

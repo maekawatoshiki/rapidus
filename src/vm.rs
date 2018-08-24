@@ -123,6 +123,7 @@ pub const JMP_IF_FALSE: u8 = 0x20;
 pub const JMP: u8 = 0x21;
 pub const CALL: u8 = 0x22;
 pub const RETURN: u8 = 0x23;
+pub const ASG_FREST_PARAM: u8 = 0x24;
 
 pub struct VM {
     pub global_objects: Rc<RefCell<HashMap<String, Value>>>,
@@ -130,7 +131,7 @@ pub struct VM {
     pub state: VMState,
     pub const_table: ConstantTable,
     pub insts: ByteCode,
-    pub op_table: [fn(&mut VM); 36],
+    pub op_table: [fn(&mut VM); 37],
     pub builtin_functions: [unsafe fn(Vec<Value>, &mut VM); 4],
 }
 
@@ -228,6 +229,7 @@ impl VM {
                 jmp,
                 call,
                 return_,
+                assign_func_rest_param,
             ],
             builtin_functions: [console_log, process_stdout_write, array_push, math_floor],
         }
@@ -790,6 +792,18 @@ fn return_(self_: &mut VM) {
     }
 }
 
+fn assign_func_rest_param(self_: &mut VM) {
+    self_.state.pc += 1; // assign_func_rest_param
+    get_int32!(self_, num_func_param, usize);
+    get_int32!(self_, dst_var_id, usize);
+    let mut rest_params = vec![];
+    for i in num_func_param..(self_.state.lp - self_.state.bp) {
+        rest_params.push(self_.state.stack[self_.state.bp + i].clone());
+    }
+    self_.state.stack[self_.state.lp + dst_var_id] =
+        Value::Array(Rc::new(RefCell::new(ArrayValue::new(rest_params))));
+}
+
 // EmbeddedFunction(0)
 unsafe fn console_log(args: Vec<Value>, _: &mut VM) {
     let args_len = args.len();
@@ -801,7 +815,7 @@ unsafe fn console_log(args: Vec<Value>, _: &mut VM) {
             Value::Number(ref n) => {
                 libc::printf(b"%.15g\0".as_ptr() as RawStringPtr, *n);
             }
-            Value::Object(_) => debug_print(&args[i]),
+            Value::Object(_) | Value::Array(_) => debug_print(&args[i]),
             Value::Undefined => {
                 libc::printf(b"undefined\0".as_ptr() as RawStringPtr);
             }
@@ -856,6 +870,14 @@ unsafe fn debug_print(val: &Value) {
                 libc::printf(", \0".as_ptr() as RawStringPtr);
             }
             libc::printf("}\0".as_ptr() as RawStringPtr);
+        }
+        &Value::Array(ref values) => {
+            libc::printf("[ \0".as_ptr() as RawStringPtr);
+            for val in &*(*values).borrow().elems {
+                debug_print(&val);
+                libc::printf(", \0".as_ptr() as RawStringPtr);
+            }
+            libc::printf("]\0".as_ptr() as RawStringPtr);
         }
         &Value::Undefined => {
             libc::printf(b"undefined\0".as_ptr() as RawStringPtr);

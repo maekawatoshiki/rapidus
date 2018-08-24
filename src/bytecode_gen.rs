@@ -1,7 +1,8 @@
+use id::Id;
 use vm::{
-    ConstantTable, PUSH_INT32, PUSH_INT8, Value, ADD, CALL, CONSTRACT, CREATE_ARRAY,
-    CREATE_CONTEXT, CREATE_OBJECT, DIV, END, EQ, GE, GET_ARG_LOCAL, GET_GLOBAL, GET_LOCAL,
-    GET_MEMBER, GT, JMP, JMP_IF_FALSE, LE, LT, MUL, NE, NEG, PUSH_ARGUMENTS, PUSH_CONST,
+    ConstantTable, PUSH_INT32, PUSH_INT8, Value, ADD, ASG_FREST_PARAM, CALL, CONSTRACT,
+    CREATE_ARRAY, CREATE_CONTEXT, CREATE_OBJECT, DIV, END, EQ, GE, GET_ARG_LOCAL, GET_GLOBAL,
+    GET_LOCAL, GET_MEMBER, GT, JMP, JMP_IF_FALSE, LE, LT, MUL, NE, NEG, PUSH_ARGUMENTS, PUSH_CONST,
     PUSH_FALSE, PUSH_THIS, PUSH_TRUE, REM, RETURN, SET_ARG_LOCAL, SET_GLOBAL, SET_LOCAL,
     SET_MEMBER, SUB,
 };
@@ -172,6 +173,17 @@ impl ByteCodeGen {
 
     pub fn gen_return(&self, insts: &mut ByteCode) {
         insts.push(RETURN);
+    }
+
+    pub fn gen_assign_func_rest_param(
+        &self,
+        num_func_params: usize,
+        dst_var_id: Id,
+        insts: &mut ByteCode,
+    ) {
+        insts.push(ASG_FREST_PARAM);
+        self.gen_int32(num_func_params as i32, insts);
+        self.gen_int32(dst_var_id as i32, insts);
     }
 
     // Utils
@@ -346,6 +358,10 @@ pub fn show(code: &ByteCode) {
             RETURN => {
                 println!("Return");
                 i += 1
+            }
+            ASG_FREST_PARAM => {
+                println!("AssignFunctionRestParam");
+                i += 9
             }
             _ => unreachable!(),
         }

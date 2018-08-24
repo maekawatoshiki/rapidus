@@ -6,15 +6,17 @@ use std::collections::HashSet;
 pub struct FormalParameter {
     pub name: String,
     pub init: Option<Node>,
+    pub is_rest_param: bool,
 }
 
 pub type FormalParameters = Vec<FormalParameter>;
 
 impl FormalParameter {
-    pub fn new(name: String, init: Option<Node>) -> FormalParameter {
+    pub fn new(name: String, init: Option<Node>, is_rest_param: bool) -> FormalParameter {
         FormalParameter {
             name: name,
             init: init,
+            is_rest_param: is_rest_param,
         }
     }
 }

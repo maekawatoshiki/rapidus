@@ -1,6 +1,8 @@
+pub type Id = usize;
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct IdGen {
-    pub id: Vec<usize>,
+    pub id: Vec<Id>,
 }
 
 impl IdGen {
@@ -8,13 +10,13 @@ impl IdGen {
         IdGen { id: vec![0] }
     }
 
-    pub fn gen_id(&mut self) -> usize {
+    pub fn gen_id(&mut self) -> Id {
         let id = *self.id.last().unwrap();
         *self.id.last_mut().unwrap() += 1;
         id
     }
 
-    pub fn get_cur_id(&mut self) -> usize {
+    pub fn get_cur_id(&mut self) -> Id {
         *self.id.last().unwrap()
     }
 

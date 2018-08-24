@@ -808,7 +808,11 @@ impl Parser {
         let mut params = vec![];
 
         loop {
-            params.push(self.read_formal_parameter()?);
+            params.push(if self.lexer.skip(Kind::Symbol(Symbol::Rest)) {
+                self.read_function_rest_parameter()?
+            } else {
+                self.read_formal_parameter()?
+            });
 
             if self.lexer.skip(Kind::Symbol(Symbol::ClosingParen)) {
                 break;
@@ -833,7 +837,21 @@ impl Parser {
             );
         };
         // TODO: Implement initializer.
-        Ok(FormalParameter::new(name, None))
+        Ok(FormalParameter::new(name, None, false))
+    }
+
+    fn read_function_rest_parameter(&mut self) -> Result<FormalParameter, ()> {
+        token_start_pos!(pos, self.lexer);
+        let name = if let Kind::Identifier(name) = self.lexer.next()?.kind {
+            name
+        } else {
+            self.show_error_at(
+                pos,
+                ErrorMsgKind::Normal,
+                "expect identifier (unsupported feature)",
+            );
+        };
+        Ok(FormalParameter::new(name, None, true))
     }
 }
 
@@ -1615,8 +1633,8 @@ fn function_decl() {
                     false,
                     HashSet::new(),
                     vec![
-                        FormalParameter::new("x".to_string(), None),
-                        FormalParameter::new("y".to_string(), None),
+                        FormalParameter::new("x".to_string(), None, false),
+                        FormalParameter::new("y".to_string(), None, false),
                     ],
                     Box::new(Node::new(
                         NodeBase::StatementList(vec![Node::new(
