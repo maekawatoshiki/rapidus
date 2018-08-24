@@ -113,7 +113,7 @@ impl FreeVariableSolver {
             NodeBase::This => self.use_this = true,
             NodeBase::Identifier(ref mut name) => {
                 if let Some(name_) = self.get_mangled_name(name.as_str()) {
-                    println!("replace {} with {}", name, name_);
+                    // println!("replace {} with {}", name, name_);
                     *name = name_;
                 }
             }
