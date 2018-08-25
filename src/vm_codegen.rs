@@ -4,10 +4,11 @@ use node::{BinOp, FormalParameters, Node, NodeBase, PropertyDefinition, UnaryOp}
 use std::collections::HashSet;
 use vm::{alloc_rawstring, Value};
 use vm::{
-    PUSH_INT32, PUSH_INT8, ADD, ASG_FREST_PARAM, CALL, CONSTRUCT, CREATE_ARRAY, CREATE_CONTEXT,
-    CREATE_OBJECT, DIV, END, EQ, GE, GET_ARG_LOCAL, GET_GLOBAL, GET_LOCAL, GET_MEMBER, GT, JMP,
-    JMP_IF_FALSE, LE, LT, MUL, NE, NEG, PUSH_ARGUMENTS, PUSH_CONST, PUSH_FALSE, PUSH_THIS,
-    PUSH_TRUE, REM, RETURN, SET_ARG_LOCAL, SET_GLOBAL, SET_LOCAL, SET_MEMBER, SUB,
+    new_value_function, PUSH_INT32, PUSH_INT8, ADD, ASG_FREST_PARAM, CALL, CONSTRUCT, CREATE_ARRAY,
+    CREATE_CONTEXT, CREATE_OBJECT, DIV, END, EQ, GE, GET_ARG_LOCAL, GET_GLOBAL, GET_LOCAL,
+    GET_MEMBER, GT, JMP, JMP_IF_FALSE, LE, LT, MUL, NE, NEG, PUSH_ARGUMENTS, PUSH_CONST,
+    PUSH_FALSE, PUSH_THIS, PUSH_TRUE, REM, RETURN, SET_ARG_LOCAL, SET_GLOBAL, SET_LOCAL,
+    SET_MEMBER, SUB,
 };
 
 use std::cell::RefCell;
@@ -141,6 +142,7 @@ impl VMCodeGen {
         self.bytecode_gen.gen_end(insts);
 
         let mut function_value_list = HashMap::new();
+
         {
             function_value_list.insert("console".to_string(), {
                 let mut map = HashMap::new();
@@ -176,23 +178,12 @@ impl VMCodeGen {
         ) in &self.functions
         {
             let pos = insts.len();
-            let empty_prototype = {
-                let mut hm = HashMap::new();
-                hm.insert(
-                    "prototype".to_string(),
-                    Value::Object(Rc::new(RefCell::new(HashMap::new()))),
-                );
-                hm
-            };
             let mut val;
             if *use_this {
-                val = Value::NeedThis(Box::new(Value::Function(
-                    pos,
-                    Rc::new(RefCell::new(empty_prototype)),
-                )));
+                val = Value::NeedThis(Box::new(new_value_function(pos)));
                 self.global_varmap.insert(name.clone(), val.clone());
             } else {
-                val = Value::Function(pos, Rc::new(RefCell::new(empty_prototype)));
+                val = new_value_function(pos);
                 self.global_varmap.insert(name.clone(), val.clone());
             }
             function_value_list.insert(name.clone(), val.clone());

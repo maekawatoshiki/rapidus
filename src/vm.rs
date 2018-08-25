@@ -72,6 +72,28 @@ impl Value {
     }
 }
 
+pub fn new_value_function(pos: usize) -> Value {
+    let mut val = Value::Function(
+        pos,
+        Rc::new(RefCell::new({
+            let mut hm = HashMap::new();
+            hm.insert(
+                "prototype".to_string(),
+                Value::Object(Rc::new(RefCell::new(HashMap::new()))),
+            );
+            hm
+        })),
+    );
+    let v2 = val.clone();
+    if let Value::Function(_, ref mut obj) = &mut val {
+        // TODO: Add constructor of this function itself (==Function). (not prototype.constructor)
+        if let Value::Object(ref mut obj) = (*obj.borrow_mut()).get_mut("prototype").unwrap() {
+            obj.borrow_mut().insert("constructor".to_string(), v2);
+        }
+    }
+    val
+}
+
 #[derive(Debug, Clone)]
 pub struct ConstantTable {
     pub value: Vec<Value>,
@@ -539,10 +561,10 @@ fn get_member(self_: &mut VM) {
         | Value::Function(_, map)
         | Value::NeedThis(box Value::Function(_, map)) => {
             match find_val(&*map.borrow(), member.to_string().as_str()) {
-                Value::NeedThis(callee) => self_
-                    .state
-                    .stack
-                    .push(Value::WithThis(Box::new((*callee, Value::Object(map.clone()))))),
+                Value::NeedThis(callee) => self_.state.stack.push(Value::WithThis(Box::new((
+                    *callee,
+                    Value::Object(map.clone()),
+                )))),
                 val => self_.state.stack.push(val),
             }
         }
