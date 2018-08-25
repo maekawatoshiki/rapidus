@@ -176,15 +176,23 @@ impl VMCodeGen {
         ) in &self.functions
         {
             let pos = insts.len();
+            let empty_prototype = {
+                let mut hm = HashMap::new();
+                hm.insert(
+                    "prototype".to_string(),
+                    Value::Object(Rc::new(RefCell::new(HashMap::new()))),
+                );
+                hm
+            };
             let mut val;
             if *use_this {
                 val = Value::NeedThis(Box::new(Value::Function(
                     pos,
-                    Rc::new(RefCell::new(HashMap::new())),
+                    Rc::new(RefCell::new(empty_prototype)),
                 )));
                 self.global_varmap.insert(name.clone(), val.clone());
             } else {
-                val = Value::Function(pos, Rc::new(RefCell::new(HashMap::new())));
+                val = Value::Function(pos, Rc::new(RefCell::new(empty_prototype)));
                 self.global_varmap.insert(name.clone(), val.clone());
             }
             function_value_list.insert(name.clone(), val.clone());

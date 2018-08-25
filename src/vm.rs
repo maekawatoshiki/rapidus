@@ -319,12 +319,23 @@ fn construct(self_: &mut VM) {
 
     loop {
         match callee {
-            Value::Function(dst, _) => {
+            Value::Function(dst, obj) => {
                 self_.state.history.push((0, 0, 0, self_.state.pc));
 
                 // insert new 'this'
                 let pos = self_.state.stack.len() - argc;
-                let new_this = Rc::new(RefCell::new(HashMap::new()));
+                let new_this = {
+                    let mut map = HashMap::new();
+                    map.insert(
+                        "__proto__".to_string(),
+                        (*obj)
+                            .borrow()
+                            .get("prototype")
+                            .unwrap_or(&Value::Undefined)
+                            .clone(),
+                    );
+                    Rc::new(RefCell::new(map))
+                };
                 self_
                     .state
                     .stack
@@ -332,7 +343,9 @@ fn construct(self_: &mut VM) {
 
                 self_.state.pc = dst as isize;
                 self_.state.stack.push(Value::Number(argc as f64 + 1.0));
+
                 self_.do_run();
+
                 match self_.state.stack.last_mut().unwrap() {
                     &mut Value::Object(_)
                     | &mut Value::Array(_)
@@ -525,19 +538,12 @@ fn get_member(self_: &mut VM) {
         Value::Object(map)
         | Value::Function(_, map)
         | Value::NeedThis(box Value::Function(_, map)) => {
-            match map.borrow().get(member.to_string().as_str()) {
-                Some(addr) => {
-                    let val = addr.clone();
-                    if let Value::NeedThis(callee) = val {
-                        self_.state.stack.push(Value::WithThis(Box::new((
-                            *callee,
-                            Value::Object(map.clone()),
-                        ))))
-                    } else {
-                        self_.state.stack.push(val)
-                    }
-                }
-                None => self_.state.stack.push(Value::Undefined),
+            match find_val(&*map.borrow(), member.to_string().as_str()) {
+                Value::NeedThis(callee) => self_
+                    .state
+                    .stack
+                    .push(Value::WithThis(Box::new((*callee, Value::Object(map.clone()))))),
+                val => self_.state.stack.push(val),
             }
         }
         Value::Array(map) => {
@@ -555,19 +561,12 @@ fn get_member(self_: &mut VM) {
                 Value::String(s) if unsafe { CStr::from_ptr(s).to_str().unwrap() } == "length" => {
                     self_.state.stack.push(Value::Number(map.length as f64));
                 }
-                _ => match map.obj.get(member.to_string().as_str()) {
-                    Some(addr) => {
-                        let val = addr.clone();
-                        if let Value::NeedThis(callee) = val {
-                            self_
-                                .state
-                                .stack
-                                .push(Value::WithThis(Box::new((*callee, parent))))
-                        } else {
-                            self_.state.stack.push(val)
-                        }
-                    }
-                    None => self_.state.stack.push(Value::Undefined),
+                _ => match find_val(&map.obj, member.to_string().as_str()) {
+                    Value::NeedThis(callee) => self_
+                        .state
+                        .stack
+                        .push(Value::WithThis(Box::new((*callee, parent)))),
+                    val => self_.state.stack.push(val),
                 },
             }
         }
@@ -591,6 +590,16 @@ fn get_member(self_: &mut VM) {
             }
         }
         e => unreachable!("{:?}", e),
+    }
+
+    fn find_val(obj: &HashMap<String, Value>, key: &str) -> Value {
+        match obj.get(key) {
+            Some(addr) => addr.clone(),
+            None => match obj.get("__proto__") {
+                Some(Value::Object(obj)) => find_val(&*(*obj).borrow(), key),
+                _ => Value::Undefined,
+            },
+        }
     }
 }
 
@@ -821,7 +830,7 @@ unsafe fn console_log(args: Vec<Value>, _: &mut VM) {
             Value::Number(ref n) => {
                 libc::printf(b"%.15g\0".as_ptr() as RawStringPtr, *n);
             }
-            Value::Object(_) | Value::Array(_) | Value::Function(_,_)=> debug_print(&args[i]),
+            Value::Object(_) | Value::Array(_) | Value::Function(_, _) => debug_print(&args[i]),
             Value::Undefined => {
                 libc::printf(b"undefined\0".as_ptr() as RawStringPtr);
             }
@@ -885,7 +894,7 @@ unsafe fn debug_print(val: &Value) {
             }
             libc::printf("]\0".as_ptr() as RawStringPtr);
         }
-        &Value::Function(_,_) => {
+        &Value::Function(_, _) => {
             libc::printf("[Function]\0".as_ptr() as RawStringPtr);
         }
         &Value::Undefined => {
