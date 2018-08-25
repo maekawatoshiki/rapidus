@@ -4,7 +4,7 @@ use node::{BinOp, FormalParameters, Node, NodeBase, PropertyDefinition, UnaryOp}
 use std::collections::HashSet;
 use vm::{alloc_rawstring, Value};
 use vm::{
-    PUSH_INT32, PUSH_INT8, ADD, ASG_FREST_PARAM, CALL, CONSTRACT, CREATE_ARRAY, CREATE_CONTEXT,
+    PUSH_INT32, PUSH_INT8, ADD, ASG_FREST_PARAM, CALL, CONSTRUCT, CREATE_ARRAY, CREATE_CONTEXT,
     CREATE_OBJECT, DIV, END, EQ, GE, GET_ARG_LOCAL, GET_GLOBAL, GET_LOCAL, GET_MEMBER, GT, JMP,
     JMP_IF_FALSE, LE, LT, MUL, NE, NEG, PUSH_ARGUMENTS, PUSH_CONST, PUSH_FALSE, PUSH_THIS,
     PUSH_TRUE, REM, RETURN, SET_ARG_LOCAL, SET_GLOBAL, SET_LOCAL, SET_MEMBER, SUB,
@@ -200,7 +200,7 @@ impl VMCodeGen {
             match insts[i] {
                 ASG_FREST_PARAM => i += 9,
                 CREATE_CONTEXT => i += 5,
-                CONSTRACT | CREATE_OBJECT | PUSH_CONST | PUSH_INT32 | SET_GLOBAL | GET_LOCAL
+                CONSTRUCT | CREATE_OBJECT | PUSH_CONST | PUSH_INT32 | SET_GLOBAL | GET_LOCAL
                 | SET_ARG_LOCAL | GET_ARG_LOCAL | CREATE_ARRAY | SET_LOCAL | JMP_IF_FALSE | JMP
                 | CALL => i += 5,
                 PUSH_INT8 => i += 2,
@@ -397,7 +397,7 @@ impl VMCodeGen {
         self.run(expr, insts);
         let len = insts.len();
         if insts[len - 1 - 4] == CALL {
-            insts[len - 1 - 4] = CONSTRACT;
+            insts[len - 1 - 4] = CONSTRUCT;
         } else {
             unreachable!()
         }

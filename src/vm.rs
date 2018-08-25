@@ -89,7 +89,7 @@ impl ConstantTable {
 
 pub const END: u8 = 0x00;
 pub const CREATE_CONTEXT: u8 = 0x01;
-pub const CONSTRACT: u8 = 0x02;
+pub const CONSTRUCT: u8 = 0x02;
 pub const CREATE_OBJECT: u8 = 0x03;
 pub const CREATE_ARRAY: u8 = 0x04;
 pub const PUSH_INT8: u8 = 0x05;
@@ -195,7 +195,7 @@ impl VM {
             op_table: [
                 end,
                 create_context,
-                constract,
+                construct,
                 create_object,
                 create_array,
                 push_int8,
@@ -311,8 +311,8 @@ fn create_context(self_: &mut VM) {
     }
 }
 
-fn constract(self_: &mut VM) {
-    self_.state.pc += 1; // constract
+fn construct(self_: &mut VM) {
+    self_.state.pc += 1; // construct
     get_int32!(self_, argc, usize);
 
     let mut callee = self_.state.stack.pop().unwrap();
