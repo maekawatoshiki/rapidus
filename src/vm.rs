@@ -769,7 +769,11 @@ fn call(self_: &mut VM) {
 
                 if args_all_number(&self_.state.stack, argc) {
                     unsafe {
-                        if let Some(f) = self_.jit.can_jit(dst) {
+                        if let Some(f) =
+                            self_
+                                .jit
+                                .can_jit(&self_.insts, &self_.const_table, dst, argc)
+                        {
                             let mut args = vec![];
                             for _ in 0..argc {
                                 args.push(self_.state.stack.pop().unwrap());
@@ -779,6 +783,7 @@ fn call(self_: &mut VM) {
                                 .state
                                 .stack
                                 .push(self_.jit.run_llvm_func(dst, f, args));
+                            println!("jit ret val: {:?}", self_.state.stack.last());
                             break;
                         }
                     }

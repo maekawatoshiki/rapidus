@@ -1,6 +1,14 @@
 use node::{BinOp, Node, NodeBase};
 use vm;
+use vm::{
+    PUSH_INT32, PUSH_INT8, ADD, ASG_FREST_PARAM, CALL, CONSTRUCT, CREATE_ARRAY, CREATE_CONTEXT,
+    CREATE_OBJECT, DIV, END, EQ, GE, GET_ARG_LOCAL, GET_GLOBAL, GET_LOCAL, GET_MEMBER, GT, JMP,
+    JMP_IF_FALSE, LE, LT, MUL, NE, NEG, PUSH_ARGUMENTS, PUSH_CONST, PUSH_FALSE, PUSH_THIS,
+    PUSH_TRUE, REM, RETURN, SET_ARG_LOCAL, SET_GLOBAL, SET_LOCAL, SET_MEMBER, SUB,
+};
 use vm_codegen::FunctionInfoForJIT;
+
+use rand::random;
 
 use std::collections::HashMap;
 
@@ -30,6 +38,23 @@ impl CastIntoLLVMType for ValueType {
             &ValueType::Bool => LLVMInt1Type(),
         }
     }
+}
+
+macro_rules! get_int8 {
+    ($insts:ident, $pc:ident, $var:ident, $ty:ty) => {
+        let $var = $insts[$pc as usize] as $ty;
+        $pc += 1;
+    };
+}
+
+macro_rules! get_int32 {
+    ($insts:ident, $pc:ident, $var:ident, $ty:ty) => {
+        let $var = (($insts[$pc as usize + 3] as $ty) << 24)
+            + (($insts[$pc as usize + 2] as $ty) << 16)
+            + (($insts[$pc as usize + 1] as $ty) << 8)
+            + ($insts[$pc as usize + 0] as $ty);
+        $pc += 4;
+    };
 }
 
 #[derive(Debug, Clone)]
@@ -101,7 +126,13 @@ unsafe fn cur_bb_has_no_terminator(builder: LLVMBuilderRef) -> bool {
 }
 
 impl TracingJit {
-    pub unsafe fn can_jit(&mut self, pc: usize) -> Option<fn()> {
+    pub unsafe fn can_jit(
+        &mut self,
+        insts: &Vec<u8>,
+        const_table: &vm::ConstantTable,
+        pc: usize,
+        argc: usize,
+    ) -> Option<fn()> {
         if let Some(val) = self.func_addr_in_bytecode_and_its_addr_in_llvm.get(&pc) {
             return Some(val.clone());
         }
@@ -117,9 +148,11 @@ impl TracingJit {
                 return None;
             }
 
+            let name = format!("jit_func.{}", random::<u32>());
+
             // If gen_code fails, it means the function can't be JIT-compiled and should never be
             // compiled. (cannot_jit = true)
-            if let Err(()) = self.gen_code(pc, &info) {
+            if let Err(()) = self.gen_code(name.clone(), insts, const_table, pc, argc) {
                 self.func_addr_in_bytecode_and_its_entity
                     .get_mut(&pc)
                     .unwrap()
@@ -130,11 +163,12 @@ impl TracingJit {
             let f =
                 ::std::mem::transmute::<u64, fn()>(llvm::execution_engine::LLVMGetFunctionAddress(
                     self.exec_engine,
-                    CString::new(info.name.as_str()).unwrap().as_ptr(),
+                    CString::new(name.as_str()).unwrap().as_ptr(),
                 ));
-            // LLVMDumpModule(self.module);
+            LLVMDumpModule(self.module);
             self.func_addr_in_bytecode_and_its_addr_in_llvm
                 .insert(pc, f);
+
             return Some(f);
         }
 
@@ -198,10 +232,13 @@ impl TracingJit {
 
     unsafe fn gen_code(
         &mut self,
-        pc: usize,
-        info: &FunctionInfoForJIT,
+        name: String,
+        insts: &Vec<u8>,
+        const_table: &vm::ConstantTable,
+        mut pc: usize,
+        argc: usize,
     ) -> Result<LLVMValueRef, ()> {
-        if info.params.len() > MAX_FUNCTION_PARAMS {
+        if argc > MAX_FUNCTION_PARAMS {
             return Err(());
         }
 
@@ -213,33 +250,37 @@ impl TracingJit {
         let func_ty = LLVMFunctionType(
             func_ret_ty,
             vec![LLVMDoubleType()]
-                .repeat(info.params.len())
+                .repeat(argc)
                 .as_mut_slice()
                 .as_mut_ptr(),
-            info.params.len() as u32,
+            argc as u32,
             0,
         );
         let func = LLVMAddFunction(
             self.module,
-            CString::new(info.name.as_str()).unwrap().as_ptr(),
+            CString::new(name.as_str()).unwrap().as_ptr(),
             func_ty,
         );
         let bb_entry = LLVMAppendBasicBlock(func, CString::new("entry").unwrap().as_ptr());
         LLVMPositionBuilderAtEnd(self.builder, bb_entry);
 
         let mut env = HashMap::new();
-        env.insert(info.name.clone(), func);
+        // env.insert(, func);
         self.cur_func = Some(func);
 
-        for (i, arg) in info.params.iter().enumerate() {
+        for i in 0..argc {
             LLVMBuildStore(
                 self.builder,
                 LLVMGetParam(func, i as u32),
-                self.declare_local_var(&arg.name, &mut env),
+                self.declare_local_var(i, true, &mut env),
             );
         }
 
-        self.gen(&mut env, &info.body)?;
+        let func_pos = pc;
+        pc += 1; // CreateContext
+        pc += 4; // |- num_local_var
+
+        self.gen(insts, const_table, func_pos, pc, &mut env)?;
 
         let mut iter_bb = LLVMGetFirstBasicBlock(func);
         while iter_bb != ptr::null_mut() {
@@ -251,15 +292,16 @@ impl TracingJit {
             iter_bb = LLVMGetNextBasicBlock(iter_bb);
         }
 
-        LLVMRunPassManager(self.pass_manager, self.module);
+        // LLVMRunPassManager(self.pass_manager, self.module);
 
         Ok(func)
     }
 
     unsafe fn declare_local_var(
         &mut self,
-        name: &String,
-        env: &mut HashMap<String, LLVMValueRef>,
+        id: usize,
+        is_param: bool,
+        env: &mut HashMap<(usize, bool), LLVMValueRef>,
     ) -> LLVMValueRef {
         let func = self.cur_func.unwrap();
         let builder = LLVMCreateBuilderInContext(self.context);
@@ -276,245 +318,401 @@ impl TracingJit {
             LLVMDoubleType(),
             CString::new("").unwrap().as_ptr(),
         );
-        env.insert(name.clone(), var);
+        env.insert((id, is_param), var);
         var
     }
 
     unsafe fn gen(
         &mut self,
-        env: &mut HashMap<String, LLVMValueRef>,
-        node: &Node,
-    ) -> Result<LLVMValueRef, ()> {
-        match node.base {
-            NodeBase::StatementList(ref list) => {
-                for elem in list {
-                    self.gen(env, elem)?;
-                }
-                Ok(ptr::null_mut())
-            }
-            NodeBase::BinaryOp(box ref lhs, box ref rhs, ref op) => match op {
-                &BinOp::Add => Ok(LLVMBuildFAdd(
-                    self.builder,
-                    self.gen(env, lhs)?,
-                    self.gen(env, rhs)?,
-                    CString::new("fadd").unwrap().as_ptr(),
-                )),
-                &BinOp::Sub => Ok(LLVMBuildFSub(
-                    self.builder,
-                    self.gen(env, lhs)?,
-                    self.gen(env, rhs)?,
-                    CString::new("fsub").unwrap().as_ptr(),
-                )),
-                &BinOp::Mul => Ok(LLVMBuildFMul(
-                    self.builder,
-                    self.gen(env, lhs)?,
-                    self.gen(env, rhs)?,
-                    CString::new("fsub").unwrap().as_ptr(),
-                )),
-                &BinOp::Rem => Ok(LLVMBuildSIToFP(
-                    self.builder,
-                    LLVMBuildSRem(
-                        self.builder,
-                        LLVMBuildFPToSI(
-                            self.builder,
-                            self.gen(env, lhs)?,
-                            LLVMInt64Type(),
-                            CString::new("").unwrap().as_ptr(),
-                        ),
-                        LLVMBuildFPToSI(
-                            self.builder,
-                            self.gen(env, rhs)?,
-                            LLVMInt64Type(),
-                            CString::new("").unwrap().as_ptr(),
-                        ),
-                        CString::new("fsub").unwrap().as_ptr(),
-                    ),
-                    LLVMDoubleType(),
-                    CString::new("").unwrap().as_ptr(),
-                )),
-                &BinOp::Lt => Ok(LLVMBuildFCmp(
-                    self.builder,
-                    llvm::LLVMRealPredicate::LLVMRealOLT,
-                    self.gen(env, lhs)?,
-                    self.gen(env, rhs)?,
-                    CString::new("flt").unwrap().as_ptr(),
-                )),
-                &BinOp::Le => Ok(LLVMBuildFCmp(
-                    self.builder,
-                    llvm::LLVMRealPredicate::LLVMRealOLE,
-                    self.gen(env, lhs)?,
-                    self.gen(env, rhs)?,
-                    CString::new("fle").unwrap().as_ptr(),
-                )),
-                &BinOp::Gt => Ok(LLVMBuildFCmp(
-                    self.builder,
-                    llvm::LLVMRealPredicate::LLVMRealOGT,
-                    self.gen(env, lhs)?,
-                    self.gen(env, rhs)?,
-                    CString::new("fgt").unwrap().as_ptr(),
-                )),
-                &BinOp::Ge => Ok(LLVMBuildFCmp(
-                    self.builder,
-                    llvm::LLVMRealPredicate::LLVMRealOGE,
-                    self.gen(env, lhs)?,
-                    self.gen(env, rhs)?,
-                    CString::new("fge").unwrap().as_ptr(),
-                )),
-                &BinOp::Eq => Ok(LLVMBuildFCmp(
-                    self.builder,
-                    llvm::LLVMRealPredicate::LLVMRealOEQ,
-                    self.gen(env, lhs)?,
-                    self.gen(env, rhs)?,
-                    CString::new("feq").unwrap().as_ptr(),
-                )),
-                _ => panic!(),
-            },
-            NodeBase::If(box ref cond, box ref then, box ref else_) => {
-                let cond_val_tmp = self.gen(env, cond)?;
-                let cond_val = cond_val_tmp;
+        insts: &Vec<u8>,
+        const_table: &vm::ConstantTable,
+        func_pos: usize,
+        mut pc: usize,
+        env: &mut HashMap<(usize, bool), LLVMValueRef>,
+    ) -> Result<(), ()> {
+        let func = self.cur_func.unwrap();
+        let mut stack: Vec<LLVMValueRef> = vec![];
 
-                let func = self.cur_func.unwrap();
-
-                let bb_then = LLVMAppendBasicBlock(func, CString::new("then").unwrap().as_ptr());
-                let bb_else = LLVMAppendBasicBlock(func, CString::new("else").unwrap().as_ptr());
-                let bb_merge = LLVMAppendBasicBlock(func, CString::new("merge").unwrap().as_ptr());
-
-                LLVMBuildCondBr(self.builder, cond_val, bb_then, bb_else);
-
-                LLVMPositionBuilderAtEnd(self.builder, bb_then);
-
-                self.gen(env, then)?;
-                if cur_bb_has_no_terminator(self.builder) {
-                    LLVMBuildBr(self.builder, bb_merge);
-                }
-
-                LLVMPositionBuilderAtEnd(self.builder, bb_else);
-
-                self.gen(env, else_)?;
-                if cur_bb_has_no_terminator(self.builder) {
-                    LLVMBuildBr(self.builder, bb_merge);
-                }
-
-                LLVMPositionBuilderAtEnd(self.builder, bb_merge);
-
-                Ok(ptr::null_mut())
-            }
-            NodeBase::While(box ref cond, box ref body) => {
-                let func = self.cur_func.unwrap();
-
-                let bb_before_loop =
-                    LLVMAppendBasicBlock(func, CString::new("before_loop").unwrap().as_ptr());
-                let bb_loop = LLVMAppendBasicBlock(func, CString::new("loop").unwrap().as_ptr());
-                let bb_after_loop =
-                    LLVMAppendBasicBlock(func, CString::new("after_loop").unwrap().as_ptr());
-
-                self.break_labels.push(bb_before_loop);
-                self.continue_labels.push(bb_loop);
-
-                LLVMBuildBr(self.builder, bb_before_loop);
-
-                LLVMPositionBuilderAtEnd(self.builder, bb_before_loop);
-                let cond_val_tmp = self.gen(env, cond)?;
-                let cond_val = cond_val_tmp;
-                LLVMBuildCondBr(self.builder, cond_val, bb_loop, bb_after_loop);
-
-                LLVMPositionBuilderAtEnd(self.builder, bb_loop);
-                self.gen(env, body)?;
-
-                if cur_bb_has_no_terminator(self.builder) {
-                    LLVMBuildBr(self.builder, bb_before_loop);
-                }
-
-                LLVMPositionBuilderAtEnd(self.builder, bb_after_loop);
-
-                self.break_labels.pop();
-                self.continue_labels.pop();
-
-                Ok(ptr::null_mut())
-            }
-            NodeBase::Break => {
-                let break_bb = if let Some(bb) = self.break_labels.last() {
-                    *bb
-                } else {
-                    println!("JIT error: break not in loop");
-                    return Err(());
-                };
-                LLVMBuildBr(self.builder, break_bb);
-                Ok(ptr::null_mut())
-            }
-            NodeBase::Continue => {
-                let continue_bb = if let Some(bb) = self.continue_labels.last() {
-                    *bb
-                } else {
-                    println!("JIT error: break not in loop");
-                    return Err(());
-                };
-                LLVMBuildBr(self.builder, continue_bb);
-                Ok(ptr::null_mut())
-            }
-            NodeBase::VarDecl(ref name, ref init) => {
-                let var = self.declare_local_var(name, env);
-                if let Some(init) = init {
-                    LLVMBuildStore(self.builder, self.gen(env, &**init)?, var);
-                }
-                Ok(ptr::null_mut())
-            }
-            NodeBase::Call(box ref callee, ref args) => {
-                let callee = if let NodeBase::Identifier(ref name) = callee.base {
-                    *env.get(name).unwrap()
-                } else {
-                    return Err(());
-                };
-                let mut llvm_args = vec![];
-                for arg in args {
-                    llvm_args.push(self.gen(env, arg)?);
-                }
-                Ok(LLVMBuildCall(
-                    self.builder,
-                    callee,
-                    llvm_args.as_mut_ptr(),
-                    llvm_args.len() as u32,
-                    CString::new("").unwrap().as_ptr(),
-                ))
-            }
-            NodeBase::Assign(box ref dst, box ref src) => {
-                let src = self.gen(env, src)?;
-                match dst.base {
-                    NodeBase::Identifier(ref name) => {
-                        if let Some(var_ptr) = env.get(name) {
-                            LLVMBuildStore(self.builder, src, *var_ptr);
-                        } else {
-                            panic!("variable not found");
-                        }
+        let mut labels: HashMap<usize, LLVMBasicBlockRef> = HashMap::new();
+        // First of all, find JMP-related ops and record its destination.
+        {
+            let mut pc = pc;
+            while pc < insts.len() {
+                match insts[pc] {
+                    END => break,
+                    CREATE_CONTEXT => break,
+                    RETURN => pc += 1,
+                    ASG_FREST_PARAM => pc += 9,
+                    CONSTRUCT | CREATE_OBJECT | PUSH_CONST | PUSH_INT32 | SET_GLOBAL
+                    | GET_LOCAL | SET_ARG_LOCAL | GET_ARG_LOCAL | CREATE_ARRAY | SET_LOCAL
+                    | CALL => pc += 5,
+                    JMP | JMP_IF_FALSE => {
+                        pc += 1;
+                        get_int32!(insts, pc, dst, i32);
+                        labels.insert(
+                            (pc as i32 + dst) as usize,
+                            LLVMAppendBasicBlock(func, CString::new("").unwrap().as_ptr()),
+                        );
                     }
-                    _ => unimplemented!(),
+                    PUSH_INT8 => pc += 2,
+                    PUSH_FALSE | PUSH_TRUE | PUSH_THIS | ADD | SUB | MUL | DIV | REM | LT
+                    | PUSH_ARGUMENTS | NEG | GT | LE | GE | EQ | NE | GET_MEMBER | SET_MEMBER => {
+                        pc += 1
+                    }
+                    GET_GLOBAL => pc += 5,
+                    _ => return Err(()),
                 }
-                Ok(ptr::null_mut())
-            }
-            NodeBase::Return(Some(box ref val)) => {
-                Ok(LLVMBuildRet(self.builder, self.gen(env, val)?))
-            }
-            NodeBase::Identifier(ref name) => Ok(LLVMBuildLoad(
-                self.builder,
-                *env.get(name).unwrap(),
-                CString::new("").unwrap().as_ptr(),
-            )),
-            NodeBase::Number(f) => Ok(LLVMConstReal(LLVMDoubleType(), f)),
-            NodeBase::Boolean(true) => Ok(LLVMConstInt(LLVMInt1Type(), 1, 0)),
-            NodeBase::Boolean(false) => Ok(LLVMConstInt(LLVMInt1Type(), 0, 0)),
-            NodeBase::Nope => Ok(ptr::null_mut()),
-            _ => {
-                // Unsupported features
-                Err(())
             }
         }
+
+        while pc < insts.len() {
+            if let Some(ref bb) = labels.get(&pc) {
+                LLVMPositionBuilderAtEnd(self.builder, **bb);
+            }
+
+            match insts[pc] {
+                END => break,
+                CREATE_CONTEXT => break,
+                ASG_FREST_PARAM => pc += 9,
+                CONSTRUCT | CREATE_OBJECT | SET_GLOBAL | GET_LOCAL | SET_ARG_LOCAL
+                | CREATE_ARRAY | SET_LOCAL => pc += 5,
+                JMP_IF_FALSE => {
+                    pc += 1;
+                    get_int32!(insts, pc, dst, i32);
+                    let bb_then = LLVMAppendBasicBlock(func, CString::new("").unwrap().as_ptr());
+                    let bb_else = labels.get(&((pc as i32 + dst) as usize)).unwrap();
+                    let cond_val = stack.pop().unwrap();
+                    LLVMBuildCondBr(self.builder, cond_val, bb_then, *bb_else);
+                    LLVMPositionBuilderAtEnd(self.builder, bb_then);
+                }
+                JMP => {
+                    pc += 1;
+                    get_int32!(insts, pc, dst, i32);
+                    let bb = labels.get(&((pc as i32 + dst) as usize)).unwrap();
+                    LLVMPositionBuilderAtEnd(self.builder, *bb);
+                }
+                ADD => {
+                    pc += 1;
+                    let rhs = stack.pop().unwrap();
+                    let lhs = stack.pop().unwrap();
+                    stack.push(LLVMBuildFAdd(
+                        self.builder,
+                        lhs,
+                        rhs,
+                        CString::new("fadd").unwrap().as_ptr(),
+                    ));
+                }
+                SUB => {
+                    pc += 1;
+                    let rhs = stack.pop().unwrap();
+                    let lhs = stack.pop().unwrap();
+                    stack.push(LLVMBuildFSub(
+                        self.builder,
+                        lhs,
+                        rhs,
+                        CString::new("fsub").unwrap().as_ptr(),
+                    ));
+                }
+                MUL => {
+                    pc += 1;
+                    let rhs = stack.pop().unwrap();
+                    let lhs = stack.pop().unwrap();
+                    stack.push(LLVMBuildFMul(
+                        self.builder,
+                        lhs,
+                        rhs,
+                        CString::new("fmul").unwrap().as_ptr(),
+                    ));
+                }
+                REM => {
+                    pc += 1;
+                    let rhs = stack.pop().unwrap();
+                    let lhs = stack.pop().unwrap();
+                    stack.push(LLVMBuildSIToFP(
+                        self.builder,
+                        LLVMBuildSRem(
+                            self.builder,
+                            LLVMBuildFPToSI(
+                                self.builder,
+                                lhs,
+                                LLVMInt64Type(),
+                                CString::new("").unwrap().as_ptr(),
+                            ),
+                            LLVMBuildFPToSI(
+                                self.builder,
+                                rhs,
+                                LLVMInt64Type(),
+                                CString::new("").unwrap().as_ptr(),
+                            ),
+                            CString::new("fsub").unwrap().as_ptr(),
+                        ),
+                        LLVMDoubleType(),
+                        CString::new("").unwrap().as_ptr(),
+                    ));
+                }
+                LT => {
+                    pc += 1;
+                    let rhs = stack.pop().unwrap();
+                    let lhs = stack.pop().unwrap();
+                    stack.push(LLVMBuildFCmp(
+                        self.builder,
+                        llvm::LLVMRealPredicate::LLVMRealOLT,
+                        lhs,
+                        rhs,
+                        CString::new("flt").unwrap().as_ptr(),
+                    ))
+                }
+                GET_ARG_LOCAL => {
+                    pc += 1;
+                    get_int32!(insts, pc, n, usize);
+                    stack.push(LLVMBuildLoad(
+                        self.builder,
+                        *env.get(&(n, true)).unwrap(),
+                        CString::new("").unwrap().as_ptr(),
+                    ));
+                }
+                CALL => {
+                    pc += 1;
+                    get_int32!(insts, pc, argc, usize);
+                    let callee = stack.pop().unwrap();
+                    let mut llvm_args = vec![];
+                    for _ in 0..argc {
+                        llvm_args.push(stack.pop().unwrap());
+                    }
+                    llvm_args.reverse();
+                    stack.push(LLVMBuildCall(
+                        self.builder,
+                        callee,
+                        llvm_args.as_mut_ptr(),
+                        llvm_args.len() as u32,
+                        CString::new("").unwrap().as_ptr(),
+                    ));
+                }
+                PUSH_CONST => {
+                    pc += 1;
+                    get_int32!(insts, pc, n, usize);
+                    stack.push(match const_table.value[n] {
+                        vm::Value::Bool(false) => LLVMConstInt(LLVMInt1Type(), 0, 0),
+                        vm::Value::Bool(true) => LLVMConstInt(LLVMInt1Type(), 1, 0),
+                        vm::Value::Number(n) => LLVMConstReal(LLVMDoubleType(), n as f64),
+                        vm::Value::Function(pos, _) if pos == func_pos => func,
+                        _ => return Err(()),
+                    });
+                }
+                PUSH_INT8 => {
+                    pc += 1;
+                    get_int8!(insts, pc, n, isize);
+                    stack.push(LLVMConstReal(LLVMDoubleType(), n as f64));
+                }
+                PUSH_INT32 => {
+                    pc += 1;
+                    get_int32!(insts, pc, n, isize);
+                    stack.push(LLVMConstReal(LLVMDoubleType(), n as f64));
+                }
+                PUSH_TRUE => {
+                    pc += 1;
+                    LLVMConstInt(LLVMInt1Type(), 1, 0);
+                }
+                PUSH_FALSE => {
+                    pc += 1;
+                    LLVMConstInt(LLVMInt1Type(), 0, 0);
+                }
+                PUSH_THIS | DIV | PUSH_ARGUMENTS | NEG | GT | LE | GE | EQ | NE | GET_MEMBER
+                | SET_MEMBER => pc += 1,
+                RETURN => {
+                    pc += 1;
+                    let val = stack.pop().unwrap();
+                    LLVMBuildRet(self.builder, val);
+                }
+                GET_GLOBAL => pc += 5,
+                _ => return Err(()),
+            }
+        }
+
+        Ok(())
+        // match node.base {
+        //     NodeBase::StatementList(ref list) => {
+        //         for elem in list {
+        //             self.gen(env, elem)?;
+        //         }
+        //         Ok(ptr::null_mut())
+        //     }
+        //         &BinOp::Le => Ok(LLVMBuildFCmp(
+        //             self.builder,
+        //             llvm::LLVMRealPredicate::LLVMRealOLE,
+        //             self.gen(env, lhs)?,
+        //             self.gen(env, rhs)?,
+        //             CString::new("fle").unwrap().as_ptr(),
+        //         )),
+        //         &BinOp::Gt => Ok(LLVMBuildFCmp(
+        //             self.builder,
+        //             llvm::LLVMRealPredicate::LLVMRealOGT,
+        //             self.gen(env, lhs)?,
+        //             self.gen(env, rhs)?,
+        //             CString::new("fgt").unwrap().as_ptr(),
+        //         )),
+        //         &BinOp::Ge => Ok(LLVMBuildFCmp(
+        //             self.builder,
+        //             llvm::LLVMRealPredicate::LLVMRealOGE,
+        //             self.gen(env, lhs)?,
+        //             self.gen(env, rhs)?,
+        //             CString::new("fge").unwrap().as_ptr(),
+        //         )),
+        //         &BinOp::Eq => Ok(LLVMBuildFCmp(
+        //             self.builder,
+        //             llvm::LLVMRealPredicate::LLVMRealOEQ,
+        //             self.gen(env, lhs)?,
+        //             self.gen(env, rhs)?,
+        //             CString::new("feq").unwrap().as_ptr(),
+        //         )),
+        //         _ => panic!(),
+        //     },
+        //     NodeBase::If(box ref cond, box ref then, box ref else_) => {
+        //         let cond_val_tmp = self.gen(env, cond)?;
+        //         let cond_val = cond_val_tmp;
+        //
+        //         let func = self.cur_func.unwrap();
+        //
+        //         let bb_then = LLVMAppendBasicBlock(func, CString::new("then").unwrap().as_ptr());
+        //         let bb_else = LLVMAppendBasicBlock(func, CString::new("else").unwrap().as_ptr());
+        //         let bb_merge = LLVMAppendBasicBlock(func, CString::new("merge").unwrap().as_ptr());
+        //
+        //         LLVMBuildCondBr(self.builder, cond_val, bb_then, bb_else);
+        //
+        //         LLVMPositionBuilderAtEnd(self.builder, bb_then);
+        //
+        //         self.gen(env, then)?;
+        //         if cur_bb_has_no_terminator(self.builder) {
+        //             LLVMBuildBr(self.builder, bb_merge);
+        //         }
+        //
+        //         LLVMPositionBuilderAtEnd(self.builder, bb_else);
+        //
+        //         self.gen(env, else_)?;
+        //         if cur_bb_has_no_terminator(self.builder) {
+        //             LLVMBuildBr(self.builder, bb_merge);
+        //         }
+        //
+        //         LLVMPositionBuilderAtEnd(self.builder, bb_merge);
+        //
+        //         Ok(ptr::null_mut())
+        //     }
+        //     NodeBase::While(box ref cond, box ref body) => {
+        //         let func = self.cur_func.unwrap();
+        //
+        //         let bb_before_loop =
+        //             LLVMAppendBasicBlock(func, CString::new("before_loop").unwrap().as_ptr());
+        //         let bb_loop = LLVMAppendBasicBlock(func, CString::new("loop").unwrap().as_ptr());
+        //         let bb_after_loop =
+        //             LLVMAppendBasicBlock(func, CString::new("after_loop").unwrap().as_ptr());
+        //
+        //         self.break_labels.push(bb_before_loop);
+        //         self.continue_labels.push(bb_loop);
+        //
+        //         LLVMBuildBr(self.builder, bb_before_loop);
+        //
+        //         LLVMPositionBuilderAtEnd(self.builder, bb_before_loop);
+        //         let cond_val_tmp = self.gen(env, cond)?;
+        //         let cond_val = cond_val_tmp;
+        //         LLVMBuildCondBr(self.builder, cond_val, bb_loop, bb_after_loop);
+        //
+        //         LLVMPositionBuilderAtEnd(self.builder, bb_loop);
+        //         self.gen(env, body)?;
+        //
+        //         if cur_bb_has_no_terminator(self.builder) {
+        //             LLVMBuildBr(self.builder, bb_before_loop);
+        //         }
+        //
+        //         LLVMPositionBuilderAtEnd(self.builder, bb_after_loop);
+        //
+        //         self.break_labels.pop();
+        //         self.continue_labels.pop();
+        //
+        //         Ok(ptr::null_mut())
+        //     }
+        //     NodeBase::Break => {
+        //         let break_bb = if let Some(bb) = self.break_labels.last() {
+        //             *bb
+        //         } else {
+        //             println!("JIT error: break not in loop");
+        //             return Err(());
+        //         };
+        //         LLVMBuildBr(self.builder, break_bb);
+        //         Ok(ptr::null_mut())
+        //     }
+        //     NodeBase::Continue => {
+        //         let continue_bb = if let Some(bb) = self.continue_labels.last() {
+        //             *bb
+        //         } else {
+        //             println!("JIT error: break not in loop");
+        //             return Err(());
+        //         };
+        //         LLVMBuildBr(self.builder, continue_bb);
+        //         Ok(ptr::null_mut())
+        //     }
+        //     NodeBase::VarDecl(ref name, ref init) => {
+        //         let var = self.declare_local_var(name, env);
+        //         if let Some(init) = init {
+        //             LLVMBuildStore(self.builder, self.gen(env, &**init)?, var);
+        //         }
+        //         Ok(ptr::null_mut())
+        //     }
+        //     NodeBase::Call(box ref callee, ref args) => {
+        //         let callee = if let NodeBase::Identifier(ref name) = callee.base {
+        //             *env.get(name).unwrap()
+        //         } else {
+        //             return Err(());
+        //         };
+        //         let mut llvm_args = vec![];
+        //         for arg in args {
+        //             llvm_args.push(self.gen(env, arg)?);
+        //         }
+        //         Ok(LLVMBuildCall(
+        //             self.builder,
+        //             callee,
+        //             llvm_args.as_mut_ptr(),
+        //             llvm_args.len() as u32,
+        //             CString::new("").unwrap().as_ptr(),
+        //         ))
+        //     }
+        //     NodeBase::Assign(box ref dst, box ref src) => {
+        //         let src = self.gen(env, src)?;
+        //         match dst.base {
+        //             NodeBase::Identifier(ref name) => {
+        //                 if let Some(var_ptr) = env.get(name) {
+        //                     LLVMBuildStore(self.builder, src, *var_ptr);
+        //                 } else {
+        //                     panic!("variable not found");
+        //                 }
+        //             }
+        //             _ => unimplemented!(),
+        //         }
+        //         Ok(ptr::null_mut())
+        //     }
+        //     NodeBase::Return(Some(box ref val)) => {
+        //         Ok(LLVMBuildRet(self.builder, self.gen(env, val)?))
+        //     }
+        //     NodeBase::Identifier(ref name) => Ok(LLVMBuildLoad(
+        //         self.builder,
+        //         *env.get(name).unwrap(),
+        //         CString::new("").unwrap().as_ptr(),
+        //     )),
+        //     NodeBase::Number(f) => Ok(LLVMConstReal(LLVMDoubleType(), f)),
+        //     NodeBase::Boolean(true) => Ok(LLVMConstInt(LLVMInt1Type(), 1, 0)),
+        //     NodeBase::Boolean(false) => Ok(LLVMConstInt(LLVMInt1Type(), 0, 0)),
+        //     NodeBase::Nope => Ok(ptr::null_mut()),
+        //     _ => {
+        //         // Unsupported features
+        //         Err(())
+        //     }
+        // }
     }
 }
 
 impl TracingJit {
     #[inline]
     fn func_is_called_enough_times(&mut self, pc: usize) -> bool {
-        *self.count.entry(pc).or_insert(0) >= 10
+        *self.count.entry(pc).or_insert(0) >= 0
     }
 
     #[inline]
