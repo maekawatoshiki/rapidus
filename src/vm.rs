@@ -333,7 +333,13 @@ fn constract(self_: &mut VM) {
                 self_.state.pc = dst as isize;
                 self_.state.stack.push(Value::Number(argc as f64 + 1.0));
                 self_.do_run();
-                *self_.state.stack.last_mut().unwrap() = Value::Object(new_this);
+                match self_.state.stack.last_mut().unwrap() {
+                    &mut Value::Object(_)
+                    | &mut Value::Array(_)
+                    | &mut Value::Function(_, _)
+                    | &mut Value::EmbeddedFunction(_) => {}
+                    others => *others = Value::Object(new_this),
+                };
                 break;
             }
             Value::NeedThis(callee_) => {
@@ -815,7 +821,7 @@ unsafe fn console_log(args: Vec<Value>, _: &mut VM) {
             Value::Number(ref n) => {
                 libc::printf(b"%.15g\0".as_ptr() as RawStringPtr, *n);
             }
-            Value::Object(_) | Value::Array(_) => debug_print(&args[i]),
+            Value::Object(_) | Value::Array(_) | Value::Function(_,_)=> debug_print(&args[i]),
             Value::Undefined => {
                 libc::printf(b"undefined\0".as_ptr() as RawStringPtr);
             }
@@ -878,6 +884,9 @@ unsafe fn debug_print(val: &Value) {
                 libc::printf(", \0".as_ptr() as RawStringPtr);
             }
             libc::printf("]\0".as_ptr() as RawStringPtr);
+        }
+        &Value::Function(_,_) => {
+            libc::printf("[Function]\0".as_ptr() as RawStringPtr);
         }
         &Value::Undefined => {
             libc::printf(b"undefined\0".as_ptr() as RawStringPtr);
