@@ -1,4 +1,3 @@
-use node::{BinOp, Node, NodeBase};
 use vm;
 use vm::{
     PUSH_INT32, PUSH_INT8, ADD, ASG_FREST_PARAM, CALL, CONSTRUCT, CREATE_ARRAY, CREATE_CONTEXT,
@@ -292,7 +291,7 @@ impl TracingJit {
             iter_bb = LLVMGetNextBasicBlock(iter_bb);
         }
 
-        // LLVMRunPassManager(self.pass_manager, self.module);
+        LLVMRunPassManager(self.pass_manager, self.module);
 
         Ok(func)
     }
@@ -303,6 +302,10 @@ impl TracingJit {
         is_param: bool,
         env: &mut HashMap<(usize, bool), LLVMValueRef>,
     ) -> LLVMValueRef {
+        if let Some(v) = env.get(&(id, is_param)) {
+            return *v;
+        }
+
         let func = self.cur_func.unwrap();
         let builder = LLVMCreateBuilderInContext(self.context);
         let entry_bb = LLVMGetEntryBasicBlock(func);
@@ -349,6 +352,7 @@ impl TracingJit {
                     JMP | JMP_IF_FALSE => {
                         pc += 1;
                         get_int32!(insts, pc, dst, i32);
+                        // println!("pc: {}, dst: {}, = {}", pc, dst, pc as i32 + dst);
                         labels.insert(
                             (pc as i32 + dst) as usize,
                             LLVMAppendBasicBlock(func, CString::new("").unwrap().as_ptr()),
@@ -366,16 +370,18 @@ impl TracingJit {
         }
 
         while pc < insts.len() {
-            if let Some(ref bb) = labels.get(&pc) {
-                LLVMPositionBuilderAtEnd(self.builder, **bb);
+            if let Some(bb) = labels.get(&pc) {
+                if cur_bb_has_no_terminator(self.builder) {
+                    LLVMBuildBr(self.builder, *bb);
+                }
+                LLVMPositionBuilderAtEnd(self.builder, *bb);
             }
 
             match insts[pc] {
                 END => break,
                 CREATE_CONTEXT => break,
                 ASG_FREST_PARAM => pc += 9,
-                CONSTRUCT | CREATE_OBJECT | SET_GLOBAL | GET_LOCAL | SET_ARG_LOCAL
-                | CREATE_ARRAY | SET_LOCAL => pc += 5,
+                CONSTRUCT | CREATE_OBJECT | SET_GLOBAL | SET_ARG_LOCAL | CREATE_ARRAY => pc += 5,
                 JMP_IF_FALSE => {
                     pc += 1;
                     get_int32!(insts, pc, dst, i32);
@@ -389,7 +395,9 @@ impl TracingJit {
                     pc += 1;
                     get_int32!(insts, pc, dst, i32);
                     let bb = labels.get(&((pc as i32 + dst) as usize)).unwrap();
-                    LLVMPositionBuilderAtEnd(self.builder, *bb);
+                    if cur_bb_has_no_terminator(self.builder) {
+                        LLVMBuildBr(self.builder, *bb);
+                    }
                 }
                 ADD => {
                     pc += 1;
@@ -424,6 +432,17 @@ impl TracingJit {
                         CString::new("fmul").unwrap().as_ptr(),
                     ));
                 }
+                DIV => {
+                    pc += 1;
+                    let rhs = stack.pop().unwrap();
+                    let lhs = stack.pop().unwrap();
+                    stack.push(LLVMBuildFDiv(
+                        self.builder,
+                        lhs,
+                        rhs,
+                        CString::new("fdiv").unwrap().as_ptr(),
+                    ));
+                }
                 REM => {
                     pc += 1;
                     let rhs = stack.pop().unwrap();
@@ -444,7 +463,7 @@ impl TracingJit {
                                 LLVMInt64Type(),
                                 CString::new("").unwrap().as_ptr(),
                             ),
-                            CString::new("fsub").unwrap().as_ptr(),
+                            CString::new("frem").unwrap().as_ptr(),
                         ),
                         LLVMDoubleType(),
                         CString::new("").unwrap().as_ptr(),
@@ -462,6 +481,30 @@ impl TracingJit {
                         CString::new("flt").unwrap().as_ptr(),
                     ))
                 }
+                LE => {
+                    pc += 1;
+                    let rhs = stack.pop().unwrap();
+                    let lhs = stack.pop().unwrap();
+                    stack.push(LLVMBuildFCmp(
+                        self.builder,
+                        llvm::LLVMRealPredicate::LLVMRealOLE,
+                        lhs,
+                        rhs,
+                        CString::new("fle").unwrap().as_ptr(),
+                    ))
+                }
+                EQ => {
+                    pc += 1;
+                    let rhs = stack.pop().unwrap();
+                    let lhs = stack.pop().unwrap();
+                    stack.push(LLVMBuildFCmp(
+                        self.builder,
+                        llvm::LLVMRealPredicate::LLVMRealOEQ,
+                        lhs,
+                        rhs,
+                        CString::new("feq").unwrap().as_ptr(),
+                    ));
+                }
                 GET_ARG_LOCAL => {
                     pc += 1;
                     get_int32!(insts, pc, n, usize);
@@ -470,6 +513,21 @@ impl TracingJit {
                         *env.get(&(n, true)).unwrap(),
                         CString::new("").unwrap().as_ptr(),
                     ));
+                }
+                GET_LOCAL => {
+                    pc += 1;
+                    get_int32!(insts, pc, n, usize);
+                    stack.push(LLVMBuildLoad(
+                        self.builder,
+                        self.declare_local_var(n, false, env),
+                        CString::new("").unwrap().as_ptr(),
+                    ));
+                }
+                SET_LOCAL => {
+                    pc += 1;
+                    get_int32!(insts, pc, n, usize);
+                    let src = stack.pop().unwrap();
+                    LLVMBuildStore(self.builder, src, self.declare_local_var(n, false, env));
                 }
                 CALL => {
                     pc += 1;
@@ -511,14 +569,15 @@ impl TracingJit {
                 }
                 PUSH_TRUE => {
                     pc += 1;
-                    LLVMConstInt(LLVMInt1Type(), 1, 0);
+                    stack.push(LLVMConstInt(LLVMInt1Type(), 1, 0));
                 }
                 PUSH_FALSE => {
                     pc += 1;
-                    LLVMConstInt(LLVMInt1Type(), 0, 0);
+                    stack.push(LLVMConstInt(LLVMInt1Type(), 0, 0));
                 }
-                PUSH_THIS | DIV | PUSH_ARGUMENTS | NEG | GT | LE | GE | EQ | NE | GET_MEMBER
-                | SET_MEMBER => pc += 1,
+                PUSH_THIS | PUSH_ARGUMENTS | NEG | GT | GE | NE | GET_MEMBER | SET_MEMBER => {
+                    pc += 1
+                }
                 RETURN => {
                     pc += 1;
                     let val = stack.pop().unwrap();
@@ -712,7 +771,7 @@ impl TracingJit {
 impl TracingJit {
     #[inline]
     fn func_is_called_enough_times(&mut self, pc: usize) -> bool {
-        *self.count.entry(pc).or_insert(0) >= 0
+        *self.count.entry(pc).or_insert(0) >= 10
     }
 
     #[inline]

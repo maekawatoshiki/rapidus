@@ -783,7 +783,6 @@ fn call(self_: &mut VM) {
                                 .state
                                 .stack
                                 .push(self_.jit.run_llvm_func(dst, f, args));
-                            println!("jit ret val: {:?}", self_.state.stack.last());
                             break;
                         }
                     }
