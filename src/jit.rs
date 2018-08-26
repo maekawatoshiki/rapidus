@@ -56,6 +56,15 @@ macro_rules! get_int32 {
     };
 }
 
+macro_rules! try_opt {
+    ($e:expr) => {
+        match $e {
+            Some(val) => val,
+            None => return Err(()),
+        }
+    };
+}
+
 #[derive(Debug, Clone)]
 pub struct TracingJit {
     func_addr_in_bytecode_and_its_entity: HashMap<usize, FunctionInfoForJIT>,
@@ -381,28 +390,28 @@ impl TracingJit {
                 END => break,
                 CREATE_CONTEXT => break,
                 ASG_FREST_PARAM => pc += 9,
-                CONSTRUCT | CREATE_OBJECT | SET_GLOBAL | SET_ARG_LOCAL | CREATE_ARRAY => pc += 5,
+                CONSTRUCT | CREATE_OBJECT | SET_GLOBAL | CREATE_ARRAY => pc += 5,
                 JMP_IF_FALSE => {
                     pc += 1;
                     get_int32!(insts, pc, dst, i32);
                     let bb_then = LLVMAppendBasicBlock(func, CString::new("").unwrap().as_ptr());
-                    let bb_else = labels.get(&((pc as i32 + dst) as usize)).unwrap();
-                    let cond_val = stack.pop().unwrap();
+                    let bb_else = try_opt!(labels.get(&((pc as i32 + dst) as usize)));
+                    let cond_val = try_opt!(stack.pop());
                     LLVMBuildCondBr(self.builder, cond_val, bb_then, *bb_else);
                     LLVMPositionBuilderAtEnd(self.builder, bb_then);
                 }
                 JMP => {
                     pc += 1;
                     get_int32!(insts, pc, dst, i32);
-                    let bb = labels.get(&((pc as i32 + dst) as usize)).unwrap();
+                    let bb = try_opt!(labels.get(&((pc as i32 + dst) as usize)));
                     if cur_bb_has_no_terminator(self.builder) {
                         LLVMBuildBr(self.builder, *bb);
                     }
                 }
                 ADD => {
                     pc += 1;
-                    let rhs = stack.pop().unwrap();
-                    let lhs = stack.pop().unwrap();
+                    let rhs = try_opt!(stack.pop());
+                    let lhs = try_opt!(stack.pop());
                     stack.push(LLVMBuildFAdd(
                         self.builder,
                         lhs,
@@ -412,8 +421,8 @@ impl TracingJit {
                 }
                 SUB => {
                     pc += 1;
-                    let rhs = stack.pop().unwrap();
-                    let lhs = stack.pop().unwrap();
+                    let rhs = try_opt!(stack.pop());
+                    let lhs = try_opt!(stack.pop());
                     stack.push(LLVMBuildFSub(
                         self.builder,
                         lhs,
@@ -423,8 +432,8 @@ impl TracingJit {
                 }
                 MUL => {
                     pc += 1;
-                    let rhs = stack.pop().unwrap();
-                    let lhs = stack.pop().unwrap();
+                    let rhs = try_opt!(stack.pop());
+                    let lhs = try_opt!(stack.pop());
                     stack.push(LLVMBuildFMul(
                         self.builder,
                         lhs,
@@ -434,8 +443,8 @@ impl TracingJit {
                 }
                 DIV => {
                     pc += 1;
-                    let rhs = stack.pop().unwrap();
-                    let lhs = stack.pop().unwrap();
+                    let rhs = try_opt!(stack.pop());
+                    let lhs = try_opt!(stack.pop());
                     stack.push(LLVMBuildFDiv(
                         self.builder,
                         lhs,
@@ -445,8 +454,8 @@ impl TracingJit {
                 }
                 REM => {
                     pc += 1;
-                    let rhs = stack.pop().unwrap();
-                    let lhs = stack.pop().unwrap();
+                    let rhs = try_opt!(stack.pop());
+                    let lhs = try_opt!(stack.pop());
                     stack.push(LLVMBuildSIToFP(
                         self.builder,
                         LLVMBuildSRem(
@@ -471,8 +480,8 @@ impl TracingJit {
                 }
                 LT => {
                     pc += 1;
-                    let rhs = stack.pop().unwrap();
-                    let lhs = stack.pop().unwrap();
+                    let rhs = try_opt!(stack.pop());
+                    let lhs = try_opt!(stack.pop());
                     stack.push(LLVMBuildFCmp(
                         self.builder,
                         llvm::LLVMRealPredicate::LLVMRealOLT,
@@ -483,8 +492,8 @@ impl TracingJit {
                 }
                 LE => {
                     pc += 1;
-                    let rhs = stack.pop().unwrap();
-                    let lhs = stack.pop().unwrap();
+                    let rhs = try_opt!(stack.pop());
+                    let lhs = try_opt!(stack.pop());
                     stack.push(LLVMBuildFCmp(
                         self.builder,
                         llvm::LLVMRealPredicate::LLVMRealOLE,
@@ -493,10 +502,34 @@ impl TracingJit {
                         CString::new("fle").unwrap().as_ptr(),
                     ))
                 }
+                GT => {
+                    pc += 1;
+                    let rhs = try_opt!(stack.pop());
+                    let lhs = try_opt!(stack.pop());
+                    stack.push(LLVMBuildFCmp(
+                        self.builder,
+                        llvm::LLVMRealPredicate::LLVMRealOGT,
+                        lhs,
+                        rhs,
+                        CString::new("fgt").unwrap().as_ptr(),
+                    ))
+                }
+                GE => {
+                    pc += 1;
+                    let rhs = try_opt!(stack.pop());
+                    let lhs = try_opt!(stack.pop());
+                    stack.push(LLVMBuildFCmp(
+                        self.builder,
+                        llvm::LLVMRealPredicate::LLVMRealOGE,
+                        lhs,
+                        rhs,
+                        CString::new("fge").unwrap().as_ptr(),
+                    ))
+                }
                 EQ => {
                     pc += 1;
-                    let rhs = stack.pop().unwrap();
-                    let lhs = stack.pop().unwrap();
+                    let rhs = try_opt!(stack.pop());
+                    let lhs = try_opt!(stack.pop());
                     stack.push(LLVMBuildFCmp(
                         self.builder,
                         llvm::LLVMRealPredicate::LLVMRealOEQ,
@@ -505,14 +538,33 @@ impl TracingJit {
                         CString::new("feq").unwrap().as_ptr(),
                     ));
                 }
+                NE => {
+                    pc += 1;
+                    let rhs = try_opt!(stack.pop());
+                    let lhs = try_opt!(stack.pop());
+                    stack.push(LLVMBuildFCmp(
+                        self.builder,
+                        llvm::LLVMRealPredicate::LLVMRealONE,
+                        lhs,
+                        rhs,
+                        CString::new("fne").unwrap().as_ptr(),
+                    ));
+                }
                 GET_ARG_LOCAL => {
                     pc += 1;
                     get_int32!(insts, pc, n, usize);
                     stack.push(LLVMBuildLoad(
                         self.builder,
-                        *env.get(&(n, true)).unwrap(),
+                        *try_opt!(env.get(&(n, true))),
                         CString::new("").unwrap().as_ptr(),
                     ));
+                }
+                // Rarely used?
+                SET_ARG_LOCAL => {
+                    pc += 1;
+                    get_int32!(insts, pc, n, usize);
+                    let src = try_opt!(stack.pop());
+                    LLVMBuildStore(self.builder, src, *try_opt!(env.get(&(n, true))));
                 }
                 GET_LOCAL => {
                     pc += 1;
@@ -526,16 +578,16 @@ impl TracingJit {
                 SET_LOCAL => {
                     pc += 1;
                     get_int32!(insts, pc, n, usize);
-                    let src = stack.pop().unwrap();
+                    let src = try_opt!(stack.pop());
                     LLVMBuildStore(self.builder, src, self.declare_local_var(n, false, env));
                 }
                 CALL => {
                     pc += 1;
                     get_int32!(insts, pc, argc, usize);
-                    let callee = stack.pop().unwrap();
+                    let callee = try_opt!(stack.pop());
                     let mut llvm_args = vec![];
                     for _ in 0..argc {
-                        llvm_args.push(stack.pop().unwrap());
+                        llvm_args.push(try_opt!(stack.pop()));
                     }
                     llvm_args.reverse();
                     stack.push(LLVMBuildCall(
@@ -575,12 +627,10 @@ impl TracingJit {
                     pc += 1;
                     stack.push(LLVMConstInt(LLVMInt1Type(), 0, 0));
                 }
-                PUSH_THIS | PUSH_ARGUMENTS | NEG | GT | GE | NE | GET_MEMBER | SET_MEMBER => {
-                    pc += 1
-                }
+                PUSH_THIS | PUSH_ARGUMENTS | NEG | GET_MEMBER | SET_MEMBER => pc += 1,
                 RETURN => {
                     pc += 1;
-                    let val = stack.pop().unwrap();
+                    let val = try_opt!(stack.pop());
                     LLVMBuildRet(self.builder, val);
                 }
                 GET_GLOBAL => pc += 5,
@@ -589,182 +639,6 @@ impl TracingJit {
         }
 
         Ok(())
-        // match node.base {
-        //     NodeBase::StatementList(ref list) => {
-        //         for elem in list {
-        //             self.gen(env, elem)?;
-        //         }
-        //         Ok(ptr::null_mut())
-        //     }
-        //         &BinOp::Le => Ok(LLVMBuildFCmp(
-        //             self.builder,
-        //             llvm::LLVMRealPredicate::LLVMRealOLE,
-        //             self.gen(env, lhs)?,
-        //             self.gen(env, rhs)?,
-        //             CString::new("fle").unwrap().as_ptr(),
-        //         )),
-        //         &BinOp::Gt => Ok(LLVMBuildFCmp(
-        //             self.builder,
-        //             llvm::LLVMRealPredicate::LLVMRealOGT,
-        //             self.gen(env, lhs)?,
-        //             self.gen(env, rhs)?,
-        //             CString::new("fgt").unwrap().as_ptr(),
-        //         )),
-        //         &BinOp::Ge => Ok(LLVMBuildFCmp(
-        //             self.builder,
-        //             llvm::LLVMRealPredicate::LLVMRealOGE,
-        //             self.gen(env, lhs)?,
-        //             self.gen(env, rhs)?,
-        //             CString::new("fge").unwrap().as_ptr(),
-        //         )),
-        //         &BinOp::Eq => Ok(LLVMBuildFCmp(
-        //             self.builder,
-        //             llvm::LLVMRealPredicate::LLVMRealOEQ,
-        //             self.gen(env, lhs)?,
-        //             self.gen(env, rhs)?,
-        //             CString::new("feq").unwrap().as_ptr(),
-        //         )),
-        //         _ => panic!(),
-        //     },
-        //     NodeBase::If(box ref cond, box ref then, box ref else_) => {
-        //         let cond_val_tmp = self.gen(env, cond)?;
-        //         let cond_val = cond_val_tmp;
-        //
-        //         let func = self.cur_func.unwrap();
-        //
-        //         let bb_then = LLVMAppendBasicBlock(func, CString::new("then").unwrap().as_ptr());
-        //         let bb_else = LLVMAppendBasicBlock(func, CString::new("else").unwrap().as_ptr());
-        //         let bb_merge = LLVMAppendBasicBlock(func, CString::new("merge").unwrap().as_ptr());
-        //
-        //         LLVMBuildCondBr(self.builder, cond_val, bb_then, bb_else);
-        //
-        //         LLVMPositionBuilderAtEnd(self.builder, bb_then);
-        //
-        //         self.gen(env, then)?;
-        //         if cur_bb_has_no_terminator(self.builder) {
-        //             LLVMBuildBr(self.builder, bb_merge);
-        //         }
-        //
-        //         LLVMPositionBuilderAtEnd(self.builder, bb_else);
-        //
-        //         self.gen(env, else_)?;
-        //         if cur_bb_has_no_terminator(self.builder) {
-        //             LLVMBuildBr(self.builder, bb_merge);
-        //         }
-        //
-        //         LLVMPositionBuilderAtEnd(self.builder, bb_merge);
-        //
-        //         Ok(ptr::null_mut())
-        //     }
-        //     NodeBase::While(box ref cond, box ref body) => {
-        //         let func = self.cur_func.unwrap();
-        //
-        //         let bb_before_loop =
-        //             LLVMAppendBasicBlock(func, CString::new("before_loop").unwrap().as_ptr());
-        //         let bb_loop = LLVMAppendBasicBlock(func, CString::new("loop").unwrap().as_ptr());
-        //         let bb_after_loop =
-        //             LLVMAppendBasicBlock(func, CString::new("after_loop").unwrap().as_ptr());
-        //
-        //         self.break_labels.push(bb_before_loop);
-        //         self.continue_labels.push(bb_loop);
-        //
-        //         LLVMBuildBr(self.builder, bb_before_loop);
-        //
-        //         LLVMPositionBuilderAtEnd(self.builder, bb_before_loop);
-        //         let cond_val_tmp = self.gen(env, cond)?;
-        //         let cond_val = cond_val_tmp;
-        //         LLVMBuildCondBr(self.builder, cond_val, bb_loop, bb_after_loop);
-        //
-        //         LLVMPositionBuilderAtEnd(self.builder, bb_loop);
-        //         self.gen(env, body)?;
-        //
-        //         if cur_bb_has_no_terminator(self.builder) {
-        //             LLVMBuildBr(self.builder, bb_before_loop);
-        //         }
-        //
-        //         LLVMPositionBuilderAtEnd(self.builder, bb_after_loop);
-        //
-        //         self.break_labels.pop();
-        //         self.continue_labels.pop();
-        //
-        //         Ok(ptr::null_mut())
-        //     }
-        //     NodeBase::Break => {
-        //         let break_bb = if let Some(bb) = self.break_labels.last() {
-        //             *bb
-        //         } else {
-        //             println!("JIT error: break not in loop");
-        //             return Err(());
-        //         };
-        //         LLVMBuildBr(self.builder, break_bb);
-        //         Ok(ptr::null_mut())
-        //     }
-        //     NodeBase::Continue => {
-        //         let continue_bb = if let Some(bb) = self.continue_labels.last() {
-        //             *bb
-        //         } else {
-        //             println!("JIT error: break not in loop");
-        //             return Err(());
-        //         };
-        //         LLVMBuildBr(self.builder, continue_bb);
-        //         Ok(ptr::null_mut())
-        //     }
-        //     NodeBase::VarDecl(ref name, ref init) => {
-        //         let var = self.declare_local_var(name, env);
-        //         if let Some(init) = init {
-        //             LLVMBuildStore(self.builder, self.gen(env, &**init)?, var);
-        //         }
-        //         Ok(ptr::null_mut())
-        //     }
-        //     NodeBase::Call(box ref callee, ref args) => {
-        //         let callee = if let NodeBase::Identifier(ref name) = callee.base {
-        //             *env.get(name).unwrap()
-        //         } else {
-        //             return Err(());
-        //         };
-        //         let mut llvm_args = vec![];
-        //         for arg in args {
-        //             llvm_args.push(self.gen(env, arg)?);
-        //         }
-        //         Ok(LLVMBuildCall(
-        //             self.builder,
-        //             callee,
-        //             llvm_args.as_mut_ptr(),
-        //             llvm_args.len() as u32,
-        //             CString::new("").unwrap().as_ptr(),
-        //         ))
-        //     }
-        //     NodeBase::Assign(box ref dst, box ref src) => {
-        //         let src = self.gen(env, src)?;
-        //         match dst.base {
-        //             NodeBase::Identifier(ref name) => {
-        //                 if let Some(var_ptr) = env.get(name) {
-        //                     LLVMBuildStore(self.builder, src, *var_ptr);
-        //                 } else {
-        //                     panic!("variable not found");
-        //                 }
-        //             }
-        //             _ => unimplemented!(),
-        //         }
-        //         Ok(ptr::null_mut())
-        //     }
-        //     NodeBase::Return(Some(box ref val)) => {
-        //         Ok(LLVMBuildRet(self.builder, self.gen(env, val)?))
-        //     }
-        //     NodeBase::Identifier(ref name) => Ok(LLVMBuildLoad(
-        //         self.builder,
-        //         *env.get(name).unwrap(),
-        //         CString::new("").unwrap().as_ptr(),
-        //     )),
-        //     NodeBase::Number(f) => Ok(LLVMConstReal(LLVMDoubleType(), f)),
-        //     NodeBase::Boolean(true) => Ok(LLVMConstInt(LLVMInt1Type(), 1, 0)),
-        //     NodeBase::Boolean(false) => Ok(LLVMConstInt(LLVMInt1Type(), 0, 0)),
-        //     NodeBase::Nope => Ok(ptr::null_mut()),
-        //     _ => {
-        //         // Unsupported features
-        //         Err(())
-        //     }
-        // }
     }
 }
 
