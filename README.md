@@ -20,11 +20,11 @@ A toy JavaScript engine
 ## Building on Linux
 
 1. Install dependencies
-  - LLVM 4.0
+  - LLVM 6.0
   
 ```sh
 $ # e.g. Ubuntu or Debian
-$ apt-get install llvm-4.0
+$ apt-get install llvm-6.0
 ```
 
 2. Test 
