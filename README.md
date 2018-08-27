@@ -49,6 +49,8 @@ $ cargo run --release example/XXX.js
 
 I don't know.
 
+- tips: if you are using macOS, you cannot use llvm installed with ``brew``. You should use macports or docker instead. 
+
 ## Use Dockerfile
 
 - Docker image: uint256/rapidus
