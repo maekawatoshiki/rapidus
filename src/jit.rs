@@ -104,13 +104,13 @@ impl TracingJit {
         }
 
         let pm = LLVMCreatePassManager();
-        llvm::transforms::scalar::LLVMAddTailCallEliminationPass(pm);
         llvm::transforms::scalar::LLVMAddReassociatePass(pm);
         llvm::transforms::scalar::LLVMAddGVNPass(pm);
         llvm::transforms::scalar::LLVMAddInstructionCombiningPass(pm);
         llvm::transforms::scalar::LLVMAddPromoteMemoryToRegisterPass(pm);
         llvm::transforms::scalar::LLVMAddPromoteMemoryToRegisterPass(pm);
         llvm::transforms::scalar::LLVMAddPromoteMemoryToRegisterPass(pm);
+        llvm::transforms::scalar::LLVMAddTailCallEliminationPass(pm);
 
         TracingJit {
             func_addr_in_bytecode_and_its_entity: func_addr_in_bytecode_and_its_entity,
