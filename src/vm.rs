@@ -5,6 +5,8 @@ use std::cell::RefCell;
 use std::ffi::{CStr, CString};
 use std::rc::Rc;
 
+use rand::random;
+
 // use cpuprofiler::PROFILER;
 
 use libc;
@@ -154,7 +156,7 @@ pub struct VM {
     pub const_table: ConstantTable,
     pub insts: ByteCode,
     pub op_table: [fn(&mut VM); 37],
-    pub builtin_functions: [unsafe fn(Vec<Value>, &mut VM); 4],
+    pub builtin_functions: [unsafe fn(Vec<Value>, &mut VM); 6],
 }
 
 pub struct VMState {
@@ -188,6 +190,8 @@ impl VM {
         obj.insert("Math".to_string(), {
             let mut map = HashMap::new();
             map.insert("floor".to_string(), Value::EmbeddedFunction(3));
+            map.insert("random".to_string(), Value::EmbeddedFunction(4));
+            map.insert("pow".to_string(), Value::EmbeddedFunction(5));
             Value::Object(Rc::new(RefCell::new(map)))
         });
 
@@ -253,7 +257,14 @@ impl VM {
                 return_,
                 assign_func_rest_param,
             ],
-            builtin_functions: [console_log, process_stdout_write, array_push, math_floor],
+            builtin_functions: [
+                console_log,
+                process_stdout_write,
+                array_push,
+                math_floor,
+                math_random,
+                math_pow,
+            ],
         }
     }
 }
@@ -768,23 +779,21 @@ fn call(self_: &mut VM) {
                 }
 
                 if args_all_number(&self_.state.stack, argc) {
-                    unsafe {
-                        if let Some(f) =
-                            self_
-                                .jit
-                                .can_jit(&self_.insts, &self_.const_table, dst, argc)
-                        {
-                            let mut args = vec![];
-                            for _ in 0..argc {
-                                args.push(self_.state.stack.pop().unwrap());
-                            }
-                            args.reverse();
-                            self_
-                                .state
-                                .stack
-                                .push(self_.jit.run_llvm_func(dst, f, args));
-                            break;
+                    if let Some(f) = unsafe {
+                        self_
+                            .jit
+                            .can_jit(&self_.insts, &self_.const_table, dst, argc)
+                    } {
+                        let mut args = vec![];
+                        for _ in 0..argc {
+                            args.push(self_.state.stack.pop().unwrap());
                         }
+                        args.reverse();
+                        self_
+                            .state
+                            .stack
+                            .push(unsafe { self_.jit.run_llvm_func(dst, f, args) });
+                        break;
                     }
                 }
 
@@ -948,6 +957,20 @@ unsafe fn array_push(args: Vec<Value>, _: &mut VM) {
 unsafe fn math_floor(args: Vec<Value>, self_: &mut VM) {
     if let Value::Number(f) = args[0] {
         self_.state.stack.push(Value::Number(f.floor()))
+    }
+}
+
+// EmbeddedFunction(4)
+unsafe fn math_random(_args: Vec<Value>, self_: &mut VM) {
+    self_.state.stack.push(Value::Number(random::<f64>()))
+}
+
+// EmbeddedFunction(5)
+unsafe fn math_pow(args: Vec<Value>, self_: &mut VM) {
+    if let Value::Number(f1) = args[0] {
+        if let Value::Number(f2) = args[1] {
+            self_.state.stack.push(Value::Number(f1.powf(f2)))
+        }
     }
 }
 

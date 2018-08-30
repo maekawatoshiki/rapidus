@@ -1,6 +1,8 @@
 use bytecode_gen::{ByteCode, ByteCodeGen};
 use id::{Id, IdGen};
-use node::{BinOp, FormalParameters, Node, NodeBase, PropertyDefinition, UnaryOp};
+use node::{
+    BinOp, FormalParameters, FunctionDeclNode, Node, NodeBase, PropertyDefinition, UnaryOp,
+};
 use std::collections::HashSet;
 use vm::{alloc_rawstring, Value};
 use vm::{
@@ -91,7 +93,7 @@ impl Labels {
                 &mut insts[*jmp_pos as usize + 1..*jmp_pos as usize + 5],
             );
         }
-        self.break_jmp_list.pop();
+        self.break_jmp_list.clear();
     }
 }
 
@@ -103,7 +105,7 @@ pub struct VMCodeGen {
     pub local_var_stack_addr: IdGen,
     pub arguemnt_var_addr: IdGen,
     pub bytecode_gen: ByteCodeGen,
-    pub labels: Labels,
+    pub labels: Vec<Labels>,
 }
 
 impl VMCodeGen {
@@ -115,7 +117,7 @@ impl VMCodeGen {
             local_var_stack_addr: IdGen::new(),
             arguemnt_var_addr: IdGen::new(),
             bytecode_gen: ByteCodeGen::new(),
-            labels: Labels::new(),
+            labels: vec![Labels::new()],
         }
     }
 }
@@ -163,6 +165,8 @@ impl VMCodeGen {
             function_value_list.insert("Math".to_string(), {
                 let mut map = HashMap::new();
                 map.insert("floor".to_string(), Value::EmbeddedFunction(3));
+                map.insert("random".to_string(), Value::EmbeddedFunction(4));
+                map.insert("pow".to_string(), Value::EmbeddedFunction(5));
                 Value::Object(Rc::new(RefCell::new(map)))
             });
         }
@@ -244,9 +248,24 @@ impl VMCodeGen {
     fn run(&mut self, node: &Node, insts: &mut ByteCode) {
         match &node.base {
             &NodeBase::StatementList(ref node_list) => self.run_statement_list(node_list, insts),
-            &NodeBase::FunctionDecl(ref name, ref use_this, ref fv, ref params, ref body) => {
-                self.run_function_decl(name, *use_this, fv, params, &*body)
-            }
+            &NodeBase::FunctionDecl(FunctionDeclNode {
+                ref name,
+                ref mangled_name,
+                ref use_this,
+                ref fv,
+                ref params,
+                ref body,
+            }) => self.run_function_decl(
+                if let Some(ref mangled_name) = mangled_name {
+                    mangled_name
+                } else {
+                    name
+                },
+                *use_this,
+                fv,
+                params,
+                &*body,
+            ),
             &NodeBase::VarDecl(ref name, ref init) => {
                 self.run_var_decl(name, init, insts);
             }
@@ -380,12 +399,22 @@ impl VMCodeGen {
     pub fn run_break(&mut self, insts: &mut ByteCode) {
         let break_jmp_pos = insts.len() as isize;
         self.bytecode_gen.gen_jmp(0, insts);
-        self.labels.break_jmp_list.push(break_jmp_pos);
+        self.labels
+            .last_mut()
+            .unwrap()
+            .break_jmp_list
+            .push(break_jmp_pos);
     }
 
     pub fn run_continue(&mut self, insts: &mut ByteCode) {
         let continue_jmp_pos = insts.len() as isize;
-        let continue_label_pos = self.labels.continue_labels.last().unwrap();
+        let continue_label_pos = self
+            .labels
+            .last_mut()
+            .unwrap()
+            .continue_labels
+            .last()
+            .unwrap();
         self.bytecode_gen
             .gen_jmp((continue_label_pos - continue_jmp_pos - 5) as i32, insts);
     }
@@ -477,7 +506,8 @@ impl VMCodeGen {
 
     pub fn run_while(&mut self, cond: &Node, body: &Node, insts: &mut ByteCode) {
         let pos = insts.len() as isize;
-        self.labels.continue_labels.push(pos);
+        self.labels.push(Labels::new());
+        self.labels.last_mut().unwrap().continue_labels.push(pos);
 
         self.run(cond, insts);
 
@@ -491,9 +521,12 @@ impl VMCodeGen {
             .gen_jmp((pos - loop_pos) as i32 - 5, insts);
 
         let break_label_pos = insts.len() as isize;
-        self.labels
-            .replace_break_jmps(&mut self.bytecode_gen, insts, break_label_pos);
-        self.labels.continue_labels.pop();
+        self.labels.last_mut().unwrap().replace_break_jmps(
+            &mut self.bytecode_gen,
+            insts,
+            break_label_pos,
+        );
+        self.labels.pop();
 
         let pos = insts.len() as isize;
         self.bytecode_gen.replace_int32(

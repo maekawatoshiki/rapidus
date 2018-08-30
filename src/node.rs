@@ -29,9 +29,19 @@ pub enum PropertyDefinition {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct FunctionDeclNode {
+    pub name: String,
+    pub mangled_name: Option<String>,
+    pub fv: HashSet<String>,
+    pub use_this: bool,
+    pub params: FormalParameters,
+    pub body: Box<Node>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum NodeBase {
     StatementList(Vec<Node>),
-    FunctionDecl(String, bool, HashSet<String>, FormalParameters, Box<Node>), // Name, Use 'this', fv, params, body
+    FunctionDecl(FunctionDeclNode),
     FunctionExpr(Option<String>, FormalParameters, Box<Node>), // Name, Use 'this', fv, params, body
     VarDecl(String, Option<Box<Node>>),
     Member(Box<Node>, String),

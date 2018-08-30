@@ -1,4 +1,4 @@
-use node::{Node, NodeBase, PropertyDefinition};
+use node::{FunctionDeclNode, Node, NodeBase, PropertyDefinition};
 
 use rand::random;
 use std::collections::{HashMap, HashSet};
@@ -25,7 +25,9 @@ impl FreeVariableSolver {
                 let mut func_decl_index = vec![];
                 let mut map = HashMap::new();
                 for (i, node) in nodes.iter_mut().enumerate() {
-                    if let &mut NodeBase::FunctionDecl(_, _, ref mut fv, _, _) = &mut node.base {
+                    if let &mut NodeBase::FunctionDecl(FunctionDeclNode { ref mut fv, .. }) =
+                        &mut node.base
+                    {
                         for name in fv.iter() {
                             map.insert(
                                 name.clone(),
@@ -44,7 +46,7 @@ impl FreeVariableSolver {
 
                 for node in nodes.iter_mut() {
                     match &mut node.base {
-                        &mut NodeBase::FunctionDecl(_, _, _, _, _) => {}
+                        &mut NodeBase::FunctionDecl(FunctionDeclNode { .. }) => {}
                         _ => self.run(node),
                     }
                 }
@@ -63,7 +65,7 @@ impl FreeVariableSolver {
                     self.run(node)
                 }
             }
-            NodeBase::FunctionDecl(_, _, _, _, ref mut body) => {
+            NodeBase::FunctionDecl(FunctionDeclNode { ref mut body, .. }) => {
                 let mut body = if let &mut NodeBase::StatementList(ref mut body) = &mut body.base {
                     body
                 } else {
@@ -72,7 +74,9 @@ impl FreeVariableSolver {
 
                 let mut map = HashMap::new();
                 for node in body.iter_mut() {
-                    if let &mut NodeBase::FunctionDecl(_, _, ref mut fv, _, _) = &mut node.base {
+                    if let &mut NodeBase::FunctionDecl(FunctionDeclNode { ref mut fv, .. }) =
+                        &mut node.base
+                    {
                         for name in fv.iter() {
                             if self.get_mangled_name(name.as_str()).is_none() {
                                 map.insert(

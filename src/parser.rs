@@ -1,6 +1,9 @@
 use lexer;
 use lexer::ErrorMsgKind;
-use node::{BinOp, FormalParameter, FormalParameters, Node, NodeBase, PropertyDefinition, UnaryOp};
+use node::{
+    BinOp, FormalParameter, FormalParameters, FunctionDeclNode, Node, NodeBase, PropertyDefinition,
+    UnaryOp,
+};
 use std::collections::HashSet;
 use token::{Keyword, Kind, Symbol};
 
@@ -795,7 +798,14 @@ impl Parser {
         let body = self.read_statement_list()?;
 
         Ok(Node::new(
-            NodeBase::FunctionDecl(name, false, HashSet::new(), params, Box::new(body)),
+            NodeBase::FunctionDecl(FunctionDeclNode {
+                name: name,
+                mangled_name: None,
+                use_this: false,
+                fv: HashSet::new(),
+                params: params,
+                body: Box::new(body),
+            }),
             pos,
         ))
     }
@@ -1615,28 +1625,30 @@ fn function_decl() {
         (
             "function f() { }",
             Node::new(
-                NodeBase::FunctionDecl(
-                    "f".to_string(),
-                    false,
-                    HashSet::new(),
-                    vec![],
-                    Box::new(Node::new(NodeBase::StatementList(vec![]), 14)),
-                ),
+                NodeBase::FunctionDecl(FunctionDeclNode {
+                    name: "f".to_string(),
+                    mangled_name: None,
+                    use_this: false,
+                    fv: HashSet::new(),
+                    params: vec![],
+                    body: Box::new(Node::new(NodeBase::StatementList(vec![]), 14)),
+                }),
                 8,
             ),
         ),
         (
             "function f(x, y) { return x + y }",
             Node::new(
-                NodeBase::FunctionDecl(
-                    "f".to_string(),
-                    false,
-                    HashSet::new(),
-                    vec![
+                NodeBase::FunctionDecl(FunctionDeclNode {
+                    name: "f".to_string(),
+                    mangled_name: None,
+                    use_this: false,
+                    fv: HashSet::new(),
+                    params: vec![
                         FormalParameter::new("x".to_string(), None, false),
                         FormalParameter::new("y".to_string(), None, false),
                     ],
-                    Box::new(Node::new(
+                    body: Box::new(Node::new(
                         NodeBase::StatementList(vec![Node::new(
                             NodeBase::Return(Some(Box::new(Node::new(
                                 NodeBase::BinaryOp(
@@ -1650,7 +1662,7 @@ fn function_decl() {
                         )]),
                         18,
                     )),
-                ),
+                }),
                 8,
             ),
         ),

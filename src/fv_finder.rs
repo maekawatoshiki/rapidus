@@ -1,4 +1,4 @@
-use node::{Node, NodeBase, PropertyDefinition};
+use node::{FunctionDeclNode, Node, NodeBase, PropertyDefinition};
 
 use rand::random;
 use std::collections::{HashMap, HashSet};
@@ -16,6 +16,7 @@ impl FreeVariableFinder {
         let mut varmap = HashSet::new(); // global
         varmap.insert("console".to_string());
         varmap.insert("process".to_string());
+        varmap.insert("Math".to_string());
         FreeVariableFinder {
             varmap: vec![varmap],
             cur_fv: vec![HashSet::new()],
@@ -32,7 +33,7 @@ impl FreeVariableFinder {
 
                 for (i, node) in nodes.iter_mut().enumerate() {
                     match node.base {
-                        NodeBase::FunctionDecl(ref name, _, _, _, _) => {
+                        NodeBase::FunctionDecl(FunctionDeclNode { ref name, .. }) => {
                             self.varmap[0].insert(name.clone());
                             func_decl_index.push(i)
                         }
@@ -56,13 +57,14 @@ impl FreeVariableFinder {
                     self.run(node)
                 }
             }
-            &mut NodeBase::FunctionDecl(
+            &mut NodeBase::FunctionDecl(FunctionDeclNode {
                 ref mut name,
                 ref mut use_this,
                 ref mut fv,
                 ref params,
                 ref mut body,
-            ) => {
+                ..
+            }) => {
                 self.varmap.push(HashSet::new());
                 self.varmap.last_mut().unwrap().insert(name.clone());
 
@@ -70,8 +72,7 @@ impl FreeVariableFinder {
                     self.varmap.last_mut().unwrap().insert(param.name);
                 }
 
-                let mut body = if let &mut NodeBase::StatementList(ref mut body) = &mut body.base
-                {
+                let mut body = if let &mut NodeBase::StatementList(ref mut body) = &mut body.base {
                     body
                 } else {
                     unreachable!()
@@ -82,9 +83,13 @@ impl FreeVariableFinder {
                 let mut func_decl_index = vec![];
                 for (i, node) in body.iter_mut().enumerate() {
                     match &mut node.base {
-                        &mut NodeBase::FunctionDecl(ref mut name, _, _, _, _) => {
+                        &mut NodeBase::FunctionDecl(FunctionDeclNode {
+                            ref name,
+                            ref mut mangled_name,
+                            ..
+                        }) => {
                             let nested = self.varmap.len() + 1 > 3;
-                            let mangled_name = if nested {
+                            let mangled_name2 = if nested {
                                 Some(format!("{}.{}", name.clone(), random::<u32>()))
                             } else {
                                 None
@@ -92,7 +97,7 @@ impl FreeVariableFinder {
 
                             self.varmap.last_mut().unwrap().insert(name.clone());
 
-                            if let Some(ref mangled_name) = mangled_name {
+                            if let Some(ref mangled_name) = mangled_name2 {
                                 self.mangled_function_name
                                     .last_mut()
                                     .unwrap()
@@ -100,7 +105,7 @@ impl FreeVariableFinder {
                             }
 
                             if nested {
-                                *name = mangled_name.clone().unwrap();
+                                *mangled_name = mangled_name2.clone();
                             }
 
                             func_decl_index.push(i)
@@ -113,7 +118,7 @@ impl FreeVariableFinder {
 
                 for node in body.iter_mut() {
                     match &node.base {
-                        &NodeBase::FunctionDecl(_, _, _, _, _) => {}
+                        &NodeBase::FunctionDecl(FunctionDeclNode { .. }) => {}
                         _ => self.run(node),
                     }
                 }

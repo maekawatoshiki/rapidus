@@ -1,4 +1,4 @@
-use node::{Node, NodeBase, PropertyDefinition};
+use node::{FunctionDeclNode, Node, NodeBase, PropertyDefinition};
 
 use rand::random;
 use std::collections::HashSet;
@@ -39,7 +39,7 @@ impl AnonymousFunctionExtractor {
                     self.run(node)
                 }
             }
-            NodeBase::FunctionDecl(_, _, _, _, ref mut body) => {
+            NodeBase::FunctionDecl(FunctionDeclNode { ref mut body, .. }) => {
                 let mut body = if let &mut NodeBase::StatementList(ref mut body) = &mut body.base {
                     body
                 } else {
@@ -86,13 +86,14 @@ impl AnonymousFunctionExtractor {
                         .last_mut()
                         .unwrap()
                         .push(Node::new(
-                            NodeBase::FunctionDecl(
-                                name_.clone(),
-                                false,
-                                HashSet::new(),
-                                params,
-                                Box::new(Node::new(NodeBase::StatementList(body), 0)),
-                            ),
+                            NodeBase::FunctionDecl(FunctionDeclNode {
+                                name: name_.clone(),
+                                mangled_name: None,
+                                use_this: false,
+                                fv: HashSet::new(),
+                                params: params,
+                                body: Box::new(Node::new(NodeBase::StatementList(body), 0)),
+                            }),
                             0,
                         ));
                     *node = Node::new(NodeBase::Identifier(name_), 0);
