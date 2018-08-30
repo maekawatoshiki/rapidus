@@ -4,7 +4,7 @@
 [![codecov](https://codecov.io/gh/maekawatoshiki/rapidus/branch/master/graph/badge.svg)](https://codecov.io/gh/maekawatoshiki/rapidus)
 [![](http://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
-A toy JavaScript engine
+A toy JavaScript engine aiming to pass test262
 
 # Features 
 
@@ -48,6 +48,8 @@ $ cargo run --release example/XXX.js
 ## Building on other platforms
 
 I don't know.
+
+- tips: If you are using macOS, you cannot use llvm installed with ``brew``. You should use macports or docker instead. 
 
 ## Use Dockerfile
 
