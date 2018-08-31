@@ -26,12 +26,12 @@ jobs:
             rm rustup-init
             source ~/.cargo/env
       - run: 
-          name: Install llvm-6.0 and so on
+          name: Install llvm-4.0 and so on
           command: |
-            apt-get install clang-6.0 llvm-6.0 llvm-6.0-dev opt libedit-dev build-essential make -y
-            # ln -s /usr/bin/clang-6.0 /usr/bin/clang; 
-            # ln -s /usr/bin/clang++-6.0 /usr/bin/clang++; 
-            ln -s /usr/bin/llvm-config-6.0 /usr/bin/llvm-config;
+            apt-get install clang-4.0 llvm-4.0 llvm-4.0-dev opt libedit-dev build-essential make -y
+            # ln -s /usr/bin/clang-4.0 /usr/bin/clang; 
+            # ln -s /usr/bin/clang++-4.0 /usr/bin/clang++; 
+            ln -s /usr/bin/llvm-config-4.0 /usr/bin/llvm-config;
       - run:
           name: Setting up kcov
           command: |

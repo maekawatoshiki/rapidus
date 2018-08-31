@@ -5,8 +5,8 @@ RUN \
   apt-get update && \
   apt-get upgrade -y && \
   apt-get install zlib1g-dev -y && \
-  apt-get install clang-6.0 clang-6.0-doc libclang-common-6.0-dev libclang-6.0-dev libclang1-6.0 libclang1-6.0-dbg libllvm6.0 libllvm6.0-dbg llvm-6.0 llvm-6.0-dev llvm-6.0-doc llvm-6.0-examples llvm-6.0-runtime clang-format-6.0 python-clang-6.0 opt libedit-dev build-essential make -y; \
-  ln -s /usr/bin/llvm-config-6.0 /usr/bin/llvm-config;
+  apt-get install clang-4.0 clang-4.0-doc libclang-common-4.0-dev libclang-4.0-dev libclang1-4.0 libclang1-4.0-dbg libllvm4.0 libllvm4.0-dbg llvm-4.0 llvm-4.0-dev llvm-4.0-doc llvm-4.0-examples llvm-4.0-runtime clang-format-4.0 python-clang-4.0 opt libedit-dev build-essential make -y; \
+  ln -s /usr/bin/llvm-config-4.0 /usr/bin/llvm-config;
 
 
 ADD . /opt/rapidus
