@@ -132,6 +132,12 @@ impl AnonymousFunctionExtractor {
                 self.run(&mut *cond);
                 self.run(&mut *body);
             }
+            NodeBase::For(ref mut init, ref mut cond, ref mut step, ref mut body) => {
+                self.run(&mut *init);
+                self.run(&mut *cond);
+                self.run(&mut *step);
+                self.run(&mut *body);
+            }
             NodeBase::Assign(_, ref mut src) => {
                 self.run(&mut *src);
             }

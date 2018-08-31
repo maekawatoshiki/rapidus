@@ -205,6 +205,12 @@ impl FreeVariableFinder {
                 self.run(&mut *cond);
                 self.run(&mut *body);
             }
+            NodeBase::For(ref mut init, ref mut cond, ref mut step, ref mut body) => {
+                self.run(&mut *init);
+                self.run(&mut *cond);
+                self.run(&mut *step);
+                self.run(&mut *body);
+            }
             &mut NodeBase::Assign(ref mut dst, ref mut src) => {
                 match &mut dst.base {
                     &mut NodeBase::Identifier(ref name) => {

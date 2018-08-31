@@ -138,6 +138,12 @@ impl FreeVariableSolver {
                 self.run(&mut *cond);
                 self.run(&mut *body);
             }
+            NodeBase::For(ref mut init, ref mut cond, ref mut step, ref mut body) => {
+                self.run(&mut *init);
+                self.run(&mut *cond);
+                self.run(&mut *step);
+                self.run(&mut *body);
+            }
             NodeBase::Assign(ref mut dst, ref mut src) => {
                 self.run(&mut *dst);
                 self.run(&mut *src);

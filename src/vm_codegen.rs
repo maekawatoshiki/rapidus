@@ -273,6 +273,9 @@ impl VMCodeGen {
                 self.run_if(&*cond, &*then_, &*else_, insts)
             }
             &NodeBase::While(ref cond, ref body) => self.run_while(&*cond, &*body, insts),
+            &NodeBase::For(ref init, ref cond, ref step, ref body) => {
+                self.run_for(&*init, &*cond, &*step, &*body, insts)
+            }
             &NodeBase::Assign(ref dst, ref src) => self.run_assign(&*dst, &*src, insts),
             &NodeBase::UnaryOp(ref expr, ref op) => self.run_unary_op(&*expr, op, insts),
             &NodeBase::BinaryOp(ref lhs, ref rhs, ref op) => {
@@ -515,6 +518,48 @@ impl VMCodeGen {
         self.bytecode_gen.gen_jmp_if_false(0, insts);
 
         self.run(body, insts);
+
+        let loop_pos = insts.len() as isize;
+        self.bytecode_gen
+            .gen_jmp((pos - loop_pos) as i32 - 5, insts);
+
+        let break_label_pos = insts.len() as isize;
+        self.labels.last_mut().unwrap().replace_break_jmps(
+            &mut self.bytecode_gen,
+            insts,
+            break_label_pos,
+        );
+        self.labels.pop();
+
+        let pos = insts.len() as isize;
+        self.bytecode_gen.replace_int32(
+            (pos - cond_pos) as i32 - 5,
+            &mut insts[cond_pos as usize + 1..cond_pos as usize + 5],
+        );
+    }
+
+    pub fn run_for(
+        &mut self,
+        init: &Node,
+        cond: &Node,
+        step: &Node,
+        body: &Node,
+        insts: &mut ByteCode,
+    ) {
+        self.run(init, insts);
+
+        let pos = insts.len() as isize;
+        self.labels.push(Labels::new());
+        self.labels.last_mut().unwrap().continue_labels.push(pos);
+
+        self.run(cond, insts);
+
+        let cond_pos = insts.len() as isize;
+        self.bytecode_gen.gen_jmp_if_false(0, insts);
+
+        self.run(body, insts);
+
+        self.run(step, insts);
 
         let loop_pos = insts.len() as isize;
         self.bytecode_gen

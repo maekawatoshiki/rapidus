@@ -107,6 +107,7 @@ impl Parser {
             Kind::Keyword(Keyword::If) => self.read_if_statement(),
             Kind::Keyword(Keyword::Var) => self.read_variable_statement(),
             Kind::Keyword(Keyword::While) => self.read_while_statement(),
+            Kind::Keyword(Keyword::For) => self.read_for_statement(),
             Kind::Keyword(Keyword::Return) => self.read_return_statement(),
             Kind::Keyword(Keyword::Break) => self.read_break_statement(),
             Kind::Keyword(Keyword::Continue) => self.read_continue_statement(),
@@ -220,6 +221,33 @@ impl Parser {
 
         Ok(Node::new(
             NodeBase::While(Box::new(cond), Box::new(body)),
+            pos,
+        ))
+    }
+
+    fn read_for_statement(&mut self) -> Result<Node, ()> {
+        token_start_pos!(pos, self.lexer);
+        assert_eq!(self.lexer.next()?.kind, Kind::Symbol(Symbol::OpeningParen));
+        let init = if self.lexer.skip(Kind::Keyword(Keyword::Var)) {
+            self.read_variable_statement()?
+        } else {
+            self.read_expression()?
+        };
+        self.lexer.skip(Kind::Symbol(Symbol::Semicolon));
+        let cond = self.read_expression()?;
+        self.lexer.skip(Kind::Symbol(Symbol::Semicolon));
+        let step = self.read_expression()?;
+        assert_eq!(self.lexer.next()?.kind, Kind::Symbol(Symbol::ClosingParen));
+
+        let body = self.read_statement()?;
+
+        Ok(Node::new(
+            NodeBase::For(
+                Box::new(init),
+                Box::new(cond),
+                Box::new(step),
+                Box::new(body),
+            ),
             pos,
         ))
     }
@@ -635,6 +663,10 @@ impl Parser {
             Kind::Keyword(Keyword::Arguments) => Ok(Node::new(NodeBase::Arguments, tok.pos)),
             Kind::Keyword(Keyword::Function) => self.read_function_expression(),
             Kind::Symbol(Symbol::Semicolon) => Ok(Node::new(NodeBase::Nope, tok.pos)),
+            Kind::Symbol(Symbol::ClosingParen) => {
+                self.lexer.unget(&tok);
+                Ok(Node::new(NodeBase::Nope, tok.pos))
+            }
             Kind::Symbol(Symbol::OpeningParen) => {
                 let x = self.read_expression();
                 if !self.lexer.skip(Kind::Symbol(Symbol::ClosingParen)) {
@@ -1613,6 +1645,26 @@ fn while_() {
                     Box::new(Node::new(NodeBase::StatementList(vec![]), 14)),
                 ),
                 5,
+            )]),
+            0
+        )
+    );
+}
+
+#[test]
+fn for_() {
+    let mut parser = Parser::new("for (;;) { }".to_string());
+    assert_eq!(
+        parser.next().unwrap(),
+        Node::new(
+            NodeBase::StatementList(vec![Node::new(
+                NodeBase::For(
+                    Box::new(Node::new(NodeBase::Nope, 5)),
+                    Box::new(Node::new(NodeBase::Nope, 7)),
+                    Box::new(Node::new(NodeBase::Nope, 7)),
+                    Box::new(Node::new(NodeBase::StatementList(vec![]), 10)),
+                ),
+                3,
             )]),
             0
         )

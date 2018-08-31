@@ -50,6 +50,7 @@ pub enum NodeBase {
     Call(Box<Node>, Vec<Node>),
     If(Box<Node>, Box<Node>, Box<Node>), // Cond, Then, Else
     While(Box<Node>, Box<Node>),         // Cond, Body
+    For(Box<Node>, Box<Node>, Box<Node>, Box<Node>), // Init, Cond, Step, Body
     Assign(Box<Node>, Box<Node>),
     UnaryOp(Box<Node>, UnaryOp),
     BinaryOp(Box<Node>, Box<Node>, BinOp),
