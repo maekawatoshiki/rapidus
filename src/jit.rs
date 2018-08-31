@@ -11,6 +11,7 @@ use rand::random;
 
 use std::collections::HashMap;
 
+use libc;
 use llvm;
 use llvm::core::*;
 use llvm::prelude::*;
@@ -27,14 +28,14 @@ pub enum ValueType {
 }
 
 trait CastIntoLLVMType {
-    unsafe fn to_llvmty(&self) -> LLVMTypeRef;
+    unsafe fn to_llvmty(&self, LLVMContextRef) -> LLVMTypeRef;
 }
 
 impl CastIntoLLVMType for ValueType {
-    unsafe fn to_llvmty(&self) -> LLVMTypeRef {
+    unsafe fn to_llvmty(&self, ctx: LLVMContextRef) -> LLVMTypeRef {
         match self {
-            &ValueType::Number => LLVMDoubleType(),
-            &ValueType::Bool => LLVMInt1Type(),
+            &ValueType::Number => LLVMDoubleTypeInContext(ctx),
+            &ValueType::Bool => LLVMInt1TypeInContext(ctx),
         }
     }
 }
@@ -67,8 +68,9 @@ macro_rules! try_opt {
 
 #[derive(Debug, Clone)]
 pub struct TracingJit {
-    func_addr_in_bytecode_and_its_entity: HashMap<usize, FunctionInfoForJIT>,
-    func_addr_in_bytecode_and_its_addr_in_llvm: HashMap<usize, fn()>,
+    func_pos_in_bytecode_and_its_entity: HashMap<usize, FunctionInfoForJIT>,
+    func_pos_in_bytecode_and_its_addr_in_llvm: HashMap<usize, fn()>,
+    func_pos_in_bytecode_and_its_llvm_val: HashMap<usize, LLVMValueRef>,
     return_ty_map: HashMap<usize, ValueType>,
     count: HashMap<usize, usize>,
     context: LLVMContextRef,
@@ -77,13 +79,12 @@ pub struct TracingJit {
     exec_engine: llvm::execution_engine::LLVMExecutionEngineRef,
     pass_manager: LLVMPassManagerRef,
     cur_func: Option<LLVMValueRef>,
-    break_labels: Vec<LLVMBasicBlockRef>,
-    continue_labels: Vec<LLVMBasicBlockRef>,
+    builtin_funcs: HashMap<usize, LLVMValueRef>,
 }
 
 impl TracingJit {
     pub unsafe fn new(
-        func_addr_in_bytecode_and_its_entity: HashMap<usize, FunctionInfoForJIT>,
+        func_pos_in_bytecode_and_its_entity: HashMap<usize, FunctionInfoForJIT>,
     ) -> TracingJit {
         llvm::execution_engine::LLVMLinkInMCJIT();
         llvm::target::LLVM_InitializeNativeTarget();
@@ -108,13 +109,13 @@ impl TracingJit {
         llvm::transforms::scalar::LLVMAddGVNPass(pm);
         llvm::transforms::scalar::LLVMAddInstructionCombiningPass(pm);
         llvm::transforms::scalar::LLVMAddPromoteMemoryToRegisterPass(pm);
-        llvm::transforms::scalar::LLVMAddPromoteMemoryToRegisterPass(pm);
-        llvm::transforms::scalar::LLVMAddPromoteMemoryToRegisterPass(pm);
         llvm::transforms::scalar::LLVMAddTailCallEliminationPass(pm);
+        llvm::transforms::scalar::LLVMAddJumpThreadingPass(pm);
 
         TracingJit {
-            func_addr_in_bytecode_and_its_entity: func_addr_in_bytecode_and_its_entity,
-            func_addr_in_bytecode_and_its_addr_in_llvm: HashMap::new(),
+            func_pos_in_bytecode_and_its_entity: func_pos_in_bytecode_and_its_entity,
+            func_pos_in_bytecode_and_its_addr_in_llvm: HashMap::new(),
+            func_pos_in_bytecode_and_its_llvm_val: HashMap::new(),
             return_ty_map: HashMap::new(),
             count: HashMap::new(),
             context: context,
@@ -123,8 +124,38 @@ impl TracingJit {
             exec_engine: ee,
             pass_manager: pm,
             cur_func: None,
-            break_labels: vec![],
-            continue_labels: vec![],
+            builtin_funcs: {
+                let mut hmap = HashMap::new();
+                let f_math_floor = LLVMAddFunction(
+                    module,
+                    CString::new("math_floor").unwrap().as_ptr(),
+                    LLVMFunctionType(
+                        LLVMDoubleType(),
+                        vec![LLVMDoubleType()].as_mut_slice().as_mut_ptr(),
+                        1,
+                        0,
+                    ),
+                );
+                llvm::execution_engine::LLVMAddGlobalMapping(
+                    ee,
+                    f_math_floor,
+                    math_floor as *mut libc::c_void,
+                );
+                hmap.insert(3, f_math_floor);
+
+                let f_math_random = LLVMAddFunction(
+                    module,
+                    CString::new("math_random").unwrap().as_ptr(),
+                    LLVMFunctionType(LLVMDoubleType(), vec![].as_mut_slice().as_mut_ptr(), 0, 0),
+                );
+                llvm::execution_engine::LLVMAddGlobalMapping(
+                    ee,
+                    f_math_random,
+                    math_random as *mut libc::c_void,
+                );
+                hmap.insert(4, f_math_random);
+                hmap
+            },
         }
     }
 }
@@ -141,13 +172,13 @@ impl TracingJit {
         pc: usize,
         argc: usize,
     ) -> Option<fn()> {
-        if let Some(val) = self.func_addr_in_bytecode_and_its_addr_in_llvm.get(&pc) {
+        if let Some(val) = self.func_pos_in_bytecode_and_its_addr_in_llvm.get(&pc) {
             return Some(val.clone());
         }
 
         if self.func_is_called_enough_times(pc) {
             let info = self
-                .func_addr_in_bytecode_and_its_entity
+                .func_pos_in_bytecode_and_its_entity
                 .get(&pc)
                 .unwrap()
                 .clone();
@@ -156,26 +187,30 @@ impl TracingJit {
                 return None;
             }
 
-            let name = format!("jit_func.{}", random::<u32>());
+            let name = format!("func.{}", random::<u32>());
 
             // If gen_code fails, it means the function can't be JIT-compiled and should never be
             // compiled. (cannot_jit = true)
-            if let Err(()) = self.gen_code(name.clone(), insts, const_table, pc, argc) {
-                self.func_addr_in_bytecode_and_its_entity
-                    .get_mut(&pc)
-                    .unwrap()
-                    .cannot_jit = true;
-                return None;
-            }
+            match self.gen_code(name.clone(), insts, const_table, pc, argc) {
+                Ok(val) => self.func_pos_in_bytecode_and_its_llvm_val.insert(pc, val),
+                Err(()) => {
+                    self.func_pos_in_bytecode_and_its_entity
+                        .get_mut(&pc)
+                        .unwrap()
+                        .cannot_jit = true;
+                    return None;
+                }
+            };
 
-            let f =
-                ::std::mem::transmute::<u64, fn()>(llvm::execution_engine::LLVMGetFunctionAddress(
-                    self.exec_engine,
-                    CString::new(name.as_str()).unwrap().as_ptr(),
-                ));
+            let f_raw = llvm::execution_engine::LLVMGetFunctionAddress(
+                self.exec_engine,
+                CString::new(name.as_str()).unwrap().as_ptr(),
+            );
+            let f = ::std::mem::transmute::<u64, fn()>(f_raw);
+
             LLVMDumpModule(self.module);
-            self.func_addr_in_bytecode_and_its_addr_in_llvm
-                .insert(pc, f);
+
+            self.func_pos_in_bytecode_and_its_addr_in_llvm.insert(pc, f);
 
             return Some(f);
         }
@@ -251,13 +286,13 @@ impl TracingJit {
         }
 
         let func_ret_ty = if let Some(ty) = self.return_ty_map.get(&pc) {
-            ty.to_llvmty()
+            ty.to_llvmty(self.context)
         } else {
-            LLVMDoubleType() // Assume as double
+            LLVMDoubleTypeInContext(self.context) // Assume as double
         };
         let func_ty = LLVMFunctionType(
             func_ret_ty,
-            vec![LLVMDoubleType()]
+            vec![LLVMDoubleTypeInContext(self.context)]
                 .repeat(argc)
                 .as_mut_slice()
                 .as_mut_ptr(),
@@ -269,11 +304,14 @@ impl TracingJit {
             CString::new(name.as_str()).unwrap().as_ptr(),
             func_ty,
         );
-        let bb_entry = LLVMAppendBasicBlock(func, CString::new("entry").unwrap().as_ptr());
+        let bb_entry = LLVMAppendBasicBlockInContext(
+            self.context,
+            func,
+            CString::new("entry").unwrap().as_ptr(),
+        );
         LLVMPositionBuilderAtEnd(self.builder, bb_entry);
 
         let mut env = HashMap::new();
-        // env.insert(, func);
         self.cur_func = Some(func);
 
         for i in 0..argc {
@@ -288,16 +326,38 @@ impl TracingJit {
         pc += 1; // CreateContext
         pc += 4; // |- num_local_var
 
-        self.gen(insts, const_table, func_pos, pc, &mut env)?;
+        let mut compilation_failed = false;
+        if let Err(_) = self.gen(insts, const_table, func_pos, pc, &mut env) {
+            compilation_failed = true;
+        }
 
         let mut iter_bb = LLVMGetFirstBasicBlock(func);
         while iter_bb != ptr::null_mut() {
             if LLVMIsATerminatorInst(LLVMGetLastInstruction(iter_bb)) == ptr::null_mut() {
                 let terminator_builder = LLVMCreateBuilderInContext(self.context);
                 LLVMPositionBuilderAtEnd(terminator_builder, iter_bb);
-                LLVMBuildRet(terminator_builder, LLVMConstNull(LLVMDoubleType()));
+                LLVMBuildRet(
+                    terminator_builder,
+                    LLVMConstNull(LLVMDoubleTypeInContext(self.context)),
+                );
             }
             iter_bb = LLVMGetNextBasicBlock(iter_bb);
+        }
+
+        llvm::analysis::LLVMVerifyFunction(
+            func,
+            llvm::analysis::LLVMVerifierFailureAction::LLVMAbortProcessAction,
+        );
+
+        // LLVMDumpValue(func);
+
+        if compilation_failed {
+            // Remove the unnecessary function.
+            // TODO: Following code has a bug. Need fixing.
+            //  ref. https://groups.google.com/forum/#!topic/llvm-dev/ovvfIe_zU3Y
+            // LLVMReplaceAllUsesWith(func, LLVMGetUndef(LLVMTypeOf(func)));
+            // LLVMInstructionEraseFromParent(func);
+            return Err(());
         }
 
         LLVMRunPassManager(self.pass_manager, self.module);
@@ -327,7 +387,7 @@ impl TracingJit {
         }
         let var = LLVMBuildAlloca(
             builder,
-            LLVMDoubleType(),
+            LLVMDoubleTypeInContext(self.context),
             CString::new("").unwrap().as_ptr(),
         );
         env.insert((id, is_param), var);
@@ -463,18 +523,18 @@ impl TracingJit {
                             LLVMBuildFPToSI(
                                 self.builder,
                                 lhs,
-                                LLVMInt64Type(),
+                                LLVMInt64TypeInContext(self.context),
                                 CString::new("").unwrap().as_ptr(),
                             ),
                             LLVMBuildFPToSI(
                                 self.builder,
                                 rhs,
-                                LLVMInt64Type(),
+                                LLVMInt64TypeInContext(self.context),
                                 CString::new("").unwrap().as_ptr(),
                             ),
                             CString::new("frem").unwrap().as_ptr(),
                         ),
-                        LLVMDoubleType(),
+                        LLVMDoubleTypeInContext(self.context),
                         CString::new("").unwrap().as_ptr(),
                     ));
                 }
@@ -602,30 +662,57 @@ impl TracingJit {
                     pc += 1;
                     get_int32!(insts, pc, n, usize);
                     stack.push(match const_table.value[n] {
-                        vm::Value::Bool(false) => LLVMConstInt(LLVMInt1Type(), 0, 0),
-                        vm::Value::Bool(true) => LLVMConstInt(LLVMInt1Type(), 1, 0),
-                        vm::Value::Number(n) => LLVMConstReal(LLVMDoubleType(), n as f64),
+                        vm::Value::Bool(false) => {
+                            LLVMConstInt(LLVMInt1TypeInContext(self.context), 0, 0)
+                        }
+                        vm::Value::Bool(true) => {
+                            LLVMConstInt(LLVMInt1TypeInContext(self.context), 1, 0)
+                        }
+                        vm::Value::Number(n) => {
+                            LLVMConstReal(LLVMDoubleTypeInContext(self.context), n as f64)
+                        }
                         vm::Value::Function(pos, _) if pos == func_pos => func,
+                        vm::Value::Function(pos, _) => {
+                            match self.func_pos_in_bytecode_and_its_llvm_val.get(&pos) {
+                                Some(val) => *val,
+                                None => return Err(()),
+                            }
+                        }
+                        // TODO: Currently, this is unreachable because GET_MEMBER is
+                        // unimplemented. (Most builtin/embedded functions involve it.)
+                        vm::Value::EmbeddedFunction(n) => {
+                            if let Some(f) = self.builtin_funcs.get(&n) {
+                                *f
+                            } else {
+                                return Err(());
+                            }
+                        }
                         _ => return Err(()),
                     });
                 }
                 PUSH_INT8 => {
                     pc += 1;
                     get_int8!(insts, pc, n, isize);
-                    stack.push(LLVMConstReal(LLVMDoubleType(), n as f64));
+                    stack.push(LLVMConstReal(
+                        LLVMDoubleTypeInContext(self.context),
+                        n as f64,
+                    ));
                 }
                 PUSH_INT32 => {
                     pc += 1;
                     get_int32!(insts, pc, n, isize);
-                    stack.push(LLVMConstReal(LLVMDoubleType(), n as f64));
+                    stack.push(LLVMConstReal(
+                        LLVMDoubleTypeInContext(self.context),
+                        n as f64,
+                    ));
                 }
                 PUSH_TRUE => {
                     pc += 1;
-                    stack.push(LLVMConstInt(LLVMInt1Type(), 1, 0));
+                    stack.push(LLVMConstInt(LLVMInt1TypeInContext(self.context), 1, 0));
                 }
                 PUSH_FALSE => {
                     pc += 1;
-                    stack.push(LLVMConstInt(LLVMInt1Type(), 0, 0));
+                    stack.push(LLVMConstInt(LLVMInt1TypeInContext(self.context), 0, 0));
                 }
                 PUSH_THIS | PUSH_ARGUMENTS | NEG | GET_MEMBER | SET_MEMBER => pc += 1,
                 RETURN => {
@@ -652,4 +739,16 @@ impl TracingJit {
     fn inc_times_func_called(&mut self, pc: usize) {
         *self.count.get_mut(&pc).unwrap() += 1;
     }
+}
+
+// Builtin functions
+
+#[no_mangle]
+pub extern "C" fn math_floor(n: f64) -> f64 {
+    n.floor()
+}
+
+#[no_mangle]
+pub extern "C" fn math_random() -> f64 {
+    random::<f64>()
 }
