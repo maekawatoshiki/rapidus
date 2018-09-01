@@ -76,7 +76,6 @@ pub struct TracingJit {
     context: LLVMContextRef,
     module: LLVMModuleRef,
     builder: LLVMBuilderRef,
-    exec_engine: llvm::execution_engine::LLVMExecutionEngineRef,
     pass_manager: LLVMPassManagerRef,
     cur_func: Option<LLVMValueRef>,
     builtin_funcs: HashMap<usize, LLVMValueRef>,
@@ -86,23 +85,15 @@ impl TracingJit {
     pub unsafe fn new(
         func_pos_in_bytecode_and_its_entity: HashMap<usize, FunctionInfoForJIT>,
     ) -> TracingJit {
-        llvm::execution_engine::LLVMLinkInMCJIT();
         llvm::target::LLVM_InitializeNativeTarget();
         llvm::target::LLVM_InitializeNativeAsmPrinter();
         llvm::target::LLVM_InitializeNativeAsmParser();
         llvm::target::LLVM_InitializeAllTargetMCs();
+        llvm::execution_engine::LLVMLinkInMCJIT();
 
         let context = LLVMContextCreate();
         let module =
             LLVMModuleCreateWithNameInContext(CString::new("rapidus").unwrap().as_ptr(), context);
-
-        let mut ee = 0 as llvm::execution_engine::LLVMExecutionEngineRef;
-        let mut error = 0 as *mut i8;
-        if llvm::execution_engine::LLVMCreateExecutionEngineForModule(&mut ee, module, &mut error)
-            != 0
-        {
-            panic!()
-        }
 
         let pm = LLVMCreatePassManager();
         llvm::transforms::scalar::LLVMAddReassociatePass(pm);
@@ -121,39 +112,38 @@ impl TracingJit {
             context: context,
             module: module,
             builder: LLVMCreateBuilderInContext(context),
-            exec_engine: ee,
             pass_manager: pm,
             cur_func: None,
             builtin_funcs: {
                 let mut hmap = HashMap::new();
-                let f_math_floor = LLVMAddFunction(
-                    module,
-                    CString::new("math_floor").unwrap().as_ptr(),
-                    LLVMFunctionType(
-                        LLVMDoubleType(),
-                        vec![LLVMDoubleType()].as_mut_slice().as_mut_ptr(),
-                        1,
-                        0,
-                    ),
-                );
-                llvm::execution_engine::LLVMAddGlobalMapping(
-                    ee,
-                    f_math_floor,
-                    math_floor as *mut libc::c_void,
-                );
-                hmap.insert(3, f_math_floor);
-
-                let f_math_random = LLVMAddFunction(
-                    module,
-                    CString::new("math_random").unwrap().as_ptr(),
-                    LLVMFunctionType(LLVMDoubleType(), vec![].as_mut_slice().as_mut_ptr(), 0, 0),
-                );
-                llvm::execution_engine::LLVMAddGlobalMapping(
-                    ee,
-                    f_math_random,
-                    math_random as *mut libc::c_void,
-                );
-                hmap.insert(4, f_math_random);
+                // let f_math_floor = LLVMAddFunction(
+                //     module,
+                //     CString::new("math_floor").unwrap().as_ptr(),
+                //     LLVMFunctionType(
+                //         LLVMDoubleType(),
+                //         vec![LLVMDoubleType()].as_mut_slice().as_mut_ptr(),
+                //         1,
+                //         0,
+                //     ),
+                // );
+                // llvm::execution_engine::LLVMAddGlobalMapping(
+                //     ee,
+                //     f_math_floor,
+                //     math_floor as *mut libc::c_void,
+                // );
+                // hmap.insert(3, f_math_floor);
+                //
+                // let f_math_random = LLVMAddFunction(
+                //     module,
+                //     CString::new("math_random").unwrap().as_ptr(),
+                //     LLVMFunctionType(LLVMDoubleType(), vec![].as_mut_slice().as_mut_ptr(), 0, 0),
+                // );
+                // llvm::execution_engine::LLVMAddGlobalMapping(
+                //     ee,
+                //     f_math_random,
+                //     math_random as *mut libc::c_void,
+                // );
+                // hmap.insert(4, f_math_random);
                 hmap
             },
         }
@@ -176,6 +166,8 @@ impl TracingJit {
             return Some(val.clone());
         }
 
+        self.inc_times_func_called(pc);
+
         if self.func_is_called_enough_times(pc) {
             let info = self
                 .func_pos_in_bytecode_and_its_entity
@@ -191,6 +183,7 @@ impl TracingJit {
 
             // If gen_code fails, it means the function can't be JIT-compiled and should never be
             // compiled. (cannot_jit = true)
+            // llvm::execution_engine::LLVMAddModule(self.exec_engine, self.module);
             match self.gen_code(name.clone(), insts, const_table, pc, argc) {
                 Ok(val) => self.func_pos_in_bytecode_and_its_llvm_val.insert(pc, val),
                 Err(()) => {
@@ -202,20 +195,30 @@ impl TracingJit {
                 }
             };
 
+            LLVMDumpModule(self.module);
+
+            // TODO: Is this REALLY the right way???
+            let mut ee = 0 as llvm::execution_engine::LLVMExecutionEngineRef;
+            let mut error = 0 as *mut i8;
+            if llvm::execution_engine::LLVMCreateExecutionEngineForModule(
+                &mut ee,
+                self.module,
+                &mut error,
+            ) != 0
+            {
+                panic!()
+            }
             let f_raw = llvm::execution_engine::LLVMGetFunctionAddress(
-                self.exec_engine,
+                ee,
                 CString::new(name.as_str()).unwrap().as_ptr(),
             );
             let f = ::std::mem::transmute::<u64, fn()>(f_raw);
-
-            LLVMDumpModule(self.module);
 
             self.func_pos_in_bytecode_and_its_addr_in_llvm.insert(pc, f);
 
             return Some(f);
         }
 
-        self.inc_times_func_called(pc);
         None
     }
 
@@ -737,7 +740,7 @@ impl TracingJit {
 
     #[inline]
     fn inc_times_func_called(&mut self, pc: usize) {
-        *self.count.get_mut(&pc).unwrap() += 1;
+        *self.count.entry(pc).or_insert(0) += 1;
     }
 }
 

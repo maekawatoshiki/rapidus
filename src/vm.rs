@@ -288,6 +288,7 @@ impl VM {
     pub fn do_run(&mut self) {
         loop {
             let code = self.insts[self.state.pc as usize];
+            // println!("{}", code);
             self.op_table[code as usize](self);
             if code == RETURN || code == END {
                 break;
