@@ -95,74 +95,74 @@ fn main() {
 }
 
 fn run(file_name: &str) {
-    // match fork() {
-    //     Ok(ForkResult::Parent { child, .. }) => match waitpid(child, None) {
-    //         Ok(ok) => match ok {
-    //             WaitStatus::Exited(_, status) => if status != 0 {
-    //                 println!("exited. status: {}", status)
-    //             }, // exited successfully
-    //             WaitStatus::Signaled(pid, status, _) => {
-    //                 // We can do anything (like calling destructors) here.
-    //                 println!("child: pid={:?}, status={:?}", pid, status);
-    //                 println!("Rapidus Internal Error: segmentation fault");
-    //             }
-    //             e => panic!("Rapidus Internal Error: VM exited abnormally!: {:?}", e),
-    //         },
-    //         Err(e) => panic!("Rapidus Internal Error: waitpid failed: {:?}", e),
-    //     },
-    //     Ok(ForkResult::Child) => {
-    let mut file_body = String::new();
-
-    match OpenOptions::new().read(true).open(file_name) {
-        Ok(mut ok) => match ok.read_to_string(&mut file_body).ok() {
-            Some(x) => x,
-            None => {
-                panic!("error: cannot read file");
-            }
+    match fork() {
+        Ok(ForkResult::Parent { child, .. }) => match waitpid(child, None) {
+            Ok(ok) => match ok {
+                WaitStatus::Exited(_, status) => if status != 0 {
+                    println!("exited. status: {}", status)
+                }, // exited successfully
+                WaitStatus::Signaled(pid, status, _) => {
+                    // We can do anything (like calling destructors) here.
+                    println!("child: pid={:?}, status={:?}", pid, status);
+                    println!("Rapidus Internal Error: segmentation fault");
+                }
+                e => panic!("Rapidus Internal Error: VM exited abnormally!: {:?}", e),
+            },
+            Err(e) => panic!("Rapidus Internal Error: waitpid failed: {:?}", e),
         },
-        Err(e) => {
-            println!("error: {}", e);
-            return;
+        Ok(ForkResult::Child) => {
+            let mut file_body = String::new();
+
+            match OpenOptions::new().read(true).open(file_name) {
+                Ok(mut ok) => match ok.read_to_string(&mut file_body).ok() {
+                    Some(x) => x,
+                    None => {
+                        panic!("error: cannot read file");
+                    }
+                },
+                Err(e) => {
+                    println!("error: {}", e);
+                    return;
+                }
+            };
+
+            let mut parser = parser::Parser::new(file_body);
+
+            let mut node_list = vec![];
+            while let Ok(ok) = parser.next() {
+                node_list.push(ok)
+            }
+
+            if node_list.len() == 0 {
+                return;
+            }
+
+            extract_anony_func::AnonymousFunctionExtractor::new().run_toplevel(&mut node_list[0]);
+            fv_finder::FreeVariableFinder::new().run_toplevel(&mut node_list[0]);
+            fv_solver::FreeVariableSolver::new().run_toplevel(&mut node_list[0]);
+
+            let mut vm_codegen = vm_codegen::VMCodeGen::new();
+            let mut insts = vec![];
+            let mut func_addr_in_bytecode_and_its_entity = HashMap::new();
+            vm_codegen.compile(
+                &node_list[0],
+                &mut insts,
+                &mut func_addr_in_bytecode_and_its_entity,
+            );
+
+            // bytecode_gen::show(&insts);
+
+            println!("Result:");
+
+            // println!("{:?}", insts);
+
+            let mut vm = vm::VM::new();
+            vm.const_table = vm_codegen.bytecode_gen.const_table;
+            (*vm.global_objects)
+                .borrow_mut()
+                .extend(vm_codegen.global_varmap);
+            vm.run(insts);
         }
-    };
-
-    let mut parser = parser::Parser::new(file_body);
-
-    let mut node_list = vec![];
-    while let Ok(ok) = parser.next() {
-        node_list.push(ok)
+        Err(e) => panic!("Rapidus Internal Error: fork failed: {:?}", e),
     }
-
-    if node_list.len() == 0 {
-        return;
-    }
-
-    extract_anony_func::AnonymousFunctionExtractor::new().run_toplevel(&mut node_list[0]);
-    fv_finder::FreeVariableFinder::new().run_toplevel(&mut node_list[0]);
-    fv_solver::FreeVariableSolver::new().run_toplevel(&mut node_list[0]);
-
-    let mut vm_codegen = vm_codegen::VMCodeGen::new();
-    let mut insts = vec![];
-    let mut func_addr_in_bytecode_and_its_entity = HashMap::new();
-    vm_codegen.compile(
-        &node_list[0],
-        &mut insts,
-        &mut func_addr_in_bytecode_and_its_entity,
-    );
-
-    // bytecode_gen::show(&insts);
-
-    println!("Result:");
-
-    // println!("{:?}", insts);
-
-    let mut vm = vm::VM::new(func_addr_in_bytecode_and_its_entity);
-    vm.const_table = vm_codegen.bytecode_gen.const_table;
-    (*vm.global_objects)
-        .borrow_mut()
-        .extend(vm_codegen.global_varmap);
-    vm.run(insts);
-    // }
-    //     Err(e) => panic!("Rapidus Internal Error: fork failed: {:?}", e),
-    // }
 }

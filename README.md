@@ -12,7 +12,7 @@ A toy JavaScript engine aiming to pass test262
 - Support Tracing-JIT compiling 
   - Currently, a function fitting for the following rules would be JIT-compiled. 
     - Accessing only its arguments and local variables (not global variables) 
-    - Only Numbers and Booleans are used
+    - Number and Boolean(only for function's returning type) are used
     - Calling only itself
 
 # Building from Source

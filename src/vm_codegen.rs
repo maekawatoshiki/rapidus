@@ -69,14 +69,14 @@ impl FunctionInfo {
 
 #[derive(Clone, Debug)]
 pub struct Labels {
-    continue_labels: Vec<isize>,
+    continue_jmp_list: Vec<isize>,
     break_jmp_list: Vec<isize>,
 }
 
 impl Labels {
     pub fn new() -> Labels {
         Labels {
-            continue_labels: vec![],
+            continue_jmp_list: vec![],
             break_jmp_list: vec![],
         }
     }
@@ -94,6 +94,21 @@ impl Labels {
             );
         }
         self.break_jmp_list.clear();
+    }
+
+    fn replace_continue_jmps(
+        &mut self,
+        bytecode_gen: &mut ByteCodeGen,
+        insts: &mut ByteCode,
+        continue_label_pos: isize,
+    ) {
+        for jmp_pos in &self.continue_jmp_list {
+            bytecode_gen.replace_int32(
+                (continue_label_pos - jmp_pos) as i32 - 5,
+                &mut insts[*jmp_pos as usize + 1..*jmp_pos as usize + 5],
+            );
+        }
+        self.continue_jmp_list.clear();
     }
 }
 
@@ -411,15 +426,12 @@ impl VMCodeGen {
 
     pub fn run_continue(&mut self, insts: &mut ByteCode) {
         let continue_jmp_pos = insts.len() as isize;
-        let continue_label_pos = self
-            .labels
+        self.bytecode_gen.gen_jmp(0, insts);
+        self.labels
             .last_mut()
             .unwrap()
-            .continue_labels
-            .last()
-            .unwrap();
-        self.bytecode_gen
-            .gen_jmp((continue_label_pos - continue_jmp_pos - 5) as i32, insts);
+            .continue_jmp_list
+            .push(continue_jmp_pos);
     }
 }
 
@@ -508,9 +520,8 @@ impl VMCodeGen {
     }
 
     pub fn run_while(&mut self, cond: &Node, body: &Node, insts: &mut ByteCode) {
-        let pos = insts.len() as isize;
+        let pos1 = insts.len() as isize;
         self.labels.push(Labels::new());
-        self.labels.last_mut().unwrap().continue_labels.push(pos);
 
         self.run(cond, insts);
 
@@ -521,7 +532,7 @@ impl VMCodeGen {
 
         let loop_pos = insts.len() as isize;
         self.bytecode_gen
-            .gen_jmp((pos - loop_pos) as i32 - 5, insts);
+            .gen_jmp((pos1 - loop_pos) as i32 - 5, insts);
 
         let break_label_pos = insts.len() as isize;
         self.labels.last_mut().unwrap().replace_break_jmps(
@@ -529,11 +540,15 @@ impl VMCodeGen {
             insts,
             break_label_pos,
         );
+        self.labels
+            .last_mut()
+            .unwrap()
+            .replace_continue_jmps(&mut self.bytecode_gen, insts, pos1);
         self.labels.pop();
 
-        let pos = insts.len() as isize;
+        let pos2 = insts.len() as isize;
         self.bytecode_gen.replace_int32(
-            (pos - cond_pos) as i32 - 5,
+            (pos2 - cond_pos) as i32 - 5,
             &mut insts[cond_pos as usize + 1..cond_pos as usize + 5],
         );
     }
@@ -550,7 +565,6 @@ impl VMCodeGen {
 
         let pos = insts.len() as isize;
         self.labels.push(Labels::new());
-        self.labels.last_mut().unwrap().continue_labels.push(pos);
 
         self.run(cond, insts);
 
@@ -559,6 +573,12 @@ impl VMCodeGen {
 
         self.run(body, insts);
 
+        let continue_label_pos = insts.len() as isize;
+        self.labels.last_mut().unwrap().replace_continue_jmps(
+            &mut self.bytecode_gen,
+            insts,
+            continue_label_pos,
+        );
         self.run(step, insts);
 
         let loop_pos = insts.len() as isize;

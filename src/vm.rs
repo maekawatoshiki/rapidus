@@ -14,7 +14,6 @@ use libc;
 use bytecode_gen::ByteCode;
 use jit::TracingJit;
 use node::BinOp;
-use vm_codegen::FunctionInfoForJIT;
 
 pub type RawStringPtr = *mut libc::c_char;
 
@@ -155,6 +154,7 @@ pub struct VM {
     pub state: VMState,
     pub const_table: ConstantTable,
     pub insts: ByteCode,
+    pub loop_bgn_end: HashMap<isize, isize>,
     pub op_table: [fn(&mut VM); 37],
     pub builtin_functions: [unsafe fn(Vec<Value>, &mut VM); 6],
 }
@@ -168,7 +168,7 @@ pub struct VMState {
 }
 
 impl VM {
-    pub fn new(func_addr_in_bytecode_and_its_entity: HashMap<usize, FunctionInfoForJIT>) -> VM {
+    pub fn new() -> VM {
         let mut obj = HashMap::new();
 
         obj.insert("console".to_string(), {
@@ -199,7 +199,7 @@ impl VM {
 
         VM {
             global_objects: global_objects.clone(),
-            jit: unsafe { TracingJit::new(func_addr_in_bytecode_and_its_entity) },
+            jit: unsafe { TracingJit::new() },
             state: VMState {
                 stack: {
                     let mut stack = Vec::with_capacity(128);
@@ -218,6 +218,7 @@ impl VM {
             },
             const_table: ConstantTable::new(),
             insts: vec![],
+            loop_bgn_end: HashMap::new(),
             op_table: [
                 end,
                 create_context,
@@ -287,8 +288,21 @@ impl VM {
 
     pub fn do_run(&mut self) {
         loop {
+            if let Some(end) = self.loop_bgn_end.get(&self.state.pc) {
+                unsafe {
+                    // println!("range: [{:x}, {:x})", self.state.pc, end);
+                    if let Some(pc) = self.jit.can_loop_jit(
+                        &self.insts,
+                        &self.const_table,
+                        &mut self.state,
+                        *end as usize,
+                    ) {
+                        self.state.pc = pc;
+                        continue;
+                    }
+                }
+            }
             let code = self.insts[self.state.pc as usize];
-            // println!("{}", code);
             self.op_table[code as usize](self);
             if code == RETURN || code == END {
                 break;
@@ -737,6 +751,11 @@ fn set_arg_local(self_: &mut VM) {
 fn jmp(self_: &mut VM) {
     self_.state.pc += 1; // jmp
     get_int32!(self_, dst, i32);
+    if dst < 0 {
+        self_
+            .loop_bgn_end
+            .insert(self_.state.pc + dst as isize, self_.state.pc);
+    }
     self_.state.pc += dst as isize;
 }
 
