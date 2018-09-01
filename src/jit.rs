@@ -11,7 +11,7 @@ use rand::random;
 
 use std::collections::HashMap;
 
-use libc;
+// use libc;
 use llvm;
 use llvm::core::*;
 use llvm::prelude::*;

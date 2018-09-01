@@ -1,21 +1,12 @@
 function prime(n) {
   if (n % 2 == 0) return false;
-
-  var k = 3;
-  while (k * k <= n) {
-    if (n % k == 0) {
+  for (var k = 3; k * k <= n; k += 2) 
+    if (n % k == 0) 
       return false;
-    }
-    k += 2
-  }
   return true;
 }
 
-var i = 2;
 console.log("2 is prime");
-while (i < 1000000) {
-  if (prime(i)) {
-    console.log(i, "is prime");
-  }
-  i += 1;
+for (var i = 2; i < 1000000; i += 1) {
+  if (prime(i)) console.log(i, "is prime");
 }
