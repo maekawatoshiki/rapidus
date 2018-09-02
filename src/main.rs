@@ -156,7 +156,7 @@ fn run(file_name: &str) {
 
             // println!("{:?}", insts);
 
-            let mut vm = vm::VM::new(func_addr_in_bytecode_and_its_entity);
+            let mut vm = vm::VM::new();
             vm.const_table = vm_codegen.bytecode_gen.const_table;
             (*vm.global_objects)
                 .borrow_mut()
