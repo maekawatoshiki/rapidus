@@ -6,11 +6,11 @@ use vm::{
     PUSH_TRUE, REM, RETURN, SET_ARG_LOCAL, SET_GLOBAL, SET_LOCAL, SET_MEMBER, SUB,
 };
 
-use rand::random;
+use rand::{random, thread_rng, RngCore};
 
 use std::collections::{HashMap, HashSet};
 
-// use libc;
+use libc;
 use llvm;
 use llvm::core::*;
 use llvm::prelude::*;
@@ -23,6 +23,7 @@ const MAX_FUNCTION_PARAMS: usize = 3;
 #[derive(Debug, Clone, PartialEq)]
 pub enum ValueType {
     Number,
+    String,
     Bool,
 }
 
@@ -34,6 +35,7 @@ impl CastIntoLLVMType for ValueType {
     unsafe fn to_llvmty(&self, ctx: LLVMContextRef) -> LLVMTypeRef {
         match self {
             &ValueType::Number => LLVMDoubleTypeInContext(ctx),
+            &ValueType::String => LLVMPointerType(LLVMInt8TypeInContext(ctx), 0),
             &ValueType::Bool => LLVMInt1TypeInContext(ctx),
         }
     }
@@ -61,6 +63,15 @@ macro_rules! try_opt {
         match $e {
             Some(val) => val,
             None => return Err(()),
+        }
+    };
+}
+
+macro_rules! try_stack {
+    ($e:expr) => {
+        match $e {
+            Some((val, None)) => val,
+            _ => return Err(()),
         }
     };
 }
@@ -124,6 +135,8 @@ pub struct TracingJit {
 
 impl TracingJit {
     pub unsafe fn new() -> TracingJit {
+        MATH_RAND_SEED = thread_rng().next_u64();
+
         llvm::target::LLVM_InitializeNativeTarget();
         llvm::target::LLVM_InitializeNativeAsmPrinter();
         llvm::target::LLVM_InitializeNativeAsmParser();
@@ -153,35 +166,99 @@ impl TracingJit {
             pass_manager: pm,
             cur_func: None,
             builtin_funcs: {
-                let hmap = HashMap::new();
-                // let f_math_floor = LLVMAddFunction(
-                //     module,
-                //     CString::new("math_floor").unwrap().as_ptr(),
-                //     LLVMFunctionType(
-                //         LLVMDoubleType(),
-                //         vec![LLVMDoubleType()].as_mut_slice().as_mut_ptr(),
-                //         1,
-                //         0,
-                //     ),
-                // );
-                // llvm::execution_engine::LLVMAddGlobalMapping(
-                //     ee,
-                //     f_math_floor,
-                //     math_floor as *mut libc::c_void,
-                // );
-                // hmap.insert(3, f_math_floor);
-                //
-                // let f_math_random = LLVMAddFunction(
-                //     module,
-                //     CString::new("math_random").unwrap().as_ptr(),
-                //     LLVMFunctionType(LLVMDoubleType(), vec![].as_mut_slice().as_mut_ptr(), 0, 0),
-                // );
-                // llvm::execution_engine::LLVMAddGlobalMapping(
-                //     ee,
-                //     f_math_random,
-                //     math_random as *mut libc::c_void,
-                // );
-                // hmap.insert(4, f_math_random);
+                let mut hmap = HashMap::new();
+
+                let f_console_log_string = LLVMAddFunction(
+                    module,
+                    CString::new("console_log_string").unwrap().as_ptr(),
+                    LLVMFunctionType(
+                        LLVMVoidType(),
+                        vec![LLVMPointerType(LLVMInt8TypeInContext(context), 0)]
+                            .as_mut_slice()
+                            .as_mut_ptr(),
+                        1,
+                        0,
+                    ),
+                );
+                hmap.insert(BUILTIN_CONSOLE_LOG_STRING, f_console_log_string);
+
+                let f_console_log_f64 = LLVMAddFunction(
+                    module,
+                    CString::new("console_log_f64").unwrap().as_ptr(),
+                    LLVMFunctionType(
+                        LLVMVoidType(),
+                        vec![LLVMDoubleTypeInContext(context)]
+                            .as_mut_slice()
+                            .as_mut_ptr(),
+                        1,
+                        0,
+                    ),
+                );
+                hmap.insert(BUILTIN_CONSOLE_LOG_F64, f_console_log_f64);
+
+                let f_console_log_newline = LLVMAddFunction(
+                    module,
+                    CString::new("console_log_newline").unwrap().as_ptr(),
+                    LLVMFunctionType(LLVMVoidType(), vec![].as_mut_ptr(), 0, 0),
+                );
+                hmap.insert(BUILTIN_CONSOLE_LOG_NEWLINE, f_console_log_newline);
+
+                let f_process_stdout_write = LLVMAddFunction(
+                    module,
+                    CString::new("process_stdout_write").unwrap().as_ptr(),
+                    LLVMFunctionType(
+                        LLVMVoidType(),
+                        vec![LLVMPointerType(LLVMInt8TypeInContext(context), 0)]
+                            .as_mut_slice()
+                            .as_mut_ptr(),
+                        1,
+                        0,
+                    ),
+                );
+                hmap.insert(BUILTIN_PROCESS_STDOUT_WRITE, f_process_stdout_write);
+
+                let f_math_pow = LLVMAddFunction(
+                    module,
+                    CString::new("math_pow").unwrap().as_ptr(),
+                    LLVMFunctionType(
+                        LLVMDoubleTypeInContext(context),
+                        vec![
+                            LLVMDoubleTypeInContext(context),
+                            LLVMDoubleTypeInContext(context),
+                        ].as_mut_slice()
+                            .as_mut_ptr(),
+                        2,
+                        0,
+                    ),
+                );
+                hmap.insert(BUILTIN_MATH_POW, f_math_pow);
+
+                let f_math_floor = LLVMAddFunction(
+                    module,
+                    CString::new("math_floor").unwrap().as_ptr(),
+                    LLVMFunctionType(
+                        LLVMDoubleTypeInContext(context),
+                        vec![LLVMDoubleTypeInContext(context)]
+                            .as_mut_slice()
+                            .as_mut_ptr(),
+                        1,
+                        0,
+                    ),
+                );
+                hmap.insert(BUILTIN_MATH_FLOOR, f_math_floor);
+
+                let f_math_random = LLVMAddFunction(
+                    module,
+                    CString::new("math_random").unwrap().as_ptr(),
+                    LLVMFunctionType(
+                        LLVMDoubleTypeInContext(context),
+                        vec![].as_mut_slice().as_mut_ptr(),
+                        0,
+                        0,
+                    ),
+                );
+                hmap.insert(BUILTIN_MATH_RANDOM, f_math_random);
+
                 hmap
             },
         }
@@ -224,7 +301,7 @@ impl TracingJit {
         // If gen_code fails, it means the function can't be JIT-compiled and should never be
         // compiled. (cannot_jit = true)
         // llvm::execution_engine::LLVMAddModule(self.exec_engine, self.module);
-        let llvm_func = match self.gen_code(name.clone(), insts, const_table, pc, argc) {
+        let llvm_func = match self.gen_code_for_func(name.clone(), insts, const_table, pc, argc) {
             Ok(llvm_func) => llvm_func,
             Err(()) => {
                 self.func_info.get_mut(&pc).unwrap().jit_info.cannot_jit = true;
@@ -245,6 +322,49 @@ impl TracingJit {
         {
             panic!()
         }
+        {
+            llvm::execution_engine::LLVMAddGlobalMapping(
+                ee,
+                *self.builtin_funcs.get(&BUILTIN_CONSOLE_LOG_STRING).unwrap(),
+                console_log_string as *mut libc::c_void,
+            );
+            llvm::execution_engine::LLVMAddGlobalMapping(
+                ee,
+                *self.builtin_funcs.get(&BUILTIN_CONSOLE_LOG_F64).unwrap(),
+                console_log_f64 as *mut libc::c_void,
+            );
+            llvm::execution_engine::LLVMAddGlobalMapping(
+                ee,
+                *self
+                    .builtin_funcs
+                    .get(&BUILTIN_CONSOLE_LOG_NEWLINE)
+                    .unwrap(),
+                console_log_newline as *mut libc::c_void,
+            );
+            llvm::execution_engine::LLVMAddGlobalMapping(
+                ee,
+                *self
+                    .builtin_funcs
+                    .get(&BUILTIN_PROCESS_STDOUT_WRITE)
+                    .unwrap(),
+                process_stdout_write as *mut libc::c_void,
+            );
+            llvm::execution_engine::LLVMAddGlobalMapping(
+                ee,
+                *self.builtin_funcs.get(&BUILTIN_MATH_POW).unwrap(),
+                math_pow as *mut libc::c_void,
+            );
+            llvm::execution_engine::LLVMAddGlobalMapping(
+                ee,
+                *self.builtin_funcs.get(&BUILTIN_MATH_FLOOR).unwrap(),
+                math_floor as *mut libc::c_void,
+            );
+            llvm::execution_engine::LLVMAddGlobalMapping(
+                ee,
+                *self.builtin_funcs.get(&BUILTIN_MATH_RANDOM).unwrap(),
+                math_random as *mut libc::c_void,
+            );
+        }
         let f_raw = llvm::execution_engine::LLVMGetFunctionAddress(
             ee,
             CString::new(name.as_str()).unwrap().as_ptr(),
@@ -258,61 +378,7 @@ impl TracingJit {
         Some(f)
     }
 
-    pub fn register_return_type(&mut self, pc: usize, val: &vm::Value) {
-        match val {
-            &vm::Value::Number(_) => self.return_ty_map.insert(pc, ValueType::Number),
-            &vm::Value::Bool(_) => self.return_ty_map.insert(pc, ValueType::Bool),
-            _ => None,
-        };
-    }
-
-    pub unsafe fn run_llvm_func(&mut self, pc: usize, f: fn(), args: Vec<vm::Value>) -> vm::Value {
-        let mut llvm_args = vec![];
-        for arg in args {
-            llvm_args.push(match arg {
-                vm::Value::Number(f) => f,
-                _ => unimplemented!(),
-            });
-        }
-
-        let func_ret_ty = self.return_ty_map.get(&pc).unwrap_or(&ValueType::Number);
-
-        // By a bug of LLVM, llvm::execution_engine::runFunction can not be used.
-        // So, all I can do is this:
-        // TODO: MAX_FUNCTION_PARAMS is too small?
-        match func_ret_ty {
-            &ValueType::Number => vm::Value::Number(match llvm_args.len() {
-                0 => ::std::mem::transmute::<fn(), fn() -> f64>(f)(),
-                1 => ::std::mem::transmute::<fn(), fn(f64) -> f64>(f)(llvm_args[0]),
-                2 => ::std::mem::transmute::<fn(), fn(f64, f64) -> f64>(f)(
-                    llvm_args[0],
-                    llvm_args[1],
-                ),
-                3 => ::std::mem::transmute::<fn(), fn(f64, f64, f64) -> f64>(f)(
-                    llvm_args[0],
-                    llvm_args[1],
-                    llvm_args[2],
-                ),
-                _ => unimplemented!("should be implemented.."),
-            }),
-            &ValueType::Bool => vm::Value::Bool(match llvm_args.len() {
-                0 => ::std::mem::transmute::<fn(), fn() -> bool>(f)(),
-                1 => ::std::mem::transmute::<fn(), fn(f64) -> bool>(f)(llvm_args[0]),
-                2 => ::std::mem::transmute::<fn(), fn(f64, f64) -> bool>(f)(
-                    llvm_args[0],
-                    llvm_args[1],
-                ),
-                3 => ::std::mem::transmute::<fn(), fn(f64, f64, f64) -> bool>(f)(
-                    llvm_args[0],
-                    llvm_args[1],
-                    llvm_args[2],
-                ),
-                _ => unimplemented!("should be implemented.."),
-            }),
-        }
-    }
-
-    unsafe fn gen_code(
+    unsafe fn gen_code_for_func(
         &mut self,
         name: String,
         insts: &Vec<u8>,
@@ -366,7 +432,15 @@ impl TracingJit {
         pc += 4; // |- num_local_var
 
         let mut compilation_failed = false;
-        if let Err(_) = self.gen(insts, const_table, func_pos, pc, &mut env) {
+        if let Err(_) = self.gen_body(
+            insts,
+            const_table,
+            func_pos,
+            pc,
+            insts.len(),
+            true,
+            &mut env,
+        ) {
             compilation_failed = true;
         }
 
@@ -375,20 +449,17 @@ impl TracingJit {
             if LLVMIsATerminatorInst(LLVMGetLastInstruction(iter_bb)) == ptr::null_mut() {
                 let terminator_builder = LLVMCreateBuilderInContext(self.context);
                 LLVMPositionBuilderAtEnd(terminator_builder, iter_bb);
-                LLVMBuildRet(
-                    terminator_builder,
-                    LLVMConstNull(LLVMDoubleTypeInContext(self.context)),
-                );
+                LLVMBuildRet(terminator_builder, LLVMConstNull(func_ret_ty));
             }
             iter_bb = LLVMGetNextBasicBlock(iter_bb);
         }
+
+        // LLVMDumpValue(func);
 
         llvm::analysis::LLVMVerifyFunction(
             func,
             llvm::analysis::LLVMVerifierFailureAction::LLVMAbortProcessAction,
         );
-
-        // LLVMDumpValue(func);
 
         if compilation_failed {
             // Remove the unnecessary function.
@@ -402,378 +473,6 @@ impl TracingJit {
         LLVMRunPassManager(self.pass_manager, self.module);
 
         Ok(func)
-    }
-
-    unsafe fn declare_local_var(
-        &mut self,
-        id: usize,
-        is_param: bool,
-        env: &mut HashMap<(usize, bool), LLVMValueRef>,
-    ) -> LLVMValueRef {
-        if let Some(v) = env.get(&(id, is_param)) {
-            return *v;
-        }
-
-        let func = self.cur_func.unwrap();
-        let builder = LLVMCreateBuilderInContext(self.context);
-        let entry_bb = LLVMGetEntryBasicBlock(func);
-        let first_inst = LLVMGetFirstInstruction(entry_bb);
-        // A variable is always declared at the first point of entry block
-        if first_inst == ptr::null_mut() {
-            LLVMPositionBuilderAtEnd(builder, entry_bb);
-        } else {
-            LLVMPositionBuilderBefore(builder, first_inst);
-        }
-        let var = LLVMBuildAlloca(
-            builder,
-            LLVMDoubleTypeInContext(self.context),
-            CString::new("").unwrap().as_ptr(),
-        );
-        env.insert((id, is_param), var);
-        var
-    }
-
-    unsafe fn gen(
-        &mut self,
-        insts: &Vec<u8>,
-        const_table: &vm::ConstantTable,
-        func_pos: usize,
-        mut pc: usize,
-        env: &mut HashMap<(usize, bool), LLVMValueRef>,
-    ) -> Result<(), ()> {
-        let func = self.cur_func.unwrap();
-        let mut stack: Vec<LLVMValueRef> = vec![];
-
-        let mut labels: HashMap<usize, LLVMBasicBlockRef> = HashMap::new();
-        // First of all, find JMP-related ops and record its destination.
-        {
-            let mut pc = pc;
-            while pc < insts.len() {
-                match insts[pc] {
-                    END => break,
-                    CREATE_CONTEXT => break,
-                    RETURN => pc += 1,
-                    ASG_FREST_PARAM => pc += 9,
-                    CONSTRUCT | CREATE_OBJECT | PUSH_CONST | PUSH_INT32 | SET_GLOBAL
-                    | GET_LOCAL | SET_ARG_LOCAL | GET_ARG_LOCAL | CREATE_ARRAY | SET_LOCAL
-                    | CALL => pc += 5,
-                    JMP | JMP_IF_FALSE => {
-                        pc += 1;
-                        get_int32!(insts, pc, dst, i32);
-                        // println!("pc: {}, dst: {}, = {}", pc, dst, pc as i32 + dst);
-                        labels.insert(
-                            (pc as i32 + dst) as usize,
-                            LLVMAppendBasicBlock(func, CString::new("").unwrap().as_ptr()),
-                        );
-                    }
-                    PUSH_INT8 => pc += 2,
-                    PUSH_FALSE | PUSH_TRUE | PUSH_THIS | ADD | SUB | MUL | DIV | REM | LT
-                    | PUSH_ARGUMENTS | NEG | GT | LE | GE | EQ | NE | GET_MEMBER | SET_MEMBER => {
-                        pc += 1
-                    }
-                    GET_GLOBAL => pc += 5,
-                    _ => return Err(()),
-                }
-            }
-        }
-
-        while pc < insts.len() {
-            if let Some(bb) = labels.get(&pc) {
-                if cur_bb_has_no_terminator(self.builder) {
-                    LLVMBuildBr(self.builder, *bb);
-                }
-                LLVMPositionBuilderAtEnd(self.builder, *bb);
-            }
-
-            match insts[pc] {
-                END => break,
-                CREATE_CONTEXT => break,
-                ASG_FREST_PARAM => pc += 9,
-                CONSTRUCT | CREATE_OBJECT | SET_GLOBAL | CREATE_ARRAY => pc += 5,
-                JMP_IF_FALSE => {
-                    pc += 1;
-                    get_int32!(insts, pc, dst, i32);
-                    let bb_then = LLVMAppendBasicBlock(func, CString::new("").unwrap().as_ptr());
-                    let bb_else = try_opt!(labels.get(&((pc as i32 + dst) as usize)));
-                    let cond_val = try_opt!(stack.pop());
-                    LLVMBuildCondBr(self.builder, cond_val, bb_then, *bb_else);
-                    LLVMPositionBuilderAtEnd(self.builder, bb_then);
-                }
-                JMP => {
-                    pc += 1;
-                    get_int32!(insts, pc, dst, i32);
-                    let bb = try_opt!(labels.get(&((pc as i32 + dst) as usize)));
-                    if cur_bb_has_no_terminator(self.builder) {
-                        LLVMBuildBr(self.builder, *bb);
-                    }
-                }
-                ADD => {
-                    pc += 1;
-                    let rhs = try_opt!(stack.pop());
-                    let lhs = try_opt!(stack.pop());
-                    stack.push(LLVMBuildFAdd(
-                        self.builder,
-                        lhs,
-                        rhs,
-                        CString::new("fadd").unwrap().as_ptr(),
-                    ));
-                }
-                SUB => {
-                    pc += 1;
-                    let rhs = try_opt!(stack.pop());
-                    let lhs = try_opt!(stack.pop());
-                    stack.push(LLVMBuildFSub(
-                        self.builder,
-                        lhs,
-                        rhs,
-                        CString::new("fsub").unwrap().as_ptr(),
-                    ));
-                }
-                MUL => {
-                    pc += 1;
-                    let rhs = try_opt!(stack.pop());
-                    let lhs = try_opt!(stack.pop());
-                    stack.push(LLVMBuildFMul(
-                        self.builder,
-                        lhs,
-                        rhs,
-                        CString::new("fmul").unwrap().as_ptr(),
-                    ));
-                }
-                DIV => {
-                    pc += 1;
-                    let rhs = try_opt!(stack.pop());
-                    let lhs = try_opt!(stack.pop());
-                    stack.push(LLVMBuildFDiv(
-                        self.builder,
-                        lhs,
-                        rhs,
-                        CString::new("fdiv").unwrap().as_ptr(),
-                    ));
-                }
-                REM => {
-                    pc += 1;
-                    let rhs = try_opt!(stack.pop());
-                    let lhs = try_opt!(stack.pop());
-                    stack.push(LLVMBuildSIToFP(
-                        self.builder,
-                        LLVMBuildSRem(
-                            self.builder,
-                            LLVMBuildFPToSI(
-                                self.builder,
-                                lhs,
-                                LLVMInt64TypeInContext(self.context),
-                                CString::new("").unwrap().as_ptr(),
-                            ),
-                            LLVMBuildFPToSI(
-                                self.builder,
-                                rhs,
-                                LLVMInt64TypeInContext(self.context),
-                                CString::new("").unwrap().as_ptr(),
-                            ),
-                            CString::new("frem").unwrap().as_ptr(),
-                        ),
-                        LLVMDoubleTypeInContext(self.context),
-                        CString::new("").unwrap().as_ptr(),
-                    ));
-                }
-                LT => {
-                    pc += 1;
-                    let rhs = try_opt!(stack.pop());
-                    let lhs = try_opt!(stack.pop());
-                    stack.push(LLVMBuildFCmp(
-                        self.builder,
-                        llvm::LLVMRealPredicate::LLVMRealOLT,
-                        lhs,
-                        rhs,
-                        CString::new("flt").unwrap().as_ptr(),
-                    ))
-                }
-                LE => {
-                    pc += 1;
-                    let rhs = try_opt!(stack.pop());
-                    let lhs = try_opt!(stack.pop());
-                    stack.push(LLVMBuildFCmp(
-                        self.builder,
-                        llvm::LLVMRealPredicate::LLVMRealOLE,
-                        lhs,
-                        rhs,
-                        CString::new("fle").unwrap().as_ptr(),
-                    ))
-                }
-                GT => {
-                    pc += 1;
-                    let rhs = try_opt!(stack.pop());
-                    let lhs = try_opt!(stack.pop());
-                    stack.push(LLVMBuildFCmp(
-                        self.builder,
-                        llvm::LLVMRealPredicate::LLVMRealOGT,
-                        lhs,
-                        rhs,
-                        CString::new("fgt").unwrap().as_ptr(),
-                    ))
-                }
-                GE => {
-                    pc += 1;
-                    let rhs = try_opt!(stack.pop());
-                    let lhs = try_opt!(stack.pop());
-                    stack.push(LLVMBuildFCmp(
-                        self.builder,
-                        llvm::LLVMRealPredicate::LLVMRealOGE,
-                        lhs,
-                        rhs,
-                        CString::new("fge").unwrap().as_ptr(),
-                    ))
-                }
-                EQ => {
-                    pc += 1;
-                    let rhs = try_opt!(stack.pop());
-                    let lhs = try_opt!(stack.pop());
-                    stack.push(LLVMBuildFCmp(
-                        self.builder,
-                        llvm::LLVMRealPredicate::LLVMRealOEQ,
-                        lhs,
-                        rhs,
-                        CString::new("feq").unwrap().as_ptr(),
-                    ));
-                }
-                NE => {
-                    pc += 1;
-                    let rhs = try_opt!(stack.pop());
-                    let lhs = try_opt!(stack.pop());
-                    stack.push(LLVMBuildFCmp(
-                        self.builder,
-                        llvm::LLVMRealPredicate::LLVMRealONE,
-                        lhs,
-                        rhs,
-                        CString::new("fne").unwrap().as_ptr(),
-                    ));
-                }
-                NEG => {
-                    pc += 1;
-                    let val = try_opt!(stack.pop());
-                    stack.push(LLVMBuildFNeg(
-                        self.builder,
-                        val,
-                        CString::new("fneg").unwrap().as_ptr(),
-                    ));
-                }
-                GET_ARG_LOCAL => {
-                    pc += 1;
-                    get_int32!(insts, pc, n, usize);
-                    stack.push(LLVMBuildLoad(
-                        self.builder,
-                        *try_opt!(env.get(&(n, true))),
-                        CString::new("").unwrap().as_ptr(),
-                    ));
-                }
-                // Rarely used?
-                SET_ARG_LOCAL => {
-                    pc += 1;
-                    get_int32!(insts, pc, n, usize);
-                    let src = try_opt!(stack.pop());
-                    LLVMBuildStore(self.builder, src, *try_opt!(env.get(&(n, true))));
-                }
-                GET_LOCAL => {
-                    pc += 1;
-                    get_int32!(insts, pc, n, usize);
-                    stack.push(LLVMBuildLoad(
-                        self.builder,
-                        self.declare_local_var(n, false, env),
-                        CString::new("").unwrap().as_ptr(),
-                    ));
-                }
-                SET_LOCAL => {
-                    pc += 1;
-                    get_int32!(insts, pc, n, usize);
-                    let src = try_opt!(stack.pop());
-                    LLVMBuildStore(self.builder, src, self.declare_local_var(n, false, env));
-                }
-                CALL => {
-                    pc += 1;
-                    get_int32!(insts, pc, argc, usize);
-                    let callee = try_opt!(stack.pop());
-                    let mut llvm_args = vec![];
-                    for _ in 0..argc {
-                        llvm_args.push(try_opt!(stack.pop()));
-                    }
-                    llvm_args.reverse();
-                    stack.push(LLVMBuildCall(
-                        self.builder,
-                        callee,
-                        llvm_args.as_mut_ptr(),
-                        llvm_args.len() as u32,
-                        CString::new("").unwrap().as_ptr(),
-                    ));
-                }
-                PUSH_CONST => {
-                    pc += 1;
-                    get_int32!(insts, pc, n, usize);
-                    stack.push(match const_table.value[n] {
-                        vm::Value::Bool(false) => {
-                            LLVMConstInt(LLVMInt1TypeInContext(self.context), 0, 0)
-                        }
-                        vm::Value::Bool(true) => {
-                            LLVMConstInt(LLVMInt1TypeInContext(self.context), 1, 0)
-                        }
-                        vm::Value::Number(n) => {
-                            LLVMConstReal(LLVMDoubleTypeInContext(self.context), n as f64)
-                        }
-                        vm::Value::Function(pos, _) if pos == func_pos => func,
-                        vm::Value::Function(pos, _) => match self.func_info.get(&pos) {
-                            Some(FuncInfo { llvm_func, .. }) if llvm_func.is_some() => {
-                                llvm_func.unwrap()
-                            }
-                            _ => return Err(()),
-                        },
-                        // TODO: Currently, this is unreachable because GET_MEMBER is
-                        // unimplemented. (Most builtin/embedded functions involve it.)
-                        vm::Value::EmbeddedFunction(n) => {
-                            if let Some(f) = self.builtin_funcs.get(&n) {
-                                *f
-                            } else {
-                                return Err(());
-                            }
-                        }
-                        _ => return Err(()),
-                    });
-                }
-                PUSH_INT8 => {
-                    pc += 1;
-                    get_int8!(insts, pc, n, isize);
-                    stack.push(LLVMConstReal(
-                        LLVMDoubleTypeInContext(self.context),
-                        n as f64,
-                    ));
-                }
-                PUSH_INT32 => {
-                    pc += 1;
-                    get_int32!(insts, pc, n, isize);
-                    stack.push(LLVMConstReal(
-                        LLVMDoubleTypeInContext(self.context),
-                        n as f64,
-                    ));
-                }
-                PUSH_TRUE => {
-                    pc += 1;
-                    stack.push(LLVMConstInt(LLVMInt1TypeInContext(self.context), 1, 0));
-                }
-                PUSH_FALSE => {
-                    pc += 1;
-                    stack.push(LLVMConstInt(LLVMInt1TypeInContext(self.context), 0, 0));
-                }
-                PUSH_THIS | PUSH_ARGUMENTS | GET_MEMBER | SET_MEMBER => pc += 1,
-                RETURN => {
-                    pc += 1;
-                    let val = try_opt!(stack.pop());
-                    LLVMBuildRet(self.builder, val);
-                }
-                GET_GLOBAL => pc += 5,
-                _ => return Err(()),
-            }
-        }
-
-        Ok(())
     }
 
     pub unsafe fn can_loop_jit(
@@ -816,7 +515,7 @@ impl TracingJit {
         // If gen_code fails, it means the function can't be JIT-compiled and should never be
         // compiled. (cannot_jit = true)
         let (llvm_func, arg_vars, local_vars) =
-            match self.gen_loop_code(name.clone(), insts, const_table, bgn, end) {
+            match self.gen_code_for_loop(name.clone(), insts, const_table, bgn, end) {
                 Ok(info) => info,
                 Err(()) => {
                     self.loop_info.get_mut(&bgn).unwrap().jit_info.cannot_jit = true;
@@ -837,6 +536,49 @@ impl TracingJit {
         {
             panic!()
         }
+        {
+            llvm::execution_engine::LLVMAddGlobalMapping(
+                ee,
+                *self.builtin_funcs.get(&BUILTIN_CONSOLE_LOG_STRING).unwrap(),
+                console_log_string as *mut libc::c_void,
+            );
+            llvm::execution_engine::LLVMAddGlobalMapping(
+                ee,
+                *self.builtin_funcs.get(&BUILTIN_CONSOLE_LOG_F64).unwrap(),
+                console_log_f64 as *mut libc::c_void,
+            );
+            llvm::execution_engine::LLVMAddGlobalMapping(
+                ee,
+                *self
+                    .builtin_funcs
+                    .get(&BUILTIN_CONSOLE_LOG_NEWLINE)
+                    .unwrap(),
+                console_log_newline as *mut libc::c_void,
+            );
+            llvm::execution_engine::LLVMAddGlobalMapping(
+                ee,
+                *self
+                    .builtin_funcs
+                    .get(&BUILTIN_PROCESS_STDOUT_WRITE)
+                    .unwrap(),
+                process_stdout_write as *mut libc::c_void,
+            );
+            llvm::execution_engine::LLVMAddGlobalMapping(
+                ee,
+                *self.builtin_funcs.get(&BUILTIN_MATH_POW).unwrap(),
+                math_pow as *mut libc::c_void,
+            );
+            llvm::execution_engine::LLVMAddGlobalMapping(
+                ee,
+                *self.builtin_funcs.get(&BUILTIN_MATH_FLOOR).unwrap(),
+                math_floor as *mut libc::c_void,
+            );
+            llvm::execution_engine::LLVMAddGlobalMapping(
+                ee,
+                *self.builtin_funcs.get(&BUILTIN_MATH_RANDOM).unwrap(),
+                math_random as *mut libc::c_void,
+            );
+        }
         let f_raw = llvm::execution_engine::LLVMGetFunctionAddress(
             ee,
             CString::new(name.as_str()).unwrap().as_ptr(),
@@ -852,7 +594,7 @@ impl TracingJit {
         run_loop_llvm_func(f, vm_state, arg_vars, local_vars)
     }
 
-    unsafe fn gen_loop_code(
+    unsafe fn gen_code_for_loop(
         &mut self,
         name: String,
         insts: &Vec<u8>,
@@ -860,7 +602,7 @@ impl TracingJit {
         bgn: usize,
         end: usize,
     ) -> Result<(LLVMValueRef, Vec<usize>, Vec<usize>), ()> {
-        let (arg_vars, local_vars) = self.collect_local_var(insts, bgn, end)?;
+        let (arg_vars, local_vars) = self.collect_arg_and_local_vars(insts, bgn, end)?;
 
         let func_ret_ty = LLVMInt32TypeInContext(self.context);
         let func_ty = LLVMFunctionType(
@@ -906,6 +648,7 @@ impl TracingJit {
                 ),
             );
         }
+
         let arg_1 = LLVMGetParam(func, 1);
         for i in 0..local_vars.len() {
             env.insert(
@@ -926,7 +669,7 @@ impl TracingJit {
         }
 
         let mut compilation_failed = false;
-        if let Err(_) = self.gen_loop(insts, const_table, bgn, end, &mut env) {
+        if let Err(_) = self.gen_body(insts, const_table, bgn, bgn, end, false, &mut env) {
             compilation_failed = true;
         }
 
@@ -964,7 +707,36 @@ impl TracingJit {
         Ok((func, arg_vars, local_vars))
     }
 
-    unsafe fn collect_local_var(
+    unsafe fn declare_local_var(
+        &mut self,
+        id: usize,
+        is_param: bool,
+        env: &mut HashMap<(usize, bool), LLVMValueRef>,
+    ) -> LLVMValueRef {
+        if let Some(v) = env.get(&(id, is_param)) {
+            return *v;
+        }
+
+        let func = self.cur_func.unwrap();
+        let builder = LLVMCreateBuilderInContext(self.context);
+        let entry_bb = LLVMGetEntryBasicBlock(func);
+        let first_inst = LLVMGetFirstInstruction(entry_bb);
+        // A variable is always declared at the first point of entry block
+        if first_inst == ptr::null_mut() {
+            LLVMPositionBuilderAtEnd(builder, entry_bb);
+        } else {
+            LLVMPositionBuilderBefore(builder, first_inst);
+        }
+        let var = LLVMBuildAlloca(
+            builder,
+            LLVMDoubleTypeInContext(self.context),
+            CString::new("").unwrap().as_ptr(),
+        );
+        env.insert((id, is_param), var);
+        var
+    }
+
+    unsafe fn collect_arg_and_local_vars(
         &mut self,
         insts: &Vec<u8>,
         mut pc: usize,
@@ -1008,16 +780,36 @@ impl TracingJit {
         ))
     }
 
-    unsafe fn gen_loop(
+    unsafe fn gen_body(
         &mut self,
         insts: &Vec<u8>,
         const_table: &vm::ConstantTable,
+        func_pos: usize,
         bgn: usize,
         end: usize,
+        is_func_jit: bool,
         env: &mut HashMap<(usize, bool), LLVMValueRef>,
     ) -> Result<(), ()> {
         let func = self.cur_func.unwrap();
-        let mut stack: Vec<LLVMValueRef> = vec![];
+        let mut stack: Vec<(LLVMValueRef, Option<vm::Value>)> = vec![];
+
+        unsafe fn infer_ty(
+            llvm_val: LLVMValueRef,
+            vm_val: &Option<vm::Value>,
+        ) -> Result<ValueType, ()> {
+            match vm_val {
+                &Some(vm::Value::String(_)) => Ok(ValueType::String),
+                _ => match LLVMGetTypeKind(LLVMTypeOf(llvm_val)) {
+                    llvm::LLVMTypeKind::LLVMIntegerTypeKind
+                        if LLVMGetIntTypeWidth(LLVMTypeOf(llvm_val)) == 1 =>
+                    {
+                        Ok(ValueType::Bool)
+                    }
+                    llvm::LLVMTypeKind::LLVMDoubleTypeKind => Ok(ValueType::Number),
+                    _ => return Err(()),
+                },
+            }
+        }
 
         let mut labels: HashMap<usize, LLVMBasicBlockRef> = HashMap::new();
         let mut positioned_labels: HashSet<usize> = HashSet::new();
@@ -1026,7 +818,8 @@ impl TracingJit {
             let mut pc = bgn;
             while pc < end {
                 match insts[pc] {
-                    END => pc += 1,
+                    END => break,
+                    CREATE_CONTEXT if is_func_jit => break,
                     CREATE_CONTEXT => pc += 5,
                     RETURN => pc += 1,
                     ASG_FREST_PARAM => pc += 9,
@@ -1073,7 +866,7 @@ impl TracingJit {
                     get_int32!(insts, pc, dst, i32);
                     let bb_then = LLVMAppendBasicBlock(func, CString::new("").unwrap().as_ptr());
                     let bb_else = try_opt!(labels.get(&((pc as i32 + dst) as usize)));
-                    let cond_val = try_opt!(stack.pop());
+                    let cond_val = try_stack!(stack.pop());
                     LLVMBuildCondBr(self.builder, cond_val, bb_then, *bb_else);
                     LLVMPositionBuilderAtEnd(self.builder, bb_then);
                 }
@@ -1087,300 +880,520 @@ impl TracingJit {
                 }
                 ADD => {
                     pc += 1;
-                    let rhs = try_opt!(stack.pop());
-                    let lhs = try_opt!(stack.pop());
-                    stack.push(LLVMBuildFAdd(
-                        self.builder,
-                        lhs,
-                        rhs,
-                        CString::new("fadd").unwrap().as_ptr(),
+                    let rhs = try_stack!(stack.pop());
+                    let lhs = try_stack!(stack.pop());
+                    stack.push((
+                        LLVMBuildFAdd(
+                            self.builder,
+                            lhs,
+                            rhs,
+                            CString::new("fadd").unwrap().as_ptr(),
+                        ),
+                        None,
                     ));
                 }
                 SUB => {
                     pc += 1;
-                    let rhs = try_opt!(stack.pop());
-                    let lhs = try_opt!(stack.pop());
-                    stack.push(LLVMBuildFSub(
-                        self.builder,
-                        lhs,
-                        rhs,
-                        CString::new("fsub").unwrap().as_ptr(),
+                    let rhs = try_stack!(stack.pop());
+                    let lhs = try_stack!(stack.pop());
+                    stack.push((
+                        LLVMBuildFSub(
+                            self.builder,
+                            lhs,
+                            rhs,
+                            CString::new("fsub").unwrap().as_ptr(),
+                        ),
+                        None,
                     ));
                 }
                 MUL => {
                     pc += 1;
-                    let rhs = try_opt!(stack.pop());
-                    let lhs = try_opt!(stack.pop());
-                    stack.push(LLVMBuildFMul(
-                        self.builder,
-                        lhs,
-                        rhs,
-                        CString::new("fmul").unwrap().as_ptr(),
+                    let rhs = try_stack!(stack.pop());
+                    let lhs = try_stack!(stack.pop());
+                    stack.push((
+                        LLVMBuildFMul(
+                            self.builder,
+                            lhs,
+                            rhs,
+                            CString::new("fmul").unwrap().as_ptr(),
+                        ),
+                        None,
                     ));
                 }
                 DIV => {
                     pc += 1;
-                    let rhs = try_opt!(stack.pop());
-                    let lhs = try_opt!(stack.pop());
-                    stack.push(LLVMBuildFDiv(
-                        self.builder,
-                        lhs,
-                        rhs,
-                        CString::new("fdiv").unwrap().as_ptr(),
+                    let rhs = try_stack!(stack.pop());
+                    let lhs = try_stack!(stack.pop());
+                    stack.push((
+                        LLVMBuildFDiv(
+                            self.builder,
+                            lhs,
+                            rhs,
+                            CString::new("fdiv").unwrap().as_ptr(),
+                        ),
+                        None,
                     ));
                 }
                 REM => {
                     pc += 1;
-                    let rhs = try_opt!(stack.pop());
-                    let lhs = try_opt!(stack.pop());
-                    stack.push(LLVMBuildSIToFP(
-                        self.builder,
-                        LLVMBuildSRem(
+                    let rhs = try_stack!(stack.pop());
+                    let lhs = try_stack!(stack.pop());
+                    stack.push((
+                        LLVMBuildSIToFP(
                             self.builder,
-                            LLVMBuildFPToSI(
+                            LLVMBuildSRem(
                                 self.builder,
-                                lhs,
-                                LLVMInt64TypeInContext(self.context),
-                                CString::new("").unwrap().as_ptr(),
+                                LLVMBuildFPToSI(
+                                    self.builder,
+                                    lhs,
+                                    LLVMInt64TypeInContext(self.context),
+                                    CString::new("").unwrap().as_ptr(),
+                                ),
+                                LLVMBuildFPToSI(
+                                    self.builder,
+                                    rhs,
+                                    LLVMInt64TypeInContext(self.context),
+                                    CString::new("").unwrap().as_ptr(),
+                                ),
+                                CString::new("frem").unwrap().as_ptr(),
                             ),
-                            LLVMBuildFPToSI(
-                                self.builder,
-                                rhs,
-                                LLVMInt64TypeInContext(self.context),
-                                CString::new("").unwrap().as_ptr(),
-                            ),
-                            CString::new("frem").unwrap().as_ptr(),
+                            LLVMDoubleTypeInContext(self.context),
+                            CString::new("").unwrap().as_ptr(),
                         ),
-                        LLVMDoubleTypeInContext(self.context),
-                        CString::new("").unwrap().as_ptr(),
+                        None,
                     ));
                 }
                 LT => {
                     pc += 1;
-                    let rhs = try_opt!(stack.pop());
-                    let lhs = try_opt!(stack.pop());
-                    stack.push(LLVMBuildFCmp(
-                        self.builder,
-                        llvm::LLVMRealPredicate::LLVMRealOLT,
-                        lhs,
-                        rhs,
-                        CString::new("flt").unwrap().as_ptr(),
+                    let rhs = try_stack!(stack.pop());
+                    let lhs = try_stack!(stack.pop());
+                    stack.push((
+                        LLVMBuildFCmp(
+                            self.builder,
+                            llvm::LLVMRealPredicate::LLVMRealOLT,
+                            lhs,
+                            rhs,
+                            CString::new("flt").unwrap().as_ptr(),
+                        ),
+                        None,
                     ))
                 }
                 LE => {
                     pc += 1;
-                    let rhs = try_opt!(stack.pop());
-                    let lhs = try_opt!(stack.pop());
-                    stack.push(LLVMBuildFCmp(
-                        self.builder,
-                        llvm::LLVMRealPredicate::LLVMRealOLE,
-                        lhs,
-                        rhs,
-                        CString::new("fle").unwrap().as_ptr(),
+                    let rhs = try_stack!(stack.pop());
+                    let lhs = try_stack!(stack.pop());
+                    stack.push((
+                        LLVMBuildFCmp(
+                            self.builder,
+                            llvm::LLVMRealPredicate::LLVMRealOLE,
+                            lhs,
+                            rhs,
+                            CString::new("fle").unwrap().as_ptr(),
+                        ),
+                        None,
                     ))
                 }
                 GT => {
                     pc += 1;
-                    let rhs = try_opt!(stack.pop());
-                    let lhs = try_opt!(stack.pop());
-                    stack.push(LLVMBuildFCmp(
-                        self.builder,
-                        llvm::LLVMRealPredicate::LLVMRealOGT,
-                        lhs,
-                        rhs,
-                        CString::new("fgt").unwrap().as_ptr(),
+                    let rhs = try_stack!(stack.pop());
+                    let lhs = try_stack!(stack.pop());
+                    stack.push((
+                        LLVMBuildFCmp(
+                            self.builder,
+                            llvm::LLVMRealPredicate::LLVMRealOGT,
+                            lhs,
+                            rhs,
+                            CString::new("fgt").unwrap().as_ptr(),
+                        ),
+                        None,
                     ))
                 }
                 GE => {
                     pc += 1;
-                    let rhs = try_opt!(stack.pop());
-                    let lhs = try_opt!(stack.pop());
-                    stack.push(LLVMBuildFCmp(
-                        self.builder,
-                        llvm::LLVMRealPredicate::LLVMRealOGE,
-                        lhs,
-                        rhs,
-                        CString::new("fge").unwrap().as_ptr(),
+                    let rhs = try_stack!(stack.pop());
+                    let lhs = try_stack!(stack.pop());
+                    stack.push((
+                        LLVMBuildFCmp(
+                            self.builder,
+                            llvm::LLVMRealPredicate::LLVMRealOGE,
+                            lhs,
+                            rhs,
+                            CString::new("fge").unwrap().as_ptr(),
+                        ),
+                        None,
                     ))
                 }
                 EQ => {
                     pc += 1;
-                    let rhs = try_opt!(stack.pop());
-                    let lhs = try_opt!(stack.pop());
-                    stack.push(LLVMBuildFCmp(
-                        self.builder,
-                        llvm::LLVMRealPredicate::LLVMRealOEQ,
-                        lhs,
-                        rhs,
-                        CString::new("feq").unwrap().as_ptr(),
+                    let rhs = try_stack!(stack.pop());
+                    let lhs = try_stack!(stack.pop());
+                    stack.push((
+                        LLVMBuildFCmp(
+                            self.builder,
+                            llvm::LLVMRealPredicate::LLVMRealOEQ,
+                            lhs,
+                            rhs,
+                            CString::new("feq").unwrap().as_ptr(),
+                        ),
+                        None,
                     ));
                 }
                 NE => {
                     pc += 1;
-                    let rhs = try_opt!(stack.pop());
-                    let lhs = try_opt!(stack.pop());
-                    stack.push(LLVMBuildFCmp(
-                        self.builder,
-                        llvm::LLVMRealPredicate::LLVMRealONE,
-                        lhs,
-                        rhs,
-                        CString::new("fne").unwrap().as_ptr(),
+                    let rhs = try_stack!(stack.pop());
+                    let lhs = try_stack!(stack.pop());
+                    stack.push((
+                        LLVMBuildFCmp(
+                            self.builder,
+                            llvm::LLVMRealPredicate::LLVMRealONE,
+                            lhs,
+                            rhs,
+                            CString::new("fne").unwrap().as_ptr(),
+                        ),
+                        None,
                     ));
                 }
                 NEG => {
                     pc += 1;
-                    let val = try_opt!(stack.pop());
-                    stack.push(LLVMBuildFNeg(
-                        self.builder,
-                        val,
-                        CString::new("fneg").unwrap().as_ptr(),
+                    let val = try_stack!(stack.pop());
+                    stack.push((
+                        LLVMBuildFNeg(self.builder, val, CString::new("fneg").unwrap().as_ptr()),
+                        None,
                     ));
                 }
                 GET_ARG_LOCAL => {
                     pc += 1;
                     get_int32!(insts, pc, n, usize);
-                    stack.push(LLVMBuildLoad(
-                        self.builder,
-                        *try_opt!(env.get(&(n, true))),
-                        CString::new("").unwrap().as_ptr(),
+                    stack.push((
+                        LLVMBuildLoad(
+                            self.builder,
+                            *try_opt!(env.get(&(n, true))),
+                            CString::new("").unwrap().as_ptr(),
+                        ),
+                        None,
                     ));
                 }
                 // Rarely used?
                 SET_ARG_LOCAL => {
                     pc += 1;
                     get_int32!(insts, pc, n, usize);
-                    let src = try_opt!(stack.pop());
+                    let src = try_stack!(stack.pop());
                     LLVMBuildStore(self.builder, src, *try_opt!(env.get(&(n, true))));
                 }
                 GET_LOCAL => {
                     pc += 1;
                     get_int32!(insts, pc, n, usize);
-                    stack.push(LLVMBuildLoad(
-                        self.builder,
-                        self.declare_local_var(n, false, env),
-                        CString::new("").unwrap().as_ptr(),
+                    stack.push((
+                        LLVMBuildLoad(
+                            self.builder,
+                            self.declare_local_var(n, false, env),
+                            CString::new("").unwrap().as_ptr(),
+                        ),
+                        None,
                     ));
                 }
                 SET_LOCAL => {
                     pc += 1;
                     get_int32!(insts, pc, n, usize);
-                    let src = try_opt!(stack.pop());
+                    let src = try_stack!(stack.pop());
                     LLVMBuildStore(self.builder, src, self.declare_local_var(n, false, env));
                 }
                 CALL => {
                     pc += 1;
                     get_int32!(insts, pc, argc, usize);
+
                     let callee = try_opt!(stack.pop());
-                    let mut llvm_args = vec![];
-                    for _ in 0..argc {
-                        llvm_args.push(try_opt!(stack.pop()));
+
+                    if let Some(callee) = callee.1 {
+                        let mut args = vec![];
+                        for _ in 0..argc {
+                            let arg = try_opt!(stack.pop());
+                            args.push((arg.0, infer_ty(arg.0, &arg.1)?));
+                        }
+                        args.reverse();
+                        match callee {
+                            vm::Value::EmbeddedFunction(0) => {
+                                for (arg, ty) in args {
+                                    LLVMBuildCall(
+                                        self.builder,
+                                        *self
+                                            .builtin_funcs
+                                            .get(&match ty {
+                                                ValueType::Number => BUILTIN_CONSOLE_LOG_F64,
+                                                ValueType::String => BUILTIN_CONSOLE_LOG_STRING,
+                                                _ => return Err(()),
+                                            })
+                                            .unwrap(),
+                                        vec![arg].as_mut_ptr(),
+                                        1,
+                                        CString::new("").unwrap().as_ptr(),
+                                    );
+                                }
+                                LLVMBuildCall(
+                                    self.builder,
+                                    *self
+                                        .builtin_funcs
+                                        .get(&BUILTIN_CONSOLE_LOG_NEWLINE)
+                                        .unwrap(),
+                                    vec![].as_mut_ptr(),
+                                    0,
+                                    CString::new("").unwrap().as_ptr(),
+                                );
+                            }
+                            vm::Value::EmbeddedFunction(1) => {
+                                for (arg, ty) in args {
+                                    match ty {
+                                        ValueType::String => LLVMBuildCall(
+                                            self.builder,
+                                            *self
+                                                .builtin_funcs
+                                                .get(&BUILTIN_PROCESS_STDOUT_WRITE)
+                                                .unwrap(),
+                                            vec![arg].as_mut_ptr(),
+                                            1,
+                                            CString::new("").unwrap().as_ptr(),
+                                        ),
+                                        _ => return Err(()),
+                                    };
+                                }
+                            }
+                            vm::Value::EmbeddedFunction(3) => stack.push((
+                                LLVMBuildCall(
+                                    self.builder,
+                                    *self.builtin_funcs.get(&BUILTIN_MATH_FLOOR).unwrap(),
+                                    args.iter()
+                                        .map(|(x, _)| *x)
+                                        .collect::<Vec<LLVMValueRef>>()
+                                        .as_mut_ptr(),
+                                    1,
+                                    CString::new("").unwrap().as_ptr(),
+                                ),
+                                None,
+                            )),
+                            vm::Value::EmbeddedFunction(4) => stack.push((
+                                LLVMBuildCall(
+                                    self.builder,
+                                    *self.builtin_funcs.get(&BUILTIN_MATH_RANDOM).unwrap(),
+                                    args.iter()
+                                        .map(|(x, _)| *x)
+                                        .collect::<Vec<LLVMValueRef>>()
+                                        .as_mut_ptr(),
+                                    0,
+                                    CString::new("").unwrap().as_ptr(),
+                                ),
+                                None,
+                            )),
+                            vm::Value::EmbeddedFunction(5) => stack.push((
+                                LLVMBuildCall(
+                                    self.builder,
+                                    *self.builtin_funcs.get(&BUILTIN_MATH_POW).unwrap(),
+                                    args.iter()
+                                        .map(|(x, _)| *x)
+                                        .collect::<Vec<LLVMValueRef>>()
+                                        .as_mut_ptr(),
+                                    2,
+                                    CString::new("").unwrap().as_ptr(),
+                                ),
+                                None,
+                            )),
+                            _ => return Err(()),
+                        }
+                    } else {
+                        let mut llvm_args = vec![];
+                        for _ in 0..argc {
+                            llvm_args.push(try_opt!(stack.pop()).0);
+                        }
+                        llvm_args.reverse();
+                        stack.push((
+                            LLVMBuildCall(
+                                self.builder,
+                                callee.0,
+                                llvm_args.as_mut_ptr(),
+                                llvm_args.len() as u32,
+                                CString::new("").unwrap().as_ptr(),
+                            ),
+                            None,
+                        ));
                     }
-                    llvm_args.reverse();
-                    stack.push(LLVMBuildCall(
-                        self.builder,
-                        callee,
-                        llvm_args.as_mut_ptr(),
-                        llvm_args.len() as u32,
-                        CString::new("").unwrap().as_ptr(),
-                    ));
+                }
+                GET_MEMBER => {
+                    pc += 1; // get_member
+                    let member = try_opt!(try_opt!(stack.pop()).1);
+                    let parent = try_opt!(try_opt!(stack.pop()).1);
+                    match parent {
+                        vm::Value::Object(map) => stack.push((
+                            ptr::null_mut(),
+                            Some(vm::obj_find_val(
+                                &*map.borrow(),
+                                member.to_string().as_str(),
+                            )),
+                        )),
+                        _ => return Err(()),
+                    }
                 }
                 PUSH_CONST => {
                     pc += 1;
                     get_int32!(insts, pc, n, usize);
-                    stack.push(match const_table.value[n] {
-                        vm::Value::Bool(false) => {
-                            LLVMConstInt(LLVMInt1TypeInContext(self.context), 0, 0)
+                    match const_table.value[n] {
+                        vm::Value::Bool(false) => stack.push((
+                            LLVMConstInt(LLVMInt1TypeInContext(self.context), 0, 0),
+                            None,
+                        )),
+                        vm::Value::Bool(true) => stack.push((
+                            LLVMConstInt(LLVMInt1TypeInContext(self.context), 1, 0),
+                            None,
+                        )),
+                        vm::Value::Number(n) => stack.push((
+                            LLVMConstReal(LLVMDoubleTypeInContext(self.context), n as f64),
+                            None,
+                        )),
+                        vm::Value::Function(pos, _) if is_func_jit && pos == func_pos => {
+                            stack.push((func, None))
                         }
-                        vm::Value::Bool(true) => {
-                            LLVMConstInt(LLVMInt1TypeInContext(self.context), 1, 0)
+                        vm::Value::Function(pos, _) => stack.push((
+                            match self.func_info.get(&pos) {
+                                Some(FuncInfo { llvm_func, .. }) if llvm_func.is_some() => {
+                                    llvm_func.unwrap()
+                                }
+                                _ => return Err(()),
+                            },
+                            None,
+                        )),
+                        vm::Value::String(s) => stack.push((
+                            LLVMBuildIntToPtr(
+                                self.builder,
+                                LLVMConstInt(LLVMInt64TypeInContext(self.context), s as u64, 0),
+                                LLVMPointerType(LLVMInt8TypeInContext(self.context), 0),
+                                CString::new("").unwrap().as_ptr(),
+                            ),
+                            Some(const_table.value[n].clone()),
+                        )),
+                        vm::Value::Object(_) => {
+                            stack.push((ptr::null_mut(), Some(const_table.value[n].clone())))
                         }
-                        vm::Value::Number(n) => {
-                            LLVMConstReal(LLVMDoubleTypeInContext(self.context), n as f64)
-                        }
-                        vm::Value::Function(pos, _) => match self.func_info.get(&pos) {
-                            Some(FuncInfo { llvm_func, .. }) if llvm_func.is_some() => {
-                                llvm_func.unwrap()
-                            }
-                            _ => return Err(()),
-                        },
-                        // TODO: Currently, this is unreachable because GET_MEMBER is
-                        // unimplemented. (Most builtin/embedded functions involve it.)
-                        vm::Value::EmbeddedFunction(n) => {
+                        vm::Value::EmbeddedFunction(n) => stack.push((
                             if let Some(f) = self.builtin_funcs.get(&n) {
                                 *f
                             } else {
                                 return Err(());
-                            }
-                        }
+                            },
+                            None,
+                        )),
                         _ => return Err(()),
-                    });
+                    }
                 }
                 PUSH_INT8 => {
                     pc += 1;
                     get_int8!(insts, pc, n, isize);
-                    stack.push(LLVMConstReal(
-                        LLVMDoubleTypeInContext(self.context),
-                        n as f64,
+                    stack.push((
+                        LLVMConstReal(LLVMDoubleTypeInContext(self.context), n as f64),
+                        None,
                     ));
                 }
                 PUSH_INT32 => {
                     pc += 1;
                     get_int32!(insts, pc, n, isize);
-                    stack.push(LLVMConstReal(
-                        LLVMDoubleTypeInContext(self.context),
-                        n as f64,
+                    stack.push((
+                        LLVMConstReal(LLVMDoubleTypeInContext(self.context), n as f64),
+                        None,
                     ));
                 }
                 PUSH_TRUE => {
                     pc += 1;
-                    stack.push(LLVMConstInt(LLVMInt1TypeInContext(self.context), 1, 0));
+                    stack.push((
+                        LLVMConstInt(LLVMInt1TypeInContext(self.context), 1, 0),
+                        None,
+                    ));
                 }
                 PUSH_FALSE => {
                     pc += 1;
-                    stack.push(LLVMConstInt(LLVMInt1TypeInContext(self.context), 0, 0));
+                    stack.push((
+                        LLVMConstInt(LLVMInt1TypeInContext(self.context), 0, 0),
+                        None,
+                    ));
                 }
-                PUSH_THIS | PUSH_ARGUMENTS | GET_MEMBER | SET_MEMBER => pc += 1,
-                // RETURN => {
-                //     pc += 1;
-                //     let val = try_opt!(stack.pop());
-                //     LLVMBuildRet(self.builder, val);
-                // }
+                PUSH_THIS | PUSH_ARGUMENTS | SET_MEMBER => pc += 1,
+                RETURN if is_func_jit => {
+                    pc += 1;
+                    let val = try_stack!(stack.pop());
+                    LLVMBuildRet(self.builder, val);
+                }
                 GET_GLOBAL => pc += 5,
                 _ => return Err(()),
             }
         }
 
-        for (pos, bb) in labels {
-            if !positioned_labels.contains(&pos) {
-                if cur_bb_has_no_terminator(self.builder) {
-                    LLVMBuildBr(self.builder, bb);
+        if !is_func_jit {
+            for (pos, bb) in labels {
+                if !positioned_labels.contains(&pos) {
+                    if cur_bb_has_no_terminator(self.builder) {
+                        LLVMBuildBr(self.builder, bb);
+                    }
+                    LLVMPositionBuilderAtEnd(self.builder, bb);
+                    LLVMBuildRet(
+                        self.builder,
+                        LLVMConstInt(LLVMInt32TypeInContext(self.context), pos as u64, 0),
+                    );
                 }
-                LLVMPositionBuilderAtEnd(self.builder, bb);
-                LLVMBuildRet(
-                    self.builder,
-                    LLVMConstInt(LLVMInt32TypeInContext(self.context), pos as u64, 0),
-                );
             }
         }
 
         Ok(())
     }
-}
 
-impl TracingJit {
-    #[inline]
-    fn func_is_called_enough_times(&mut self, pc: usize) -> bool {
-        *self.count.entry(pc).or_insert(0) >= 5
+    pub fn register_return_type(&mut self, pc: usize, val: &vm::Value) {
+        match val {
+            &vm::Value::Number(_) => self.return_ty_map.insert(pc, ValueType::Number),
+            &vm::Value::Bool(_) => self.return_ty_map.insert(pc, ValueType::Bool),
+            _ => None,
+        };
     }
 
-    #[inline]
-    fn loop_is_called_enough_times(&mut self, pc: usize) -> bool {
-        *self.count.entry(pc).or_insert(0) >= 7
-    }
+    pub unsafe fn run_llvm_func(&mut self, pc: usize, f: fn(), args: Vec<vm::Value>) -> vm::Value {
+        let mut llvm_args = vec![];
+        for arg in args {
+            llvm_args.push(match arg {
+                vm::Value::Number(f) => f,
+                _ => unimplemented!(),
+            });
+        }
 
-    #[inline]
-    fn inc_count(&mut self, pc: usize) {
-        *self.count.entry(pc).or_insert(0) += 1;
+        let func_ret_ty = self.return_ty_map.get(&pc).unwrap_or(&ValueType::Number);
+
+        // By a bug of LLVM, llvm::execution_engine::runFunction can not be used.
+        // So, all I can do is this:
+        // TODO: MAX_FUNCTION_PARAMS is too small?
+        match func_ret_ty {
+            &ValueType::Number => vm::Value::Number(match llvm_args.len() {
+                0 => ::std::mem::transmute::<fn(), fn() -> f64>(f)(),
+                1 => ::std::mem::transmute::<fn(), fn(f64) -> f64>(f)(llvm_args[0]),
+                2 => ::std::mem::transmute::<fn(), fn(f64, f64) -> f64>(f)(
+                    llvm_args[0],
+                    llvm_args[1],
+                ),
+                3 => ::std::mem::transmute::<fn(), fn(f64, f64, f64) -> f64>(f)(
+                    llvm_args[0],
+                    llvm_args[1],
+                    llvm_args[2],
+                ),
+                _ => unimplemented!("should be implemented.."),
+            }),
+            &ValueType::Bool => vm::Value::Bool(match llvm_args.len() {
+                0 => ::std::mem::transmute::<fn(), fn() -> bool>(f)(),
+                1 => ::std::mem::transmute::<fn(), fn(f64) -> bool>(f)(llvm_args[0]),
+                2 => ::std::mem::transmute::<fn(), fn(f64, f64) -> bool>(f)(
+                    llvm_args[0],
+                    llvm_args[1],
+                ),
+                3 => ::std::mem::transmute::<fn(), fn(f64, f64, f64) -> bool>(f)(
+                    llvm_args[0],
+                    llvm_args[1],
+                    llvm_args[2],
+                ),
+                _ => unimplemented!("should be implemented.."),
+            }),
+            &ValueType::String => unimplemented!(),
+        }
     }
 }
 
@@ -1392,6 +1405,7 @@ pub unsafe fn run_loop_llvm_func(
 ) -> Option<isize> {
     let mut args_of_arg_vars = vec![];
     let mut args_of_local_vars = vec![];
+
     for id in &arg_vars {
         args_of_arg_vars.push(match vm_state.stack[vm_state.bp + id].clone() {
             vm::Value::Number(f) => f,
@@ -1422,14 +1436,79 @@ pub unsafe fn run_loop_llvm_func(
     Some(pc as isize)
 }
 
+impl TracingJit {
+    #[inline]
+    fn func_is_called_enough_times(&mut self, pc: usize) -> bool {
+        *self.count.entry(pc).or_insert(0) >= 5
+    }
+
+    #[inline]
+    fn loop_is_called_enough_times(&mut self, pc: usize) -> bool {
+        *self.count.entry(pc).or_insert(0) >= 7
+    }
+
+    #[inline]
+    fn inc_count(&mut self, pc: usize) {
+        *self.count.entry(pc).or_insert(0) += 1;
+    }
+}
+
 // Builtin functions
+
+const BUILTIN_CONSOLE_LOG_F64: usize = 0;
+const BUILTIN_CONSOLE_LOG_STRING: usize = 1;
+const BUILTIN_CONSOLE_LOG_NEWLINE: usize = 2;
+const BUILTIN_PROCESS_STDOUT_WRITE: usize = 3;
+const BUILTIN_MATH_POW: usize = 4;
+const BUILTIN_MATH_FLOOR: usize = 5;
+const BUILTIN_MATH_RANDOM: usize = 6;
+
+#[no_mangle]
+pub extern "C" fn console_log_string(s: vm::RawStringPtr) {
+    unsafe {
+        libc::printf(b"%s \0".as_ptr() as vm::RawStringPtr, s);
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn console_log_f64(n: f64) {
+    unsafe {
+        libc::printf(b"%.15g \0".as_ptr() as vm::RawStringPtr, n);
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn console_log_newline() {
+    unsafe {
+        libc::printf(b"\n\0".as_ptr() as vm::RawStringPtr);
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn process_stdout_write(s: vm::RawStringPtr) {
+    unsafe {
+        libc::printf(b"%s\0".as_ptr() as vm::RawStringPtr, s);
+    }
+}
 
 #[no_mangle]
 pub extern "C" fn math_floor(n: f64) -> f64 {
     n.floor()
 }
 
+// TODO: Find a better way for rand gen. (rand::random is slow)
+static mut MATH_RAND_SEED: u64 = 0xf6d582196d588cac;
 #[no_mangle]
 pub extern "C" fn math_random() -> f64 {
-    random::<f64>()
+    unsafe {
+        MATH_RAND_SEED = MATH_RAND_SEED ^ (MATH_RAND_SEED << 13);
+        MATH_RAND_SEED = MATH_RAND_SEED ^ (MATH_RAND_SEED >> 17);
+        MATH_RAND_SEED = MATH_RAND_SEED ^ (MATH_RAND_SEED << 5);
+        (MATH_RAND_SEED as f64) / ::std::u64::MAX as f64
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn math_pow(x: f64, y: f64) -> f64 {
+    x.powf(y)
 }

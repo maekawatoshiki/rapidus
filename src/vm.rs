@@ -64,7 +64,7 @@ pub enum Value {
 }
 
 impl Value {
-    fn to_string(self) -> String {
+    pub fn to_string(self) -> String {
         match self {
             Value::String(name) => unsafe { CStr::from_ptr(name).to_str().unwrap() }.to_string(),
             Value::Number(n) => format!("{}", n),
@@ -586,7 +586,7 @@ fn get_member(self_: &mut VM) {
         Value::Object(map)
         | Value::Function(_, map)
         | Value::NeedThis(box Value::Function(_, map)) => {
-            match find_val(&*map.borrow(), member.to_string().as_str()) {
+            match obj_find_val(&*map.borrow(), member.to_string().as_str()) {
                 Value::NeedThis(callee) => self_.state.stack.push(Value::WithThis(Box::new((
                     *callee,
                     Value::Object(map.clone()),
@@ -609,7 +609,7 @@ fn get_member(self_: &mut VM) {
                 Value::String(s) if unsafe { CStr::from_ptr(s).to_str().unwrap() } == "length" => {
                     self_.state.stack.push(Value::Number(map.length as f64));
                 }
-                _ => match find_val(&map.obj, member.to_string().as_str()) {
+                _ => match obj_find_val(&map.obj, member.to_string().as_str()) {
                     Value::NeedThis(callee) => self_
                         .state
                         .stack
@@ -639,15 +639,15 @@ fn get_member(self_: &mut VM) {
         }
         e => unreachable!("{:?}", e),
     }
+}
 
-    fn find_val(obj: &HashMap<String, Value>, key: &str) -> Value {
-        match obj.get(key) {
-            Some(addr) => addr.clone(),
-            None => match obj.get("__proto__") {
-                Some(Value::Object(obj)) => find_val(&*(*obj).borrow(), key),
-                _ => Value::Undefined,
-            },
-        }
+pub fn obj_find_val(obj: &HashMap<String, Value>, key: &str) -> Value {
+    match obj.get(key) {
+        Some(addr) => addr.clone(),
+        None => match obj.get("__proto__") {
+            Some(Value::Object(obj)) => obj_find_val(&*(*obj).borrow(), key),
+            _ => Value::Undefined,
+        },
     }
 }
 
