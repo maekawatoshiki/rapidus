@@ -677,6 +677,12 @@ fn set_member(self_: &mut VM) {
                     }
                     map.elems[n as usize] = val;
                 }
+                Value::String(s) if unsafe { CStr::from_ptr(s).to_str().unwrap() } == "length" => {
+                    match val {
+                        Value::Number(n) if n - n.floor() == 0.0 => map.length = n as usize,
+                        _ => {}
+                    }
+                }
                 _ => {
                     *map.obj
                         .entry(member.to_string())
@@ -943,8 +949,10 @@ unsafe fn debug_print(val: &Value) {
         }
         &Value::Array(ref values) => {
             libc::printf("[ \0".as_ptr() as RawStringPtr);
-            for val in &*(*values).borrow().elems {
-                debug_print(&val);
+            let arr = &*(*values).borrow();
+            let elems = &arr.elems;
+            for i in 0..arr.length {
+                debug_print(&elems[i]);
                 libc::printf(", \0".as_ptr() as RawStringPtr);
             }
             libc::printf("]\0".as_ptr() as RawStringPtr);
