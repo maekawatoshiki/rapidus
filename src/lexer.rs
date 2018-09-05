@@ -675,6 +675,15 @@ fn line_terminator() {
 }
 
 #[test]
+fn escape_seq() {
+    let mut lexer = Lexer::new("\"\\' \\\" \\\\ \\a \\b \\f \\n \\r \\t \\v \\x12\"".to_string());
+    assert_eq!(
+        lexer.next().unwrap().kind,
+        Kind::String("\' \" \\ \x07 \x08 \x0c \n \r \t \x0b \x12".to_string())
+    );
+}
+
+#[test]
 fn comment() {
     let mut lexer = Lexer::new(
         "x; // line comment
