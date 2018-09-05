@@ -177,7 +177,6 @@ impl Lexer {
         let pos = self.pos;
         let quote = self.skip_char()?;
         // TODO: support escape sequence
-        // let s = self.skip_while(|c| c != quote)?;
         let mut s = "".to_string();
         loop {
             match self.skip_char()? {
