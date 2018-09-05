@@ -100,7 +100,7 @@ fn run(file_name: &str) {
             Ok(ok) => match ok {
                 WaitStatus::Exited(_, status) => if status != 0 {
                     println!("exited. status: {}", status)
-                }, // exited successfully
+                },
                 WaitStatus::Signaled(pid, status, _) => {
                     // We can do anything (like calling destructors) here.
                     println!("child: pid={:?}, status={:?}", pid, status);

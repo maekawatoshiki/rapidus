@@ -177,10 +177,37 @@ impl Lexer {
         let pos = self.pos;
         let quote = self.skip_char()?;
         // TODO: support escape sequence
-        let s = self.skip_while(|c| c != quote)?;
-        assert_eq!(self.skip_char()?, quote);
+        // let s = self.skip_while(|c| c != quote)?;
+        let mut s = "".to_string();
+        loop {
+            match self.skip_char()? {
+                q if q == quote => break,
+                '\\' => s.push(self.read_escaped_char()?),
+                c => s.push(c),
+            }
+        }
         self.pos_line_list.push((pos, self.line));
         Ok(Token::new_string(s, pos))
+    }
+
+    fn read_escaped_char(&mut self) -> Result<char, ()> {
+        let c = self.skip_char()?;
+        match c {
+            '\'' | '"' | '?' | '\\' => Ok(c),
+            'a' => Ok('\x07'),
+            'b' => Ok('\x08'),
+            'f' => Ok('\x0c'),
+            'n' => Ok('\x0a'),
+            'r' => Ok('\x0d'),
+            't' => Ok('\x09'),
+            'v' => Ok('\x0b'),
+            'x' => {
+                let mut hex = self.skip_while(|c| c.is_alphanumeric())?;
+                Ok(self.read_hex_num(hex.as_str()) as u8 as char)
+            }
+            // TODO: Support unicode codepoint.
+            _ => Ok(c),
+        }
     }
 }
 
@@ -335,7 +362,7 @@ impl Lexer {
                         Symbol::Rest
                     } else {
                         // TODO: better error handler needed
-                        return Err(())
+                        return Err(());
                     }
                 } else {
                     symbol = Symbol::Point
