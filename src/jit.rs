@@ -1289,10 +1289,14 @@ impl TracingJit {
                             },
                             None,
                         )),
-                        vm::Value::String(s) => stack.push((
+                        vm::Value::String(ref s) => stack.push((
                             LLVMBuildIntToPtr(
                                 self.builder,
-                                LLVMConstInt(LLVMInt64TypeInContext(self.context), s as u64, 0),
+                                LLVMConstInt(
+                                    LLVMInt64TypeInContext(self.context),
+                                    s.as_ptr() as u64,
+                                    0,
+                                ),
                                 LLVMPointerType(LLVMInt8TypeInContext(self.context), 0),
                                 CString::new("").unwrap().as_ptr(),
                             ),

@@ -4,7 +4,7 @@ use node::{
     BinOp, FormalParameters, FunctionDeclNode, Node, NodeBase, PropertyDefinition, UnaryOp,
 };
 use std::collections::HashSet;
-use vm::{alloc_rawstring, Value};
+use vm::Value;
 use vm::{
     new_value_function, PUSH_INT32, PUSH_INT8, ADD, ASG_FREST_PARAM, CALL, CONSTRUCT, CREATE_ARRAY,
     CREATE_CONTEXT, CREATE_OBJECT, DIV, END, EQ, GE, GET_ARG_LOCAL, GET_GLOBAL, GET_LOCAL,
@@ -15,6 +15,7 @@ use vm::{
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::ffi::CString;
 use std::rc::Rc;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -310,7 +311,7 @@ impl VMCodeGen {
             &NodeBase::Arguments => self.bytecode_gen.gen_push_arguments(insts),
             &NodeBase::String(ref s) => self
                 .bytecode_gen
-                .gen_push_const(Value::String(unsafe { alloc_rawstring(s.as_str()) }), insts),
+                .gen_push_const(Value::String(CString::new(s.as_str()).unwrap()), insts),
             &NodeBase::Number(n) if n - n.floor() == 0.0 => {
                 // When 'n' is an integer
                 if -128.0 < n && n < 127.0 {
@@ -648,10 +649,8 @@ impl VMCodeGen {
             }
             NodeBase::Member(ref parent, ref member) => {
                 self.run(&*parent, insts);
-                self.bytecode_gen.gen_push_const(
-                    Value::String(unsafe { alloc_rawstring(member.as_str()) }),
-                    insts,
-                );
+                self.bytecode_gen
+                    .gen_push_const(Value::String(CString::new(member.as_str()).unwrap()), insts);
                 self.bytecode_gen.gen_set_member(insts);
             }
             NodeBase::Index(ref parent, ref idx) => {
@@ -683,10 +682,8 @@ impl VMCodeGen {
                 PropertyDefinition::IdentifierReference(_) => unimplemented!(),
                 PropertyDefinition::Property(name, node) => {
                     self.run(&node, insts);
-                    self.bytecode_gen.gen_push_const(
-                        Value::String(unsafe { alloc_rawstring(name.as_str()) }),
-                        insts,
-                    );
+                    self.bytecode_gen
+                        .gen_push_const(Value::String(CString::new(name.as_str()).unwrap()), insts);
                 }
             }
         }
@@ -709,10 +706,8 @@ impl VMCodeGen {
     fn run_member(&mut self, parent: &Node, member: &String, insts: &mut ByteCode) {
         self.run(parent, insts);
 
-        self.bytecode_gen.gen_push_const(
-            Value::String(unsafe { alloc_rawstring(member.as_str()) }),
-            insts,
-        );
+        self.bytecode_gen
+            .gen_push_const(Value::String(CString::new(member.as_str()).unwrap()), insts);
         self.bytecode_gen.gen_get_member(insts);
     }
 
