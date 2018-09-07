@@ -579,6 +579,19 @@ fn get_member(self_: &mut VM) {
     let member = self_.state.stack.pop().unwrap();
     let parent = self_.state.stack.pop().unwrap();
     match parent.clone() {
+        Value::String(s) => {
+            match member {
+                // Index
+                Value::Number(n) if n - n.floor() == 0.0 => self_.state.stack.push(Value::String(
+                    CString::new(format!(
+                        "{}",
+                        s.to_str().unwrap().chars().nth(n as usize).unwrap()
+                    )).unwrap(),
+                )),
+                // TODO: Support all features.
+                _ => self_.state.stack.push(Value::Undefined),
+            }
+        }
         Value::Object(map)
         | Value::Function(_, map)
         | Value::NeedThis(box Value::Function(_, map)) => {
