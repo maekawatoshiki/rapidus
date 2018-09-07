@@ -583,10 +583,14 @@ fn get_member(self_: &mut VM) {
             match member {
                 // Index
                 Value::Number(n) if n - n.floor() == 0.0 => self_.state.stack.push(Value::String(
-                    CString::new(format!(
-                        "{}",
-                        s.to_str().unwrap().chars().nth(n as usize).unwrap()
-                    )).unwrap(),
+                    CString::new(
+                        s.to_str()
+                            .unwrap()
+                            .chars()
+                            .nth(n as usize)
+                            .unwrap()
+                            .to_string(),
+                    ).unwrap(),
                 )),
                 // TODO: Support all features.
                 _ => self_.state.stack.push(Value::Undefined),
