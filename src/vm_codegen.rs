@@ -9,8 +9,8 @@ use vm::{
     new_value_function, PUSH_INT32, PUSH_INT8, ADD, ASG_FREST_PARAM, CALL, CONSTRUCT, CREATE_ARRAY,
     CREATE_CONTEXT, CREATE_OBJECT, DIV, END, EQ, GE, GET_ARG_LOCAL, GET_GLOBAL, GET_LOCAL,
     GET_MEMBER, GT, JMP, JMP_IF_FALSE, LE, LT, MUL, NE, NEG, PUSH_ARGUMENTS, PUSH_CONST,
-    PUSH_FALSE, PUSH_THIS, PUSH_TRUE, REM, RETURN, SET_ARG_LOCAL, SET_GLOBAL, SET_LOCAL,
-    SET_MEMBER, SUB,
+    PUSH_FALSE, PUSH_THIS, PUSH_TRUE, REM, RETURN, SEQ, SET_ARG_LOCAL, SET_GLOBAL, SET_LOCAL,
+    SET_MEMBER, SNE, SUB,
 };
 
 use std::cell::RefCell;
@@ -223,8 +223,8 @@ impl VMCodeGen {
                 | CALL => i += 5,
                 PUSH_INT8 => i += 2,
                 PUSH_FALSE | END | PUSH_TRUE | PUSH_THIS | ADD | SUB | MUL | DIV | REM | LT
-                | PUSH_ARGUMENTS | NEG | GT | LE | GE | EQ | NE | GET_MEMBER | RETURN
-                | SET_MEMBER => i += 1,
+                | PUSH_ARGUMENTS | NEG | GT | LE | GE | EQ | NE | GET_MEMBER | RETURN | SNE
+                | SEQ | SET_MEMBER => i += 1,
                 GET_GLOBAL => {
                     let id = insts[i + 1] as i32
                         + ((insts[i + 2] as i32) << 8)
@@ -621,6 +621,8 @@ impl VMCodeGen {
             &BinOp::Rem => self.bytecode_gen.gen_rem(insts),
             &BinOp::Eq => self.bytecode_gen.gen_eq(insts),
             &BinOp::Ne => self.bytecode_gen.gen_ne(insts),
+            &BinOp::SEq => self.bytecode_gen.gen_seq(insts),
+            &BinOp::SNe => self.bytecode_gen.gen_sne(insts),
             &BinOp::Lt => self.bytecode_gen.gen_lt(insts),
             &BinOp::Gt => self.bytecode_gen.gen_gt(insts),
             &BinOp::Le => self.bytecode_gen.gen_le(insts),

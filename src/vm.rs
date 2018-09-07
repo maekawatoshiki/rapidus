@@ -134,19 +134,21 @@ pub const LE: u8 = 0x14;
 pub const GE: u8 = 0x15;
 pub const EQ: u8 = 0x16;
 pub const NE: u8 = 0x17;
-pub const GET_MEMBER: u8 = 0x18;
-pub const SET_MEMBER: u8 = 0x19;
-pub const GET_GLOBAL: u8 = 0x1a;
-pub const SET_GLOBAL: u8 = 0x1b;
-pub const GET_LOCAL: u8 = 0x1c;
-pub const SET_LOCAL: u8 = 0x1d;
-pub const GET_ARG_LOCAL: u8 = 0x1e;
-pub const SET_ARG_LOCAL: u8 = 0x1f;
-pub const JMP_IF_FALSE: u8 = 0x20;
-pub const JMP: u8 = 0x21;
-pub const CALL: u8 = 0x22;
-pub const RETURN: u8 = 0x23;
-pub const ASG_FREST_PARAM: u8 = 0x24;
+pub const SEQ: u8 = 0x18;
+pub const SNE: u8 = 0x19;
+pub const GET_MEMBER: u8 = 0x1a;
+pub const SET_MEMBER: u8 = 0x1b;
+pub const GET_GLOBAL: u8 = 0x1c;
+pub const SET_GLOBAL: u8 = 0x1d;
+pub const GET_LOCAL: u8 = 0x1e;
+pub const SET_LOCAL: u8 = 0x1f;
+pub const GET_ARG_LOCAL: u8 = 0x20;
+pub const SET_ARG_LOCAL: u8 = 0x21;
+pub const JMP_IF_FALSE: u8 = 0x22;
+pub const JMP: u8 = 0x23;
+pub const CALL: u8 = 0x24;
+pub const RETURN: u8 = 0x25;
+pub const ASG_FREST_PARAM: u8 = 0x26;
 
 pub struct VM {
     pub global_objects: Rc<RefCell<HashMap<String, Value>>>,
@@ -155,7 +157,7 @@ pub struct VM {
     pub const_table: ConstantTable,
     pub insts: ByteCode,
     pub loop_bgn_end: HashMap<isize, isize>,
-    pub op_table: [fn(&mut VM); 37],
+    pub op_table: [fn(&mut VM); 39],
     pub builtin_functions: [unsafe fn(Vec<Value>, &mut VM); 6],
 }
 
@@ -244,6 +246,8 @@ impl VM {
                 ge,
                 eq,
                 ne,
+                seq,
+                sne,
                 get_member,
                 set_member,
                 get_global,
@@ -521,6 +525,8 @@ bin_op!(le, Le);
 bin_op!(ge, Ge);
 bin_op!(eq, Eq);
 bin_op!(ne, Ne);
+bin_op!(seq, SEq);
+bin_op!(sne, SNe);
 
 #[inline]
 fn binary(self_: &mut VM, op: &BinOp) {
@@ -539,6 +545,8 @@ fn binary(self_: &mut VM, op: &BinOp) {
             &BinOp::Ge => Value::Bool(n1 >= n2),
             &BinOp::Eq => Value::Bool(n1 == n2),
             &BinOp::Ne => Value::Bool(n1 != n2),
+            &BinOp::SEq => Value::Bool(n1 == n2),
+            &BinOp::SNe => Value::Bool(n1 != n2),
             _ => panic!(),
         }),
         (Value::String(s1), Value::Number(n2)) => self_.state.stack.push(match op {
@@ -890,6 +898,12 @@ unsafe fn console_log(args: Vec<Value>, _: &mut VM) {
             }
             Value::Number(ref n) => {
                 libc::printf(b"%.15g\0".as_ptr() as RawStringPtr, *n);
+            }
+            Value::Bool(true) => {
+                libc::printf(b"true\0".as_ptr() as RawStringPtr);
+            }
+            Value::Bool(false) => {
+                libc::printf(b"false\0".as_ptr() as RawStringPtr);
             }
             Value::Object(_) | Value::Array(_) | Value::Function(_, _) => debug_print(&args[i]),
             Value::Undefined => {

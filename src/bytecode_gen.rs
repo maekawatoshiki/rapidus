@@ -3,8 +3,8 @@ use vm::{
     ConstantTable, PUSH_INT32, PUSH_INT8, Value, ADD, ASG_FREST_PARAM, CALL, CONSTRUCT,
     CREATE_ARRAY, CREATE_CONTEXT, CREATE_OBJECT, DIV, END, EQ, GE, GET_ARG_LOCAL, GET_GLOBAL,
     GET_LOCAL, GET_MEMBER, GT, JMP, JMP_IF_FALSE, LE, LT, MUL, NE, NEG, PUSH_ARGUMENTS, PUSH_CONST,
-    PUSH_FALSE, PUSH_THIS, PUSH_TRUE, REM, RETURN, SET_ARG_LOCAL, SET_GLOBAL, SET_LOCAL,
-    SET_MEMBER, SUB,
+    PUSH_FALSE, PUSH_THIS, PUSH_TRUE, REM, RETURN, SEQ, SET_ARG_LOCAL, SET_GLOBAL, SET_LOCAL,
+    SET_MEMBER, SNE, SUB,
 };
 
 pub type ByteCode = Vec<u8>;
@@ -112,6 +112,12 @@ impl ByteCodeGen {
     }
     pub fn gen_ne(&self, insts: &mut ByteCode) {
         insts.push(NE);
+    }
+    pub fn gen_seq(&self, insts: &mut ByteCode) {
+        insts.push(SEQ);
+    }
+    pub fn gen_sne(&self, insts: &mut ByteCode) {
+        insts.push(SNE);
     }
 
     pub fn gen_get_member(&self, insts: &mut ByteCode) {
