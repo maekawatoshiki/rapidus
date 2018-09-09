@@ -187,6 +187,7 @@ impl FreeVariableSolver {
     }
 
     fn get_mangled_name(&self, name: &str) -> Option<String> {
+        println!("m: {:?}", self.mangled_name);
         for map in self.mangled_name.iter().rev() {
             for (before_mangled, after_mangled) in map {
                 if before_mangled == name {

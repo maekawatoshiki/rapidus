@@ -253,6 +253,7 @@ impl FreeVariableFinder {
 
     fn identifier(&mut self, name: &mut String) {
         let is_cur_scope_var = self.varmap.last().unwrap().contains(name.as_str());
+        let is_global_var = self.varmap[0].contains(name.as_str());
         let varmap_len = self.varmap.len();
         let is_already_appeared_var_but_not_in_cur_scope_or_global = self.varmap[1..varmap_len - 1]
             .iter()
@@ -265,7 +266,10 @@ impl FreeVariableFinder {
             }
         }
 
-        if !is_cur_scope_var && is_already_appeared_var_but_not_in_cur_scope_or_global {
+        if !is_cur_scope_var
+            && is_already_appeared_var_but_not_in_cur_scope_or_global
+            && !is_global_var
+        {
             self.cur_fv.last_mut().unwrap().insert(name.clone());
         }
     }

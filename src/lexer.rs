@@ -222,7 +222,7 @@ impl Lexer {
                         i += 2;
                     }
                     if u8s.len() % 2 != 0 {
-                        // TODO: Support \x{X..X}
+                        // TODO: Support \u{X..X}
                         unimplemented!("unsupported escape sequence");
                     }
                     let save_pos = self.pos;
