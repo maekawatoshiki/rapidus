@@ -2,7 +2,7 @@ use std::boxed::Box;
 use std::collections::HashMap;
 
 use std::cell::RefCell;
-use std::ffi::{CStr, CString};
+use std::ffi::CString;
 use std::rc::Rc;
 
 use rand::random;
@@ -53,7 +53,7 @@ pub enum Value {
     Undefined,
     Bool(bool),
     Number(f64),
-    String(RawStringPtr),
+    String(CString),
     Function(usize, Rc<RefCell<HashMap<String, Value>>>),
     NeedThis(Box<Value>),
     WithThis(Box<(Value, Value)>),               // Function, This
@@ -66,7 +66,7 @@ pub enum Value {
 impl Value {
     pub fn to_string(self) -> String {
         match self {
-            Value::String(name) => unsafe { CStr::from_ptr(name).to_str().unwrap() }.to_string(),
+            Value::String(name) => name.into_string().unwrap(),
             Value::Number(n) => format!("{}", n),
             e => unimplemented!("{:?}", e),
         }
@@ -428,7 +428,7 @@ fn create_object(self_: &mut VM) {
     let mut map = HashMap::new();
     for _ in 0..len {
         let name = if let Value::String(name) = self_.state.stack.pop().unwrap() {
-            unsafe { CStr::from_ptr(name).to_str().unwrap() }.to_string()
+            name.into_string().unwrap()
         } else {
             panic!()
         };
@@ -551,34 +551,22 @@ fn binary(self_: &mut VM, op: &BinOp) {
         }),
         (Value::String(s1), Value::Number(n2)) => self_.state.stack.push(match op {
             &BinOp::Add => {
-                let concat = format!(
-                    "{}{}",
-                    unsafe { CStr::from_ptr(s1).to_str().unwrap() }.to_string(),
-                    n2
-                );
-                unsafe { Value::String(alloc_rawstring(concat.as_str())) }
+                let concat = format!("{}{}", s1.to_str().unwrap(), n2);
+                Value::String(CString::new(concat).unwrap())
             }
             _ => panic!(),
         }),
         (Value::Number(n1), Value::String(s2)) => self_.state.stack.push(match op {
             &BinOp::Add => {
-                let concat = format!(
-                    "{}{}",
-                    n1,
-                    unsafe { CStr::from_ptr(s2).to_str().unwrap() }.to_string()
-                );
-                unsafe { Value::String(alloc_rawstring(concat.as_str())) }
+                let concat = format!("{}{}", n1, s2.to_str().unwrap());
+                Value::String(CString::new(concat).unwrap())
             }
             _ => panic!(),
         }),
         (Value::String(s1), Value::String(s2)) => self_.state.stack.push(match op {
             &BinOp::Add => {
-                let concat = format!(
-                    "{}{}",
-                    unsafe { CStr::from_ptr(s1).to_str().unwrap() }.to_string(),
-                    unsafe { CStr::from_ptr(s2).to_str().unwrap() }.to_string()
-                );
-                unsafe { Value::String(alloc_rawstring(concat.as_str())) }
+                let concat = format!("{}{}", s1.to_str().unwrap(), s2.to_str().unwrap());
+                Value::String(CString::new(concat).unwrap())
             }
             _ => panic!(),
         }),
@@ -591,6 +579,31 @@ fn get_member(self_: &mut VM) {
     let member = self_.state.stack.pop().unwrap();
     let parent = self_.state.stack.pop().unwrap();
     match parent.clone() {
+        Value::String(s) => {
+            match member {
+                // Index
+                Value::Number(n) if n - n.floor() == 0.0 => self_.state.stack.push(Value::String(
+                    CString::new(
+                        s.to_str()
+                            .unwrap()
+                            .chars()
+                            .nth(n as usize)
+                            .unwrap()
+                            .to_string(),
+                    ).unwrap(),
+                )),
+                Value::String(ref member) if member.to_str().unwrap() == "length" => {
+                    self_.state.stack.push(Value::Number(
+                        s.to_str()
+                            .unwrap()
+                            .chars()
+                            .fold(0, |x, c| x + c.len_utf16()) as f64,
+                    ));
+                }
+                // TODO: Support all features.
+                _ => self_.state.stack.push(Value::Undefined),
+            }
+        }
         Value::Object(map)
         | Value::Function(_, map)
         | Value::NeedThis(box Value::Function(_, map)) => {
@@ -614,7 +627,7 @@ fn get_member(self_: &mut VM) {
                         self_.state.stack.push(arr[n as usize].clone())
                     }
                 }
-                Value::String(s) if unsafe { CStr::from_ptr(s).to_str().unwrap() } == "length" => {
+                Value::String(ref s) if s.to_str().unwrap() == "length" => {
                     self_.state.stack.push(Value::Number(map.length as f64));
                 }
                 _ => match obj_find_val(&map.obj, member.to_string().as_str()) {
@@ -636,7 +649,7 @@ fn get_member(self_: &mut VM) {
                         self_.state.stack.push(val);
                     }
                 }
-                Value::String(s) if unsafe { CStr::from_ptr(s).to_str().unwrap() } == "length" => {
+                Value::String(ref s) if s.to_str().unwrap() == "length" => {
                     self_
                         .state
                         .stack
@@ -685,12 +698,10 @@ fn set_member(self_: &mut VM) {
                     }
                     map.elems[n as usize] = val;
                 }
-                Value::String(s) if unsafe { CStr::from_ptr(s).to_str().unwrap() } == "length" => {
-                    match val {
-                        Value::Number(n) if n - n.floor() == 0.0 => map.length = n as usize,
-                        _ => {}
-                    }
-                }
+                Value::String(ref s) if s.to_str().unwrap() == "length" => match val {
+                    Value::Number(n) if n - n.floor() == 0.0 => map.length = n as usize,
+                    _ => {}
+                },
                 _ => {
                     *map.obj
                         .entry(member.to_string())
@@ -894,7 +905,7 @@ unsafe fn console_log(args: Vec<Value>, _: &mut VM) {
     for i in 0..args_len {
         match args[i] {
             Value::String(ref s) => {
-                libc::printf(b"%s\0".as_ptr() as RawStringPtr, *s as RawStringPtr);
+                libc::printf(b"%s\0".as_ptr() as RawStringPtr, s.as_ptr());
             }
             Value::Number(ref n) => {
                 libc::printf(b"%.15g\0".as_ptr() as RawStringPtr, *n);
@@ -924,7 +935,7 @@ unsafe fn process_stdout_write(args: Vec<Value>, _: &mut VM) {
     for i in 0..args_len {
         match args[i] {
             Value::String(ref s) => {
-                libc::printf(b"%s\0".as_ptr() as RawStringPtr, *s as RawStringPtr);
+                libc::printf(b"%s\0".as_ptr() as RawStringPtr, s.as_ptr());
             }
             Value::Number(ref n) => {
                 libc::printf(b"%.15g\0".as_ptr() as RawStringPtr, *n);
@@ -943,7 +954,7 @@ unsafe fn process_stdout_write(args: Vec<Value>, _: &mut VM) {
 unsafe fn debug_print(val: &Value) {
     match val {
         &Value::String(ref s) => {
-            libc::printf("'%s'\0".as_ptr() as RawStringPtr, *s as RawStringPtr);
+            libc::printf("'%s'\0".as_ptr() as RawStringPtr, s.as_ptr());
         }
         &Value::Number(ref n) => {
             libc::printf("%.15g\0".as_ptr() as RawStringPtr, *n);
