@@ -49,7 +49,7 @@ $ cargo run --release example/XXX.js
 
 I don't know.
 
-- tips: If you are using macOS, you cannot use llvm installed with ``brew``. You should use macports or docker instead. 
+- ~~tips: If you are using macOS, you cannot use llvm installed with ``brew``. You should use macports or docker instead.~~ Now it works!
 
 ## Use Dockerfile
 
