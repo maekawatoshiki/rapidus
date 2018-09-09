@@ -2,6 +2,9 @@ use token::{convert_reserved_keyword, Kind, Symbol, Token};
 
 use std::collections::VecDeque;
 
+use encoding::all::UTF_16BE;
+use encoding::{DecoderTrap, Encoding};
+
 #[derive(Clone, Debug)]
 pub struct Lexer {
     pub code: String,
@@ -181,7 +184,9 @@ impl Lexer {
         loop {
             match self.skip_char()? {
                 q if q == quote => break,
-                '\\' => s.push(self.read_escaped_char()?),
+                '\\' => for c in self.read_escaped_char()? {
+                    s.push(c)
+                },
                 c => s.push(c),
             }
         }
@@ -189,24 +194,54 @@ impl Lexer {
         Ok(Token::new_string(s, pos))
     }
 
-    fn read_escaped_char(&mut self) -> Result<char, ()> {
+    fn read_escaped_char(&mut self) -> Result<Vec<char>, ()> {
         let c = self.skip_char()?;
-        match c {
-            '\'' | '"' | '?' | '\\' => Ok(c),
-            'a' => Ok('\x07'),
-            'b' => Ok('\x08'),
-            'f' => Ok('\x0c'),
-            'n' => Ok('\x0a'),
-            'r' => Ok('\x0d'),
-            't' => Ok('\x09'),
-            'v' => Ok('\x0b'),
+        Ok(match c {
+            '\'' | '"' | '?' | '\\' => vec![c],
+            'a' => vec!['\x07'],
+            'b' => vec!['\x08'],
+            'f' => vec!['\x0c'],
+            'n' => vec!['\x0a'],
+            'r' => vec!['\x0d'],
+            't' => vec!['\x09'],
+            'v' => vec!['\x0b'],
             'x' => {
-                let mut hex = self.skip_while(|c| c.is_alphanumeric())?;
-                Ok(self.read_hex_num(hex.as_str()) as u8 as char)
+                let hex = self.skip_while(|c| c.is_alphanumeric())?;
+                vec![self.read_hex_num(hex.as_str()) as u8 as char]
             }
-            // TODO: Support unicode codepoint.
-            _ => Ok(c),
-        }
+            'u' => {
+                let mut u8s = vec![];
+                loop {
+                    let hex = self.skip_while(|c| c.is_alphanumeric())?;
+                    let mut i = 0;
+                    while i < hex.len() {
+                        u8s.push(
+                            self.read_hex_num(&hex[i..i + if i + 2 > hex.len() { 1 } else { 2 }])
+                                as u8,
+                        );
+                        i += 2;
+                    }
+                    if u8s.len() % 2 != 0 {
+                        // TODO: Support \x{X..X}
+                        unimplemented!("unsupported escape sequence");
+                    }
+                    let save_pos = self.pos;
+                    // TODO: Error handling
+                    if self.skip_char()? == '\\' && self.skip_char()? == 'u' {
+                        continue;
+                    } else {
+                        self.pos = save_pos;
+                        break;
+                    }
+                }
+                UTF_16BE
+                    .decode(u8s.as_slice(), DecoderTrap::Strict)
+                    .unwrap()
+                    .chars()
+                    .collect::<Vec<char>>()
+            }
+            _ => vec![c],
+        })
     }
 }
 
@@ -676,10 +711,10 @@ fn line_terminator() {
 
 #[test]
 fn escape_seq() {
-    let mut lexer = Lexer::new("\"\\' \\\" \\\\ \\a \\b \\f \\n \\r \\t \\v \\x12\"".to_string());
+    let mut lexer = Lexer::new("\"\\' \\\" \\\\ \\a \\b \\f \\n \\r \\t \\v \\x12 \\uD867\\uDE3D\"".to_string());
     assert_eq!(
         lexer.next().unwrap().kind,
-        Kind::String("\' \" \\ \x07 \x08 \x0c \n \r \t \x0b \x12".to_string())
+        Kind::String("\' \" \\ \x07 \x08 \x0c \n \r \t \x0b \x12 𩸽".to_string())
     );
 }
 
