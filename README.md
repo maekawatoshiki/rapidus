@@ -10,10 +10,11 @@ A toy JavaScript engine aiming to pass test262
 
 - Small
 - Support Tracing-JIT compiling 
-  - Currently, a function fitting for the following rules would be JIT-compiled. 
+  - Currently, any functions or loops fitting for the following rules would be JIT-compiled. 
     - Accessing only its arguments and local variables (not global variables) 
     - Number and Boolean(only for function's returning type) are used
     - Calling only itself
+    - (There are exceptions...)
 
 # Building from Source
 
