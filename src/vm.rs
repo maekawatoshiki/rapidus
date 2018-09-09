@@ -592,6 +592,14 @@ fn get_member(self_: &mut VM) {
                             .to_string(),
                     ).unwrap(),
                 )),
+                Value::String(ref member) if member.to_str().unwrap() == "length" => {
+                    self_.state.stack.push(Value::Number(
+                        s.to_str()
+                            .unwrap()
+                            .chars()
+                            .fold(0, |x, c| x + c.len_utf16()) as f64,
+                    ));
+                }
                 // TODO: Support all features.
                 _ => self_.state.stack.push(Value::Undefined),
             }
