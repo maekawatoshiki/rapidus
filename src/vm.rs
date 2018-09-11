@@ -104,7 +104,7 @@ pub fn new_value_function(pos: usize) -> Value {
     if let Value::Function(_, ref mut obj) = &mut val {
         // TODO: Add constructor of this function itself (==Function). (not prototype.constructor)
         if let Value::Object(ref mut obj) = (*obj.borrow_mut()).get_mut("prototype").unwrap() {
-            // obj.borrow_mut().insert("constructor".to_string(), v2);
+            obj.borrow_mut().insert("constructor".to_string(), v2);
         }
     }
     val
