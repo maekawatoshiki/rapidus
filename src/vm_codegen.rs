@@ -1,3 +1,4 @@
+use builtin;
 use bytecode_gen::{ByteCode, ByteCodeGen};
 use id::{Id, IdGen};
 use node::{
@@ -164,7 +165,10 @@ impl VMCodeGen {
         {
             function_value_list.insert("console".to_string(), {
                 let mut map = HashMap::new();
-                map.insert("log".to_string(), Value::EmbeddedFunction(0));
+                map.insert(
+                    "log".to_string(),
+                    Value::BuiltinFunction(builtin::CONSOLE_LOG),
+                );
                 Value::Object(Rc::new(RefCell::new(map)))
             });
 
@@ -172,7 +176,10 @@ impl VMCodeGen {
                 let mut map = HashMap::new();
                 map.insert("stdout".to_string(), {
                     let mut map = HashMap::new();
-                    map.insert("write".to_string(), Value::EmbeddedFunction(1));
+                    map.insert(
+                        "write".to_string(),
+                        Value::BuiltinFunction(builtin::PROCESS_STDOUT_WRITE),
+                    );
                     Value::Object(Rc::new(RefCell::new(map)))
                 });
                 Value::Object(Rc::new(RefCell::new(map)))
@@ -180,9 +187,15 @@ impl VMCodeGen {
 
             function_value_list.insert("Math".to_string(), {
                 let mut map = HashMap::new();
-                map.insert("floor".to_string(), Value::EmbeddedFunction(3));
-                map.insert("random".to_string(), Value::EmbeddedFunction(4));
-                map.insert("pow".to_string(), Value::EmbeddedFunction(5));
+                map.insert(
+                    "floor".to_string(),
+                    Value::BuiltinFunction(builtin::MATH_FLOOR),
+                );
+                map.insert(
+                    "random".to_string(),
+                    Value::BuiltinFunction(builtin::MATH_RANDOM),
+                );
+                map.insert("pow".to_string(), Value::BuiltinFunction(builtin::MATH_POW));
                 Value::Object(Rc::new(RefCell::new(map)))
             });
         }

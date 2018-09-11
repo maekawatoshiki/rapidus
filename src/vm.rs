@@ -1,16 +1,13 @@
 use std::boxed::Box;
-use std::collections::HashMap;
-
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::ffi::CString;
 use std::rc::Rc;
 
-use rand::random;
-
+use libc;
 // use cpuprofiler::PROFILER;
 
-use libc;
-
+use builtin;
 use bytecode_gen::ByteCode;
 use jit::TracingJit;
 use node::BinOp;
@@ -37,12 +34,19 @@ impl ArrayValue {
             elems: arr,
             length: len,
             obj: {
-                let mut map = HashMap::new();
-                map.insert(
-                    "push".to_string(),
-                    Value::NeedThis(Box::new(Value::EmbeddedFunction(2))),
+                let mut hm = HashMap::new();
+                hm.insert(
+                    "__proto__".to_string(),
+                    Value::Object(Rc::new(RefCell::new({
+                        let mut hm = HashMap::new();
+                        hm.insert(
+                            "push".to_string(),
+                            Value::NeedThis(Box::new(Value::BuiltinFunction(builtin::ARRAY_PUSH))),
+                        );
+                        hm
+                    }))),
                 );
-                map
+                hm
             },
         }
     }
@@ -57,7 +61,7 @@ pub enum Value {
     Function(usize, Rc<RefCell<HashMap<String, Value>>>),
     NeedThis(Box<Value>),
     WithThis(Box<(Value, Value)>),               // Function, This
-    EmbeddedFunction(usize), // unknown if usize == 0; specific function if usize > 0
+    BuiltinFunction(usize), // unknown if usize == 0; specific function if usize > 0
     Object(Rc<RefCell<HashMap<String, Value>>>), // Object(HashMap<String, Value>),
     Array(Rc<RefCell<ArrayValue>>),
     Arguments,
@@ -82,7 +86,7 @@ pub fn new_value_function(pos: usize) -> Value {
                 "prototype".to_string(),
                 Value::Object(Rc::new(RefCell::new({
                     let mut hm = HashMap::new();
-                    // hm.insert("call".to_string(), Value::NeedThis(Box::new(Value::EmbeddedFunction(6))));
+                    // hm.insert("call".to_string(), Value::NeedThis(Box::new(Value::BuiltinFunction(6))));
                     hm
                 }))),
             );
@@ -92,7 +96,7 @@ pub fn new_value_function(pos: usize) -> Value {
                     let mut hm = HashMap::new();
                     hm.insert(
                         "call".to_string(),
-                        Value::NeedThis(Box::new(Value::EmbeddedFunction(6))),
+                        Value::NeedThis(Box::new(Value::BuiltinFunction(builtin::FUNCTION_PROTOTYPE_CALL))),
                     );
                     hm
                 }))),
@@ -190,7 +194,10 @@ impl VM {
 
         obj.insert("console".to_string(), {
             let mut map = HashMap::new();
-            map.insert("log".to_string(), Value::EmbeddedFunction(0));
+            map.insert(
+                "log".to_string(),
+                Value::BuiltinFunction(builtin::CONSOLE_LOG),
+            );
             Value::Object(Rc::new(RefCell::new(map)))
         });
 
@@ -198,7 +205,10 @@ impl VM {
             let mut map = HashMap::new();
             map.insert("stdout".to_string(), {
                 let mut map = HashMap::new();
-                map.insert("write".to_string(), Value::EmbeddedFunction(1));
+                map.insert(
+                    "write".to_string(),
+                    Value::BuiltinFunction(builtin::PROCESS_STDOUT_WRITE),
+                );
                 Value::Object(Rc::new(RefCell::new(map)))
             });
             Value::Object(Rc::new(RefCell::new(map)))
@@ -206,9 +216,15 @@ impl VM {
 
         obj.insert("Math".to_string(), {
             let mut map = HashMap::new();
-            map.insert("floor".to_string(), Value::EmbeddedFunction(3));
-            map.insert("random".to_string(), Value::EmbeddedFunction(4));
-            map.insert("pow".to_string(), Value::EmbeddedFunction(5));
+            map.insert(
+                "floor".to_string(),
+                Value::BuiltinFunction(builtin::MATH_FLOOR),
+            );
+            map.insert(
+                "random".to_string(),
+                Value::BuiltinFunction(builtin::MATH_RANDOM),
+            );
+            map.insert("pow".to_string(), Value::BuiltinFunction(builtin::MATH_POW));
             Value::Object(Rc::new(RefCell::new(map)))
         });
 
@@ -278,13 +294,13 @@ impl VM {
                 assign_func_rest_param,
             ],
             builtin_functions: [
-                console_log,
-                process_stdout_write,
-                array_push,
-                math_floor,
-                math_random,
-                math_pow,
-                function_prototype_call,
+                builtin::console_log,
+                builtin::process_stdout_write,
+                builtin::array_push,
+                builtin::math_floor,
+                builtin::math_random,
+                builtin::math_pow,
+                builtin::function_prototype_call,
             ],
         }
     }
@@ -418,7 +434,7 @@ fn construct(self_: &mut VM) {
                     &mut Value::Object(_)
                     | &mut Value::Array(_)
                     | &mut Value::Function(_, _)
-                    | &mut Value::EmbeddedFunction(_) => {}
+                    | &mut Value::BuiltinFunction(_) => {}
                     others => *others = Value::Object(new_this),
                 };
                 break;
@@ -825,7 +841,7 @@ fn call(self_: &mut VM) {
 
     loop {
         match callee {
-            Value::EmbeddedFunction(x) => {
+            Value::BuiltinFunction(x) => {
                 let mut args = vec![];
                 for _ in 0..argc {
                     args.push(self_.state.stack.pop().unwrap());
@@ -918,182 +934,6 @@ fn assign_func_rest_param(self_: &mut VM) {
     }
     self_.state.stack[self_.state.lp + dst_var_id] =
         Value::Array(Rc::new(RefCell::new(ArrayValue::new(rest_params))));
-}
-
-// EmbeddedFunction(0)
-unsafe fn console_log(args: Vec<Value>, _: &mut VM) {
-    let args_len = args.len();
-    for i in 0..args_len {
-        match args[i] {
-            Value::String(ref s) => {
-                libc::printf(b"%s\0".as_ptr() as RawStringPtr, s.as_ptr());
-            }
-            Value::Number(ref n) => {
-                libc::printf(b"%.15g\0".as_ptr() as RawStringPtr, *n);
-            }
-            Value::Bool(true) => {
-                libc::printf(b"true\0".as_ptr() as RawStringPtr);
-            }
-            Value::Bool(false) => {
-                libc::printf(b"false\0".as_ptr() as RawStringPtr);
-            }
-            Value::Object(_) | Value::Array(_) | Value::Function(_, _) => debug_print(&args[i]),
-            Value::Undefined => {
-                libc::printf(b"undefined\0".as_ptr() as RawStringPtr);
-            }
-            _ => {}
-        }
-        if args_len - 1 != i {
-            libc::printf(b" \0".as_ptr() as RawStringPtr);
-        }
-    }
-    libc::puts(b"\0".as_ptr() as RawStringPtr);
-}
-
-// EmbeddedFunction(1)
-unsafe fn process_stdout_write(args: Vec<Value>, _: &mut VM) {
-    let args_len = args.len();
-    for i in 0..args_len {
-        match args[i] {
-            Value::String(ref s) => {
-                libc::printf(b"%s\0".as_ptr() as RawStringPtr, s.as_ptr());
-            }
-            Value::Number(ref n) => {
-                libc::printf(b"%.15g\0".as_ptr() as RawStringPtr, *n);
-            }
-            Value::Undefined => {
-                libc::printf(b"undefined\0".as_ptr() as RawStringPtr);
-            }
-            _ => {}
-        }
-        if args_len - 1 != i {
-            libc::printf(b" \0".as_ptr() as RawStringPtr);
-        }
-    }
-}
-
-unsafe fn debug_print(val: &Value) {
-    match val {
-        &Value::String(ref s) => {
-            libc::printf("'%s'\0".as_ptr() as RawStringPtr, s.as_ptr());
-        }
-        &Value::Number(ref n) => {
-            libc::printf("%.15g\0".as_ptr() as RawStringPtr, *n);
-        }
-        &Value::Object(ref values) => {
-            libc::printf("{ \0".as_ptr() as RawStringPtr);
-            for (key, val) in &*(*values).borrow() {
-                libc::printf(
-                    "'%s'\0".as_ptr() as RawStringPtr,
-                    CString::new(key.as_str()).unwrap().into_raw(),
-                );
-                libc::printf(": \0".as_ptr() as RawStringPtr);
-                debug_print(&val);
-                libc::printf(", \0".as_ptr() as RawStringPtr);
-            }
-            libc::printf("}\0".as_ptr() as RawStringPtr);
-        }
-        &Value::Array(ref values) => {
-            libc::printf("[ \0".as_ptr() as RawStringPtr);
-            let arr = &*(*values).borrow();
-            let elems = &arr.elems;
-            for i in 0..arr.length {
-                debug_print(&elems[i]);
-                libc::printf(", \0".as_ptr() as RawStringPtr);
-            }
-            libc::printf("]\0".as_ptr() as RawStringPtr);
-        }
-        &Value::Function(_, _) => {
-            libc::printf("[Function]\0".as_ptr() as RawStringPtr);
-        }
-        &Value::Undefined => {
-            libc::printf(b"undefined\0".as_ptr() as RawStringPtr);
-        }
-        _ => {}
-    }
-}
-
-// EmbeddedFunction(2)
-unsafe fn array_push(args: Vec<Value>, _: &mut VM) {
-    if let Value::Array(ref map) = args[0] {
-        let mut map = map.borrow_mut();
-        // let mut elems = &mut map.elems;
-        for val in args[1..].iter() {
-            map.elems.push(val.clone());
-        }
-        map.length += args[1..].len();
-    } else {
-        unreachable!()
-    };
-}
-
-// EmbeddedFunction(3)
-unsafe fn math_floor(args: Vec<Value>, self_: &mut VM) {
-    if let Value::Number(f) = args[0] {
-        self_.state.stack.push(Value::Number(f.floor()))
-    }
-}
-
-// EmbeddedFunction(4)
-unsafe fn math_random(_args: Vec<Value>, self_: &mut VM) {
-    self_.state.stack.push(Value::Number(random::<f64>()))
-}
-
-// EmbeddedFunction(5)
-unsafe fn math_pow(args: Vec<Value>, self_: &mut VM) {
-    if let Value::Number(f1) = args[0] {
-        if let Value::Number(f2) = args[1] {
-            self_.state.stack.push(Value::Number(f1.powf(f2)))
-        }
-    }
-}
-
-// EmbeddedFunction(6)
-unsafe fn function_prototype_call(args: Vec<Value>, self_: &mut VM) {
-    let mut callee = args[0].clone();
-    loop {
-        match callee {
-            Value::Function(dst, obj) => {
-                self_.state.history.push((0, 0, 0, self_.state.pc));
-
-                self_.state.stack.push(args[1].clone());
-
-                for arg in args[2..].iter() {
-                    self_.state.stack.push(arg.clone());
-                }
-
-                self_.state.pc = dst as isize;
-                self_
-                    .state
-                    .stack
-                    .push(Value::Number(args.len() as f64 - 1.0 /*callee*/));
-
-                self_.do_run();
-
-                match self_.state.stack.last_mut().unwrap() {
-                    &mut Value::Object(_)
-                    | &mut Value::Array(_)
-                    | &mut Value::Function(_, _)
-                    | &mut Value::EmbeddedFunction(_) => {}
-                    others => *others = args[1].clone(),
-                };
-                break;
-            }
-            Value::NeedThis(callee_) => {
-                callee = *callee_;
-            }
-            Value::WithThis(box (callee_, _)) => {
-                callee = callee_;
-            }
-            c => {
-                println!(
-                    "Function.prototype.call: err: {:?}, pc = {}",
-                    c, self_.state.pc
-                );
-                break;
-            }
-        }
-    }
 }
 
 // #[rustfmt::skip]
