@@ -41,7 +41,7 @@ impl FreeVariableSolver {
                 self.mangled_name.push(map);
 
                 for index in func_decl_index {
-                    self.run(&mut nodes[index])
+                    self.run(&mut nodes[index]);
                 }
 
                 for node in nodes.iter_mut() {
@@ -65,7 +65,12 @@ impl FreeVariableSolver {
                     self.run(node)
                 }
             }
-            NodeBase::FunctionDecl(FunctionDeclNode { ref mut body, .. }) => {
+            NodeBase::FunctionDecl(FunctionDeclNode {
+                ref mut name,
+                ref mut mangled_name,
+                ref mut body,
+                ..
+            }) => {
                 let mut body = if let &mut NodeBase::StatementList(ref mut body) = &mut body.base {
                     body
                 } else {
@@ -88,10 +93,16 @@ impl FreeVariableSolver {
                         fv.clear();
                     }
                 }
+
+                if let Some(x) = self.get_mangled_name(name.as_str()){ 
+                   * mangled_name = Some(x);
+                }
+                
+
                 self.mangled_name.push(map);
 
                 for node in body.iter_mut() {
-                    self.run(node)
+                    self.run(node);
                 }
 
                 self.mangled_name.pop();

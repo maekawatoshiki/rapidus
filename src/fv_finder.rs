@@ -8,7 +8,7 @@ pub struct FreeVariableFinder {
     pub varmap: Vec<HashSet<String>>,
     pub cur_fv: Vec<HashSet<String>>,
     pub mangled_function_name: Vec<HashMap<String, String>>,
-    pub use_this: bool,
+    pub use_this: Vec<bool>,
 }
 
 impl FreeVariableFinder {
@@ -21,7 +21,7 @@ impl FreeVariableFinder {
             varmap: vec![varmap],
             cur_fv: vec![HashSet::new()],
             mangled_function_name: vec![],
-            use_this: false,
+            use_this: vec![false],
         }
     }
 
@@ -43,7 +43,6 @@ impl FreeVariableFinder {
 
                 for index in func_decl_index {
                     self.run(&mut nodes[index]);
-                    self.use_this = false;
                 }
             }
             _ => unreachable!(),
@@ -59,6 +58,7 @@ impl FreeVariableFinder {
             }
             &mut NodeBase::FunctionDecl(FunctionDeclNode {
                 ref mut name,
+                ref mut mangled_name,
                 ref mut use_this,
                 ref mut fv,
                 ref params,
@@ -66,7 +66,14 @@ impl FreeVariableFinder {
                 ..
             }) => {
                 self.varmap.push(HashSet::new());
-                self.varmap.last_mut().unwrap().insert(name.clone());
+                self.varmap
+                    .last_mut()
+                    .unwrap()
+                    .insert(if let Some(mangled_name) = mangled_name {
+                        mangled_name.clone()
+                    } else {
+                        name.clone()
+                    });
 
                 for param in params.clone() {
                     self.varmap.last_mut().unwrap().insert(param.name);
@@ -88,14 +95,13 @@ impl FreeVariableFinder {
                             ref mut mangled_name,
                             ..
                         }) => {
-                            let nested = self.varmap.len() + 1 > 3;
+                            // len == 1: global, len == 2: main, len == 3: global function, len > 3: nested function
+                            let nested = self.varmap.len() > 3;
                             let mangled_name2 = if nested {
                                 Some(format!("{}.{}", name.clone(), random::<u32>()))
                             } else {
                                 None
                             };
-
-                            self.varmap.last_mut().unwrap().insert(name.clone());
 
                             if let Some(ref mangled_name) = mangled_name2 {
                                 self.mangled_function_name
@@ -106,6 +112,12 @@ impl FreeVariableFinder {
 
                             if nested {
                                 *mangled_name = mangled_name2.clone();
+                                self.varmap
+                                    .last_mut()
+                                    .unwrap()
+                                    .insert(mangled_name.clone().unwrap());
+                            } else {
+                                self.varmap.last_mut().unwrap().insert(name.clone());
                             }
 
                             func_decl_index.push(i)
@@ -115,6 +127,7 @@ impl FreeVariableFinder {
                 }
 
                 self.cur_fv.push(HashSet::new());
+                self.use_this.push(false);
 
                 for node in body.iter_mut() {
                     match &node.base {
@@ -129,11 +142,18 @@ impl FreeVariableFinder {
 
                 self.mangled_function_name.pop();
 
-                *use_this = self.use_this;
+                *use_this = self.use_this.pop().unwrap();
 
                 self.varmap.pop();
 
-                self.varmap.last_mut().unwrap().insert(name.clone());
+                self.varmap
+                    .last_mut()
+                    .unwrap()
+                    .insert(if let Some(mangled_name) = mangled_name {
+                        mangled_name.clone()
+                    } else {
+                        name.clone()
+                    });
 
                 let fv_ = self.cur_fv.pop().unwrap();
                 *fv = fv_.clone();
@@ -168,7 +188,7 @@ impl FreeVariableFinder {
                 self.run(&mut *parent);
                 self.run(&mut *idx);
             }
-            &mut NodeBase::This => self.use_this = true,
+            &mut NodeBase::This => *self.use_this.last_mut().unwrap() = true,
             &mut NodeBase::Identifier(ref mut name) => self.identifier(name),
             &mut NodeBase::Object(ref mut properties) => {
                 for property in properties.iter_mut() {
@@ -247,13 +267,15 @@ impl FreeVariableFinder {
                 self.run(&mut *then);
                 self.run(&mut *else_);
             }
+            &mut NodeBase::New(ref mut expr) => {
+                self.run(&mut *expr);
+            }
             _ => {}
         }
     }
 
     fn identifier(&mut self, name: &mut String) {
         let is_cur_scope_var = self.varmap.last().unwrap().contains(name.as_str());
-        let is_global_var = self.varmap[0].contains(name.as_str());
         let varmap_len = self.varmap.len();
         let is_already_appeared_var_but_not_in_cur_scope_or_global = self.varmap[1..varmap_len - 1]
             .iter()
@@ -266,10 +288,7 @@ impl FreeVariableFinder {
             }
         }
 
-        if !is_cur_scope_var
-            && is_already_appeared_var_but_not_in_cur_scope_or_global
-            && !is_global_var
-        {
+        if !is_cur_scope_var && is_already_appeared_var_but_not_in_cur_scope_or_global {
             self.cur_fv.last_mut().unwrap().insert(name.clone());
         }
     }
