@@ -80,7 +80,22 @@ pub fn new_value_function(pos: usize) -> Value {
             let mut hm = HashMap::new();
             hm.insert(
                 "prototype".to_string(),
-                Value::Object(Rc::new(RefCell::new(HashMap::new()))),
+                Value::Object(Rc::new(RefCell::new({
+                    let mut hm = HashMap::new();
+                    // hm.insert("call".to_string(), Value::NeedThis(Box::new(Value::EmbeddedFunction(6))));
+                    hm
+                }))),
+            );
+            hm.insert(
+                "__proto__".to_string(),
+                Value::Object(Rc::new(RefCell::new({
+                    let mut hm = HashMap::new();
+                    hm.insert(
+                        "call".to_string(),
+                        Value::NeedThis(Box::new(Value::EmbeddedFunction(6))),
+                    );
+                    hm
+                }))),
             );
             hm
         })),
@@ -89,7 +104,7 @@ pub fn new_value_function(pos: usize) -> Value {
     if let Value::Function(_, ref mut obj) = &mut val {
         // TODO: Add constructor of this function itself (==Function). (not prototype.constructor)
         if let Value::Object(ref mut obj) = (*obj.borrow_mut()).get_mut("prototype").unwrap() {
-            obj.borrow_mut().insert("constructor".to_string(), v2);
+            // obj.borrow_mut().insert("constructor".to_string(), v2);
         }
     }
     val
@@ -158,7 +173,7 @@ pub struct VM {
     pub insts: ByteCode,
     pub loop_bgn_end: HashMap<isize, isize>,
     pub op_table: [fn(&mut VM); 39],
-    pub builtin_functions: [unsafe fn(Vec<Value>, &mut VM); 6],
+    pub builtin_functions: [unsafe fn(Vec<Value>, &mut VM); 7],
 }
 
 pub struct VMState {
@@ -269,6 +284,7 @@ impl VM {
                 math_floor,
                 math_random,
                 math_pow,
+                function_prototype_call,
             ],
         }
     }
@@ -604,13 +620,18 @@ fn get_member(self_: &mut VM) {
                 _ => self_.state.stack.push(Value::Undefined),
             }
         }
-        Value::Object(map)
-        | Value::Function(_, map)
-        | Value::NeedThis(box Value::Function(_, map)) => {
+        Value::Object(map) => match obj_find_val(&*map.borrow(), member.to_string().as_str()) {
+            Value::NeedThis(callee) => self_.state.stack.push(Value::WithThis(Box::new((
+                *callee,
+                Value::Object(map.clone()),
+            )))),
+            val => self_.state.stack.push(val),
+        },
+        Value::Function(pos, map) | Value::NeedThis(box Value::Function(pos, map)) => {
             match obj_find_val(&*map.borrow(), member.to_string().as_str()) {
                 Value::NeedThis(callee) => self_.state.stack.push(Value::WithThis(Box::new((
                     *callee,
-                    Value::Object(map.clone()),
+                    Value::Function(pos, map.clone()),
                 )))),
                 val => self_.state.stack.push(val),
             }
@@ -1023,6 +1044,54 @@ unsafe fn math_pow(args: Vec<Value>, self_: &mut VM) {
     if let Value::Number(f1) = args[0] {
         if let Value::Number(f2) = args[1] {
             self_.state.stack.push(Value::Number(f1.powf(f2)))
+        }
+    }
+}
+
+// EmbeddedFunction(6)
+unsafe fn function_prototype_call(args: Vec<Value>, self_: &mut VM) {
+    let mut callee = args[0].clone();
+    loop {
+        match callee {
+            Value::Function(dst, obj) => {
+                self_.state.history.push((0, 0, 0, self_.state.pc));
+
+                self_.state.stack.push(args[1].clone());
+
+                for arg in args[2..].iter() {
+                    self_.state.stack.push(arg.clone());
+                }
+
+                self_.state.pc = dst as isize;
+                self_
+                    .state
+                    .stack
+                    .push(Value::Number(args.len() as f64 - 1.0 /*callee*/));
+
+                self_.do_run();
+
+                match self_.state.stack.last_mut().unwrap() {
+                    &mut Value::Object(_)
+                    | &mut Value::Array(_)
+                    | &mut Value::Function(_, _)
+                    | &mut Value::EmbeddedFunction(_) => {}
+                    others => *others = args[1].clone(),
+                };
+                break;
+            }
+            Value::NeedThis(callee_) => {
+                callee = *callee_;
+            }
+            Value::WithThis(box (callee_, _)) => {
+                callee = callee_;
+            }
+            c => {
+                println!(
+                    "Function.prototype.call: err: {:?}, pc = {}",
+                    c, self_.state.pc
+                );
+                break;
+            }
         }
     }
 }
