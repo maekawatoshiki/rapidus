@@ -42,7 +42,7 @@ pub struct FunctionDeclNode {
 pub enum NodeBase {
     StatementList(Vec<Node>),
     FunctionDecl(FunctionDeclNode),
-    FunctionExpr(Option<String>, FormalParameters, Box<Node>), // Name, Use 'this', fv, params, body
+    FunctionExpr(Option<String>, FormalParameters, Box<Node>), // Name, params, body
     VarDecl(String, Option<Box<Node>>),
     Member(Box<Node>, String),
     Index(Box<Node>, Box<Node>),

@@ -47,16 +47,7 @@ impl Parser {
 
 impl Parser {
     pub fn next(&mut self) -> Result<Node, ()> {
-        let x = self.read_script();
-        // match x.clone() {
-        //     Ok(_) => {}
-        //     Err(_) => self.show_error_at(
-        //         self.lexer.pos_line_list.last().unwrap().0,
-        //         ErrorMsgKind::Normal,
-        //         "reach unexpected EOF",
-        //     ),
-        // };
-        x
+        self.read_script()
     }
 }
 
