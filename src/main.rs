@@ -63,13 +63,9 @@ fn main() {
         let mut parser = parser::Parser::new(file_body);
 
         println!("Parser:");
-        let mut nodes = vec![];
-        while let Ok(node) = parser.next() {
-            println!("{:?}", node);
-            nodes.push(node);
-        }
+        let mut node = parser.parse_all();
+        println!("{:?}", node);
 
-        let mut node = nodes[0].clone();
         extract_anony_func::AnonymousFunctionExtractor::new().run_toplevel(&mut node);
         fv_finder::FreeVariableFinder::new().run_toplevel(&mut node);
         println!("extract_anony_func, fv_finder:\n {:?}", node);
@@ -128,24 +124,17 @@ fn run(file_name: &str) {
 
             let mut parser = parser::Parser::new(file_body);
 
-            let mut node_list = vec![];
-            while let Ok(ok) = parser.next() {
-                node_list.push(ok)
-            }
+            let mut node = parser.parse_all();
 
-            if node_list.len() == 0 {
-                return;
-            }
-
-            extract_anony_func::AnonymousFunctionExtractor::new().run_toplevel(&mut node_list[0]);
-            fv_finder::FreeVariableFinder::new().run_toplevel(&mut node_list[0]);
-            fv_solver::FreeVariableSolver::new().run_toplevel(&mut node_list[0]);
+            extract_anony_func::AnonymousFunctionExtractor::new().run_toplevel(&mut node);
+            fv_finder::FreeVariableFinder::new().run_toplevel(&mut node);
+            fv_solver::FreeVariableSolver::new().run_toplevel(&mut node);
 
             let mut vm_codegen = vm_codegen::VMCodeGen::new();
             let mut insts = vec![];
             let mut func_addr_in_bytecode_and_its_entity = HashMap::new();
             vm_codegen.compile(
-                &node_list[0],
+                &node,
                 &mut insts,
                 &mut func_addr_in_bytecode_and_its_entity,
             );

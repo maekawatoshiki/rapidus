@@ -1,3 +1,4 @@
+use parser::Error;
 use token::{convert_reserved_keyword, Kind, Symbol, Token};
 
 use std::collections::VecDeque;
@@ -27,14 +28,14 @@ impl Lexer {
 }
 
 impl Lexer {
-    pub fn next(&mut self) -> Result<Token, ()> {
+    pub fn next(&mut self) -> Result<Token, Error> {
         match self.read_token() {
             Ok(ref tok) if tok.kind == Kind::LineTerminator => self.next(),
             otherwise => otherwise,
         }
     }
 
-    pub fn peek(&mut self) -> Result<Token, ()> {
+    pub fn peek(&mut self) -> Result<Token, Error> {
         let tok = self.read_token()?;
         self.buf.push_back(tok.clone());
         Ok(tok)
@@ -57,7 +58,7 @@ impl Lexer {
         self.buf.push_back(tok.clone());
     }
 
-    pub fn read_token(&mut self) -> Result<Token, ()> {
+    pub fn read_token(&mut self) -> Result<Token, Error> {
         if !self.buf.is_empty() {
             return Ok(self.buf.pop_front().unwrap());
         }
@@ -83,11 +84,11 @@ impl Lexer {
 }
 
 impl Lexer {
-    fn skip_line_comment(&mut self) -> Result<(), ()> {
+    fn skip_line_comment(&mut self) -> Result<(), Error> {
         self.just_skip_while(|c| c != '\n')
     }
 
-    fn skip_normal_comment(&mut self) -> Result<(), ()> {
+    fn skip_normal_comment(&mut self) -> Result<(), Error> {
         let mut last_char_is_asterisk = false;
         self.just_skip_while(|c| {
             let end_of_comment = last_char_is_asterisk && c == '/';
@@ -102,10 +103,10 @@ impl Lexer {
 }
 
 impl Lexer {
-    fn read_identifier(&mut self) -> Result<Token, ()> {
+    fn read_identifier(&mut self) -> Result<Token, Error> {
         let pos = self.pos;
-        let ident = self.skip_while(|c| c.is_alphanumeric() || c == '_')?;
         self.pos_line_list.push((pos, self.line));
+        let ident = self.skip_while(|c| c.is_alphanumeric() || c == '_')?;
         if let Some(keyword) = convert_reserved_keyword(ident.as_str()) {
             Ok(Token::new_keyword(keyword, pos))
         } else {
@@ -115,8 +116,9 @@ impl Lexer {
 }
 
 impl Lexer {
-    pub fn read_number(&mut self) -> Result<Token, ()> {
+    pub fn read_number(&mut self) -> Result<Token, Error> {
         let pos = self.pos;
+        self.pos_line_list.push((pos, self.line));
         let mut is_float = false;
         let mut last = self.next_char()?;
         let num = self.skip_while(|c| {
@@ -143,7 +145,6 @@ impl Lexer {
             self.read_dec_num(num.as_str()) as f64
         };
 
-        self.pos_line_list.push((pos, self.line));
         Ok(Token::new_number(num, pos))
     }
 
@@ -176,8 +177,9 @@ impl Lexer {
 }
 
 impl Lexer {
-    pub fn read_string_literal(&mut self) -> Result<Token, ()> {
+    pub fn read_string_literal(&mut self) -> Result<Token, Error> {
         let pos = self.pos;
+        self.pos_line_list.push((pos, self.line));
         let quote = self.skip_char()?;
         // TODO: support escape sequence
         let mut s = "".to_string();
@@ -190,11 +192,10 @@ impl Lexer {
                 c => s.push(c),
             }
         }
-        self.pos_line_list.push((pos, self.line));
         Ok(Token::new_string(s, pos))
     }
 
-    fn read_escaped_char(&mut self) -> Result<Vec<char>, ()> {
+    fn read_escaped_char(&mut self) -> Result<Vec<char>, Error> {
         let c = self.skip_char()?;
         Ok(match c {
             '\'' | '"' | '?' | '\\' => vec![c],
@@ -246,8 +247,10 @@ impl Lexer {
 }
 
 impl Lexer {
-    pub fn read_symbol(&mut self) -> Result<Token, ()> {
+    pub fn read_symbol(&mut self) -> Result<Token, Error> {
         let pos = self.pos;
+        self.pos_line_list.push((pos, self.line));
+
         let mut symbol = Symbol::Hash;
         let c = self.skip_char()?;
         match c {
@@ -396,7 +399,7 @@ impl Lexer {
                         Symbol::Rest
                     } else {
                         // TODO: better error handler needed
-                        return Err(());
+                        return Err(Error::UnexpectedToken(pos));
                     }
                 } else {
                     symbol = Symbol::Point
@@ -405,13 +408,12 @@ impl Lexer {
             _ => {}
         };
 
-        self.pos_line_list.push((pos, self.line));
         Ok(Token::new_symbol(symbol, pos))
     }
 }
 
 impl Lexer {
-    pub fn read_line_terminator(&mut self) -> Result<Token, ()> {
+    pub fn read_line_terminator(&mut self) -> Result<Token, Error> {
         let pos = self.pos;
         assert_eq!(self.skip_char()?, '\n');
         self.line += 1;
@@ -420,11 +422,11 @@ impl Lexer {
 }
 
 impl Lexer {
-    fn skip_whitespace(&mut self) -> Result<(), ()> {
-        self.skip_while(char::is_whitespace).and(Ok(()))
+    fn skip_whitespace(&mut self) -> Result<(), Error> {
+        self.skip_while(|c| c == ' ' || c == '\t').and(Ok(()))
     }
 
-    fn skip_while<F>(&mut self, mut f: F) -> Result<String, ()>
+    fn skip_while<F>(&mut self, mut f: F) -> Result<String, Error>
     where
         F: FnMut(char) -> bool,
     {
@@ -435,7 +437,7 @@ impl Lexer {
         Ok(s)
     }
 
-    fn just_skip_while<F>(&mut self, mut f: F) -> Result<(), ()>
+    fn just_skip_while<F>(&mut self, mut f: F) -> Result<(), Error>
     where
         F: FnMut(char) -> bool,
     {
@@ -445,15 +447,15 @@ impl Lexer {
         Ok(())
     }
 
-    fn skip_char(&mut self) -> Result<char, ()> {
+    fn skip_char(&mut self) -> Result<char, Error> {
         let mut iter = self.code[self.pos..].char_indices();
-        let (_, cur_char) = iter.next().ok_or(())?;
+        let (_, cur_char) = iter.next().ok_or(Error::NormalEOF)?;
         let (next_pos, _) = iter.next().unwrap_or((1, ' '));
         self.pos += next_pos;
         Ok(cur_char)
     }
 
-    fn skip_char_if_any(&mut self, c: char) -> Result<bool, ()> {
+    fn skip_char_if_any(&mut self, c: char) -> Result<bool, Error> {
         let f = !self.eof() && self.next_char()? == c;
         if f {
             assert_eq!(self.skip_char()?, c);
@@ -465,8 +467,8 @@ impl Lexer {
         self.code[self.pos..].starts_with(s)
     }
 
-    fn next_char(&self) -> Result<char, ()> {
-        self.code[self.pos..].chars().next().ok_or(())
+    fn next_char(&self) -> Result<char, Error> {
+        self.code[self.pos..].chars().next().ok_or(Error::NormalEOF)
     }
 
     pub fn eof(&self) -> bool {
@@ -711,7 +713,9 @@ fn line_terminator() {
 
 #[test]
 fn escape_seq() {
-    let mut lexer = Lexer::new("\"\\' \\\" \\\\ \\a \\b \\f \\n \\r \\t \\v \\x12 \\uD867\\uDE3D\"".to_string());
+    let mut lexer = Lexer::new(
+        "\"\\' \\\" \\\\ \\a \\b \\f \\n \\r \\t \\v \\x12 \\uD867\\uDE3D\"".to_string(),
+    );
     assert_eq!(
         lexer.next().unwrap().kind,
         Kind::String("\' \" \\ \x07 \x08 \x0c \n \r \t \x0b \x12 𩸽".to_string())
