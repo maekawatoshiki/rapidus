@@ -141,8 +141,6 @@ fn run(file_name: &str) {
 
             // bytecode_gen::show(&insts);
 
-            println!("Result:");
-
             // println!("{:?}", insts);
 
             let mut vm = vm::VM::new();
