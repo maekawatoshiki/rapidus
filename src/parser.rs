@@ -51,6 +51,41 @@ impl Parser {
         );
         panic!()
     }
+
+    fn enhanced_show_error_at(&self, tok_pos: usize, msg: &str) -> ! {
+        self.show_error_at(
+            tok_pos,
+            // If tok_pos's line is different from the previous token's line,
+            // show the previous token's line.
+            // e.g.
+            // ```
+            // function f() {
+            //  1 +
+            // }
+            // ```
+            // The error (unexpected token) occurs at ``}`` in the last line (3rd line), but we had
+            // better show the 2nd line containing ``1 +``.
+            if || -> bool {
+                let mut last_line = 0;
+                for (pos, line) in &self.lexer.pos_line_list {
+                    if tok_pos == *pos {
+                        if last_line != *line {
+                            return true;
+                        } else {
+                            break;
+                        }
+                    }
+                    last_line = *line;
+                }
+                false
+            }() {
+                ErrorMsgKind::LastToken
+            } else {
+                ErrorMsgKind::Normal
+            },
+            msg,
+        )
+    }
 }
 
 impl Parser {
@@ -242,7 +277,9 @@ impl Parser {
         token_start_pos!(pos, self.lexer);
         assert_eq!(self.lexer.next()?.kind, Kind::Symbol(Symbol::OpeningParen));
         let init = if self.lexer.skip(Kind::Keyword(Keyword::Var)) {
-            self.read_variable_statement()?
+            let init = self.read_variable_statement()?;
+            assert!(self.lexer.skip(Kind::Symbol(Symbol::Semicolon)));
+            init
         } else if self.lexer.skip(Kind::Symbol(Symbol::Semicolon)) {
             Node::new(NodeBase::Nope, 0)
         } else {
@@ -692,11 +729,8 @@ impl Parser {
             Kind::Symbol(Symbol::OpeningParen) => {
                 let x = self.read_expression();
                 if !self.lexer.skip(Kind::Symbol(Symbol::ClosingParen)) {
-                    self.show_error_at(
-                        self.lexer.pos_line_list.last().unwrap().0,
-                        ErrorMsgKind::Normal,
-                        "expect ')'",
-                    );
+                    let tok_pos = self.lexer.pos_line_list.last().unwrap().0;
+                    self.enhanced_show_error_at(tok_pos, "expect ')'");
                 }
                 x
             }
@@ -712,38 +746,7 @@ impl Parser {
             Kind::String(s) => Ok(Node::new(NodeBase::String(s), tok.pos)),
             Kind::Number(num) => Ok(Node::new(NodeBase::Number(num), tok.pos)),
             Kind::LineTerminator => self.read_primary_expression(),
-            _ => self.show_error_at(
-                tok.pos,
-                // If the current token's line is different from the previous token's line,
-                // show the previous token's line.
-                // e.g.
-                // ```
-                // function f() {
-                //  1 +
-                // }
-                // ```
-                // The error (unexpected token) occurs at ``+`` in the last line (3rd line), and we had
-                // better show the line containing ``1 +``.
-                if || -> bool {
-                    let mut last_line = 0;
-                    for (pos, line) in &self.lexer.pos_line_list {
-                        if tok.pos == *pos {
-                            if last_line != *line {
-                                return true;
-                            } else {
-                                break;
-                            }
-                        }
-                        last_line = *line;
-                    }
-                    false
-                }() {
-                    ErrorMsgKind::LastToken
-                } else {
-                    ErrorMsgKind::Normal
-                },
-                "unexpected token",
-            ),
+            _ => self.enhanced_show_error_at(tok.pos, "unexpected token"),
         }
     }
 
