@@ -89,14 +89,17 @@ impl Lexer {
     }
 
     fn skip_normal_comment(&mut self) -> Result<(), Error> {
-        let mut last_char_is_asterisk = false;
+        let mut last_char = ' ';
+        let mut line = self.line;
         self.just_skip_while(|c| {
-            let end_of_comment = last_char_is_asterisk && c == '/';
-            if !end_of_comment {
-                last_char_is_asterisk = c == '*';
+            if c == '\n' {
+                line += 1;
             }
+            let end_of_comment = last_char == '*' && c == '/';
+            last_char = c;
             !end_of_comment
         })?;
+        self.line = line;
         assert_eq!(self.skip_char()?, '/');
         Ok(())
     }
