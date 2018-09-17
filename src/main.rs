@@ -34,60 +34,66 @@ fn main() {
         .arg(Arg::with_name("file").help("Input file name").index(1));
     let app_matches = app.clone().get_matches();
 
-    if let Some(filename) = app_matches.value_of("file") {
-        if !app_matches.is_present("debug") {
-            run(filename);
+    let file_name = match app_matches.value_of("file") {
+        Some(file_name) => file_name,
+        None => return,
+    };
+
+    // Normally run the given code
+    if !app_matches.is_present("debug") {
+        run(file_name);
+        return;
+    }
+
+    // Show the information for debugging
+
+    let mut file_body = String::new();
+
+    match OpenOptions::new().read(true).open(file_name) {
+        Ok(mut ok) => ok
+            .read_to_string(&mut file_body)
+            .ok()
+            .expect("cannot read file"),
+        Err(e) => {
+            println!("error: {}", e);
             return;
         }
+    };
 
-        let mut file_body = String::new();
+    let mut lexer = lexer::Lexer::new(file_body.clone());
 
-        match OpenOptions::new().read(true).open(filename) {
-            Ok(mut ok) => ok
-                .read_to_string(&mut file_body)
-                .ok()
-                .expect("cannot read file"),
-            Err(e) => {
-                println!("error: {}", e);
-                return;
-            }
-        };
-
-        let mut lexer = lexer::Lexer::new(file_body.clone());
-
-        println!("Lexer:");
-        while let Ok(token) = lexer.next() {
-            println!("{:?}", token);
-        }
-
-        let mut parser = parser::Parser::new(file_body);
-
-        println!("Parser:");
-        let mut node = parser.parse_all();
-        println!("{:?}", node);
-
-        extract_anony_func::AnonymousFunctionExtractor::new().run_toplevel(&mut node);
-        fv_finder::FreeVariableFinder::new().run_toplevel(&mut node);
-        println!("extract_anony_func, fv_finder:\n {:?}", node);
-        fv_solver::FreeVariableSolver::new().run_toplevel(&mut node);
-
-        println!("extract_anony_func, fv_finder, fv_solver:\n {:?}", node);
-
-        let mut vm_codegen = vm_codegen::VMCodeGen::new();
-        let mut insts = vec![];
-        let mut func_addr_in_bytecode_and_its_entity = HashMap::new();
-        vm_codegen.compile(&node, &mut insts, &mut func_addr_in_bytecode_and_its_entity);
-
-        bytecode_gen::show(&insts);
-
-        // println!("Result:");
-        // let mut vm = vm::VM::new();
-        // vm.global_objects.extend(vm_codegen.global_varmap);
-        // vm.run(insts);
-
-        // println!("VM CodeGen Test:");
-        // vm_codegen::test();
+    println!("Lexer:");
+    while let Ok(token) = lexer.next() {
+        println!("{:?}", token);
     }
+
+    let mut parser = parser::Parser::new(file_body);
+
+    println!("Parser:");
+    let mut node = parser.parse_all();
+    println!("{:?}", node);
+
+    extract_anony_func::AnonymousFunctionExtractor::new().run_toplevel(&mut node);
+    fv_finder::FreeVariableFinder::new().run_toplevel(&mut node);
+    println!("extract_anony_func, fv_finder:\n {:?}", node);
+    fv_solver::FreeVariableSolver::new().run_toplevel(&mut node);
+
+    println!("extract_anony_func, fv_finder, fv_solver:\n {:?}", node);
+
+    let mut vm_codegen = vm_codegen::VMCodeGen::new();
+    let mut insts = vec![];
+    let mut func_addr_in_bytecode_and_its_entity = HashMap::new();
+    vm_codegen.compile(&node, &mut insts, &mut func_addr_in_bytecode_and_its_entity);
+
+    bytecode_gen::show(&insts);
+
+    // println!("Result:");
+    // let mut vm = vm::VM::new();
+    // vm.global_objects.extend(vm_codegen.global_varmap);
+    // vm.run(insts);
+
+    // println!("VM CodeGen Test:");
+    // vm_codegen::test();
 }
 
 fn run(file_name: &str) {
@@ -133,11 +139,7 @@ fn run(file_name: &str) {
             let mut vm_codegen = vm_codegen::VMCodeGen::new();
             let mut insts = vec![];
             let mut func_addr_in_bytecode_and_its_entity = HashMap::new();
-            vm_codegen.compile(
-                &node,
-                &mut insts,
-                &mut func_addr_in_bytecode_and_its_entity,
-            );
+            vm_codegen.compile(&node, &mut insts, &mut func_addr_in_bytecode_and_its_entity);
 
             // bytecode_gen::show(&insts);
 

@@ -1,4 +1,3 @@
-use std::boxed::Box;
 use std::collections::HashSet;
 
 // TODO: Support all features: https://tc39.github.io/ecma262/#prod-FormalParameter
