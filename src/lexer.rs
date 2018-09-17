@@ -12,7 +12,7 @@ pub struct Lexer {
     pub pos: usize,
     pub line: usize,
     pub buf: VecDeque<Token>,
-    pub pos_line_list: Vec<(usize, usize)>, // pos, line
+    pub pos_line_list: Vec<(usize, usize)>, // pos, line // TODO: Delete this and consider another way.
 }
 
 impl Lexer {
@@ -43,6 +43,19 @@ impl Lexer {
 
     pub fn skip(&mut self, kind: Kind) -> bool {
         match self.next() {
+            Ok(tok) => {
+                let success = tok.kind == kind;
+                if !success {
+                    self.unget(&tok)
+                }
+                success
+            }
+            Err(_) => false,
+        }
+    }
+
+    pub fn skip_with_lineterminator(&mut self, kind: Kind) -> bool {
+        match self.read_token() {
             Ok(tok) => {
                 let success = tok.kind == kind;
                 if !success {

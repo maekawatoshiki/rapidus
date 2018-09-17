@@ -846,6 +846,12 @@ impl Parser {
     /// https://tc39.github.io/ecma262/#prod-ReturnStatement
     fn read_return_statement(&mut self) -> Result<Node, Error> {
         token_start_pos!(pos, self.lexer);
+
+        // no LineTerminator here
+        if self.lexer.skip_with_lineterminator(Kind::LineTerminator) {
+            return Ok(Node::new(NodeBase::Return(None), pos));
+        }
+
         if self.lexer.skip(Kind::Symbol(Symbol::Semicolon)) {
             return Ok(Node::new(NodeBase::Return(None), pos));
         }
