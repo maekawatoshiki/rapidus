@@ -18,7 +18,6 @@ use nix::unistd::*;
 extern crate ansi_term;
 use ansi_term::Colour;
 
-use std::collections::HashMap;
 use std::fs::OpenOptions;
 use std::io::prelude::*;
 
@@ -85,8 +84,7 @@ fn main() {
 
     let mut vm_codegen = vm_codegen::VMCodeGen::new();
     let mut insts = vec![];
-    let mut func_addr_in_bytecode_and_its_entity = HashMap::new();
-    vm_codegen.compile(&node, &mut insts, &mut func_addr_in_bytecode_and_its_entity);
+    vm_codegen.compile(&node, &mut insts);
 
     bytecode_gen::show(&insts);
 
@@ -101,20 +99,21 @@ fn main() {
 
 fn run(file_name: &str) {
     match fork() {
-        Ok(ForkResult::Parent { child, .. }) => match waitpid(child, None) {
-            Ok(ok) => match ok {
-                WaitStatus::Exited(_, status) => if status != 0 {
-                    println!("exited. status: {}", status)
+        Ok(ForkResult::Parent { child, .. }) => {
+            match waitpid(child, None) {
+                Ok(ok) => match ok {
+                    WaitStatus::Exited(_, status) => if status != 0 {
+                        panic!("exited. status: {}", status)
+                    },
+                    WaitStatus::Signaled(pid, status, _) => {
+                        // We can do anything (like calling destructors) here.
+                        panic!("child: pid={:?}, status={:?}\nRapidus Internal Error: segmentation fault", pid, status);
+                    }
+                    e => panic!("Rapidus Internal Error: VM exited abnormally!: {:?}", e),
                 },
-                WaitStatus::Signaled(pid, status, _) => {
-                    // We can do anything (like calling destructors) here.
-                    println!("child: pid={:?}, status={:?}", pid, status);
-                    println!("Rapidus Internal Error: segmentation fault");
-                }
-                e => panic!("Rapidus Internal Error: VM exited abnormally!: {:?}", e),
-            },
-            Err(e) => panic!("Rapidus Internal Error: waitpid failed: {:?}", e),
-        },
+                Err(e) => panic!("Rapidus Internal Error: waitpid failed: {:?}", e),
+            }
+        }
         Ok(ForkResult::Child) => {
             let mut file_body = String::new();
 
@@ -150,8 +149,7 @@ fn run(file_name: &str) {
 
             let mut vm_codegen = vm_codegen::VMCodeGen::new();
             let mut insts = vec![];
-            let mut func_addr_in_bytecode_and_its_entity = HashMap::new();
-            vm_codegen.compile(&node, &mut insts, &mut func_addr_in_bytecode_and_its_entity);
+            vm_codegen.compile(&node, &mut insts);
 
             // bytecode_gen::show(&insts);
 
