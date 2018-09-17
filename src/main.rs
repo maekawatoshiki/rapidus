@@ -15,6 +15,9 @@ extern crate nix;
 use nix::sys::wait::*;
 use nix::unistd::*;
 
+extern crate ansi_term;
+use ansi_term::Colour;
+
 use std::collections::HashMap;
 use std::fs::OpenOptions;
 use std::io::prelude::*;
@@ -119,11 +122,20 @@ fn run(file_name: &str) {
                 Ok(mut ok) => match ok.read_to_string(&mut file_body).ok() {
                     Some(x) => x,
                     None => {
-                        panic!("error: cannot read file");
+                        eprintln!(
+                            "{}: Couldn't read the file '{}'",
+                            Colour::Red.bold().paint("error"),
+                            file_name,
+                        );
+                        return;
                     }
                 },
-                Err(e) => {
-                    println!("error: {}", e);
+                Err(_e) => {
+                    eprintln!(
+                        "{}: No such file or directory '{}'",
+                        Colour::Red.bold().paint("error"),
+                        file_name,
+                    );
                     return;
                 }
             };
