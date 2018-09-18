@@ -1,5 +1,4 @@
 #![feature(box_patterns)]
-#![feature(tool_attributes)]
 #![feature(repeat_generic_slice)]
 
 pub mod bytecode_gen;

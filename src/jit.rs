@@ -871,8 +871,8 @@ impl TracingJit {
         }
 
         use std::collections::VecDeque;
-        let mut land1:VecDeque<LLVMBasicBlockRef> = VecDeque::new();
-        let mut land2:VecDeque<LLVMBasicBlockRef> = VecDeque::new();
+        let mut land1: VecDeque<LLVMBasicBlockRef> = VecDeque::new();
+        let mut land2: VecDeque<LLVMBasicBlockRef> = VecDeque::new();
         let mut lor1: VecDeque<LLVMBasicBlockRef> = VecDeque::new();
         let mut lor2: VecDeque<LLVMBasicBlockRef> = VecDeque::new();
 
