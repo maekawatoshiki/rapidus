@@ -7,11 +7,11 @@ use node::{
 use std::collections::HashSet;
 use vm::Value;
 use vm::{
-    new_value_function, PUSH_INT32, PUSH_INT8, ADD, ASG_FREST_PARAM, CALL, CONSTRUCT, CREATE_ARRAY,
-    CREATE_CONTEXT, CREATE_OBJECT, DIV, END, EQ, GE, GET_ARG_LOCAL, GET_GLOBAL, GET_LOCAL,
-    GET_MEMBER, GT, JMP, JMP_IF_FALSE, LE, LT, MUL, NE, NEG, PUSH_ARGUMENTS, PUSH_CONST,
-    PUSH_FALSE, PUSH_THIS, PUSH_TRUE, REM, RETURN, SEQ, SET_ARG_LOCAL, SET_GLOBAL, SET_LOCAL,
-    SET_MEMBER, SNE, SUB,
+    new_value_function, PUSH_INT32, PUSH_INT8, ADD, AND, ASG_FREST_PARAM, CALL, CONSTRUCT,
+    CREATE_ARRAY, CREATE_CONTEXT, CREATE_OBJECT, DIV, DOUBLE, END, EQ, GE, GET_ARG_LOCAL,
+    GET_GLOBAL, GET_LOCAL, GET_MEMBER, GT, JMP, JMP_IF_FALSE, LAND, LE, LOR, LT, MUL, NE, NEG, OR,
+    POP, PUSH_ARGUMENTS, PUSH_CONST, PUSH_FALSE, PUSH_THIS, PUSH_TRUE, REM, RETURN, SEQ,
+    SET_ARG_LOCAL, SET_GLOBAL, SET_LOCAL, SET_MEMBER, SNE, SUB,
 };
 
 use std::cell::RefCell;
@@ -27,11 +27,7 @@ pub struct FunctionInfo {
 }
 
 impl FunctionInfo {
-    pub fn new(
-        name: String,
-        use_this: bool,
-        insts: ByteCode,
-    ) -> FunctionInfo {
+    pub fn new(name: String, use_this: bool, insts: ByteCode) -> FunctionInfo {
         FunctionInfo {
             name: name,
             use_this: use_this,
@@ -111,11 +107,7 @@ impl VMCodeGen {
 }
 
 impl VMCodeGen {
-    pub fn compile(
-        &mut self,
-        node: &Node,
-        insts: &mut ByteCode,
-    ) {
+    pub fn compile(&mut self, node: &Node, insts: &mut ByteCode) {
         let pos = insts.len();
         self.bytecode_gen.gen_create_context(0, insts);
 
@@ -205,7 +197,7 @@ impl VMCodeGen {
                 PUSH_INT8 => i += 2,
                 PUSH_FALSE | END | PUSH_TRUE | PUSH_THIS | ADD | SUB | MUL | DIV | REM | LT
                 | PUSH_ARGUMENTS | NEG | GT | LE | GE | EQ | NE | GET_MEMBER | RETURN | SNE
-                | SEQ | SET_MEMBER => i += 1,
+                | LAND | POP | DOUBLE | AND | OR | SEQ | SET_MEMBER | LOR => i += 1,
                 GET_GLOBAL => {
                     let id = insts[i + 1] as i32
                         + ((insts[i + 2] as i32) << 8)
@@ -375,11 +367,7 @@ impl VMCodeGen {
 
         self.functions.insert(
             name.clone(),
-            FunctionInfo::new(
-                name.clone(),
-                use_this,
-                func_insts,
-            ),
+            FunctionInfo::new(name.clone(), use_this, func_insts),
         );
     }
 
@@ -434,6 +422,10 @@ impl VMCodeGen {
         init: &Option<Box<Node>>,
         insts: &mut ByteCode,
     ) -> Id {
+        if let Some(id) = self.local_varmap.last().unwrap().get(name) {
+            return id.1;
+        }
+
         let id = self.local_var_stack_addr.gen_id();
 
         self.local_varmap
@@ -591,6 +583,61 @@ impl VMCodeGen {
     }
 
     pub fn run_binary_op(&mut self, lhs: &Node, rhs: &Node, op: &BinOp, insts: &mut ByteCode) {
+        match op {
+            &BinOp::LAnd => {
+                self.run(lhs, insts);
+
+                self.bytecode_gen.gen_double(insts);
+
+                let lhs_cond_pos = insts.len() as isize;
+                self.bytecode_gen.gen_jmp_if_false(0, insts);
+
+                self.bytecode_gen.gen_pop(insts);
+
+                self.run(rhs, insts);
+
+                let pos = insts.len() as isize;
+                self.bytecode_gen.replace_int32(
+                    (pos - lhs_cond_pos) as i32 - 5,
+                    &mut insts[lhs_cond_pos as usize + 1..lhs_cond_pos as usize + 5],
+                );
+
+                self.bytecode_gen.gen_land(insts);
+                return;
+            }
+            &BinOp::LOr => {
+                self.run(lhs, insts);
+
+                self.bytecode_gen.gen_double(insts);
+
+                let lhs_cond_pos = insts.len() as isize;
+                self.bytecode_gen.gen_jmp_if_false(0, insts);
+
+                let lhs_true_pos = insts.len() as isize;
+                self.bytecode_gen.gen_jmp(0, insts);
+
+                let pos = insts.len() as isize;
+                self.bytecode_gen.replace_int32(
+                    (pos - lhs_cond_pos) as i32 - 5,
+                    &mut insts[lhs_cond_pos as usize + 1..lhs_cond_pos as usize + 5],
+                );
+
+                self.bytecode_gen.gen_pop(insts);
+
+                self.run(rhs, insts);
+
+                let pos = insts.len() as isize;
+                self.bytecode_gen.replace_int32(
+                    (pos - lhs_true_pos) as i32 - 5,
+                    &mut insts[lhs_true_pos as usize + 1..lhs_true_pos as usize + 5],
+                );
+
+                self.bytecode_gen.gen_lor(insts);
+                return;
+            }
+            _ => {}
+        };
+
         self.run(lhs, insts);
         self.run(rhs, insts);
         match op {
@@ -603,6 +650,8 @@ impl VMCodeGen {
             &BinOp::Ne => self.bytecode_gen.gen_ne(insts),
             &BinOp::SEq => self.bytecode_gen.gen_seq(insts),
             &BinOp::SNe => self.bytecode_gen.gen_sne(insts),
+            &BinOp::And => self.bytecode_gen.gen_and(insts),
+            &BinOp::Or => self.bytecode_gen.gen_or(insts),
             &BinOp::Lt => self.bytecode_gen.gen_lt(insts),
             &BinOp::Gt => self.bytecode_gen.gen_gt(insts),
             &BinOp::Le => self.bytecode_gen.gen_le(insts),

@@ -95,7 +95,9 @@ pub fn new_value_function(pos: usize) -> Value {
                     let mut hm = HashMap::new();
                     hm.insert(
                         "call".to_string(),
-                        Value::NeedThis(Box::new(Value::BuiltinFunction(builtin::FUNCTION_PROTOTYPE_CALL))),
+                        Value::NeedThis(Box::new(Value::BuiltinFunction(
+                            builtin::FUNCTION_PROTOTYPE_CALL,
+                        ))),
                     );
                     hm
                 }))),
@@ -154,19 +156,25 @@ pub const EQ: u8 = 0x16;
 pub const NE: u8 = 0x17;
 pub const SEQ: u8 = 0x18;
 pub const SNE: u8 = 0x19;
-pub const GET_MEMBER: u8 = 0x1a;
-pub const SET_MEMBER: u8 = 0x1b;
-pub const GET_GLOBAL: u8 = 0x1c;
-pub const SET_GLOBAL: u8 = 0x1d;
-pub const GET_LOCAL: u8 = 0x1e;
-pub const SET_LOCAL: u8 = 0x1f;
-pub const GET_ARG_LOCAL: u8 = 0x20;
-pub const SET_ARG_LOCAL: u8 = 0x21;
-pub const JMP_IF_FALSE: u8 = 0x22;
-pub const JMP: u8 = 0x23;
-pub const CALL: u8 = 0x24;
-pub const RETURN: u8 = 0x25;
-pub const ASG_FREST_PARAM: u8 = 0x26;
+pub const AND: u8 = 0x1a;
+pub const OR: u8 = 0x1b;
+pub const GET_MEMBER: u8 = 0x1c;
+pub const SET_MEMBER: u8 = 0x1d;
+pub const GET_GLOBAL: u8 = 0x1e;
+pub const SET_GLOBAL: u8 = 0x1f;
+pub const GET_LOCAL: u8 = 0x20;
+pub const SET_LOCAL: u8 = 0x21;
+pub const GET_ARG_LOCAL: u8 = 0x22;
+pub const SET_ARG_LOCAL: u8 = 0x23;
+pub const JMP_IF_FALSE: u8 = 0x24;
+pub const JMP: u8 = 0x25;
+pub const CALL: u8 = 0x26;
+pub const RETURN: u8 = 0x27;
+pub const ASG_FREST_PARAM: u8 = 0x28;
+pub const DOUBLE: u8 = 0x29;
+pub const POP: u8 = 0x2a;
+pub const LAND: u8 = 0x2b;
+pub const LOR: u8 = 0x2c;
 
 pub struct VM {
     pub global_objects: Rc<RefCell<HashMap<String, Value>>>,
@@ -175,7 +183,7 @@ pub struct VM {
     pub const_table: ConstantTable,
     pub insts: ByteCode,
     pub loop_bgn_end: HashMap<isize, isize>,
-    pub op_table: [fn(&mut VM); 39],
+    pub op_table: [fn(&mut VM); 45],
     pub builtin_functions: [unsafe fn(Vec<Value>, &mut VM); 7],
 }
 
@@ -278,6 +286,8 @@ impl VM {
                 ne,
                 seq,
                 sne,
+                and,
+                or,
                 get_member,
                 set_member,
                 get_global,
@@ -291,6 +301,10 @@ impl VM {
                 call,
                 return_,
                 assign_func_rest_param,
+                double,
+                pop,
+                land,
+                lor,
             ],
             builtin_functions: [
                 builtin::console_log,
@@ -558,6 +572,8 @@ bin_op!(eq, Eq);
 bin_op!(ne, Ne);
 bin_op!(seq, SEq);
 bin_op!(sne, SNe);
+bin_op!(and, And);
+bin_op!(or, Or);
 
 #[inline]
 fn binary(self_: &mut VM, op: &BinOp) {
@@ -578,6 +594,8 @@ fn binary(self_: &mut VM, op: &BinOp) {
             &BinOp::Ne => Value::Bool(n1 != n2),
             &BinOp::SEq => Value::Bool(n1 == n2),
             &BinOp::SNe => Value::Bool(n1 != n2),
+            &BinOp::And => Value::Number(((n1 as i64) & (n2 as i64)) as f64),
+            &BinOp::Or => Value::Number(((n1 as i64) | (n2 as i64)) as f64),
             _ => panic!(),
         }),
         (Value::String(s1), Value::Number(n2)) => self_.state.stack.push(match op {
@@ -933,6 +951,27 @@ fn assign_func_rest_param(self_: &mut VM) {
     }
     self_.state.stack[self_.state.lp + dst_var_id] =
         Value::Array(Rc::new(RefCell::new(ArrayValue::new(rest_params))));
+}
+
+fn double(self_: &mut VM) {
+    self_.state.pc += 1; // double
+    let stack_top_val = self_.state.stack.last().unwrap().clone();
+    self_.state.stack.push(stack_top_val);
+}
+
+fn pop(self_: &mut VM) {
+    self_.state.pc += 1; // double
+    self_.state.stack.pop();
+}
+
+// land & lor are for JIT compiler. They don't make sense in VM.
+
+fn land(self_: &mut VM) {
+    self_.state.pc += 1; // land
+}
+
+fn lor(self_: &mut VM) {
+    self_.state.pc += 1; // lor
 }
 
 // #[rustfmt::skip]

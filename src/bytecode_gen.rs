@@ -1,10 +1,10 @@
 use id::Id;
 use vm::{
-    ConstantTable, PUSH_INT32, PUSH_INT8, Value, ADD, ASG_FREST_PARAM, CALL, CONSTRUCT,
-    CREATE_ARRAY, CREATE_CONTEXT, CREATE_OBJECT, DIV, END, EQ, GE, GET_ARG_LOCAL, GET_GLOBAL,
-    GET_LOCAL, GET_MEMBER, GT, JMP, JMP_IF_FALSE, LE, LT, MUL, NE, NEG, PUSH_ARGUMENTS, PUSH_CONST,
-    PUSH_FALSE, PUSH_THIS, PUSH_TRUE, REM, RETURN, SEQ, SET_ARG_LOCAL, SET_GLOBAL, SET_LOCAL,
-    SET_MEMBER, SNE, SUB,
+    ConstantTable, PUSH_INT32, PUSH_INT8, Value, ADD, AND, ASG_FREST_PARAM, CALL, CONSTRUCT,
+    CREATE_ARRAY, CREATE_CONTEXT, CREATE_OBJECT, DIV, DOUBLE, END, EQ, GE, GET_ARG_LOCAL,
+    GET_GLOBAL, GET_LOCAL, GET_MEMBER, GT, JMP, JMP_IF_FALSE, LAND, LE, LOR, LT, MUL, NE, NEG, OR,
+    POP, PUSH_ARGUMENTS, PUSH_CONST, PUSH_FALSE, PUSH_THIS, PUSH_TRUE, REM, RETURN, SEQ,
+    SET_ARG_LOCAL, SET_GLOBAL, SET_LOCAL, SET_MEMBER, SNE, SUB,
 };
 
 pub type ByteCode = Vec<u8>;
@@ -118,6 +118,26 @@ impl ByteCodeGen {
     }
     pub fn gen_sne(&self, insts: &mut ByteCode) {
         insts.push(SNE);
+    }
+    pub fn gen_and(&self, insts: &mut ByteCode) {
+        insts.push(AND);
+    }
+    pub fn gen_or(&self, insts: &mut ByteCode) {
+        insts.push(OR);
+    }
+
+    pub fn gen_land(&self, insts: &mut ByteCode) {
+        insts.push(LAND);
+    }
+    pub fn gen_lor(&self, insts: &mut ByteCode) {
+        insts.push(LOR);
+    }
+
+    pub fn gen_double(&self, insts: &mut ByteCode) {
+        insts.push(DOUBLE);
+    }
+    pub fn gen_pop(&self, insts: &mut ByteCode) {
+        insts.push(POP);
     }
 
     pub fn gen_get_member(&self, insts: &mut ByteCode) {
@@ -254,7 +274,7 @@ pub fn show(code: &ByteCode) {
                 i += 1
             }
             PUSH_TRUE => {
-                println!("PushFalse");
+                println!("PushTrue");
                 i += 1
             }
             PUSH_CONST => {

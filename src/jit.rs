@@ -1,10 +1,11 @@
 use builtin;
 use vm;
 use vm::{
-    PUSH_INT32, PUSH_INT8, ADD, ASG_FREST_PARAM, CALL, CONSTRUCT, CREATE_ARRAY, CREATE_CONTEXT,
-    CREATE_OBJECT, DIV, END, EQ, GE, GET_ARG_LOCAL, GET_GLOBAL, GET_LOCAL, GET_MEMBER, GT, JMP,
-    JMP_IF_FALSE, LE, LT, MUL, NE, NEG, PUSH_ARGUMENTS, PUSH_CONST, PUSH_FALSE, PUSH_THIS,
-    PUSH_TRUE, REM, RETURN, SEQ, SET_ARG_LOCAL, SET_GLOBAL, SET_LOCAL, SET_MEMBER, SNE, SUB,
+    PUSH_INT32, PUSH_INT8, ADD, AND, ASG_FREST_PARAM, CALL, CONSTRUCT, CREATE_ARRAY,
+    CREATE_CONTEXT, CREATE_OBJECT, DIV, DOUBLE, END, EQ, GE, GET_ARG_LOCAL, GET_GLOBAL, GET_LOCAL,
+    GET_MEMBER, GT, JMP, JMP_IF_FALSE, LAND, LE, LOR, LT, MUL, NE, NEG, OR, POP, PUSH_ARGUMENTS,
+    PUSH_CONST, PUSH_FALSE, PUSH_THIS, PUSH_TRUE, REM, RETURN, SEQ, SET_ARG_LOCAL, SET_GLOBAL,
+    SET_LOCAL, SET_MEMBER, SNE, SUB,
 };
 
 use rand::{random, thread_rng, RngCore};
@@ -183,6 +184,20 @@ impl TracingJit {
                 );
                 hmap.insert(BUILTIN_CONSOLE_LOG_STRING, f_console_log_string);
 
+                let f_console_log_bool = LLVMAddFunction(
+                    module,
+                    CString::new("console_log_bool").unwrap().as_ptr(),
+                    LLVMFunctionType(
+                        LLVMVoidType(),
+                        vec![LLVMInt1TypeInContext(context)]
+                            .as_mut_slice()
+                            .as_mut_ptr(),
+                        1,
+                        0,
+                    ),
+                );
+                hmap.insert(BUILTIN_CONSOLE_LOG_BOOL, f_console_log_bool);
+
                 let f_console_log_f64 = LLVMAddFunction(
                     module,
                     CString::new("console_log_f64").unwrap().as_ptr(),
@@ -328,6 +343,11 @@ impl TracingJit {
                 ee,
                 *self.builtin_funcs.get(&BUILTIN_CONSOLE_LOG_STRING).unwrap(),
                 console_log_string as *mut libc::c_void,
+            );
+            llvm::execution_engine::LLVMAddGlobalMapping(
+                ee,
+                *self.builtin_funcs.get(&BUILTIN_CONSOLE_LOG_BOOL).unwrap(),
+                console_log_bool as *mut libc::c_void,
             );
             llvm::execution_engine::LLVMAddGlobalMapping(
                 ee,
@@ -542,6 +562,11 @@ impl TracingJit {
                 ee,
                 *self.builtin_funcs.get(&BUILTIN_CONSOLE_LOG_STRING).unwrap(),
                 console_log_string as *mut libc::c_void,
+            );
+            llvm::execution_engine::LLVMAddGlobalMapping(
+                ee,
+                *self.builtin_funcs.get(&BUILTIN_CONSOLE_LOG_BOOL).unwrap(),
+                console_log_bool as *mut libc::c_void,
             );
             llvm::execution_engine::LLVMAddGlobalMapping(
                 ee,
@@ -766,10 +791,9 @@ impl TracingJit {
                 }
                 JMP | JMP_IF_FALSE => pc += 5,
                 PUSH_INT8 => pc += 2,
-                PUSH_FALSE | PUSH_TRUE | PUSH_THIS | ADD | SUB | MUL | DIV | REM | LT
-                | PUSH_ARGUMENTS | NEG | GT | LE | GE | EQ | NE | GET_MEMBER | SET_MEMBER => {
-                    pc += 1
-                }
+                PUSH_FALSE | PUSH_TRUE | PUSH_THIS | ADD | SUB | MUL | DIV | REM | LT | AND
+                | POP | DOUBLE | OR | PUSH_ARGUMENTS | NEG | GT | LE | GE | EQ | NE | LAND
+                | LOR | GET_MEMBER | SET_MEMBER => pc += 1,
                 GET_GLOBAL => pc += 5,
                 _ => return Err(()),
             }
@@ -837,15 +861,20 @@ impl TracingJit {
                         );
                     }
                     PUSH_INT8 => pc += 2,
-                    PUSH_FALSE | PUSH_TRUE | PUSH_THIS | ADD | SUB | MUL | DIV | REM | LT
-                    | PUSH_ARGUMENTS | NEG | GT | LE | GE | EQ | NE | GET_MEMBER | SET_MEMBER => {
-                        pc += 1
-                    }
+                    PUSH_FALSE | PUSH_TRUE | PUSH_THIS | ADD | SUB | MUL | DIV | REM | LT | AND
+                    | POP | DOUBLE | OR | PUSH_ARGUMENTS | NEG | GT | LE | GE | EQ | NE | LAND
+                    | LOR | GET_MEMBER | SET_MEMBER => pc += 1,
                     GET_GLOBAL => pc += 5,
                     _ => return Err(()),
                 }
             }
         }
+
+        use std::collections::VecDeque;
+        let mut land1:VecDeque<LLVMBasicBlockRef> = VecDeque::new();
+        let mut land2:VecDeque<LLVMBasicBlockRef> = VecDeque::new();
+        let mut lor1: VecDeque<LLVMBasicBlockRef> = VecDeque::new();
+        let mut lor2: VecDeque<LLVMBasicBlockRef> = VecDeque::new();
 
         let mut pc = bgn;
         while pc < end {
@@ -865,8 +894,12 @@ impl TracingJit {
                 JMP_IF_FALSE => {
                     pc += 1;
                     get_int32!(insts, pc, dst, i32);
+                    land1.push_back(LLVMGetInsertBlock(self.builder));
                     let bb_then = LLVMAppendBasicBlock(func, CString::new("").unwrap().as_ptr());
+                    lor1.push_back(bb_then);
+                    land2.push_back(bb_then);
                     let bb_else = try_opt!(labels.get(&((pc as i32 + dst) as usize)));
+                    lor2.push_back(*bb_else);
                     let cond_val = try_stack!(stack.pop());
                     LLVMBuildCondBr(self.builder, cond_val, bb_then, *bb_else);
                     LLVMPositionBuilderAtEnd(self.builder, bb_then);
@@ -878,6 +911,62 @@ impl TracingJit {
                     if cur_bb_has_no_terminator(self.builder) {
                         LLVMBuildBr(self.builder, *bb);
                     }
+                }
+                LAND => {
+                    pc += 1;
+                    let phi = LLVMBuildPhi(
+                        self.builder,
+                        LLVMInt1TypeInContext(self.context),
+                        CString::new("logand").unwrap().as_ptr(),
+                    );
+                    LLVMAddIncoming(
+                        phi,
+                        vec![LLVMConstInt(LLVMInt1TypeInContext(self.context), 0, 0)]
+                            .as_mut_slice()
+                            .as_mut_ptr(),
+                        vec![land1.pop_back().unwrap()].as_mut_slice().as_mut_ptr(),
+                        1,
+                    );
+                    LLVMAddIncoming(
+                        phi,
+                        vec![try_stack!(stack.pop())].as_mut_slice().as_mut_ptr(),
+                        vec![land2.pop_back().unwrap()].as_mut_slice().as_mut_ptr(),
+                        1,
+                    );
+                    lor1.pop_back();
+                    lor2.pop_back();
+                    if let Some(ref mut x) = lor2.back_mut() {
+                        **x = LLVMGetInsertBlock(self.builder);
+                    }
+                    stack.push((phi, None));
+                }
+                LOR => {
+                    pc += 1;
+                    let phi = LLVMBuildPhi(
+                        self.builder,
+                        LLVMInt1TypeInContext(self.context),
+                        CString::new("logor").unwrap().as_ptr(),
+                    );
+                    LLVMAddIncoming(
+                        phi,
+                        vec![LLVMConstInt(LLVMInt1TypeInContext(self.context), 1, 0)]
+                            .as_mut_slice()
+                            .as_mut_ptr(),
+                        vec![lor1.pop_back().unwrap()].as_mut_slice().as_mut_ptr(),
+                        1,
+                    );
+                    LLVMAddIncoming(
+                        phi,
+                        vec![try_stack!(stack.pop())].as_mut_slice().as_mut_ptr(),
+                        vec![lor2.pop_back().unwrap()].as_mut_slice().as_mut_ptr(),
+                        1,
+                    );
+                    land1.pop_back();
+                    land2.pop_back();
+                    if let Some(ref mut x) = land2.back_mut() {
+                        **x = LLVMGetInsertBlock(self.builder);
+                    }
+                    stack.push((phi, None));
                 }
                 ADD => {
                     pc += 1;
@@ -1151,8 +1240,8 @@ impl TracingJit {
                                             .builtin_funcs
                                             .get(&match ty {
                                                 ValueType::Number => BUILTIN_CONSOLE_LOG_F64,
+                                                ValueType::Bool => BUILTIN_CONSOLE_LOG_BOOL,
                                                 ValueType::String => BUILTIN_CONSOLE_LOG_STRING,
-                                                _ => return Err(()),
                                             })
                                             .unwrap(),
                                         vec![arg].as_mut_ptr(),
@@ -1348,6 +1437,15 @@ impl TracingJit {
                     ));
                 }
                 PUSH_THIS | PUSH_ARGUMENTS | SET_MEMBER => pc += 1,
+                POP => {
+                    pc += 1;
+                    stack.pop();
+                }
+                DOUBLE => {
+                    pc += 1;
+                    let stack_top_val = stack.last().unwrap().clone();
+                    stack.push(stack_top_val);
+                }
                 RETURN if is_func_jit => {
                     pc += 1;
                     let val = try_stack!(stack.pop());
@@ -1372,6 +1470,8 @@ impl TracingJit {
                 }
             }
         }
+
+        // LLVMDumpModule(self.module);
 
         Ok(())
     }
@@ -1491,17 +1591,29 @@ impl TracingJit {
 // Builtin functions
 
 const BUILTIN_CONSOLE_LOG_F64: usize = 0;
-const BUILTIN_CONSOLE_LOG_STRING: usize = 1;
-const BUILTIN_CONSOLE_LOG_NEWLINE: usize = 2;
-const BUILTIN_PROCESS_STDOUT_WRITE: usize = 3;
-const BUILTIN_MATH_POW: usize = 4;
-const BUILTIN_MATH_FLOOR: usize = 5;
-const BUILTIN_MATH_RANDOM: usize = 6;
+const BUILTIN_CONSOLE_LOG_BOOL: usize = 1;
+const BUILTIN_CONSOLE_LOG_STRING: usize = 2;
+const BUILTIN_CONSOLE_LOG_NEWLINE: usize = 3;
+const BUILTIN_PROCESS_STDOUT_WRITE: usize = 4;
+const BUILTIN_MATH_POW: usize = 5;
+const BUILTIN_MATH_FLOOR: usize = 6;
+const BUILTIN_MATH_RANDOM: usize = 7;
 
 #[no_mangle]
 pub extern "C" fn console_log_string(s: vm::RawStringPtr) {
     unsafe {
         libc::printf(b"%s \0".as_ptr() as vm::RawStringPtr, s);
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn console_log_bool(b: bool) {
+    unsafe {
+        if b {
+            libc::printf(b"true \0".as_ptr() as vm::RawStringPtr);
+        } else {
+            libc::printf(b"false \0".as_ptr() as vm::RawStringPtr);
+        }
     }
 }
 
