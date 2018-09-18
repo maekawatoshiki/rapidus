@@ -870,11 +870,9 @@ impl TracingJit {
             }
         }
 
-        use std::collections::VecDeque;
-        let mut land1: VecDeque<LLVMBasicBlockRef> = VecDeque::new();
-        let mut land2: VecDeque<LLVMBasicBlockRef> = VecDeque::new();
-        let mut lor1: VecDeque<LLVMBasicBlockRef> = VecDeque::new();
-        let mut lor2: VecDeque<LLVMBasicBlockRef> = VecDeque::new();
+        let mut land: Vec<LLVMBasicBlockRef> = Vec::new();
+        let mut lcom: Vec<LLVMBasicBlockRef> = Vec::new();
+        let mut lor: Vec<LLVMBasicBlockRef> = Vec::new();
 
         let mut pc = bgn;
         while pc < end {
@@ -894,12 +892,11 @@ impl TracingJit {
                 JMP_IF_FALSE => {
                     pc += 1;
                     get_int32!(insts, pc, dst, i32);
-                    land1.push_back(LLVMGetInsertBlock(self.builder));
+                    land.push(LLVMGetInsertBlock(self.builder));
                     let bb_then = LLVMAppendBasicBlock(func, CString::new("").unwrap().as_ptr());
-                    lor1.push_back(bb_then);
-                    land2.push_back(bb_then);
+                    lcom.push(bb_then);
                     let bb_else = try_opt!(labels.get(&((pc as i32 + dst) as usize)));
-                    lor2.push_back(*bb_else);
+                    lor.push(*bb_else);
                     let cond_val = try_stack!(stack.pop());
                     LLVMBuildCondBr(self.builder, cond_val, bb_then, *bb_else);
                     LLVMPositionBuilderAtEnd(self.builder, bb_then);
@@ -924,18 +921,17 @@ impl TracingJit {
                         vec![LLVMConstInt(LLVMInt1TypeInContext(self.context), 0, 0)]
                             .as_mut_slice()
                             .as_mut_ptr(),
-                        vec![land1.pop_back().unwrap()].as_mut_slice().as_mut_ptr(),
+                        vec![land.pop().unwrap()].as_mut_slice().as_mut_ptr(),
                         1,
                     );
                     LLVMAddIncoming(
                         phi,
                         vec![try_stack!(stack.pop())].as_mut_slice().as_mut_ptr(),
-                        vec![land2.pop_back().unwrap()].as_mut_slice().as_mut_ptr(),
+                        vec![lcom.pop().unwrap()].as_mut_slice().as_mut_ptr(),
                         1,
                     );
-                    lor1.pop_back();
-                    lor2.pop_back();
-                    if let Some(ref mut x) = lor2.back_mut() {
+                    lor.pop();
+                    if let Some(ref mut x) = lor.last_mut() {
                         **x = LLVMGetInsertBlock(self.builder);
                     }
                     stack.push((phi, None));
@@ -952,18 +948,17 @@ impl TracingJit {
                         vec![LLVMConstInt(LLVMInt1TypeInContext(self.context), 1, 0)]
                             .as_mut_slice()
                             .as_mut_ptr(),
-                        vec![lor1.pop_back().unwrap()].as_mut_slice().as_mut_ptr(),
+                        vec![lcom.pop().unwrap()].as_mut_slice().as_mut_ptr(),
                         1,
                     );
                     LLVMAddIncoming(
                         phi,
                         vec![try_stack!(stack.pop())].as_mut_slice().as_mut_ptr(),
-                        vec![lor2.pop_back().unwrap()].as_mut_slice().as_mut_ptr(),
+                        vec![lor.pop().unwrap()].as_mut_slice().as_mut_ptr(),
                         1,
                     );
-                    land1.pop_back();
-                    land2.pop_back();
-                    if let Some(ref mut x) = land2.back_mut() {
+                    land.pop();
+                    if let Some(ref mut x) = lcom.last_mut() {
                         **x = LLVMGetInsertBlock(self.builder);
                     }
                     stack.push((phi, None));
