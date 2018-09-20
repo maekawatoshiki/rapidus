@@ -7,7 +7,7 @@ use libc;
 // use cpuprofiler::PROFILER;
 
 use builtin;
-use bytecode_gen::ByteCode;
+use bytecode_gen::{ByteCode, VMInst};
 use jit::TracingJit;
 use node::BinOp;
 
@@ -128,55 +128,6 @@ impl ConstantTable {
             string: vec![],
         }
     }
-}
-
-#[warn(non_snake_case)]
-pub mod VMInst {
-    pub const END: u8 = 0x00;
-    pub const CREATE_CONTEXT: u8 = 0x01;
-    pub const CONSTRUCT: u8 = 0x02;
-    pub const CREATE_OBJECT: u8 = 0x03;
-    pub const CREATE_ARRAY: u8 = 0x04;
-    pub const PUSH_INT8: u8 = 0x05;
-    pub const PUSH_INT32: u8 = 0x06;
-    pub const PUSH_FALSE: u8 = 0x07;
-    pub const PUSH_TRUE: u8 = 0x08;
-    pub const PUSH_CONST: u8 = 0x09;
-    pub const PUSH_THIS: u8 = 0x0a;
-    pub const PUSH_ARGUMENTS: u8 = 0x0b;
-    pub const NEG: u8 = 0x0c;
-    pub const ADD: u8 = 0x0d;
-    pub const SUB: u8 = 0x0e;
-    pub const MUL: u8 = 0x0f;
-    pub const DIV: u8 = 0x10;
-    pub const REM: u8 = 0x11;
-    pub const LT: u8 = 0x12;
-    pub const GT: u8 = 0x13;
-    pub const LE: u8 = 0x14;
-    pub const GE: u8 = 0x15;
-    pub const EQ: u8 = 0x16;
-    pub const NE: u8 = 0x17;
-    pub const SEQ: u8 = 0x18;
-    pub const SNE: u8 = 0x19;
-    pub const AND: u8 = 0x1a;
-    pub const OR: u8 = 0x1b;
-    pub const GET_MEMBER: u8 = 0x1c;
-    pub const SET_MEMBER: u8 = 0x1d;
-    pub const GET_GLOBAL: u8 = 0x1e;
-    pub const SET_GLOBAL: u8 = 0x1f;
-    pub const GET_LOCAL: u8 = 0x20;
-    pub const SET_LOCAL: u8 = 0x21;
-    pub const GET_ARG_LOCAL: u8 = 0x22;
-    pub const SET_ARG_LOCAL: u8 = 0x23;
-    pub const JMP_IF_FALSE: u8 = 0x24;
-    pub const JMP: u8 = 0x25;
-    pub const CALL: u8 = 0x26;
-    pub const RETURN: u8 = 0x27;
-    pub const ASG_FREST_PARAM: u8 = 0x28;
-    pub const DOUBLE: u8 = 0x29;
-    pub const POP: u8 = 0x2a;
-    pub const LAND: u8 = 0x2b;
-    pub const LOR: u8 = 0x2c;
 }
 
 pub struct VM {

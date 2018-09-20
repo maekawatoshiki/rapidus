@@ -1,6 +1,6 @@
 use builtin;
+use bytecode_gen::VMInst;
 use vm;
-use vm::VMInst;
 
 use rand::{random, thread_rng, RngCore};
 
@@ -766,18 +766,8 @@ impl TracingJit {
         let mut local_vars = HashSet::new();
 
         while pc < end {
+            let inst_size = try_opt!(VMInst::get_inst_size(insts[pc]));
             match insts[pc] {
-                VMInst::END => pc += 1,
-                VMInst::CREATE_CONTEXT => pc += 5,
-                VMInst::RETURN => pc += 1,
-                VMInst::ASG_FREST_PARAM => pc += 9,
-                VMInst::CONSTRUCT
-                | VMInst::CREATE_OBJECT
-                | VMInst::PUSH_CONST
-                | VMInst::PUSH_INT32
-                | VMInst::SET_GLOBAL
-                | VMInst::CREATE_ARRAY
-                | VMInst::CALL => pc += 5,
                 VMInst::SET_ARG_LOCAL | VMInst::GET_ARG_LOCAL => {
                     pc += 1;
                     get_int32!(insts, pc, id, usize);
@@ -788,34 +778,7 @@ impl TracingJit {
                     get_int32!(insts, pc, id, usize);
                     local_vars.insert(id);
                 }
-                VMInst::JMP | VMInst::JMP_IF_FALSE => pc += 5,
-                VMInst::PUSH_INT8 => pc += 2,
-                VMInst::PUSH_FALSE
-                | VMInst::PUSH_TRUE
-                | VMInst::PUSH_THIS
-                | VMInst::ADD
-                | VMInst::SUB
-                | VMInst::MUL
-                | VMInst::DIV
-                | VMInst::REM
-                | VMInst::LT
-                | VMInst::AND
-                | VMInst::POP
-                | VMInst::DOUBLE
-                | VMInst::OR
-                | VMInst::PUSH_ARGUMENTS
-                | VMInst::NEG
-                | VMInst::GT
-                | VMInst::LE
-                | VMInst::GE
-                | VMInst::EQ
-                | VMInst::NE
-                | VMInst::LAND
-                | VMInst::LOR
-                | VMInst::GET_MEMBER
-                | VMInst::SET_MEMBER => pc += 1,
-                VMInst::GET_GLOBAL => pc += 5,
-                _ => return Err(()),
+                _ => pc += inst_size,
             }
         }
 
@@ -856,65 +819,39 @@ impl TracingJit {
             }
         }
 
-        let mut labels: HashMap<usize, LLVMBasicBlockRef> = HashMap::new();
-        let mut positioned_labels: HashSet<usize> = HashSet::new();
+        enum LabelKind {
+            NotPositioned(LLVMBasicBlockRef),
+            Positioned(LLVMBasicBlockRef),
+        }
+        fn label_retrieve(lk: &LabelKind) -> LLVMBasicBlockRef {
+            match lk {
+                &LabelKind::NotPositioned(x) | &LabelKind::Positioned(x) => x,
+            }
+        }
+
+        let mut labels: HashMap<usize, LabelKind> = HashMap::new();
+
         // First of all, find JMP-related ops and record its destination.
         {
             let mut pc = bgn;
             while pc < end {
+                let inst_size = try_opt!(VMInst::get_inst_size(insts[pc]));
                 match insts[pc] {
                     VMInst::END => break,
                     VMInst::CREATE_CONTEXT if is_func_jit => break,
-                    VMInst::CREATE_CONTEXT => pc += 5,
-                    VMInst::RETURN => pc += 1,
-                    VMInst::ASG_FREST_PARAM => pc += 9,
-                    VMInst::CONSTRUCT
-                    | VMInst::CREATE_OBJECT
-                    | VMInst::PUSH_CONST
-                    | VMInst::PUSH_INT32
-                    | VMInst::SET_GLOBAL
-                    | VMInst::GET_LOCAL
-                    | VMInst::SET_ARG_LOCAL
-                    | VMInst::GET_ARG_LOCAL
-                    | VMInst::CREATE_ARRAY
-                    | VMInst::SET_LOCAL
-                    | VMInst::CALL => pc += 5,
                     VMInst::JMP | VMInst::JMP_IF_FALSE => {
                         pc += 1;
                         get_int32!(insts, pc, dst, i32);
                         // println!("pc: {}, dst: {}, = {}", pc, dst, pc as i32 + dst);
                         labels.insert(
                             (pc as i32 + dst) as usize,
-                            LLVMAppendBasicBlock(func, CString::new("").unwrap().as_ptr()),
+                            LabelKind::NotPositioned(LLVMAppendBasicBlock(
+                                func,
+                                CString::new("").unwrap().as_ptr(),
+                            )),
                         );
                     }
-                    VMInst::PUSH_INT8 => pc += 2,
-                    VMInst::PUSH_FALSE
-                    | VMInst::PUSH_TRUE
-                    | VMInst::PUSH_THIS
-                    | VMInst::ADD
-                    | VMInst::SUB
-                    | VMInst::MUL
-                    | VMInst::DIV
-                    | VMInst::REM
-                    | VMInst::LT
-                    | VMInst::AND
-                    | VMInst::POP
-                    | VMInst::DOUBLE
-                    | VMInst::OR
-                    | VMInst::PUSH_ARGUMENTS
-                    | VMInst::NEG
-                    | VMInst::GT
-                    | VMInst::LE
-                    | VMInst::GE
-                    | VMInst::EQ
-                    | VMInst::NE
-                    | VMInst::LAND
-                    | VMInst::LOR
-                    | VMInst::GET_MEMBER
-                    | VMInst::SET_MEMBER => pc += 1,
-                    VMInst::GET_GLOBAL => pc += 5,
-                    _ => return Err(()),
+                    _ => pc += inst_size,
                 }
             }
         }
@@ -925,12 +862,17 @@ impl TracingJit {
 
         let mut pc = bgn;
         while pc < end {
-            if let Some(bb) = labels.get(&pc) {
+            if let Some(label_kind) = labels.get_mut(&pc) {
+                let bb = if let LabelKind::NotPositioned(bb) = *label_kind {
+                    bb
+                } else {
+                    unreachable!()
+                };
                 if cur_bb_has_no_terminator(self.builder) {
-                    LLVMBuildBr(self.builder, *bb);
+                    LLVMBuildBr(self.builder, bb);
                 }
-                LLVMPositionBuilderAtEnd(self.builder, *bb);
-                positioned_labels.insert(pc);
+                LLVMPositionBuilderAtEnd(self.builder, bb);
+                *label_kind = LabelKind::Positioned(bb);
             }
 
             match insts[pc] {
@@ -947,18 +889,19 @@ impl TracingJit {
                     land.push(LLVMGetInsertBlock(self.builder));
                     let bb_then = LLVMAppendBasicBlock(func, CString::new("").unwrap().as_ptr());
                     lcom.push(bb_then);
-                    let bb_else = try_opt!(labels.get(&((pc as i32 + dst) as usize)));
-                    lor.push(*bb_else);
+                    let bb_else =
+                        label_retrieve(try_opt!(labels.get(&((pc as i32 + dst) as usize))));
+                    lor.push(bb_else);
                     let cond_val = try_stack!(stack.pop());
-                    LLVMBuildCondBr(self.builder, cond_val, bb_then, *bb_else);
+                    LLVMBuildCondBr(self.builder, cond_val, bb_then, bb_else);
                     LLVMPositionBuilderAtEnd(self.builder, bb_then);
                 }
                 VMInst::JMP => {
                     pc += 1;
                     get_int32!(insts, pc, dst, i32);
-                    let bb = try_opt!(labels.get(&((pc as i32 + dst) as usize)));
+                    let bb = label_retrieve(try_opt!(labels.get(&((pc as i32 + dst) as usize))));
                     if cur_bb_has_no_terminator(self.builder) {
-                        LLVMBuildBr(self.builder, *bb);
+                        LLVMBuildBr(self.builder, bb);
                     }
                 }
                 VMInst::LAND => {
@@ -1504,16 +1447,19 @@ impl TracingJit {
         }
 
         if !is_func_jit {
-            for (pos, bb) in labels {
-                if !positioned_labels.contains(&pos) {
-                    if cur_bb_has_no_terminator(self.builder) {
-                        LLVMBuildBr(self.builder, bb);
+            for (pos, label_kind) in labels {
+                match label_kind {
+                    LabelKind::NotPositioned(bb) => {
+                        if cur_bb_has_no_terminator(self.builder) {
+                            LLVMBuildBr(self.builder, bb);
+                        }
+                        LLVMPositionBuilderAtEnd(self.builder, bb);
+                        LLVMBuildRet(
+                            self.builder,
+                            LLVMConstInt(LLVMInt32TypeInContext(self.context), pos as u64, 0),
+                        );
                     }
-                    LLVMPositionBuilderAtEnd(self.builder, bb);
-                    LLVMBuildRet(
-                        self.builder,
-                        LLVMConstInt(LLVMInt32TypeInContext(self.context), pos as u64, 0),
-                    );
+                    LabelKind::Positioned(_) => {}
                 }
             }
         }

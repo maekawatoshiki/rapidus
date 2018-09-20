@@ -1,12 +1,11 @@
 use builtin;
-use bytecode_gen::{ByteCode, ByteCodeGen};
+use bytecode_gen::{ByteCode, ByteCodeGen, VMInst};
 use id::{Id, IdGen};
 use node::{
     BinOp, FormalParameters, FunctionDeclNode, Node, NodeBase, PropertyDefinition, UnaryOp,
 };
 use std::collections::HashSet;
-use vm::Value;
-use vm::{new_value_function, VMInst};
+use vm::{new_value_function, Value};
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -182,51 +181,9 @@ impl VMCodeGen {
 
         let mut i = 0;
         while i < insts.len() {
+            let inst_size = VMInst::get_inst_size(insts[i])
+                .unwrap_or_else(|| panic!("Illegal VM Instruction occurred"));
             match insts[i] {
-                VMInst::ASG_FREST_PARAM => i += 9,
-                VMInst::CREATE_CONTEXT => i += 5,
-                VMInst::CONSTRUCT
-                | VMInst::CREATE_OBJECT
-                | VMInst::PUSH_CONST
-                | VMInst::PUSH_INT32
-                | VMInst::SET_GLOBAL
-                | VMInst::GET_LOCAL
-                | VMInst::SET_ARG_LOCAL
-                | VMInst::GET_ARG_LOCAL
-                | VMInst::CREATE_ARRAY
-                | VMInst::SET_LOCAL
-                | VMInst::JMP_IF_FALSE
-                | VMInst::JMP
-                | VMInst::CALL => i += 5,
-                VMInst::PUSH_INT8 => i += 2,
-                VMInst::PUSH_FALSE
-                | VMInst::END
-                | VMInst::PUSH_TRUE
-                | VMInst::PUSH_THIS
-                | VMInst::ADD
-                | VMInst::SUB
-                | VMInst::MUL
-                | VMInst::DIV
-                | VMInst::REM
-                | VMInst::LT
-                | VMInst::PUSH_ARGUMENTS
-                | VMInst::NEG
-                | VMInst::GT
-                | VMInst::LE
-                | VMInst::GE
-                | VMInst::EQ
-                | VMInst::NE
-                | VMInst::GET_MEMBER
-                | VMInst::RETURN
-                | VMInst::SNE
-                | VMInst::LAND
-                | VMInst::POP
-                | VMInst::DOUBLE
-                | VMInst::AND
-                | VMInst::OR
-                | VMInst::SEQ
-                | VMInst::SET_MEMBER
-                | VMInst::LOR => i += 1,
                 VMInst::GET_GLOBAL => {
                     let id = insts[i + 1] as i32
                         + ((insts[i + 2] as i32) << 8)
@@ -255,9 +212,9 @@ impl VMCodeGen {
                             }
                         }
                     }
-                    i += 5;
+                    i += inst_size
                 }
-                _ => unreachable!(),
+                _ => i += inst_size,
             }
         }
     }
