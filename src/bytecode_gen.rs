@@ -1,11 +1,5 @@
 use id::Id;
-use vm::{
-    ConstantTable, PUSH_INT32, PUSH_INT8, Value, ADD, AND, ASG_FREST_PARAM, CALL, CONSTRUCT,
-    CREATE_ARRAY, CREATE_CONTEXT, CREATE_OBJECT, DIV, DOUBLE, END, EQ, GE, GET_ARG_LOCAL,
-    GET_GLOBAL, GET_LOCAL, GET_MEMBER, GT, JMP, JMP_IF_FALSE, LAND, LE, LOR, LT, MUL, NE, NEG, OR,
-    POP, PUSH_ARGUMENTS, PUSH_CONST, PUSH_FALSE, PUSH_THIS, PUSH_TRUE, REM, RETURN, SEQ,
-    SET_ARG_LOCAL, SET_GLOBAL, SET_LOCAL, SET_MEMBER, SNE, SUB,
-};
+use vm::{ConstantTable, VMInst, Value};
 
 pub type ByteCode = Vec<u8>;
 
@@ -24,181 +18,181 @@ impl ByteCodeGen {
 
 impl ByteCodeGen {
     pub fn gen_end(&self, insts: &mut ByteCode) {
-        insts.push(END);
+        insts.push(VMInst::END);
     }
 
     pub fn gen_create_context(&self, num_local_var: usize, insts: &mut ByteCode) {
-        insts.push(CREATE_CONTEXT);
+        insts.push(VMInst::CREATE_CONTEXT);
         self.gen_int32(num_local_var as i32, insts);
     }
 
     pub fn gen_constract(&self, argc: usize, insts: &mut ByteCode) {
-        insts.push(CONSTRUCT);
+        insts.push(VMInst::CONSTRUCT);
         self.gen_int32(argc as i32, insts);
     }
 
     pub fn gen_create_object(&self, len: usize, insts: &mut ByteCode) {
-        insts.push(CREATE_OBJECT);
+        insts.push(VMInst::CREATE_OBJECT);
         self.gen_int32(len as i32, insts);
     }
 
     pub fn gen_create_array(&self, len: usize, insts: &mut ByteCode) {
-        insts.push(CREATE_ARRAY);
+        insts.push(VMInst::CREATE_ARRAY);
         self.gen_int32(len as i32, insts);
     }
 
     pub fn gen_push_int8(&self, n: i8, insts: &mut ByteCode) {
-        insts.push(PUSH_INT8);
+        insts.push(VMInst::PUSH_INT8);
         self.gen_int8(n, insts);
     }
 
     pub fn gen_push_int32(&self, n: i32, insts: &mut ByteCode) {
-        insts.push(PUSH_INT32);
+        insts.push(VMInst::PUSH_INT32);
         self.gen_int32(n, insts);
     }
 
     pub fn gen_push_bool(&self, b: bool, insts: &mut ByteCode) {
-        insts.push(if b { PUSH_TRUE } else { PUSH_FALSE })
+        insts.push(if b { VMInst::PUSH_TRUE } else { VMInst::PUSH_FALSE })
     }
 
     pub fn gen_push_const(&mut self, val: Value, insts: &mut ByteCode) {
-        insts.push(PUSH_CONST);
+        insts.push(VMInst::PUSH_CONST);
         let id = self.const_table.value.len();
         self.const_table.value.push(val);
         self.gen_int32(id as i32, insts);
     }
 
     pub fn gen_push_this(&self, insts: &mut ByteCode) {
-        insts.push(PUSH_THIS);
+        insts.push(VMInst::PUSH_THIS);
     }
 
     pub fn gen_push_arguments(&self, insts: &mut ByteCode) {
-        insts.push(PUSH_ARGUMENTS);
+        insts.push(VMInst::PUSH_ARGUMENTS);
     }
 
     pub fn gen_neg(&self, insts: &mut ByteCode) {
-        insts.push(NEG);
+        insts.push(VMInst::NEG);
     }
 
     pub fn gen_add(&self, insts: &mut ByteCode) {
-        insts.push(ADD);
+        insts.push(VMInst::ADD);
     }
     pub fn gen_sub(&self, insts: &mut ByteCode) {
-        insts.push(SUB);
+        insts.push(VMInst::SUB);
     }
     pub fn gen_mul(&self, insts: &mut ByteCode) {
-        insts.push(MUL);
+        insts.push(VMInst::MUL);
     }
     pub fn gen_div(&self, insts: &mut ByteCode) {
-        insts.push(DIV);
+        insts.push(VMInst::DIV);
     }
     pub fn gen_rem(&self, insts: &mut ByteCode) {
-        insts.push(REM);
+        insts.push(VMInst::REM);
     }
     pub fn gen_lt(&self, insts: &mut ByteCode) {
-        insts.push(LT);
+        insts.push(VMInst::LT);
     }
     pub fn gen_gt(&self, insts: &mut ByteCode) {
-        insts.push(GT);
+        insts.push(VMInst::GT);
     }
     pub fn gen_le(&self, insts: &mut ByteCode) {
-        insts.push(LE);
+        insts.push(VMInst::LE);
     }
     pub fn gen_ge(&self, insts: &mut ByteCode) {
-        insts.push(GE);
+        insts.push(VMInst::GE);
     }
     pub fn gen_eq(&self, insts: &mut ByteCode) {
-        insts.push(EQ);
+        insts.push(VMInst::EQ);
     }
     pub fn gen_ne(&self, insts: &mut ByteCode) {
-        insts.push(NE);
+        insts.push(VMInst::NE);
     }
     pub fn gen_seq(&self, insts: &mut ByteCode) {
-        insts.push(SEQ);
+        insts.push(VMInst::SEQ);
     }
     pub fn gen_sne(&self, insts: &mut ByteCode) {
-        insts.push(SNE);
+        insts.push(VMInst::SNE);
     }
     pub fn gen_and(&self, insts: &mut ByteCode) {
-        insts.push(AND);
+        insts.push(VMInst::AND);
     }
     pub fn gen_or(&self, insts: &mut ByteCode) {
-        insts.push(OR);
+        insts.push(VMInst::OR);
     }
 
     pub fn gen_land(&self, insts: &mut ByteCode) {
-        insts.push(LAND);
+        insts.push(VMInst::LAND);
     }
     pub fn gen_lor(&self, insts: &mut ByteCode) {
-        insts.push(LOR);
+        insts.push(VMInst::LOR);
     }
 
     pub fn gen_double(&self, insts: &mut ByteCode) {
-        insts.push(DOUBLE);
+        insts.push(VMInst::DOUBLE);
     }
     pub fn gen_pop(&self, insts: &mut ByteCode) {
-        insts.push(POP);
+        insts.push(VMInst::POP);
     }
 
     pub fn gen_get_member(&self, insts: &mut ByteCode) {
-        insts.push(GET_MEMBER);
+        insts.push(VMInst::GET_MEMBER);
     }
 
     pub fn gen_set_member(&self, insts: &mut ByteCode) {
-        insts.push(SET_MEMBER);
+        insts.push(VMInst::SET_MEMBER);
     }
 
     pub fn gen_get_global(&mut self, name: String, insts: &mut ByteCode) {
-        insts.push(GET_GLOBAL);
+        insts.push(VMInst::GET_GLOBAL);
         let id = self.const_table.string.len();
         self.const_table.string.push(name);
         self.gen_int32(id as i32, insts);
     }
 
     pub fn gen_set_global(&mut self, name: String, insts: &mut ByteCode) {
-        insts.push(SET_GLOBAL);
+        insts.push(VMInst::SET_GLOBAL);
         let id = self.const_table.string.len();
         self.const_table.string.push(name);
         self.gen_int32(id as i32, insts);
     }
 
     pub fn gen_get_local(&self, id: u32, insts: &mut ByteCode) {
-        insts.push(GET_LOCAL);
+        insts.push(VMInst::GET_LOCAL);
         self.gen_int32(id as i32, insts);
     }
 
     pub fn gen_set_local(&self, id: u32, insts: &mut ByteCode) {
-        insts.push(SET_LOCAL);
+        insts.push(VMInst::SET_LOCAL);
         self.gen_int32(id as i32, insts);
     }
 
     pub fn gen_get_arg_local(&self, id: u32, insts: &mut ByteCode) {
-        insts.push(GET_ARG_LOCAL);
+        insts.push(VMInst::GET_ARG_LOCAL);
         self.gen_int32(id as i32, insts);
     }
 
     pub fn gen_set_arg_local(&self, id: u32, insts: &mut ByteCode) {
-        insts.push(SET_ARG_LOCAL);
+        insts.push(VMInst::SET_ARG_LOCAL);
         self.gen_int32(id as i32, insts);
     }
 
     pub fn gen_call(&self, argc: u32, insts: &mut ByteCode) {
-        insts.push(CALL);
+        insts.push(VMInst::CALL);
         self.gen_int32(argc as i32, insts);
     }
 
     pub fn gen_jmp(&self, dst: i32, insts: &mut ByteCode) {
-        insts.push(JMP);
+        insts.push(VMInst::JMP);
         self.gen_int32(dst, insts);
     }
 
     pub fn gen_jmp_if_false(&self, dst: i32, insts: &mut ByteCode) {
-        insts.push(JMP_IF_FALSE);
+        insts.push(VMInst::JMP_IF_FALSE);
         self.gen_int32(dst, insts);
     }
 
     pub fn gen_return(&self, insts: &mut ByteCode) {
-        insts.push(RETURN);
+        insts.push(VMInst::RETURN);
     }
 
     pub fn gen_assign_func_rest_param(
@@ -207,7 +201,7 @@ impl ByteCodeGen {
         dst_var_id: Id,
         insts: &mut ByteCode,
     ) {
-        insts.push(ASG_FREST_PARAM);
+        insts.push(VMInst::ASG_FREST_PARAM);
         self.gen_int32(num_func_params as i32, insts);
         self.gen_int32(dst_var_id as i32, insts);
     }
@@ -245,147 +239,147 @@ pub fn show(code: &ByteCode) {
     while i < code.len() {
         print!("{:04x} ", i);
         match code[i] {
-            END => {
+            VMInst::END => {
                 println!("End");
                 i += 1
             }
-            CREATE_CONTEXT => {
+            VMInst::CREATE_CONTEXT => {
                 println!("CreateContext");
                 i += 5
             }
-            CONSTRUCT => {
+            VMInst::CONSTRUCT => {
                 println!("Construct");
                 i += 5
             }
-            CREATE_OBJECT => {
+            VMInst::CREATE_OBJECT => {
                 println!("CreateObject");
                 i += 5
             }
-            PUSH_INT8 => {
+            VMInst::PUSH_INT8 => {
                 println!("PushInt8");
                 i += 2
             }
-            PUSH_INT32 => {
+            VMInst::PUSH_INT32 => {
                 println!("PushInt32");
                 i += 5
             }
-            PUSH_FALSE => {
+            VMInst::PUSH_FALSE => {
                 println!("PushFalse");
                 i += 1
             }
-            PUSH_TRUE => {
+            VMInst::PUSH_TRUE => {
                 println!("PushTrue");
                 i += 1
             }
-            PUSH_CONST => {
+            VMInst::PUSH_CONST => {
                 println!("PushConst");
                 i += 5
             }
-            PUSH_THIS => {
+            VMInst::PUSH_THIS => {
                 println!("PushThis");
                 i += 1
             }
-            PUSH_ARGUMENTS => {
+            VMInst::PUSH_ARGUMENTS => {
                 println!("PushArguments");
                 i += 1
             }
-            NEG => {
+            VMInst::NEG => {
                 println!("Neg");
                 i += 1
             }
-            ADD => {
+            VMInst::ADD => {
                 println!("Add");
                 i += 1
             }
-            SUB => {
+            VMInst::SUB => {
                 println!("Sub");
                 i += 1
             }
-            MUL => {
+            VMInst::MUL => {
                 println!("Mul");
                 i += 1
             }
-            DIV => {
+            VMInst::DIV => {
                 println!("Div");
                 i += 1
             }
-            REM => {
+            VMInst::REM => {
                 println!("Rem");
                 i += 1
             }
-            LT => {
+            VMInst::LT => {
                 println!("Lt");
                 i += 1
             }
-            GT => {
+            VMInst::GT => {
                 println!("Gt");
                 i += 1
             }
-            LE => {
+            VMInst::LE => {
                 println!("Le");
                 i += 1
             }
-            GE => {
+            VMInst::GE => {
                 println!("Ge");
                 i += 1
             }
-            EQ => {
+            VMInst::EQ => {
                 println!("Eq");
                 i += 1
             }
-            NE => {
+            VMInst::NE => {
                 println!("Ne");
                 i += 1
             }
-            GET_MEMBER => {
+            VMInst::GET_MEMBER => {
                 println!("GetMember");
                 i += 1
             }
-            SET_MEMBER => {
+            VMInst::SET_MEMBER => {
                 println!("SetMember");
                 i += 1
             }
-            GET_GLOBAL => {
+            VMInst::GET_GLOBAL => {
                 println!("GetGlobal");
                 i += 5
             }
-            SET_GLOBAL => {
+            VMInst::SET_GLOBAL => {
                 println!("SetGlobal");
                 i += 5
             }
-            GET_LOCAL => {
+            VMInst::GET_LOCAL => {
                 println!("GetLocal",);
                 i += 5
             }
-            SET_LOCAL => {
+            VMInst::SET_LOCAL => {
                 println!("SetLocal",);
                 i += 5
             }
-            GET_ARG_LOCAL => {
+            VMInst::GET_ARG_LOCAL => {
                 println!("GetArgLocal",);
                 i += 5
             }
-            SET_ARG_LOCAL => {
+            VMInst::SET_ARG_LOCAL => {
                 println!("SetArgLocal",);
                 i += 5
             }
-            JMP_IF_FALSE => {
+            VMInst::JMP_IF_FALSE => {
                 println!("JmpIfFalse");
                 i += 5
             }
-            JMP => {
+            VMInst::JMP => {
                 println!("Jmp");
                 i += 5
             }
-            CALL => {
+            VMInst::CALL => {
                 println!("Call");
                 i += 5
             }
-            RETURN => {
+            VMInst::RETURN => {
                 println!("Return");
                 i += 1
             }
-            ASG_FREST_PARAM => {
+            VMInst::ASG_FREST_PARAM => {
                 println!("AssignFunctionRestParam");
                 i += 9
             }

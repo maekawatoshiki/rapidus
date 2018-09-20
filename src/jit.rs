@@ -1,12 +1,6 @@
 use builtin;
 use vm;
-use vm::{
-    PUSH_INT32, PUSH_INT8, ADD, AND, ASG_FREST_PARAM, CALL, CONSTRUCT, CREATE_ARRAY,
-    CREATE_CONTEXT, CREATE_OBJECT, DIV, DOUBLE, END, EQ, GE, GET_ARG_LOCAL, GET_GLOBAL, GET_LOCAL,
-    GET_MEMBER, GT, JMP, JMP_IF_FALSE, LAND, LE, LOR, LT, MUL, NE, NEG, OR, POP, PUSH_ARGUMENTS,
-    PUSH_CONST, PUSH_FALSE, PUSH_THIS, PUSH_TRUE, REM, RETURN, SEQ, SET_ARG_LOCAL, SET_GLOBAL,
-    SET_LOCAL, SET_MEMBER, SNE, SUB,
-};
+use vm::VMInst;
 
 use rand::{random, thread_rng, RngCore};
 
@@ -773,28 +767,54 @@ impl TracingJit {
 
         while pc < end {
             match insts[pc] {
-                END => pc += 1,
-                CREATE_CONTEXT => pc += 5,
-                RETURN => pc += 1,
-                ASG_FREST_PARAM => pc += 9,
-                CONSTRUCT | CREATE_OBJECT | PUSH_CONST | PUSH_INT32 | SET_GLOBAL | CREATE_ARRAY
-                | CALL => pc += 5,
-                SET_ARG_LOCAL | GET_ARG_LOCAL => {
+                VMInst::END => pc += 1,
+                VMInst::CREATE_CONTEXT => pc += 5,
+                VMInst::RETURN => pc += 1,
+                VMInst::ASG_FREST_PARAM => pc += 9,
+                VMInst::CONSTRUCT
+                | VMInst::CREATE_OBJECT
+                | VMInst::PUSH_CONST
+                | VMInst::PUSH_INT32
+                | VMInst::SET_GLOBAL
+                | VMInst::CREATE_ARRAY
+                | VMInst::CALL => pc += 5,
+                VMInst::SET_ARG_LOCAL | VMInst::GET_ARG_LOCAL => {
                     pc += 1;
                     get_int32!(insts, pc, id, usize);
                     arg_vars.insert(id);
                 }
-                GET_LOCAL | SET_LOCAL => {
+                VMInst::GET_LOCAL | VMInst::SET_LOCAL => {
                     pc += 1;
                     get_int32!(insts, pc, id, usize);
                     local_vars.insert(id);
                 }
-                JMP | JMP_IF_FALSE => pc += 5,
-                PUSH_INT8 => pc += 2,
-                PUSH_FALSE | PUSH_TRUE | PUSH_THIS | ADD | SUB | MUL | DIV | REM | LT | AND
-                | POP | DOUBLE | OR | PUSH_ARGUMENTS | NEG | GT | LE | GE | EQ | NE | LAND
-                | LOR | GET_MEMBER | SET_MEMBER => pc += 1,
-                GET_GLOBAL => pc += 5,
+                VMInst::JMP | VMInst::JMP_IF_FALSE => pc += 5,
+                VMInst::PUSH_INT8 => pc += 2,
+                VMInst::PUSH_FALSE
+                | VMInst::PUSH_TRUE
+                | VMInst::PUSH_THIS
+                | VMInst::ADD
+                | VMInst::SUB
+                | VMInst::MUL
+                | VMInst::DIV
+                | VMInst::REM
+                | VMInst::LT
+                | VMInst::AND
+                | VMInst::POP
+                | VMInst::DOUBLE
+                | VMInst::OR
+                | VMInst::PUSH_ARGUMENTS
+                | VMInst::NEG
+                | VMInst::GT
+                | VMInst::LE
+                | VMInst::GE
+                | VMInst::EQ
+                | VMInst::NE
+                | VMInst::LAND
+                | VMInst::LOR
+                | VMInst::GET_MEMBER
+                | VMInst::SET_MEMBER => pc += 1,
+                VMInst::GET_GLOBAL => pc += 5,
                 _ => return Err(()),
             }
         }
@@ -843,15 +863,23 @@ impl TracingJit {
             let mut pc = bgn;
             while pc < end {
                 match insts[pc] {
-                    END => break,
-                    CREATE_CONTEXT if is_func_jit => break,
-                    CREATE_CONTEXT => pc += 5,
-                    RETURN => pc += 1,
-                    ASG_FREST_PARAM => pc += 9,
-                    CONSTRUCT | CREATE_OBJECT | PUSH_CONST | PUSH_INT32 | SET_GLOBAL
-                    | GET_LOCAL | SET_ARG_LOCAL | GET_ARG_LOCAL | CREATE_ARRAY | SET_LOCAL
-                    | CALL => pc += 5,
-                    JMP | JMP_IF_FALSE => {
+                    VMInst::END => break,
+                    VMInst::CREATE_CONTEXT if is_func_jit => break,
+                    VMInst::CREATE_CONTEXT => pc += 5,
+                    VMInst::RETURN => pc += 1,
+                    VMInst::ASG_FREST_PARAM => pc += 9,
+                    VMInst::CONSTRUCT
+                    | VMInst::CREATE_OBJECT
+                    | VMInst::PUSH_CONST
+                    | VMInst::PUSH_INT32
+                    | VMInst::SET_GLOBAL
+                    | VMInst::GET_LOCAL
+                    | VMInst::SET_ARG_LOCAL
+                    | VMInst::GET_ARG_LOCAL
+                    | VMInst::CREATE_ARRAY
+                    | VMInst::SET_LOCAL
+                    | VMInst::CALL => pc += 5,
+                    VMInst::JMP | VMInst::JMP_IF_FALSE => {
                         pc += 1;
                         get_int32!(insts, pc, dst, i32);
                         // println!("pc: {}, dst: {}, = {}", pc, dst, pc as i32 + dst);
@@ -860,11 +888,32 @@ impl TracingJit {
                             LLVMAppendBasicBlock(func, CString::new("").unwrap().as_ptr()),
                         );
                     }
-                    PUSH_INT8 => pc += 2,
-                    PUSH_FALSE | PUSH_TRUE | PUSH_THIS | ADD | SUB | MUL | DIV | REM | LT | AND
-                    | POP | DOUBLE | OR | PUSH_ARGUMENTS | NEG | GT | LE | GE | EQ | NE | LAND
-                    | LOR | GET_MEMBER | SET_MEMBER => pc += 1,
-                    GET_GLOBAL => pc += 5,
+                    VMInst::PUSH_INT8 => pc += 2,
+                    VMInst::PUSH_FALSE
+                    | VMInst::PUSH_TRUE
+                    | VMInst::PUSH_THIS
+                    | VMInst::ADD
+                    | VMInst::SUB
+                    | VMInst::MUL
+                    | VMInst::DIV
+                    | VMInst::REM
+                    | VMInst::LT
+                    | VMInst::AND
+                    | VMInst::POP
+                    | VMInst::DOUBLE
+                    | VMInst::OR
+                    | VMInst::PUSH_ARGUMENTS
+                    | VMInst::NEG
+                    | VMInst::GT
+                    | VMInst::LE
+                    | VMInst::GE
+                    | VMInst::EQ
+                    | VMInst::NE
+                    | VMInst::LAND
+                    | VMInst::LOR
+                    | VMInst::GET_MEMBER
+                    | VMInst::SET_MEMBER => pc += 1,
+                    VMInst::GET_GLOBAL => pc += 5,
                     _ => return Err(()),
                 }
             }
@@ -885,11 +934,14 @@ impl TracingJit {
             }
 
             match insts[pc] {
-                END => break,
-                CREATE_CONTEXT => break,
-                ASG_FREST_PARAM => pc += 9,
-                CONSTRUCT | CREATE_OBJECT | SET_GLOBAL | CREATE_ARRAY => pc += 5,
-                JMP_IF_FALSE => {
+                VMInst::END => break,
+                VMInst::CREATE_CONTEXT => break,
+                VMInst::ASG_FREST_PARAM => pc += 9,
+                VMInst::CONSTRUCT
+                | VMInst::CREATE_OBJECT
+                | VMInst::SET_GLOBAL
+                | VMInst::CREATE_ARRAY => pc += 5,
+                VMInst::JMP_IF_FALSE => {
                     pc += 1;
                     get_int32!(insts, pc, dst, i32);
                     land.push(LLVMGetInsertBlock(self.builder));
@@ -901,7 +953,7 @@ impl TracingJit {
                     LLVMBuildCondBr(self.builder, cond_val, bb_then, *bb_else);
                     LLVMPositionBuilderAtEnd(self.builder, bb_then);
                 }
-                JMP => {
+                VMInst::JMP => {
                     pc += 1;
                     get_int32!(insts, pc, dst, i32);
                     let bb = try_opt!(labels.get(&((pc as i32 + dst) as usize)));
@@ -909,7 +961,7 @@ impl TracingJit {
                         LLVMBuildBr(self.builder, *bb);
                     }
                 }
-                LAND => {
+                VMInst::LAND => {
                     pc += 1;
                     let phi = LLVMBuildPhi(
                         self.builder,
@@ -936,7 +988,7 @@ impl TracingJit {
                     }
                     stack.push((phi, None));
                 }
-                LOR => {
+                VMInst::LOR => {
                     pc += 1;
                     let phi = LLVMBuildPhi(
                         self.builder,
@@ -963,7 +1015,7 @@ impl TracingJit {
                     }
                     stack.push((phi, None));
                 }
-                ADD => {
+                VMInst::ADD => {
                     pc += 1;
                     let rhs = try_stack!(stack.pop());
                     let lhs = try_stack!(stack.pop());
@@ -977,7 +1029,7 @@ impl TracingJit {
                         None,
                     ));
                 }
-                SUB => {
+                VMInst::SUB => {
                     pc += 1;
                     let rhs = try_stack!(stack.pop());
                     let lhs = try_stack!(stack.pop());
@@ -991,7 +1043,7 @@ impl TracingJit {
                         None,
                     ));
                 }
-                MUL => {
+                VMInst::MUL => {
                     pc += 1;
                     let rhs = try_stack!(stack.pop());
                     let lhs = try_stack!(stack.pop());
@@ -1005,7 +1057,7 @@ impl TracingJit {
                         None,
                     ));
                 }
-                DIV => {
+                VMInst::DIV => {
                     pc += 1;
                     let rhs = try_stack!(stack.pop());
                     let lhs = try_stack!(stack.pop());
@@ -1019,7 +1071,7 @@ impl TracingJit {
                         None,
                     ));
                 }
-                REM => {
+                VMInst::REM => {
                     pc += 1;
                     let rhs = try_stack!(stack.pop());
                     let lhs = try_stack!(stack.pop());
@@ -1048,7 +1100,7 @@ impl TracingJit {
                         None,
                     ));
                 }
-                LT => {
+                VMInst::LT => {
                     pc += 1;
                     let rhs = try_stack!(stack.pop());
                     let lhs = try_stack!(stack.pop());
@@ -1063,7 +1115,7 @@ impl TracingJit {
                         None,
                     ))
                 }
-                LE => {
+                VMInst::LE => {
                     pc += 1;
                     let rhs = try_stack!(stack.pop());
                     let lhs = try_stack!(stack.pop());
@@ -1078,7 +1130,7 @@ impl TracingJit {
                         None,
                     ))
                 }
-                GT => {
+                VMInst::GT => {
                     pc += 1;
                     let rhs = try_stack!(stack.pop());
                     let lhs = try_stack!(stack.pop());
@@ -1093,7 +1145,7 @@ impl TracingJit {
                         None,
                     ))
                 }
-                GE => {
+                VMInst::GE => {
                     pc += 1;
                     let rhs = try_stack!(stack.pop());
                     let lhs = try_stack!(stack.pop());
@@ -1108,7 +1160,7 @@ impl TracingJit {
                         None,
                     ))
                 }
-                EQ => {
+                VMInst::EQ => {
                     pc += 1;
                     let rhs = try_stack!(stack.pop());
                     let lhs = try_stack!(stack.pop());
@@ -1123,7 +1175,7 @@ impl TracingJit {
                         None,
                     ));
                 }
-                NE => {
+                VMInst::NE => {
                     pc += 1;
                     let rhs = try_stack!(stack.pop());
                     let lhs = try_stack!(stack.pop());
@@ -1138,7 +1190,7 @@ impl TracingJit {
                         None,
                     ));
                 }
-                SEQ => {
+                VMInst::SEQ => {
                     pc += 1;
                     let rhs = try_stack!(stack.pop());
                     let lhs = try_stack!(stack.pop());
@@ -1153,7 +1205,7 @@ impl TracingJit {
                         None,
                     ));
                 }
-                SNE => {
+                VMInst::SNE => {
                     pc += 1;
                     let rhs = try_stack!(stack.pop());
                     let lhs = try_stack!(stack.pop());
@@ -1168,7 +1220,7 @@ impl TracingJit {
                         None,
                     ));
                 }
-                NEG => {
+                VMInst::NEG => {
                     pc += 1;
                     let val = try_stack!(stack.pop());
                     stack.push((
@@ -1176,7 +1228,7 @@ impl TracingJit {
                         None,
                     ));
                 }
-                GET_ARG_LOCAL => {
+                VMInst::GET_ARG_LOCAL => {
                     pc += 1;
                     get_int32!(insts, pc, n, usize);
                     stack.push((
@@ -1189,13 +1241,13 @@ impl TracingJit {
                     ));
                 }
                 // Rarely used?
-                SET_ARG_LOCAL => {
+                VMInst::SET_ARG_LOCAL => {
                     pc += 1;
                     get_int32!(insts, pc, n, usize);
                     let src = try_stack!(stack.pop());
                     LLVMBuildStore(self.builder, src, *try_opt!(env.get(&(n, true))));
                 }
-                GET_LOCAL => {
+                VMInst::GET_LOCAL => {
                     pc += 1;
                     get_int32!(insts, pc, n, usize);
                     stack.push((
@@ -1207,13 +1259,13 @@ impl TracingJit {
                         None,
                     ));
                 }
-                SET_LOCAL => {
+                VMInst::SET_LOCAL => {
                     pc += 1;
                     get_int32!(insts, pc, n, usize);
                     let src = try_stack!(stack.pop());
                     LLVMBuildStore(self.builder, src, self.declare_local_var(n, false, env));
                 }
-                CALL => {
+                VMInst::CALL => {
                     pc += 1;
                     get_int32!(insts, pc, argc, usize);
 
@@ -1331,7 +1383,7 @@ impl TracingJit {
                         ));
                     }
                 }
-                GET_MEMBER => {
+                VMInst::GET_MEMBER => {
                     pc += 1; // get_member
                     let member = try_opt!(try_opt!(stack.pop()).1);
                     let parent = try_opt!(try_opt!(stack.pop()).1);
@@ -1346,7 +1398,7 @@ impl TracingJit {
                         _ => return Err(()),
                     }
                 }
-                PUSH_CONST => {
+                VMInst::PUSH_CONST => {
                     pc += 1;
                     get_int32!(insts, pc, n, usize);
                     match const_table.value[n] {
@@ -1401,7 +1453,7 @@ impl TracingJit {
                         _ => return Err(()),
                     }
                 }
-                PUSH_INT8 => {
+                VMInst::PUSH_INT8 => {
                     pc += 1;
                     get_int8!(insts, pc, n, isize);
                     stack.push((
@@ -1409,7 +1461,7 @@ impl TracingJit {
                         None,
                     ));
                 }
-                PUSH_INT32 => {
+                VMInst::PUSH_INT32 => {
                     pc += 1;
                     get_int32!(insts, pc, n, isize);
                     stack.push((
@@ -1417,36 +1469,36 @@ impl TracingJit {
                         None,
                     ));
                 }
-                PUSH_TRUE => {
+                VMInst::PUSH_TRUE => {
                     pc += 1;
                     stack.push((
                         LLVMConstInt(LLVMInt1TypeInContext(self.context), 1, 0),
                         None,
                     ));
                 }
-                PUSH_FALSE => {
+                VMInst::PUSH_FALSE => {
                     pc += 1;
                     stack.push((
                         LLVMConstInt(LLVMInt1TypeInContext(self.context), 0, 0),
                         None,
                     ));
                 }
-                PUSH_THIS | PUSH_ARGUMENTS | SET_MEMBER => pc += 1,
-                POP => {
+                VMInst::PUSH_THIS | VMInst::PUSH_ARGUMENTS | VMInst::SET_MEMBER => pc += 1,
+                VMInst::POP => {
                     pc += 1;
                     stack.pop();
                 }
-                DOUBLE => {
+                VMInst::DOUBLE => {
                     pc += 1;
                     let stack_top_val = stack.last().unwrap().clone();
                     stack.push(stack_top_val);
                 }
-                RETURN if is_func_jit => {
+                VMInst::RETURN if is_func_jit => {
                     pc += 1;
                     let val = try_stack!(stack.pop());
                     LLVMBuildRet(self.builder, val);
                 }
-                GET_GLOBAL => pc += 5,
+                VMInst::GET_GLOBAL => pc += 5,
                 _ => return Err(()),
             }
         }

@@ -6,13 +6,7 @@ use node::{
 };
 use std::collections::HashSet;
 use vm::Value;
-use vm::{
-    new_value_function, PUSH_INT32, PUSH_INT8, ADD, AND, ASG_FREST_PARAM, CALL, CONSTRUCT,
-    CREATE_ARRAY, CREATE_CONTEXT, CREATE_OBJECT, DIV, DOUBLE, END, EQ, GE, GET_ARG_LOCAL,
-    GET_GLOBAL, GET_LOCAL, GET_MEMBER, GT, JMP, JMP_IF_FALSE, LAND, LE, LOR, LT, MUL, NE, NEG, OR,
-    POP, PUSH_ARGUMENTS, PUSH_CONST, PUSH_FALSE, PUSH_THIS, PUSH_TRUE, REM, RETURN, SEQ,
-    SET_ARG_LOCAL, SET_GLOBAL, SET_LOCAL, SET_MEMBER, SNE, SUB,
-};
+use vm::{new_value_function, VMInst};
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -189,16 +183,51 @@ impl VMCodeGen {
         let mut i = 0;
         while i < insts.len() {
             match insts[i] {
-                ASG_FREST_PARAM => i += 9,
-                CREATE_CONTEXT => i += 5,
-                CONSTRUCT | CREATE_OBJECT | PUSH_CONST | PUSH_INT32 | SET_GLOBAL | GET_LOCAL
-                | SET_ARG_LOCAL | GET_ARG_LOCAL | CREATE_ARRAY | SET_LOCAL | JMP_IF_FALSE | JMP
-                | CALL => i += 5,
-                PUSH_INT8 => i += 2,
-                PUSH_FALSE | END | PUSH_TRUE | PUSH_THIS | ADD | SUB | MUL | DIV | REM | LT
-                | PUSH_ARGUMENTS | NEG | GT | LE | GE | EQ | NE | GET_MEMBER | RETURN | SNE
-                | LAND | POP | DOUBLE | AND | OR | SEQ | SET_MEMBER | LOR => i += 1,
-                GET_GLOBAL => {
+                VMInst::ASG_FREST_PARAM => i += 9,
+                VMInst::CREATE_CONTEXT => i += 5,
+                VMInst::CONSTRUCT
+                | VMInst::CREATE_OBJECT
+                | VMInst::PUSH_CONST
+                | VMInst::PUSH_INT32
+                | VMInst::SET_GLOBAL
+                | VMInst::GET_LOCAL
+                | VMInst::SET_ARG_LOCAL
+                | VMInst::GET_ARG_LOCAL
+                | VMInst::CREATE_ARRAY
+                | VMInst::SET_LOCAL
+                | VMInst::JMP_IF_FALSE
+                | VMInst::JMP
+                | VMInst::CALL => i += 5,
+                VMInst::PUSH_INT8 => i += 2,
+                VMInst::PUSH_FALSE
+                | VMInst::END
+                | VMInst::PUSH_TRUE
+                | VMInst::PUSH_THIS
+                | VMInst::ADD
+                | VMInst::SUB
+                | VMInst::MUL
+                | VMInst::DIV
+                | VMInst::REM
+                | VMInst::LT
+                | VMInst::PUSH_ARGUMENTS
+                | VMInst::NEG
+                | VMInst::GT
+                | VMInst::LE
+                | VMInst::GE
+                | VMInst::EQ
+                | VMInst::NE
+                | VMInst::GET_MEMBER
+                | VMInst::RETURN
+                | VMInst::SNE
+                | VMInst::LAND
+                | VMInst::POP
+                | VMInst::DOUBLE
+                | VMInst::AND
+                | VMInst::OR
+                | VMInst::SEQ
+                | VMInst::SET_MEMBER
+                | VMInst::LOR => i += 1,
+                VMInst::GET_GLOBAL => {
                     let id = insts[i + 1] as i32
                         + ((insts[i + 2] as i32) << 8)
                         + ((insts[i + 3] as i32) << 16)
@@ -208,7 +237,7 @@ impl VMCodeGen {
                     {
                         match val {
                             Value::NeedThis(callee) => {
-                                insts[i] = PUSH_CONST;
+                                insts[i] = VMInst::PUSH_CONST;
                                 let id = self.bytecode_gen.const_table.value.len();
                                 self.bytecode_gen
                                     .const_table
@@ -218,7 +247,7 @@ impl VMCodeGen {
                                     .replace_int32(id as i32, &mut insts[i + 1..i + 5]);
                             }
                             _ => {
-                                insts[i] = PUSH_CONST;
+                                insts[i] = VMInst::PUSH_CONST;
                                 let id = self.bytecode_gen.const_table.value.len();
                                 self.bytecode_gen.const_table.value.push(val.clone());
                                 self.bytecode_gen
@@ -348,7 +377,7 @@ impl VMCodeGen {
         self.run(body, &mut func_insts);
 
         match func_insts.last() {
-            Some(&RETURN) => {}
+            Some(&VMInst::RETURN) => {}
             _ => {
                 self.bytecode_gen
                     .gen_push_const(Value::Undefined, &mut func_insts);
@@ -407,8 +436,8 @@ impl VMCodeGen {
     pub fn run_new_expr(&mut self, expr: &Node, insts: &mut ByteCode) {
         self.run(expr, insts);
         let len = insts.len();
-        if insts[len - 1 - 4] == CALL {
-            insts[len - 1 - 4] = CONSTRUCT;
+        if insts[len - 1 - 4] == VMInst::CALL {
+            insts[len - 1 - 4] = VMInst::CONSTRUCT;
         } else {
             unreachable!()
         }
