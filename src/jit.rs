@@ -798,8 +798,16 @@ impl TracingJit {
         is_func_jit: bool,
         env: &mut HashMap<(usize, bool), LLVMValueRef>,
     ) -> Result<(), ()> {
-        let func = self.cur_func.unwrap();
-        let mut stack: Vec<(LLVMValueRef, Option<vm::Value>)> = vec![];
+        enum LabelKind {
+            NotPositioned(LLVMBasicBlockRef),
+            Positioned(LLVMBasicBlockRef),
+        }
+
+        fn label_retrieve(lk: &LabelKind) -> LLVMBasicBlockRef {
+            match lk {
+                &LabelKind::NotPositioned(x) | &LabelKind::Positioned(x) => x,
+            }
+        }
 
         unsafe fn infer_ty(
             llvm_val: LLVMValueRef,
@@ -819,15 +827,8 @@ impl TracingJit {
             }
         }
 
-        enum LabelKind {
-            NotPositioned(LLVMBasicBlockRef),
-            Positioned(LLVMBasicBlockRef),
-        }
-        fn label_retrieve(lk: &LabelKind) -> LLVMBasicBlockRef {
-            match lk {
-                &LabelKind::NotPositioned(x) | &LabelKind::Positioned(x) => x,
-            }
-        }
+        let func = self.cur_func.unwrap();
+        let mut stack: Vec<(LLVMValueRef, Option<vm::Value>)> = vec![];
 
         let mut labels: HashMap<usize, LabelKind> = HashMap::new();
 
@@ -926,8 +927,8 @@ impl TracingJit {
                         1,
                     );
                     lor.pop();
-                    if let Some(ref mut x) = lor.last_mut() {
-                        **x = LLVMGetInsertBlock(self.builder);
+                    if let Some(x) = lor.last_mut() {
+                        *x = LLVMGetInsertBlock(self.builder);
                     }
                     stack.push((phi, None));
                 }
@@ -953,8 +954,8 @@ impl TracingJit {
                         1,
                     );
                     land.pop();
-                    if let Some(ref mut x) = lcom.last_mut() {
-                        **x = LLVMGetInsertBlock(self.builder);
+                    if let Some(x) = lcom.last_mut() {
+                        *x = LLVMGetInsertBlock(self.builder);
                     }
                     stack.push((phi, None));
                 }
