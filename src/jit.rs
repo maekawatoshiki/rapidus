@@ -628,8 +628,8 @@ impl TracingJit {
         let func_ty = LLVMFunctionType(
             func_ret_ty,
             vec![
-                LLVMPointerType(LLVMDoubleTypeInContext(self.context), 0),
-                LLVMPointerType(LLVMDoubleTypeInContext(self.context), 0),
+                LLVMPointerType(LLVMPointerType(LLVMInt8TypeInContext(self.context), 0), 0),
+                LLVMPointerType(LLVMPointerType(LLVMInt8TypeInContext(self.context), 0), 0),
             ].as_mut_slice()
                 .as_mut_ptr(),
             2,
@@ -654,16 +654,25 @@ impl TracingJit {
         for i in 0..arg_vars.len() {
             env.insert(
                 (arg_vars[i], true),
-                LLVMBuildGEP(
+                LLVMBuildPointerCast(
                     self.builder,
-                    arg_0,
-                    vec![LLVMConstInt(
-                        LLVMInt32TypeInContext(self.context),
-                        i as u64,
-                        0,
-                    )].as_mut_slice()
-                        .as_mut_ptr(),
-                    1,
+                    LLVMBuildLoad(
+                        self.builder,
+                        LLVMBuildGEP(
+                            self.builder,
+                            arg_0,
+                            vec![LLVMConstInt(
+                                LLVMInt32TypeInContext(self.context),
+                                i as u64,
+                                0,
+                            )].as_mut_slice()
+                                .as_mut_ptr(),
+                            1,
+                            CString::new("").unwrap().as_ptr(),
+                        ),
+                        CString::new("").unwrap().as_ptr(),
+                    ),
+                    LLVMPointerType(LLVMDoubleTypeInContext(self.context), 0),
                     CString::new("").unwrap().as_ptr(),
                 ),
             );
@@ -673,16 +682,25 @@ impl TracingJit {
         for i in 0..local_vars.len() {
             env.insert(
                 (local_vars[i], false),
-                LLVMBuildGEP(
+                LLVMBuildPointerCast(
                     self.builder,
-                    arg_1,
-                    vec![LLVMConstInt(
-                        LLVMInt32TypeInContext(self.context),
-                        i as u64,
-                        0,
-                    )].as_mut_slice()
-                        .as_mut_ptr(),
-                    1,
+                    LLVMBuildLoad(
+                        self.builder,
+                        LLVMBuildGEP(
+                            self.builder,
+                            arg_1,
+                            vec![LLVMConstInt(
+                                LLVMInt32TypeInContext(self.context),
+                                i as u64,
+                                0,
+                            )].as_mut_slice()
+                                .as_mut_ptr(),
+                            1,
+                            CString::new("").unwrap().as_ptr(),
+                        ),
+                        CString::new("").unwrap().as_ptr(),
+                    ),
+                    LLVMPointerType(LLVMDoubleTypeInContext(self.context), 0),
                     CString::new("").unwrap().as_ptr(),
                 ),
             );
@@ -1537,29 +1555,42 @@ pub unsafe fn run_loop_llvm_func(
 
     for id in &arg_vars {
         args_of_arg_vars.push(match vm_state.stack[vm_state.bp + id].clone() {
-            vm::Value::Number(f) => f,
+            vm::Value::Number(f) => {
+                let p = libc::calloc(1, ::std::mem::size_of::<f64>()) as *mut f64;
+                *p = f;
+                p as *mut libc::c_void
+            }
             _ => return None,
         });
     }
     for id in &local_vars {
         args_of_local_vars.push(match vm_state.stack[vm_state.lp + id].clone() {
-            vm::Value::Number(f) => f,
+            vm::Value::Number(f) => {
+                let p = libc::calloc(1, ::std::mem::size_of::<f64>()) as *mut f64;
+                *p = f;
+                p as *mut libc::c_void
+            }
             _ => return None,
         });
     }
 
     // println!("before: farg[{:?}] local[{:?}]", args_of_arg_vars, args_of_local_vars);
-    let pc = f(
+    let pc = ::std::mem::transmute::<
+        fn(*mut f64, *mut f64) -> i32,
+        fn(*mut *mut libc::c_void, *mut *mut libc::c_void) -> i32,
+    >(f)(
         args_of_arg_vars.as_mut_slice().as_mut_ptr(),
         args_of_local_vars.as_mut_slice().as_mut_ptr(),
     );
     // println!("after:  farg[{:?}] local[{:?}]", args_of_arg_vars, args_of_local_vars);
 
     for (i, id) in arg_vars.iter().enumerate() {
-        vm_state.stack[vm_state.bp + id] = vm::Value::Number(args_of_arg_vars[i]);
+        vm_state.stack[vm_state.bp + id] = vm::Value::Number(*(args_of_arg_vars[i] as *mut f64));
+        libc::free(args_of_arg_vars[i]);
     }
     for (i, id) in local_vars.iter().enumerate() {
-        vm_state.stack[vm_state.lp + id] = vm::Value::Number(args_of_local_vars[i]);
+        vm_state.stack[vm_state.lp + id] = vm::Value::Number(*(args_of_local_vars[i] as *mut f64));
+        libc::free(args_of_local_vars[i]);
     }
 
     Some(pc as isize)
