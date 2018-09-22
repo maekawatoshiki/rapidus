@@ -16,7 +16,7 @@ use std::ptr;
 
 const MAX_FUNCTION_PARAMS: usize = 3;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ValueType {
     Number,
     String,
@@ -34,6 +34,16 @@ impl CastIntoLLVMType for ValueType {
             &ValueType::String => LLVMPointerType(LLVMInt8TypeInContext(ctx), 0),
             &ValueType::Bool => LLVMInt1TypeInContext(ctx),
         }
+    }
+}
+
+fn get_value_type(val: &vm::Value) -> ValueType {
+    match val {
+        &vm::Value::Bool(_) => ValueType::Bool,
+        &vm::Value::Number(_) => ValueType::Number,
+        &vm::Value::String(_) => ValueType::String,
+        // TODO: Support more types.
+        _ => ValueType::Bool,
     }
 }
 
@@ -81,8 +91,8 @@ pub struct JITInfo {
 pub struct LoopInfo {
     func_addr: Option<fn(*mut f64, *mut f64) -> i32>,
     llvm_func: Option<LLVMValueRef>,
-    arg_vars_id: Vec<usize>, // the ids of argument variables used in this loop
-    local_vars_id: Vec<usize>, // the ids of local variables used in this loop
+    arg_vars_id: Vec<(usize, ValueType)>, // the (ids, types)of argument variables used in this loop
+    local_vars_id: Vec<(usize, ValueType)>, // the (ids, types) of local variables used in this loop
     jit_info: JITInfo,
 }
 
@@ -530,7 +540,7 @@ impl TracingJit {
         // If gen_code fails, it means the function can't be JIT-compiled and should never be
         // compiled. (cannot_jit = true)
         let (llvm_func, arg_vars, local_vars) =
-            match self.gen_code_for_loop(name.clone(), insts, const_table, bgn, end) {
+            match self.gen_code_for_loop(name.clone(), vm_state, insts, const_table, bgn, end) {
                 Ok(info) => info,
                 Err(()) => {
                     self.loop_info.get_mut(&bgn).unwrap().jit_info.cannot_jit = true;
@@ -617,12 +627,20 @@ impl TracingJit {
     unsafe fn gen_code_for_loop(
         &mut self,
         name: String,
+        vm_state: &mut vm::VMState,
         insts: &Vec<u8>,
         const_table: &vm::ConstantTable,
         bgn: usize,
         end: usize,
-    ) -> Result<(LLVMValueRef, Vec<usize>, Vec<usize>), ()> {
-        let (arg_vars, local_vars) = self.collect_arg_and_local_vars(insts, bgn, end)?;
+    ) -> Result<
+        (
+            LLVMValueRef,
+            Vec<(usize, ValueType)>,
+            Vec<(usize, ValueType)>,
+        ),
+        (),
+    > {
+        let (arg_vars, local_vars) = self.collect_arg_and_local_vars(vm_state, insts, bgn, end)?;
 
         let func_ret_ty = LLVMInt32TypeInContext(self.context);
         let func_ty = LLVMFunctionType(
@@ -653,7 +671,7 @@ impl TracingJit {
         let arg_0 = LLVMGetParam(func, 0);
         for i in 0..arg_vars.len() {
             env.insert(
-                (arg_vars[i], true),
+                (arg_vars[i].0, true),
                 LLVMBuildPointerCast(
                     self.builder,
                     LLVMBuildLoad(
@@ -672,7 +690,7 @@ impl TracingJit {
                         ),
                         CString::new("").unwrap().as_ptr(),
                     ),
-                    LLVMPointerType(LLVMDoubleTypeInContext(self.context), 0),
+                    LLVMPointerType(arg_vars[i].1.to_llvmty(self.context), 0),
                     CString::new("").unwrap().as_ptr(),
                 ),
             );
@@ -681,7 +699,7 @@ impl TracingJit {
         let arg_1 = LLVMGetParam(func, 1);
         for i in 0..local_vars.len() {
             env.insert(
-                (local_vars[i], false),
+                (local_vars[i].0, false),
                 LLVMBuildPointerCast(
                     self.builder,
                     LLVMBuildLoad(
@@ -700,7 +718,7 @@ impl TracingJit {
                         ),
                         CString::new("").unwrap().as_ptr(),
                     ),
-                    LLVMPointerType(LLVMDoubleTypeInContext(self.context), 0),
+                    LLVMPointerType(local_vars[i].1.to_llvmty(self.context), 0),
                     CString::new("").unwrap().as_ptr(),
                 ),
             );
@@ -776,10 +794,11 @@ impl TracingJit {
 
     unsafe fn collect_arg_and_local_vars(
         &mut self,
+        vm_state: &mut vm::VMState,
         insts: &Vec<u8>,
         mut pc: usize,
         end: usize,
-    ) -> Result<(Vec<usize>, Vec<usize>), ()> {
+    ) -> Result<(Vec<(usize, ValueType)>, Vec<(usize, ValueType)>), ()> {
         let mut arg_vars = HashSet::new();
         let mut local_vars = HashSet::new();
 
@@ -789,20 +808,22 @@ impl TracingJit {
                 VMInst::SET_ARG_LOCAL | VMInst::GET_ARG_LOCAL => {
                     pc += 1;
                     get_int32!(insts, pc, id, usize);
-                    arg_vars.insert(id);
+                    let ty = get_value_type(&vm_state.stack[vm_state.bp + id]);
+                    arg_vars.insert((id, ty));
                 }
                 VMInst::GET_LOCAL | VMInst::SET_LOCAL => {
                     pc += 1;
                     get_int32!(insts, pc, id, usize);
-                    local_vars.insert(id);
+                    let ty = get_value_type(&vm_state.stack[vm_state.lp + id]);
+                    local_vars.insert((id, ty));
                 }
                 _ => pc += inst_size,
             }
         }
 
         Ok((
-            arg_vars.iter().map(|x| *x).collect(),
-            local_vars.iter().map(|x| *x).collect(),
+            arg_vars.iter().map(|x| x.clone()).collect(),
+            local_vars.iter().map(|x| x.clone()).collect(),
         ))
     }
 
@@ -1547,27 +1568,37 @@ impl TracingJit {
 pub unsafe fn run_loop_llvm_func(
     f: fn(*mut f64, *mut f64) -> i32,
     vm_state: &mut vm::VMState,
-    arg_vars: Vec<usize>,
-    local_vars: Vec<usize>,
+    arg_vars: Vec<(usize, ValueType)>,
+    local_vars: Vec<(usize, ValueType)>,
 ) -> Option<isize> {
     let mut args_of_arg_vars = vec![];
     let mut args_of_local_vars = vec![];
 
-    for id in &arg_vars {
+    for (id, _) in &arg_vars {
         args_of_arg_vars.push(match vm_state.stack[vm_state.bp + id].clone() {
             vm::Value::Number(f) => {
                 let p = libc::calloc(1, ::std::mem::size_of::<f64>()) as *mut f64;
                 *p = f;
                 p as *mut libc::c_void
             }
+            vm::Value::Bool(b) => {
+                let p = libc::calloc(1, ::std::mem::size_of::<bool>()) as *mut bool;
+                *p = b;
+                p as *mut libc::c_void
+            }
             _ => return None,
         });
     }
-    for id in &local_vars {
+    for (id, _) in &local_vars {
         args_of_local_vars.push(match vm_state.stack[vm_state.lp + id].clone() {
             vm::Value::Number(f) => {
                 let p = libc::calloc(1, ::std::mem::size_of::<f64>()) as *mut f64;
                 *p = f;
+                p as *mut libc::c_void
+            }
+            vm::Value::Bool(b) => {
+                let p = libc::calloc(1, ::std::mem::size_of::<bool>()) as *mut bool;
+                *p = b;
                 p as *mut libc::c_void
             }
             _ => return None,
@@ -1584,12 +1615,20 @@ pub unsafe fn run_loop_llvm_func(
     );
     // println!("after:  farg[{:?}] local[{:?}]", args_of_arg_vars, args_of_local_vars);
 
-    for (i, id) in arg_vars.iter().enumerate() {
-        vm_state.stack[vm_state.bp + id] = vm::Value::Number(*(args_of_arg_vars[i] as *mut f64));
+    for (i, (id, ty)) in arg_vars.iter().enumerate() {
+        vm_state.stack[vm_state.bp + id] = match ty {
+            ValueType::Number => vm::Value::Number(*(args_of_arg_vars[i] as *mut f64)),
+            ValueType::Bool => vm::Value::Bool(*(args_of_arg_vars[i] as *mut bool)),
+            _ => unimplemented!(),
+        };
         libc::free(args_of_arg_vars[i]);
     }
-    for (i, id) in local_vars.iter().enumerate() {
-        vm_state.stack[vm_state.lp + id] = vm::Value::Number(*(args_of_local_vars[i] as *mut f64));
+    for (i, (id, ty)) in local_vars.iter().enumerate() {
+        vm_state.stack[vm_state.lp + id] = match ty {
+            ValueType::Number => vm::Value::Number(*(args_of_local_vars[i] as *mut f64)),
+            ValueType::Bool => vm::Value::Bool(*(args_of_local_vars[i] as *mut bool)),
+            _ => unimplemented!(),
+        };
         libc::free(args_of_local_vars[i]);
     }
 
