@@ -37,13 +37,13 @@ impl CastIntoLLVMType for ValueType {
     }
 }
 
-fn get_value_type(val: &vm::Value) -> ValueType {
+fn get_value_type(val: &vm::Value) -> Option<ValueType> {
     match val {
-        &vm::Value::Bool(_) => ValueType::Bool,
-        &vm::Value::Number(_) => ValueType::Number,
-        &vm::Value::String(_) => ValueType::String,
+        &vm::Value::Bool(_) => Some(ValueType::Bool),
+        &vm::Value::Number(_) => Some(ValueType::Number),
+        &vm::Value::String(_) => Some(ValueType::String),
         // TODO: Support more types.
-        _ => ValueType::Bool,
+        _ => None,
     }
 }
 
@@ -808,13 +808,13 @@ impl TracingJit {
                 VMInst::SET_ARG_LOCAL | VMInst::GET_ARG_LOCAL => {
                     pc += 1;
                     get_int32!(insts, pc, id, usize);
-                    let ty = get_value_type(&vm_state.stack[vm_state.bp + id]);
+                    let ty = try_opt!(get_value_type(&vm_state.stack[vm_state.bp + id]));
                     arg_vars.insert((id, ty));
                 }
                 VMInst::GET_LOCAL | VMInst::SET_LOCAL => {
                     pc += 1;
                     get_int32!(insts, pc, id, usize);
-                    let ty = get_value_type(&vm_state.stack[vm_state.lp + id]);
+                    let ty = try_opt!(get_value_type(&vm_state.stack[vm_state.lp + id]));
                     local_vars.insert((id, ty));
                 }
                 _ => pc += inst_size,
