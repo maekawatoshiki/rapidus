@@ -1,10 +1,6 @@
 use lexer;
 use lexer::ErrorMsgKind;
-use node::{
-    BinOp, FormalParameter, FormalParameters, FunctionDeclNode, Node, NodeBase, PropertyDefinition,
-    UnaryOp,
-};
-use std::collections::HashSet;
+use node::{BinOp, FormalParameter, FormalParameters, Node, NodeBase, PropertyDefinition, UnaryOp};
 use token::{Keyword, Kind, Symbol};
 
 use ansi_term::Colour;
@@ -892,13 +888,7 @@ impl Parser {
         let body = self.read_statement_list(true)?;
 
         Ok(Node::new(
-            NodeBase::FunctionDecl(FunctionDeclNode {
-                name: name,
-                use_this: false,
-                fv: HashSet::new(),
-                params: params,
-                body: Box::new(body),
-            }),
+            NodeBase::FunctionDecl(name, params, Box::new(body)),
             pos,
         ))
     }

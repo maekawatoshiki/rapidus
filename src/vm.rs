@@ -75,7 +75,7 @@ impl CallObject {
 
     pub fn new_global() -> CallObjectRef {
         let vals = Rc::new(RefCell::new(HashMap::new()));
-        let mut callobj = Rc::new(RefCell::new(CallObject {
+        let callobj = Rc::new(RefCell::new(CallObject {
             vals: vals.clone(),
             param_names: vec![],
             arg_rest_vals: vec![],
@@ -425,8 +425,7 @@ macro_rules! get_int32 {
 fn end(_self: &mut VM) {}
 
 fn create_context(self_: &mut VM) {
-    self_.state.pc += 1; // create_context
-    get_int32!(self_, num_local_var, usize);
+    self_.state.pc += 5; // create_context
 }
 
 fn construct(self_: &mut VM) {
@@ -704,7 +703,7 @@ fn get_member(self_: &mut VM) {
                 val => self_.state.stack.push(val),
             }
         }
-        Value::Function(pos, map, _) | Value::NeedThis(box Value::Function(pos, map, _)) => {
+        Value::Function(_, map, _) | Value::NeedThis(box Value::Function(_, map, _)) => {
             match obj_find_val(&map.borrow().clone(), member.to_string().as_str()) {
                 Value::Function(pos, map2, mut callobj) => {
                     self_.state.stack.push(Value::Function(pos, map2, {
@@ -838,7 +837,7 @@ fn set_member(self_: &mut VM) {
 
 fn get_global(self_: &mut VM) {
     self_.state.pc += 1; // get_global
-    get_int32!(self_, n, usize);
+    // get_int32!(self_, n, usize);
     // let val = (*(*self_.global_objects)
     //     .borrow()
     //     .get(self_.const_table.string[n].as_str())
@@ -849,7 +848,7 @@ fn get_global(self_: &mut VM) {
 
 fn set_global(self_: &mut VM) {
     self_.state.pc += 1; // set_global
-    get_int32!(self_, n, usize);
+    // get_int32!(self_, n, usize);
     // *(*self_.global_objects)
     //     .borrow_mut()
     //     .entry(self_.const_table.string[n].clone())
@@ -858,30 +857,30 @@ fn set_global(self_: &mut VM) {
 
 fn get_local(self_: &mut VM) {
     self_.state.pc += 1; // get_local
-    get_int32!(self_, n, usize);
-    let val = self_.state.stack[self_.state.lp + n].clone();
-    self_.state.stack.push(val);
+    // get_int32!(self_, n, usize);
+    // let val = self_.state.stack[self_.state.lp + n].clone();
+    // self_.state.stack.push(val);
 }
 
 fn set_local(self_: &mut VM) {
     self_.state.pc += 1; // set_local
-    get_int32!(self_, n, usize);
-    let val = self_.state.stack.pop().unwrap();
-    self_.state.stack[self_.state.lp + n] = val;
+    // get_int32!(self_, n, usize);
+    // let val = self_.state.stack.pop().unwrap();
+    // self_.state.stack[self_.state.lp + n] = val;
 }
 
 fn get_arg_local(self_: &mut VM) {
     self_.state.pc += 1; // get_arg_local
-    get_int32!(self_, n, usize);
-    let val = self_.state.stack[self_.state.bp + n].clone();
-    self_.state.stack.push(val);
+    // get_int32!(self_, n, usize);
+    // let val = self_.state.stack[self_.state.bp + n].clone();
+    // self_.state.stack.push(val);
 }
 
 fn set_arg_local(self_: &mut VM) {
     self_.state.pc += 1; // set_arg_local
-    get_int32!(self_, n, usize);
-    let val = self_.state.stack.pop().unwrap();
-    self_.state.stack[self_.state.bp + n] = val;
+    // get_int32!(self_, n, usize);
+    // let val = self_.state.stack.pop().unwrap();
+    // self_.state.stack[self_.state.bp + n] = val;
 }
 
 fn jmp(self_: &mut VM) {
@@ -907,7 +906,6 @@ fn jmp_if_false(self_: &mut VM) {
 fn call(self_: &mut VM) {
     self_.state.pc += 1; // Call
     get_int32!(self_, argc, usize);
-    let mut argc = argc;
 
     let mut this = None;
 
@@ -1005,7 +1003,7 @@ fn call(self_: &mut VM) {
 fn return_(self_: &mut VM) {
     let len = self_.state.stack.len();
     // println!("s: {:?}", self_.state.stack);
-    if let Some((bp, lp, sp, return_pc)) = self_.state.history.pop() {
+    if let Some((_, _, sp, return_pc)) = self_.state.history.pop() {
         self_.state.stack.drain(sp..len - 1);
         self_.state.pc = return_pc;
     } else {

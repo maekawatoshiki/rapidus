@@ -1,11 +1,6 @@
 use builtin;
 use bytecode_gen::{ByteCode, ByteCodeGen, VMInst};
-use id::IdGen;
-use node::{
-    BinOp, FormalParameter, FormalParameters, FunctionDeclNode, Node, NodeBase, PropertyDefinition,
-    UnaryOp,
-};
-use std::collections::HashSet;
+use node::{BinOp, FormalParameter, FormalParameters, Node, NodeBase, PropertyDefinition, UnaryOp};
 use vm::{new_value_function, CallObject, CallObjectRef, Value};
 
 use std::cell::RefCell;
@@ -78,10 +73,7 @@ impl Labels {
 #[derive(Clone, Debug)]
 pub struct VMCodeGen {
     pub global_varmap: CallObjectRef,
-    pub local_varmap: Vec<HashMap<String, (bool, usize)>>, // hashmap<name, (is_arg_var, id)>
     pub functions: HashMap<String, FunctionInfo>,
-    pub local_var_stack_addr: IdGen,
-    pub arguemnt_var_addr: IdGen,
     pub bytecode_gen: ByteCodeGen,
     pub labels: Vec<Labels>,
 }
@@ -90,10 +82,7 @@ impl VMCodeGen {
     pub fn new() -> VMCodeGen {
         VMCodeGen {
             global_varmap: CallObject::new_global(),
-            local_varmap: vec![HashMap::new()],
             functions: HashMap::new(),
-            local_var_stack_addr: IdGen::new(),
-            arguemnt_var_addr: IdGen::new(),
             bytecode_gen: ByteCodeGen::new(),
             labels: vec![Labels::new()],
         }
@@ -107,10 +96,8 @@ impl VMCodeGen {
 
         self.run(node, insts);
 
-        self.bytecode_gen.replace_int32(
-            self.local_var_stack_addr.get_cur_id() as i32,
-            &mut insts[pos + 1..pos + 5],
-        );
+        self.bytecode_gen
+            .replace_int32(0, &mut insts[pos + 1..pos + 5]);
 
         self.bytecode_gen.gen_end(insts);
 
@@ -231,13 +218,9 @@ impl VMCodeGen {
     fn run(&mut self, node: &Node, insts: &mut ByteCode) {
         match &node.base {
             &NodeBase::StatementList(ref node_list) => self.run_statement_list(node_list, insts),
-            &NodeBase::FunctionDecl(FunctionDeclNode {
-                ref name,
-                ref use_this,
-                ref fv,
-                ref params,
-                ref body,
-            }) => self.run_function_decl(name, *use_this, fv, params, &*body),
+            &NodeBase::FunctionDecl(ref name, ref params, ref body) => {
+                self.run_function_decl(name, params, &*body)
+            }
             &NodeBase::VarDecl(ref name, ref init) => {
                 self.run_var_decl(name, init, insts);
             }
@@ -296,38 +279,12 @@ impl VMCodeGen {
 }
 
 impl VMCodeGen {
-    pub fn run_function_decl(
-        &mut self,
-        name: &String,
-        use_this: bool,
-        fv: &HashSet<String>,
-        params: &FormalParameters,
-        body: &Node,
-    ) {
-        assert_eq!(fv.len(), 0);
-
-        let name = name.clone();
-
-        self.local_varmap.push(HashMap::new());
-        self.local_var_stack_addr.save();
-        self.arguemnt_var_addr.save();
-
+    pub fn run_function_decl(&mut self, name: &String, params: &FormalParameters, body: &Node) {
         let mut func_insts = vec![];
 
         self.bytecode_gen.gen_create_context(0, &mut func_insts);
 
-        for param in params {
-            // TODO: Implement Rest Parameter ASAP
-            // if param.is_rest_param {
-            //     let id = self.run_var_decl(&param.name, &None, &mut func_insts);
-            //     self.bytecode_gen.gen_assign_func_rest_param(
-            //         if use_this { 1 } else { 0 } + params.len() - /*rest param itself->*/ 1,
-            //         id,
-            //         &mut func_insts,
-            //     );
-            // } else {
-            // }
-        }
+        // TODO: Implement Rest Parameter ASAP
 
         self.run(body, &mut func_insts);
 
@@ -340,14 +297,7 @@ impl VMCodeGen {
             }
         }
 
-        self.bytecode_gen.replace_int32(
-            self.local_var_stack_addr.get_cur_id() as i32,
-            &mut func_insts[1..5],
-        );
-
-        self.local_var_stack_addr.restore();
-        self.arguemnt_var_addr.restore();
-        self.local_varmap.pop();
+        self.bytecode_gen.replace_int32(0, &mut func_insts[1..5]);
 
         self.functions.insert(
             name.clone(),

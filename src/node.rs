@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 // TODO: Support all features: https://tc39.github.io/ecma262/#prod-FormalParameter
 #[derive(Clone, Debug, PartialEq)]
 pub struct FormalParameter {
@@ -28,18 +26,9 @@ pub enum PropertyDefinition {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct FunctionDeclNode {
-    pub name: String,
-    pub fv: HashSet<String>,
-    pub use_this: bool,
-    pub params: FormalParameters,
-    pub body: Box<Node>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
 pub enum NodeBase {
     StatementList(Vec<Node>),
-    FunctionDecl(FunctionDeclNode),
+    FunctionDecl(String, FormalParameters, Box<Node>), // name, params, body
     FunctionExpr(Option<String>, FormalParameters, Box<Node>), // Name, params, body
     VarDecl(String, Option<Box<Node>>),
     Member(Box<Node>, String),

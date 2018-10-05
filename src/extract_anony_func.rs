@@ -1,7 +1,6 @@
-use node::{FunctionDeclNode, Node, NodeBase, PropertyDefinition};
+use node::{Node, NodeBase, PropertyDefinition};
 
 use rand::random;
-use std::collections::HashSet;
 
 #[derive(Debug, Clone)]
 pub struct AnonymousFunctionExtractor {
@@ -39,13 +38,9 @@ impl AnonymousFunctionExtractor {
                     self.run(node)
                 }
             }
-            NodeBase::FunctionDecl(_) => {
-                if let NodeBase::FunctionDecl(FunctionDeclNode {
-                    ref mut body,
-                    ref name,
-                    ref params,
-                    ..
-                }) = node.clone().base
+            NodeBase::FunctionDecl(_, _, _) => {
+                if let NodeBase::FunctionDecl(ref name, ref params, ref mut body) =
+                    node.clone().base
                 {
                     // TODO: Need refinement
                     let mut body =
@@ -65,13 +60,11 @@ impl AnonymousFunctionExtractor {
 
                     if self.nest > 0 {
                         self.pending_function.push(Node::new(
-                            NodeBase::FunctionDecl(FunctionDeclNode {
-                                name: name_mangled.clone(),
-                                use_this: false,
-                                fv: HashSet::new(),
-                                params: params.clone(),
-                                body: Box::new(Node::new(NodeBase::StatementList(body.clone()), 0)),
-                            }),
+                            NodeBase::FunctionDecl(
+                                name_mangled.clone(),
+                                params.clone(),
+                                Box::new(Node::new(NodeBase::StatementList(body.clone()), 0)),
+                            ),
                             0,
                         ));
 
@@ -83,11 +76,7 @@ impl AnonymousFunctionExtractor {
                             ))),
                         );
                     } else {
-                        if let NodeBase::FunctionDecl(FunctionDeclNode {
-                            body: ref mut body_,
-                            ..
-                        }) = node.base
-                        {
+                        if let NodeBase::FunctionDecl(_, _, ref mut body_) = node.base {
                             *body_ = Box::new(Node::new(NodeBase::StatementList(body.clone()), 0));
                         }
                     }
@@ -114,13 +103,11 @@ impl AnonymousFunctionExtractor {
                     }
 
                     self.pending_function.push(Node::new(
-                        NodeBase::FunctionDecl(FunctionDeclNode {
-                            name: name_.clone(),
-                            use_this: false,
-                            fv: HashSet::new(),
-                            params: params,
-                            body: Box::new(Node::new(NodeBase::StatementList(body), 0)),
-                        }),
+                        NodeBase::FunctionDecl(
+                            name_.clone(),
+                            params,
+                            Box::new(Node::new(NodeBase::StatementList(body), 0)),
+                        ),
                         0,
                     ));
                     *node = Node::new(NodeBase::SetCurCallObj(name_), 0);
