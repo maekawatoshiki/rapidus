@@ -57,7 +57,7 @@ pub type CallObjectRef = Rc<RefCell<CallObject>>;
 pub struct CallObject {
     pub vals: Rc<RefCell<HashMap<String, Value>>>,
     pub param_names: Vec<String>,
-    // TODO: Add 'arguments' object
+    pub arg_rest_vals: Vec<Value>,
     pub this: Option<Rc<RefCell<HashMap<String, Value>>>>,
     pub parent: Option<CallObjectRef>,
 }
@@ -67,6 +67,7 @@ impl CallObject {
         CallObject {
             vals: Rc::new(RefCell::new(HashMap::new())),
             param_names: vec![],
+            arg_rest_vals: vec![],
             this: this,
             parent: None,
         }
@@ -77,6 +78,7 @@ impl CallObject {
         let mut callobj = Rc::new(RefCell::new(CallObject {
             vals: vals.clone(),
             param_names: vec![],
+            arg_rest_vals: vec![],
             this: None,
             parent: None,
         }));
@@ -106,8 +108,39 @@ impl CallObject {
         }
         match self.parent {
             Some(ref parent) => return parent.borrow().get_value(name),
-            None => panic!(),
+            None => panic!("variable not found '{}'", name),
         }
+    }
+
+    pub fn get_arguments_nth_value(&self, n: usize) -> Value {
+        if n < self.param_names.len() {
+            let param_name = &self.param_names[n];
+            return self.get_value(param_name);
+        }
+
+        let n = n - self.param_names.len();
+        if n >= self.arg_rest_vals.len() {
+            return Value::Undefined;
+        }
+        self.arg_rest_vals[n].clone()
+    }
+
+    pub fn set_arguments_nth_value(&mut self, n: usize, val: Value) {
+        if n < self.param_names.len() {
+            let param_name = self.param_names[n].clone();
+            self.set_value(param_name, val);
+            return;
+        }
+
+        let n = n - self.param_names.len();
+        if n >= self.arg_rest_vals.len() {
+            return;
+        }
+        self.arg_rest_vals[n] = val;
+    }
+
+    pub fn get_arguments_length(&self) -> usize {
+        self.param_names.len() + self.arg_rest_vals.len()
     }
 }
 
@@ -405,10 +438,7 @@ fn construct(self_: &mut VM) {
     loop {
         match callee {
             Value::Function(dst, obj, mut callobj) => {
-                self_.state.history.push((0, 0, 0, self_.state.pc));
-
                 // insert new 'this'
-                let pos = self_.state.stack.len() - argc;
                 let new_this = {
                     let mut map = HashMap::new();
                     map.insert(
@@ -433,6 +463,10 @@ fn construct(self_: &mut VM) {
 
                 callobj.this = Some(new_this.clone());
                 self_.state.scope.push(Rc::new(RefCell::new(callobj)));
+                self_
+                    .state
+                    .history
+                    .push((0, 0, self_.state.stack.len(), self_.state.pc));
                 self_.state.pc = dst as isize;
 
                 self_.do_run();
@@ -528,8 +562,18 @@ fn push_const(self_: &mut VM) {
 
 fn push_this(self_: &mut VM) {
     self_.state.pc += 1; // push_this
-    let val = self_.state.stack[self_.state.bp].clone();
-    self_.state.stack.push(val);
+    let this = Value::Object(
+        self_
+            .state
+            .scope
+            .last()
+            .unwrap()
+            .borrow()
+            .this
+            .clone()
+            .unwrap(),
+    );
+    self_.state.stack.push(this);
 }
 
 fn push_arguments(self_: &mut VM) {
@@ -699,17 +743,24 @@ fn get_member(self_: &mut VM) {
             match member {
                 // Index
                 Value::Number(n) if n - n.floor() == 0.0 => {
-                    let idx = self_.state.bp + n as usize;
-                    if idx < self_.state.lp {
-                        let val = self_.state.stack[idx].clone();
-                        self_.state.stack.push(val);
-                    }
+                    let val = self_
+                        .state
+                        .scope
+                        .last()
+                        .unwrap()
+                        .borrow()
+                        .get_arguments_nth_value(n as usize);
+                    self_.state.stack.push(val);
                 }
                 Value::String(ref s) if s.to_str().unwrap() == "length" => {
-                    self_
+                    let length = self_
                         .state
-                        .stack
-                        .push(Value::Number(self_.state.lp as f64 - self_.state.bp as f64));
+                        .scope
+                        .last()
+                        .unwrap()
+                        .borrow()
+                        .get_arguments_length();
+                    self_.state.stack.push(Value::Number(length as f64));
                 }
                 _ => self_.state.stack.push(Value::Undefined),
             }
@@ -769,11 +820,15 @@ fn set_member(self_: &mut VM) {
             match member {
                 // Index
                 Value::Number(n) if n - n.floor() == 0.0 => {
-                    let idx = self_.state.bp + n as usize;
-                    if idx < self_.state.lp {
-                        self_.state.stack[idx] = val;
-                    }
+                    self_
+                        .state
+                        .scope
+                        .last()
+                        .unwrap()
+                        .borrow_mut()
+                        .set_arguments_nth_value(n as usize, val);
                 }
+                // TODO: 'length'
                 _ => {}
             }
         }
@@ -899,8 +954,12 @@ fn call(self_: &mut VM) {
                     args.push(self_.state.stack.pop().unwrap());
                 }
                 for (i, arg) in args.iter().rev().enumerate() {
-                    let param_name = callobj.param_names[i].clone();
-                    callobj.set_value(param_name, arg.clone());
+                    if i < callobj.param_names.len() {
+                        let param_name = callobj.param_names[i].clone();
+                        callobj.set_value(param_name, arg.clone());
+                    } else {
+                        callobj.arg_rest_vals.push(arg.clone());
+                    }
                 }
 
                 self_.state.scope.push(Rc::new(RefCell::new(callobj)));
