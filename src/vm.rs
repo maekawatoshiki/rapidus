@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{hash_map::Entry, HashMap};
 use std::ffi::CString;
 use std::rc::Rc;
 
@@ -8,7 +8,7 @@ use libc;
 
 use builtin;
 use bytecode_gen::{ByteCode, VMInst};
-use jit::TracingJit;
+// use jit::TracingJit;
 use node::BinOp;
 
 pub type RawStringPtr = *mut libc::c_char;
@@ -51,13 +51,73 @@ impl ArrayValue {
     }
 }
 
+pub type CallObjectRef = Rc<RefCell<CallObject>>;
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct CallObject {
+    pub vals: Rc<RefCell<HashMap<String, Value>>>,
+    pub param_names: Vec<String>,
+    // TODO: Add 'arguments' object
+    pub this: Option<Rc<RefCell<HashMap<String, Value>>>>,
+    pub parent: Option<CallObjectRef>,
+}
+
+impl CallObject {
+    pub fn new(this: Option<Rc<RefCell<HashMap<String, Value>>>>) -> CallObject {
+        CallObject {
+            vals: Rc::new(RefCell::new(HashMap::new())),
+            param_names: vec![],
+            this: this,
+            parent: None,
+        }
+    }
+
+    pub fn new_global() -> CallObjectRef {
+        let vals = Rc::new(RefCell::new(HashMap::new()));
+        let mut callobj = Rc::new(RefCell::new(CallObject {
+            vals: vals.clone(),
+            param_names: vec![],
+            this: None,
+            parent: None,
+        }));
+        callobj.borrow_mut().this = Some(vals);
+        callobj
+    }
+
+    pub fn set_value(&mut self, name: String, val: Value) {
+        self.vals.borrow_mut().insert(name, val);
+    }
+
+    pub fn set_value_if_exist(&mut self, name: String, val: Value) {
+        match self.vals.borrow_mut().entry(name.clone()) {
+            Entry::Occupied(ref mut v) => *v.get_mut() = val,
+            Entry::Vacant(v) => {
+                match self.parent {
+                    Some(ref parent) => return parent.borrow_mut().set_value_if_exist(name, val),
+                    None => v.insert(val),
+                };
+            }
+        }
+    }
+
+    pub fn get_value(&self, name: &String) -> Value {
+        if let Some(val) = self.vals.borrow().get(name) {
+            return val.clone();
+        }
+        match self.parent {
+            Some(ref parent) => return parent.borrow().get_value(name),
+            None => panic!(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     Undefined,
     Bool(bool),
     Number(f64),
     String(CString),
-    Function(usize, Rc<RefCell<HashMap<String, Value>>>),
+    Function(usize, Rc<RefCell<HashMap<String, Value>>>, CallObject),
     NeedThis(Box<Value>),
     WithThis(Box<(Value, Value)>),               // Function, This
     BuiltinFunction(usize), // unknown if usize == 0; specific function if usize > 0
@@ -76,7 +136,7 @@ impl Value {
     }
 }
 
-pub fn new_value_function(pos: usize) -> Value {
+pub fn new_value_function(pos: usize, callobj: CallObject) -> Value {
     let mut val = Value::Function(
         pos,
         Rc::new(RefCell::new({
@@ -104,9 +164,11 @@ pub fn new_value_function(pos: usize) -> Value {
             );
             hm
         })),
+        callobj,
     );
+
     let v2 = val.clone();
-    if let Value::Function(_, ref mut obj) = &mut val {
+    if let Value::Function(_, ref mut obj, _) = &mut val {
         // TODO: Add constructor of this function itself (==Function). (not prototype.constructor)
         if let Value::Object(ref mut obj) = (*obj.borrow_mut()).get_mut("prototype").unwrap() {
             obj.borrow_mut().insert("constructor".to_string(), v2);
@@ -131,18 +193,18 @@ impl ConstantTable {
 }
 
 pub struct VM {
-    pub global_objects: Rc<RefCell<HashMap<String, Value>>>,
-    pub jit: TracingJit,
+    // pub jit: TracingJit,
     pub state: VMState,
     pub const_table: ConstantTable,
     pub insts: ByteCode,
     pub loop_bgn_end: HashMap<isize, isize>,
-    pub op_table: [fn(&mut VM); 45],
+    pub op_table: [fn(&mut VM); 49],
     pub builtin_functions: [unsafe fn(Vec<Value>, &mut VM); 7],
 }
 
 pub struct VMState {
     pub stack: Vec<Value>,
+    pub scope: Vec<CallObjectRef>,
     pub bp: usize,
     pub lp: usize,
     pub pc: isize,
@@ -150,10 +212,8 @@ pub struct VMState {
 }
 
 impl VM {
-    pub fn new() -> VM {
-        let mut obj = HashMap::new();
-
-        obj.insert("console".to_string(), {
+    pub fn new(global_vals: CallObjectRef) -> VM {
+        global_vals.borrow_mut().set_value("console".to_string(), {
             let mut map = HashMap::new();
             map.insert(
                 "log".to_string(),
@@ -162,7 +222,7 @@ impl VM {
             Value::Object(Rc::new(RefCell::new(map)))
         });
 
-        obj.insert("process".to_string(), {
+        global_vals.borrow_mut().set_value("process".to_string(), {
             let mut map = HashMap::new();
             map.insert("stdout".to_string(), {
                 let mut map = HashMap::new();
@@ -175,7 +235,7 @@ impl VM {
             Value::Object(Rc::new(RefCell::new(map)))
         });
 
-        obj.insert("Math".to_string(), {
+        global_vals.borrow_mut().set_value("Math".to_string(), {
             let mut map = HashMap::new();
             map.insert(
                 "floor".to_string(),
@@ -189,18 +249,11 @@ impl VM {
             Value::Object(Rc::new(RefCell::new(map)))
         });
 
-        let global_objects = Rc::new(RefCell::new(obj));
-
         VM {
-            global_objects: global_objects.clone(),
-            jit: unsafe { TracingJit::new() },
+            // jit: unsafe { TracingJit::new() },
             state: VMState {
-                stack: {
-                    let mut stack = Vec::with_capacity(128);
-                    stack.push(Value::Object(global_objects.clone()));
-                    stack.push(Value::Number(1.0));
-                    stack
-                },
+                stack: { Vec::with_capacity(128) },
+                scope: vec![global_vals],
                 history: {
                     let mut s = Vec::with_capacity(128);
                     s.push((0, 0, 0, 0));
@@ -259,6 +312,10 @@ impl VM {
                 pop,
                 land,
                 lor,
+                set_cur_callobj,
+                get_name,
+                set_name,
+                decl_var,
             ],
             builtin_functions: [
                 builtin::console_log,
@@ -291,20 +348,20 @@ impl VM {
 
     pub fn do_run(&mut self) {
         loop {
-            if let Some(end) = self.loop_bgn_end.get(&self.state.pc) {
-                unsafe {
-                    // println!("range: [{:x}, {:x})", self.state.pc, end);
-                    if let Some(pc) = self.jit.can_loop_jit(
-                        &self.insts,
-                        &self.const_table,
-                        &mut self.state,
-                        *end as usize,
-                    ) {
-                        self.state.pc = pc;
-                        continue;
-                    }
-                }
-            }
+            // if let Some(end) = self.loop_bgn_end.get(&self.state.pc) {
+            //     unsafe {
+            //         // println!("range: [{:x}, {:x})", self.state.pc, end);
+            //         if let Some(pc) = self.jit.can_loop_jit(
+            //             &self.insts,
+            //             &self.const_table,
+            //             &mut self.state,
+            //             *end as usize,
+            //         ) {
+            //             self.state.pc = pc;
+            //             continue;
+            //         }
+            //     }
+            // }
             let code = self.insts[self.state.pc as usize];
             self.op_table[code as usize](self);
             if code == VMInst::RETURN || code == VMInst::END {
@@ -337,29 +394,6 @@ fn end(_self: &mut VM) {}
 fn create_context(self_: &mut VM) {
     self_.state.pc += 1; // create_context
     get_int32!(self_, num_local_var, usize);
-    let argc = if let Value::Number(argc) = self_.state.stack.pop().unwrap() {
-        argc as usize
-    } else {
-        unreachable!()
-    };
-
-    let stack_len = self_.state.stack.len();
-    if let Some((ref mut bp, ref mut lp, ref mut sp, ref mut _return_pc)) =
-        self_.state.history.last_mut()
-    {
-        *bp = self_.state.bp;
-        *lp = self_.state.lp;
-        *sp = stack_len - argc;
-    } else {
-        unreachable!()
-    };
-    self_.state.bp = stack_len - argc;
-    self_.state.lp = stack_len;
-
-    // This code is slower -> self_.state.stack.resize(stack_len + n, Value::Undefined);
-    for _ in 0..num_local_var {
-        self_.state.stack.push(Value::Undefined);
-    }
 }
 
 fn construct(self_: &mut VM) {
@@ -370,7 +404,7 @@ fn construct(self_: &mut VM) {
 
     loop {
         match callee {
-            Value::Function(dst, obj) => {
+            Value::Function(dst, obj, mut callobj) => {
                 self_.state.history.push((0, 0, 0, self_.state.pc));
 
                 // insert new 'this'
@@ -387,20 +421,28 @@ fn construct(self_: &mut VM) {
                     );
                     Rc::new(RefCell::new(map))
                 };
-                self_
-                    .state
-                    .stack
-                    .insert(pos, Value::Object(new_this.clone()));
 
+                let mut args = vec![];
+                for _ in 0..argc {
+                    args.push(self_.state.stack.pop().unwrap());
+                }
+                for (i, arg) in args.iter().rev().enumerate() {
+                    let param_name = callobj.param_names[i].clone();
+                    callobj.set_value(param_name, arg.clone());
+                }
+
+                callobj.this = Some(new_this.clone());
+                self_.state.scope.push(Rc::new(RefCell::new(callobj)));
                 self_.state.pc = dst as isize;
-                self_.state.stack.push(Value::Number(argc as f64 + 1.0));
 
                 self_.do_run();
+
+                self_.state.scope.pop();
 
                 match self_.state.stack.last_mut().unwrap() {
                     &mut Value::Object(_)
                     | &mut Value::Array(_)
-                    | &mut Value::Function(_, _)
+                    | &mut Value::Function(_, _, _)
                     | &mut Value::BuiltinFunction(_) => {}
                     others => *others = Value::Object(new_this),
                 };
@@ -607,19 +649,25 @@ fn get_member(self_: &mut VM) {
                 _ => self_.state.stack.push(Value::Undefined),
             }
         }
-        Value::Object(map) => match obj_find_val(&*map.borrow(), member.to_string().as_str()) {
-            Value::NeedThis(callee) => self_.state.stack.push(Value::WithThis(Box::new((
-                *callee,
-                Value::Object(map.clone()),
-            )))),
-            val => self_.state.stack.push(val),
-        },
-        Value::Function(pos, map) | Value::NeedThis(box Value::Function(pos, map)) => {
-            match obj_find_val(&*map.borrow(), member.to_string().as_str()) {
-                Value::NeedThis(callee) => self_.state.stack.push(Value::WithThis(Box::new((
-                    *callee,
-                    Value::Function(pos, map.clone()),
-                )))),
+        Value::Object(map) => {
+            match obj_find_val(&map.borrow().clone(), member.to_string().as_str()) {
+                Value::Function(pos, map2, mut callobj) => {
+                    self_.state.stack.push(Value::Function(pos, map2, {
+                        callobj.this = Some(map.clone());
+                        callobj
+                    }))
+                }
+                val => self_.state.stack.push(val),
+            }
+        }
+        Value::Function(pos, map, _) | Value::NeedThis(box Value::Function(pos, map, _)) => {
+            match obj_find_val(&map.borrow().clone(), member.to_string().as_str()) {
+                Value::Function(pos, map2, mut callobj) => {
+                    self_.state.stack.push(Value::Function(pos, map2, {
+                        callobj.this = Some(map.clone());
+                        callobj
+                    }))
+                }
                 val => self_.state.stack.push(val),
             }
         }
@@ -687,8 +735,8 @@ fn set_member(self_: &mut VM) {
     let val = self_.state.stack.pop().unwrap();
     match parent {
         Value::Object(map)
-        | Value::Function(_, map)
-        | Value::NeedThis(box Value::Function(_, map)) => {
+        | Value::Function(_, map, _)
+        | Value::NeedThis(box Value::Function(_, map, _)) => {
             *map.borrow_mut()
                 .entry(member.to_string())
                 .or_insert_with(|| Value::Undefined) = val;
@@ -736,21 +784,21 @@ fn set_member(self_: &mut VM) {
 fn get_global(self_: &mut VM) {
     self_.state.pc += 1; // get_global
     get_int32!(self_, n, usize);
-    let val = (*(*self_.global_objects)
-        .borrow()
-        .get(self_.const_table.string[n].as_str())
-        .unwrap())
-        .clone();
-    self_.state.stack.push(val);
+    // let val = (*(*self_.global_objects)
+    //     .borrow()
+    //     .get(self_.const_table.string[n].as_str())
+    //     .unwrap())
+    //     .clone();
+    // self_.state.stack.push(val);
 }
 
 fn set_global(self_: &mut VM) {
     self_.state.pc += 1; // set_global
     get_int32!(self_, n, usize);
-    *(*self_.global_objects)
-        .borrow_mut()
-        .entry(self_.const_table.string[n].clone())
-        .or_insert_with(|| Value::Undefined) = self_.state.stack.pop().unwrap();
+    // *(*self_.global_objects)
+    //     .borrow_mut()
+    //     .entry(self_.const_table.string[n].clone())
+    //     .or_insert_with(|| Value::Undefined) = self_.state.stack.pop().unwrap();
 }
 
 fn get_local(self_: &mut VM) {
@@ -824,43 +872,55 @@ fn call(self_: &mut VM) {
                 unsafe { self_.builtin_functions[x](args, self_) };
                 break;
             }
-            Value::Function(dst, _) => {
-                if let Some(this) = this {
-                    let pos = self_.state.stack.len() - argc;
-                    argc += 1;
-                    self_.state.stack.insert(pos, this);
-                }
-
+            Value::Function(dst, _, mut callobj) => {
                 if args_all_number(&self_.state.stack, argc) {
-                    if let Some(f) = unsafe {
-                        self_
-                            .jit
-                            .can_jit(&self_.insts, &self_.const_table, dst, argc)
-                    } {
-                        let mut args = vec![];
-                        for _ in 0..argc {
-                            args.push(self_.state.stack.pop().unwrap());
-                        }
-                        args.reverse();
-                        self_
-                            .state
-                            .stack
-                            .push(unsafe { self_.jit.run_llvm_func(dst, f, args) });
-                        break;
-                    }
+                    // if let Some(f) = unsafe {
+                    //     self_
+                    //         .jit
+                    //         .can_jit(&self_.insts, &self_.const_table, dst, argc)
+                    // } {
+                    //     let mut args = vec![];
+                    //     for _ in 0..argc {
+                    //         args.push(self_.state.stack.pop().unwrap());
+                    //     }
+                    //     args.reverse();
+                    //     self_
+                    //         .state
+                    //         .stack
+                    //         .push(unsafe { self_.jit.run_llvm_func(dst, f, args) });
+                    //     break;
+                    // }
                 }
 
-                self_.state.history.push((0, 0, 0, self_.state.pc));
-                self_.state.pc = dst as isize;
-                self_.state.stack.push(Value::Number(argc as f64));
-                self_.do_run();
+                callobj.vals = Rc::new(RefCell::new(HashMap::new()));
+
+                let mut args = vec![];
+                for _ in 0..argc {
+                    args.push(self_.state.stack.pop().unwrap());
+                }
+                for (i, arg) in args.iter().rev().enumerate() {
+                    let param_name = callobj.param_names[i].clone();
+                    callobj.set_value(param_name, arg.clone());
+                }
+
+                self_.state.scope.push(Rc::new(RefCell::new(callobj)));
                 self_
-                    .jit
-                    .register_return_type(dst, self_.state.stack.last().unwrap());
+                    .state
+                    .history
+                    .push((0, 0, self_.state.stack.len(), self_.state.pc));
+                self_.state.pc = dst as isize;
+
+                self_.do_run();
+
+                self_.state.scope.pop();
+
+                // self_
+                //     .jit
+                //     .register_return_type(dst, self_.state.stack.last().unwrap());
                 break;
             }
             Value::NeedThis(callee_) => {
-                this = Some(Value::Object(self_.global_objects.clone()));
+                // this = Some(Value::Object(self_.global_objects.clone()));
                 callee = *callee_;
             }
             Value::WithThis(box callee_this) => {
@@ -885,14 +945,14 @@ fn call(self_: &mut VM) {
 
 fn return_(self_: &mut VM) {
     let len = self_.state.stack.len();
+    // println!("s: {:?}", self_.state.stack);
     if let Some((bp, lp, sp, return_pc)) = self_.state.history.pop() {
         self_.state.stack.drain(sp..len - 1);
         self_.state.pc = return_pc;
-        self_.state.bp = bp;
-        self_.state.lp = lp;
     } else {
         unreachable!()
     }
+    // println!("a: {:?}", self_.state.stack);
 }
 
 fn assign_func_rest_param(self_: &mut VM) {
@@ -926,6 +986,49 @@ fn land(self_: &mut VM) {
 
 fn lor(self_: &mut VM) {
     self_.state.pc += 1; // lor
+}
+
+fn set_cur_callobj(self_: &mut VM) {
+    self_.state.pc += 1;
+    if let Some(Value::Function(_, _, ref mut callobj)) = self_.state.stack.last_mut() {
+        callobj.parent = Some(self_.state.scope.last().unwrap().clone());
+    }
+}
+
+fn get_name(self_: &mut VM) {
+    self_.state.pc += 1;
+    get_int32!(self_, name_id, usize);
+    let name = &self_.const_table.string[name_id];
+    let val = self_.state.scope.last().unwrap().borrow().get_value(name);
+    self_.state.stack.push(val);
+}
+
+fn set_name(self_: &mut VM) {
+    self_.state.pc += 1;
+    get_int32!(self_, name_id, usize);
+    let name = self_.const_table.string[name_id].clone();
+    let val = self_.state.stack.pop().unwrap();
+    self_
+        .state
+        .scope
+        .last()
+        .unwrap()
+        .borrow_mut()
+        .set_value_if_exist(name, val);
+}
+
+fn decl_var(self_: &mut VM) {
+    self_.state.pc += 1;
+    get_int32!(self_, name_id, usize);
+    let name = self_.const_table.string[name_id].clone();
+    let val = self_.state.stack.pop().unwrap();
+    self_
+        .state
+        .scope
+        .last()
+        .unwrap()
+        .borrow_mut()
+        .set_value(name, val);
 }
 
 // #[rustfmt::skip]

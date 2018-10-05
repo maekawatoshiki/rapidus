@@ -1,8 +1,6 @@
 extern crate rapidus;
 use rapidus::bytecode_gen;
 use rapidus::extract_anony_func;
-use rapidus::fv_finder;
-use rapidus::fv_solver;
 use rapidus::lexer;
 use rapidus::parser;
 use rapidus::vm;
@@ -76,11 +74,11 @@ fn main() {
     println!("{:?}", node);
 
     extract_anony_func::AnonymousFunctionExtractor::new().run_toplevel(&mut node);
-    fv_finder::FreeVariableFinder::new().run_toplevel(&mut node);
-    println!("extract_anony_func, fv_finder:\n {:?}", node);
-    fv_solver::FreeVariableSolver::new().run_toplevel(&mut node);
-
-    println!("extract_anony_func, fv_finder, fv_solver:\n {:?}", node);
+    // fv_finder::FreeVariableFinder::new().run_toplevel(&mut node);
+    // println!("extract_anony_func, fv_finder:\n {:?}", node);
+    // fv_solver::FreeVariableSolver::new().run_toplevel(&mut node);
+    //
+    println!("extract_anony_func:\n {:?}", node);
 
     let mut vm_codegen = vm_codegen::VMCodeGen::new();
     let mut insts = vec![];
@@ -144,8 +142,8 @@ fn run(file_name: &str) {
             let mut node = parser.parse_all();
 
             extract_anony_func::AnonymousFunctionExtractor::new().run_toplevel(&mut node);
-            fv_finder::FreeVariableFinder::new().run_toplevel(&mut node);
-            fv_solver::FreeVariableSolver::new().run_toplevel(&mut node);
+            // fv_finder::FreeVariableFinder::new().run_toplevel(&mut node);
+            // fv_solver::FreeVariableSolver::new().run_toplevel(&mut node);
 
             let mut vm_codegen = vm_codegen::VMCodeGen::new();
             let mut insts = vec![];
@@ -155,11 +153,8 @@ fn run(file_name: &str) {
 
             // println!("{:?}", insts);
 
-            let mut vm = vm::VM::new();
+            let mut vm = vm::VM::new(vm_codegen.global_varmap);
             vm.const_table = vm_codegen.bytecode_gen.const_table;
-            (*vm.global_objects)
-                .borrow_mut()
-                .extend(vm_codegen.global_varmap);
             vm.run(insts);
         }
         Err(e) => panic!("Rapidus Internal Error: fork failed: {:?}", e),

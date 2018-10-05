@@ -1,11 +1,12 @@
 use builtin;
 use bytecode_gen::{ByteCode, ByteCodeGen, VMInst};
-use id::{Id, IdGen};
+use id::IdGen;
 use node::{
-    BinOp, FormalParameters, FunctionDeclNode, Node, NodeBase, PropertyDefinition, UnaryOp,
+    BinOp, FormalParameter, FormalParameters, FunctionDeclNode, Node, NodeBase, PropertyDefinition,
+    UnaryOp,
 };
 use std::collections::HashSet;
-use vm::{new_value_function, Value};
+use vm::{new_value_function, CallObject, CallObjectRef, Value};
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -15,15 +16,15 @@ use std::rc::Rc;
 #[derive(Clone, Debug, PartialEq)]
 pub struct FunctionInfo {
     pub name: String,
-    pub use_this: bool,
+    pub params: FormalParameters,
     pub insts: ByteCode,
 }
 
 impl FunctionInfo {
-    pub fn new(name: String, use_this: bool, insts: ByteCode) -> FunctionInfo {
+    pub fn new(name: String, params: FormalParameters, insts: ByteCode) -> FunctionInfo {
         FunctionInfo {
             name: name,
-            use_this: use_this,
+            params: params,
             insts: insts,
         }
     }
@@ -76,7 +77,7 @@ impl Labels {
 
 #[derive(Clone, Debug)]
 pub struct VMCodeGen {
-    pub global_varmap: HashMap<String, Value>, // usize will be replaced with an appropriate type
+    pub global_varmap: CallObjectRef,
     pub local_varmap: Vec<HashMap<String, (bool, usize)>>, // hashmap<name, (is_arg_var, id)>
     pub functions: HashMap<String, FunctionInfo>,
     pub local_var_stack_addr: IdGen,
@@ -88,7 +89,7 @@ pub struct VMCodeGen {
 impl VMCodeGen {
     pub fn new() -> VMCodeGen {
         VMCodeGen {
-            global_varmap: HashMap::new(),
+            global_varmap: CallObject::new_global(),
             local_varmap: vec![HashMap::new()],
             functions: HashMap::new(),
             local_var_stack_addr: IdGen::new(),
@@ -103,8 +104,6 @@ impl VMCodeGen {
     pub fn compile(&mut self, node: &Node, insts: &mut ByteCode) {
         let pos = insts.len();
         self.bytecode_gen.gen_create_context(0, insts);
-
-        self.run_arg_var_decl(&"this".to_string(), &None, insts);
 
         self.run(node, insts);
 
@@ -159,21 +158,31 @@ impl VMCodeGen {
             _,
             FunctionInfo {
                 name,
-                use_this,
+                params,
                 insts: func_insts,
             },
         ) in &self.functions
         {
             let pos = insts.len();
             let mut val;
-            if *use_this {
-                val = Value::NeedThis(Box::new(new_value_function(pos)));
-                self.global_varmap.insert(name.clone(), val.clone());
-            } else {
-                val = new_value_function(pos);
-                self.global_varmap.insert(name.clone(), val.clone());
-            }
-            function_value_list.insert(name.clone(), val.clone());
+
+            val = new_value_function(pos, {
+                let mut callobj = CallObject::new(Some(self.global_varmap.borrow().vals.clone()));
+                // TODO: Implement rest paramter
+                callobj.param_names = params
+                    .clone()
+                    .iter()
+                    .map(|FormalParameter { name, .. }| name.clone())
+                    .collect();
+                callobj.parent = Some(self.global_varmap.clone());
+                callobj
+            });
+
+            self.global_varmap
+                .borrow_mut()
+                .set_value(name.clone(), val.clone());
+
+            // function_value_list.insert(name.clone(), val.clone());
 
             let mut func_insts = func_insts.clone();
             insts.append(&mut func_insts);
@@ -184,7 +193,7 @@ impl VMCodeGen {
             let inst_size = VMInst::get_inst_size(insts[i])
                 .unwrap_or_else(|| panic!("Illegal VM Instruction occurred"));
             match insts[i] {
-                VMInst::GET_GLOBAL => {
+                VMInst::GET_NAME => {
                     let id = insts[i + 1] as i32
                         + ((insts[i + 2] as i32) << 8)
                         + ((insts[i + 3] as i32) << 16)
@@ -224,22 +233,11 @@ impl VMCodeGen {
             &NodeBase::StatementList(ref node_list) => self.run_statement_list(node_list, insts),
             &NodeBase::FunctionDecl(FunctionDeclNode {
                 ref name,
-                ref mangled_name,
                 ref use_this,
                 ref fv,
                 ref params,
                 ref body,
-            }) => self.run_function_decl(
-                if let Some(ref mangled_name) = mangled_name {
-                    mangled_name
-                } else {
-                    name
-                },
-                *use_this,
-                fv,
-                params,
-                &*body,
-            ),
+            }) => self.run_function_decl(name, *use_this, fv, params, &*body),
             &NodeBase::VarDecl(ref name, ref init) => {
                 self.run_var_decl(name, init, insts);
             }
@@ -270,8 +268,8 @@ impl VMCodeGen {
             &NodeBase::String(ref s) => self
                 .bytecode_gen
                 .gen_push_const(Value::String(CString::new(s.as_str()).unwrap()), insts),
+            // When 'n' is an integer
             &NodeBase::Number(n) if n - n.floor() == 0.0 => {
-                // When 'n' is an integer
                 if -128.0 < n && n < 127.0 {
                     self.bytecode_gen.gen_push_int8(n as i8, insts)
                 } else {
@@ -280,6 +278,10 @@ impl VMCodeGen {
             }
             &NodeBase::Number(n) => self.bytecode_gen.gen_push_const(Value::Number(n), insts),
             &NodeBase::Boolean(b) => self.bytecode_gen.gen_push_bool(b, insts),
+            &NodeBase::SetCurCallObj(ref name) => {
+                self.bytecode_gen.gen_get_name(name, insts);
+                self.bytecode_gen.gen_set_cur_callobj(insts);
+            }
             _ => {}
         }
     }
@@ -314,21 +316,17 @@ impl VMCodeGen {
 
         self.bytecode_gen.gen_create_context(0, &mut func_insts);
 
-        if use_this {
-            self.run_arg_var_decl(&"this".to_string(), &None, &mut func_insts);
-        }
-
         for param in params {
-            if param.is_rest_param {
-                let id = self.run_var_decl(&param.name, &None, &mut func_insts);
-                self.bytecode_gen.gen_assign_func_rest_param(
-                    if use_this { 1 } else { 0 } + params.len() - /*rest param itself->*/ 1,
-                    id,
-                    &mut func_insts,
-                );
-            } else {
-                self.run_arg_var_decl(&param.name, &param.init, &mut func_insts);
-            }
+            // TODO: Implement Rest Parameter ASAP
+            // if param.is_rest_param {
+            //     let id = self.run_var_decl(&param.name, &None, &mut func_insts);
+            //     self.bytecode_gen.gen_assign_func_rest_param(
+            //         if use_this { 1 } else { 0 } + params.len() - /*rest param itself->*/ 1,
+            //         id,
+            //         &mut func_insts,
+            //     );
+            // } else {
+            // }
         }
 
         self.run(body, &mut func_insts);
@@ -353,7 +351,7 @@ impl VMCodeGen {
 
         self.functions.insert(
             name.clone(),
-            FunctionInfo::new(name.clone(), use_this, func_insts),
+            FunctionInfo::new(name.clone(), params.clone(), func_insts),
         );
     }
 
@@ -402,43 +400,13 @@ impl VMCodeGen {
 }
 
 impl VMCodeGen {
-    pub fn run_var_decl(
-        &mut self,
-        name: &String,
-        init: &Option<Box<Node>>,
-        insts: &mut ByteCode,
-    ) -> Id {
-        if let Some(id) = self.local_varmap.last().unwrap().get(name) {
-            return id.1;
-        }
-
-        let id = self.local_var_stack_addr.gen_id();
-
-        self.local_varmap
-            .last_mut()
-            .unwrap()
-            .insert(name.clone(), (false, id));
-
+    pub fn run_var_decl(&mut self, name: &String, init: &Option<Box<Node>>, insts: &mut ByteCode) {
         if let &Some(ref init) = init {
             self.run(&*init, insts);
-            self.bytecode_gen.gen_set_local(id as u32, insts);
+        } else {
+            self.bytecode_gen.gen_push_const(Value::Undefined, insts);
         }
-
-        id
-    }
-
-    pub fn run_arg_var_decl(&mut self, name: &String, init: &Option<Node>, insts: &mut ByteCode) {
-        let id = self.arguemnt_var_addr.gen_id();
-
-        self.local_varmap
-            .last_mut()
-            .unwrap()
-            .insert(name.clone(), (true, id));
-
-        if let &Some(ref init) = init {
-            self.run(init, insts);
-            self.bytecode_gen.gen_set_local(id as u32, insts);
-        }
+        self.bytecode_gen.gen_decl_var(name, insts);
     }
 }
 
@@ -653,15 +621,7 @@ impl VMCodeGen {
 
         match dst.base {
             NodeBase::Identifier(ref name) => {
-                if let Some((is_arg, p)) = self.local_varmap.last().unwrap().get(name.as_str()) {
-                    if *is_arg {
-                        self.bytecode_gen.gen_set_arg_local(*p as u32, insts);
-                    } else {
-                        self.bytecode_gen.gen_set_local(*p as u32, insts);
-                    }
-                } else {
-                    self.bytecode_gen.gen_set_global(name.clone(), insts);
-                }
+                self.bytecode_gen.gen_set_name(name, insts);
             }
             NodeBase::Member(ref parent, ref member) => {
                 self.run(&*parent, insts);
@@ -735,15 +695,7 @@ impl VMCodeGen {
     }
 
     fn run_identifier(&mut self, name: &String, insts: &mut ByteCode) {
-        if let Some((is_arg, p)) = self.local_varmap.last().unwrap().get(name.as_str()) {
-            if *is_arg {
-                self.bytecode_gen.gen_get_arg_local(*p as u32, insts);
-            } else {
-                self.bytecode_gen.gen_get_local(*p as u32, insts);
-            }
-        } else {
-            self.bytecode_gen.gen_get_global(name.clone(), insts);
-        }
+        self.bytecode_gen.gen_get_name(name, insts);
     }
 }
 

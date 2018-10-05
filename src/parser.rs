@@ -894,7 +894,6 @@ impl Parser {
         Ok(Node::new(
             NodeBase::FunctionDecl(FunctionDeclNode {
                 name: name,
-                mangled_name: None,
                 use_this: false,
                 fv: HashSet::new(),
                 params: params,
@@ -1744,7 +1743,6 @@ fn function_decl() {
             Node::new(
                 NodeBase::FunctionDecl(FunctionDeclNode {
                     name: "f".to_string(),
-                    mangled_name: None,
                     use_this: false,
                     fv: HashSet::new(),
                     params: vec![],
@@ -1758,7 +1756,6 @@ fn function_decl() {
             Node::new(
                 NodeBase::FunctionDecl(FunctionDeclNode {
                     name: "f".to_string(),
-                    mangled_name: None,
                     use_this: false,
                     fv: HashSet::new(),
                     params: vec![

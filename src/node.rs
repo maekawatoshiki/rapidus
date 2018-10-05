@@ -30,7 +30,6 @@ pub enum PropertyDefinition {
 #[derive(Clone, Debug, PartialEq)]
 pub struct FunctionDeclNode {
     pub name: String,
-    pub mangled_name: Option<String>,
     pub fv: HashSet<String>,
     pub use_this: bool,
     pub params: FormalParameters,
@@ -66,6 +65,7 @@ pub enum NodeBase {
     Boolean(bool),
     Number(f64),
     Nope,
+    SetCurCallObj(String),
 }
 
 #[derive(Clone, Debug, PartialEq)]

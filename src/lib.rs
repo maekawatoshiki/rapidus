@@ -3,10 +3,10 @@
 
 pub mod bytecode_gen;
 pub mod extract_anony_func;
-pub mod fv_finder;
-pub mod fv_solver;
+// pub mod fv_finder;
+// pub mod fv_solver;
 pub mod id;
-pub mod jit;
+// pub mod jit;
 pub mod lexer;
 pub mod node;
 pub mod parser;

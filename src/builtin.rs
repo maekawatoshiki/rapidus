@@ -30,7 +30,7 @@ pub unsafe fn console_log(args: Vec<Value>, _: &mut VM) {
             Value::Bool(false) => {
                 libc::printf(b"false\0".as_ptr() as RawStringPtr);
             }
-            Value::Object(_) | Value::Array(_) | Value::Function(_, _) => debug_print(&args[i]),
+            Value::Object(_) | Value::Array(_) | Value::Function(_, _,_) => debug_print(&args[i]),
             Value::Undefined => {
                 libc::printf(b"undefined\0".as_ptr() as RawStringPtr);
             }
@@ -96,7 +96,7 @@ pub unsafe fn debug_print(val: &Value) {
             }
             libc::printf("]\0".as_ptr() as RawStringPtr);
         }
-        &Value::Function(_, _) => {
+        &Value::Function(_, _,_) => {
             libc::printf("[Function]\0".as_ptr() as RawStringPtr);
         }
         &Value::Undefined => {
@@ -143,48 +143,49 @@ pub unsafe fn math_pow(args: Vec<Value>, self_: &mut VM) {
 
 // BuiltinFunction(6)
 pub unsafe fn function_prototype_call(args: Vec<Value>, self_: &mut VM) {
-    let mut callee = args[0].clone();
-    loop {
-        match callee {
-            Value::Function(dst, _obj) => {
-                self_.state.history.push((0, 0, 0, self_.state.pc));
-
-                self_.state.stack.push(args[1].clone());
-
-                for arg in args[2..].iter() {
-                    self_.state.stack.push(arg.clone());
-                }
-
-                self_.state.pc = dst as isize;
-                self_
-                    .state
-                    .stack
-                    .push(Value::Number(args.len() as f64 - 1.0 /*callee*/));
-
-                self_.do_run();
-
-                match self_.state.stack.last_mut().unwrap() {
-                    &mut Value::Object(_)
-                    | &mut Value::Array(_)
-                    | &mut Value::Function(_, _)
-                    | &mut Value::BuiltinFunction(_) => {}
-                    others => *others = args[1].clone(),
-                };
-                break;
-            }
-            Value::NeedThis(callee_) => {
-                callee = *callee_;
-            }
-            Value::WithThis(box (callee_, _)) => {
-                callee = callee_;
-            }
-            c => {
-                println!(
-                    "Function.prototype.call: err: {:?}, pc = {}",
-                    c, self_.state.pc
-                );
-                break;
-            }
-        }
-    }
+    unimplemented!();
+    // let mut callee = args[0].clone();
+    // loop {
+    //     match callee {
+    //         Value::Function(dst, _obj,) => {
+    //             self_.state.history.push((0, 0, 0, self_.state.pc));
+    //
+    //             self_.state.stack.push(args[1].clone());
+    //
+    //             for arg in args[2..].iter() {
+    //                 self_.state.stack.push(arg.clone());
+    //             }
+    //
+    //             self_.state.pc = dst as isize;
+    //             self_
+    //                 .state
+    //                 .stack
+    //                 .push(Value::Number(args.len() as f64 - 1.0 /*callee*/));
+    //
+    //             self_.do_run();
+    //
+    //             match self_.state.stack.last_mut().unwrap() {
+    //                 &mut Value::Object(_)
+    //                 | &mut Value::Array(_)
+    //                 | &mut Value::Function(_, _)
+    //                 | &mut Value::BuiltinFunction(_) => {}
+    //                 others => *others = args[1].clone(),
+    //             };
+    //             break;
+    //         }
+    //         Value::NeedThis(callee_) => {
+    //             callee = *callee_;
+    //         }
+    //         Value::WithThis(box (callee_, _)) => {
+    //             callee = callee_;
+    //         }
+    //         c => {
+    //             println!(
+    //                 "Function.prototype.call: err: {:?}, pc = {}",
+    //                 c, self_.state.pc
+    //             );
+    //             break;
+    //         }
+    //     }
+    // }
 }

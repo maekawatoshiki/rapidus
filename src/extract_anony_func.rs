@@ -5,15 +5,15 @@ use std::collections::HashSet;
 
 #[derive(Debug, Clone)]
 pub struct AnonymousFunctionExtractor {
-    pub pending_anonymous_function: Vec<Vec<Node>>,
-    pub mangled_anonymous_function_name: Vec<(String, String)>,
+    pub pending_function: Vec<Node>,
+    pub nest: usize,
 }
 
 impl AnonymousFunctionExtractor {
     pub fn new() -> AnonymousFunctionExtractor {
         AnonymousFunctionExtractor {
-            pending_anonymous_function: vec![vec![]],
-            mangled_anonymous_function_name: vec![],
+            pending_function: vec![],
+            nest: 0,
         }
     }
 
@@ -24,8 +24,8 @@ impl AnonymousFunctionExtractor {
                     self.run(node)
                 }
 
-                for pending_anonymous_function in self.pending_anonymous_function.last().unwrap() {
-                    nodes.push(pending_anonymous_function.clone())
+                for pending_function in &self.pending_function {
+                    nodes.push(pending_function.clone())
                 }
             }
             _ => unreachable!(),
@@ -39,32 +39,65 @@ impl AnonymousFunctionExtractor {
                     self.run(node)
                 }
             }
-            NodeBase::FunctionDecl(FunctionDeclNode { ref mut body, .. }) => {
-                let mut body = if let &mut NodeBase::StatementList(ref mut body) = &mut body.base {
-                    body
-                } else {
-                    unreachable!()
-                };
+            NodeBase::FunctionDecl(_) => {
+                if let NodeBase::FunctionDecl(FunctionDeclNode {
+                    ref mut body,
+                    ref name,
+                    ref params,
+                    ..
+                }) = node.clone().base
+                {
+                    // TODO: Need refinement
+                    let mut body =
+                        if let &mut NodeBase::StatementList(ref mut body) = &mut body.base {
+                            body
+                        } else {
+                            unreachable!()
+                        };
 
-                self.pending_anonymous_function.push(vec![]);
+                    let mut name_mangled = format!("anonymous.{}.{}", name, random::<u32>());
 
-                for node in body.iter_mut() {
-                    self.run(node)
+                    self.nest += 1;
+                    for node in body.iter_mut() {
+                        self.run(node)
+                    }
+                    self.nest -= 1;
+
+                    if self.nest > 0 {
+                        self.pending_function.push(Node::new(
+                            NodeBase::FunctionDecl(FunctionDeclNode {
+                                name: name_mangled.clone(),
+                                use_this: false,
+                                fv: HashSet::new(),
+                                params: params.clone(),
+                                body: Box::new(Node::new(NodeBase::StatementList(body.clone()), 0)),
+                            }),
+                            0,
+                        ));
+
+                        node.base = NodeBase::VarDecl(
+                            name.clone(),
+                            Some(Box::new(Node::new(
+                                NodeBase::SetCurCallObj(name_mangled),
+                                0,
+                            ))),
+                        );
+                    } else {
+                        if let NodeBase::FunctionDecl(FunctionDeclNode {
+                            body: ref mut body_,
+                            ..
+                        }) = node.base
+                        {
+                            *body_ = Box::new(Node::new(NodeBase::StatementList(body.clone()), 0));
+                        }
+                    }
                 }
-
-                for pending_anonymous_function in self.pending_anonymous_function.last().unwrap() {
-                    body.push(pending_anonymous_function.clone())
-                }
-
-                self.pending_anonymous_function.pop();
             }
             NodeBase::FunctionExpr(_, _, _) => {
                 if let NodeBase::FunctionExpr(mut name, mut params, mut body) = node.clone().base {
                     let mut name_ = match name {
                         Some(name) => {
                             let new_name = format!("anonymous.{}.{}", name, random::<u32>());
-                            self.mangled_anonymous_function_name
-                                .push((name.clone(), new_name.clone()));
                             new_name
                         }
                         None => format!("anonymous.{}", random::<u32>()),
@@ -80,23 +113,17 @@ impl AnonymousFunctionExtractor {
                         self.run(node)
                     }
 
-                    self.mangled_anonymous_function_name.pop();
-
-                    self.pending_anonymous_function
-                        .last_mut()
-                        .unwrap()
-                        .push(Node::new(
-                            NodeBase::FunctionDecl(FunctionDeclNode {
-                                name: name_.clone(),
-                                mangled_name: None,
-                                use_this: false,
-                                fv: HashSet::new(),
-                                params: params,
-                                body: Box::new(Node::new(NodeBase::StatementList(body), 0)),
-                            }),
-                            0,
-                        ));
-                    *node = Node::new(NodeBase::Identifier(name_), 0);
+                    self.pending_function.push(Node::new(
+                        NodeBase::FunctionDecl(FunctionDeclNode {
+                            name: name_.clone(),
+                            use_this: false,
+                            fv: HashSet::new(),
+                            params: params,
+                            body: Box::new(Node::new(NodeBase::StatementList(body), 0)),
+                        }),
+                        0,
+                    ));
+                    *node = Node::new(NodeBase::SetCurCallObj(name_), 0);
                 }
             }
             NodeBase::Call(ref mut callee, ref mut args) => {
@@ -153,15 +180,26 @@ impl AnonymousFunctionExtractor {
                 self.run(&mut *then);
                 self.run(&mut *else_);
             }
-            NodeBase::Identifier(ref mut ident) => {
-                if let Some(name) = self.get_mangled_anonymous_function_name(ident.as_str()) {
-                    *ident = name.clone();
-                }
-            }
+            NodeBase::Identifier(ref mut _ident) => {}
             NodeBase::Object(ref mut properties) => {
                 for property in properties.iter_mut() {
+                    let name_of_ident_ref =
+                        if let PropertyDefinition::IdentifierReference(name) = property.clone() {
+                            Some(name)
+                        } else {
+                            None
+                        };
                     match property {
-                        &mut PropertyDefinition::IdentifierReference(_) => {}
+                        &mut PropertyDefinition::IdentifierReference(_) => {
+                            let mut name_of_ident_ref = name_of_ident_ref.unwrap();
+                            *property = PropertyDefinition::Property(
+                                name_of_ident_ref.to_string(),
+                                Node::new(
+                                    NodeBase::Identifier(name_of_ident_ref),
+                                    node.pos, // TODO: Is this correct?
+                                ),
+                            );
+                        }
                         &mut PropertyDefinition::Property(_, ref mut node) => self.run(node),
                     }
                 }
@@ -169,14 +207,5 @@ impl AnonymousFunctionExtractor {
 
             _ => {}
         }
-    }
-
-    fn get_mangled_anonymous_function_name(&self, name: &str) -> Option<&String> {
-        for (before_mangled, after_mangled) in self.mangled_anonymous_function_name.iter().rev() {
-            if before_mangled == name {
-                return Some(after_mangled);
-            }
-        }
-        None
     }
 }

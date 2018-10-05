@@ -50,6 +50,10 @@ pub mod VMInst {
     pub const POP: u8 = 0x2a;
     pub const LAND: u8 = 0x2b;
     pub const LOR: u8 = 0x2c;
+    pub const SET_CUR_CALLOBJ: u8 = 0x2d;
+    pub const GET_NAME: u8 = 0x2e;
+    pub const SET_NAME: u8 = 0x2f;
+    pub const DECL_VAR: u8 = 0x30;
 
     pub fn get_inst_size(inst: u8) -> Option<usize> {
         match inst {
@@ -57,11 +61,11 @@ pub mod VMInst {
             CREATE_CONTEXT => Some(5),
             CONSTRUCT | CREATE_OBJECT | PUSH_CONST | PUSH_INT32 | SET_GLOBAL | GET_LOCAL
             | SET_ARG_LOCAL | GET_ARG_LOCAL | CREATE_ARRAY | SET_LOCAL | JMP_IF_FALSE | JMP
-            | GET_GLOBAL | CALL => Some(5),
+            | DECL_VAR | SET_NAME | GET_NAME | GET_GLOBAL | CALL => Some(5),
             PUSH_INT8 => Some(2),
             PUSH_FALSE | END | PUSH_TRUE | PUSH_THIS | ADD | SUB | MUL | DIV | REM | LT
             | PUSH_ARGUMENTS | NEG | GT | LE | GE | EQ | NE | GET_MEMBER | RETURN | SNE | LAND
-            | POP | DOUBLE | AND | OR | SEQ | SET_MEMBER | LOR => Some(1),
+            | POP | DOUBLE | AND | OR | SEQ | SET_MEMBER | LOR | SET_CUR_CALLOBJ => Some(1),
             _ => None,
         }
     }
@@ -274,6 +278,58 @@ impl ByteCodeGen {
         self.gen_int32(dst_var_id as i32, insts);
     }
 
+    pub fn gen_set_cur_callobj(&self, insts: &mut ByteCode) {
+        insts.push(VMInst::SET_CUR_CALLOBJ);
+    }
+
+    pub fn gen_get_name(&mut self, name: &String, insts: &mut ByteCode) {
+        let id = (|| {
+            for (i, string) in self.const_table.string.iter().enumerate() {
+                if name == string {
+                    return i;
+                }
+            }
+
+            let id = self.const_table.string.len();
+            self.const_table.string.push(name.clone());
+            id
+        })();
+        insts.push(VMInst::GET_NAME);
+        self.gen_int32(id as i32, insts);
+    }
+
+    pub fn gen_set_name(&mut self, name: &String, insts: &mut ByteCode) {
+        let id = (|| {
+            for (i, string) in self.const_table.string.iter().enumerate() {
+                if name == string {
+                    return i;
+                }
+            }
+
+            let id = self.const_table.string.len();
+            self.const_table.string.push(name.clone());
+            id
+        })();
+        insts.push(VMInst::SET_NAME);
+        self.gen_int32(id as i32, insts);
+    }
+
+    pub fn gen_decl_var(&mut self, name: &String, insts: &mut ByteCode) {
+        let id = (|| {
+            for (i, string) in self.const_table.string.iter().enumerate() {
+                if name == string {
+                    return i;
+                }
+            }
+
+            let id = self.const_table.string.len();
+            self.const_table.string.push(name.clone());
+            id
+        })();
+        insts.push(VMInst::DECL_VAR);
+        self.gen_int32(id as i32, insts);
+    }
+
     // Utils
 
     pub fn gen_int8(&self, n: i8, insts: &mut ByteCode) {
@@ -450,6 +506,22 @@ pub fn show(code: &ByteCode) {
             VMInst::ASG_FREST_PARAM => {
                 println!("AssignFunctionRestParam");
                 i += 9
+            }
+            VMInst::SET_CUR_CALLOBJ => {
+                println!("SetCurCallObj");
+                i += 1;
+            }
+            VMInst::GET_NAME => {
+                println!("GetName");
+                i += 5;
+            }
+            VMInst::SET_NAME => {
+                println!("SetName");
+                i += 5;
+            }
+            VMInst::DECL_VAR => {
+                println!("DeclVar");
+                i += 5;
             }
             _ => unreachable!(),
         }
