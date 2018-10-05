@@ -1731,28 +1731,24 @@ fn function_decl() {
         (
             "function f() { }",
             Node::new(
-                NodeBase::FunctionDecl(FunctionDeclNode {
-                    name: "f".to_string(),
-                    use_this: false,
-                    fv: HashSet::new(),
-                    params: vec![],
-                    body: Box::new(Node::new(NodeBase::StatementList(vec![]), 14)),
-                }),
+                NodeBase::FunctionDecl(
+                    "f".to_string(),
+                    vec![],
+                    Box::new(Node::new(NodeBase::StatementList(vec![]), 14)),
+                ),
                 8,
             ),
         ),
         (
             "function f(x, y) { return x + y }",
             Node::new(
-                NodeBase::FunctionDecl(FunctionDeclNode {
-                    name: "f".to_string(),
-                    use_this: false,
-                    fv: HashSet::new(),
-                    params: vec![
+                NodeBase::FunctionDecl(
+                    "f".to_string(),
+                    vec![
                         FormalParameter::new("x".to_string(), None, false),
                         FormalParameter::new("y".to_string(), None, false),
                     ],
-                    body: Box::new(Node::new(
+                    Box::new(Node::new(
                         NodeBase::StatementList(vec![Node::new(
                             NodeBase::Return(Some(Box::new(Node::new(
                                 NodeBase::BinaryOp(
@@ -1766,7 +1762,7 @@ fn function_decl() {
                         )]),
                         18,
                     )),
-                }),
+                ),
                 8,
             ),
         ),
