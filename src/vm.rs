@@ -388,20 +388,20 @@ impl VM {
 
     pub fn do_run(&mut self) {
         loop {
-            // if let Some(end) = self.loop_bgn_end.get(&self.state.pc) {
-            //     unsafe {
-            //         // println!("range: [{:x}, {:x})", self.state.pc, end);
-            //         if let Some(pc) = self.jit.can_loop_jit(
-            //             &self.insts,
-            //             &self.const_table,
-            //             &mut self.state,
-            //             *end as usize,
-            //         ) {
-            //             self.state.pc = pc;
-            //             continue;
-            //         }
-            //     }
-            // }
+            if let Some(end) = self.loop_bgn_end.get(&self.state.pc) {
+                unsafe {
+                    // println!("range: [{:x}, {:x})", self.state.pc, end);
+                    if let Some(pc) = self.jit.can_loop_jit(
+                        &self.insts,
+                        &self.const_table,
+                        &mut self.state,
+                        *end as usize,
+                    ) {
+                        self.state.pc = pc;
+                        continue;
+                    }
+                }
+            }
             let code = self.insts[self.state.pc as usize];
             self.op_table[code as usize](self);
             if code == VMInst::RETURN || code == VMInst::END {

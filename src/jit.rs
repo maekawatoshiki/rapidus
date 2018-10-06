@@ -92,7 +92,6 @@ pub struct JITInfo {
 pub struct LoopInfo {
     func_addr: Option<fn(*mut f64, *mut f64) -> i32>,
     llvm_func: Option<LLVMValueRef>,
-    arg_vars_id: Vec<(usize, ValueType)>, // the (ids, types)of argument variables used in this loop
     local_vars_id: Vec<(usize, ValueType)>, // the (ids, types) of local variables used in this loop
     jit_info: JITInfo,
 }
@@ -102,7 +101,6 @@ impl LoopInfo {
         LoopInfo {
             func_addr: None,
             llvm_func: None,
-            arg_vars_id: vec![],
             local_vars_id: vec![],
             jit_info: JITInfo { cannot_jit: false },
         }
@@ -522,7 +520,6 @@ impl TracingJit {
         {
             let LoopInfo {
                 func_addr,
-                arg_vars_id,
                 local_vars_id,
                 jit_info: JITInfo { cannot_jit },
                 ..
@@ -531,12 +528,7 @@ impl TracingJit {
                 return None;
             }
             if let Some(func_addr) = func_addr {
-                return run_loop_llvm_func(
-                    *func_addr,
-                    vm_state,
-                    arg_vars_id.clone(),
-                    local_vars_id.clone(),
-                );
+                return run_loop_llvm_func(*func_addr, vm_state, const_table, local_vars_id.clone());
             }
         }
 
@@ -544,7 +536,7 @@ impl TracingJit {
 
         // If gen_code fails, it means the function can't be JIT-compiled and should never be
         // compiled. (cannot_jit = true)
-        let (llvm_func, arg_vars, local_vars) =
+        let (llvm_func, local_vars) =
             match self.gen_code_for_loop(name.clone(), vm_state, insts, const_table, bgn, end) {
                 Ok(info) => info,
                 Err(()) => {
@@ -623,10 +615,9 @@ impl TracingJit {
         let info = self.loop_info.get_mut(&bgn).unwrap();
         info.func_addr = Some(f);
         info.llvm_func = Some(llvm_func);
-        info.arg_vars_id = arg_vars.clone();
         info.local_vars_id = local_vars.clone();
 
-        run_loop_llvm_func(f, vm_state, arg_vars, local_vars)
+        run_loop_llvm_func(f, vm_state, const_table, local_vars)
     }
 
     unsafe fn gen_code_for_loop(
@@ -637,136 +628,109 @@ impl TracingJit {
         const_table: &vm::ConstantTable,
         bgn: usize,
         end: usize,
-    ) -> Result<
-        (
-            LLVMValueRef,
-            Vec<(usize, ValueType)>,
-            Vec<(usize, ValueType)>,
-        ),
-        (),
-    > {
-        Err(())
-        // let (arg_vars, local_vars) = self.collect_arg_and_local_vars(vm_state, insts, bgn, end)?;
-        //
-        // let func_ret_ty = LLVMInt32TypeInContext(self.context);
-        // let func_ty = LLVMFunctionType(
-        //     func_ret_ty,
-        //     vec![
-        //         LLVMPointerType(LLVMPointerType(LLVMInt8TypeInContext(self.context), 0), 0),
-        //         LLVMPointerType(LLVMPointerType(LLVMInt8TypeInContext(self.context), 0), 0),
-        //     ].as_mut_slice()
-        //         .as_mut_ptr(),
-        //     2,
-        //     0,
-        // );
-        // let func = LLVMAddFunction(
-        //     self.module,
-        //     CString::new(name.as_str()).unwrap().as_ptr(),
-        //     func_ty,
-        // );
-        // let bb_entry = LLVMAppendBasicBlockInContext(
-        //     self.context,
-        //     func,
-        //     CString::new("entry").unwrap().as_ptr(),
-        // );
-        // LLVMPositionBuilderAtEnd(self.builder, bb_entry);
-        //
-        // let mut env = HashMap::new();
-        // self.cur_func = Some(func);
-        //
-        // let arg_0 = LLVMGetParam(func, 0);
-        // for i in 0..arg_vars.len() {
-        //     env.insert(
-        //         (arg_vars[i].0, true),
-        //         LLVMBuildPointerCast(
-        //             self.builder,
-        //             LLVMBuildLoad(
-        //                 self.builder,
-        //                 LLVMBuildGEP(
-        //                     self.builder,
-        //                     arg_0,
-        //                     vec![LLVMConstInt(
-        //                         LLVMInt32TypeInContext(self.context),
-        //                         i as u64,
-        //                         0,
-        //                     )].as_mut_slice()
-        //                         .as_mut_ptr(),
-        //                     1,
-        //                     CString::new("").unwrap().as_ptr(),
-        //                 ),
-        //                 CString::new("").unwrap().as_ptr(),
-        //             ),
-        //             LLVMPointerType(arg_vars[i].1.to_llvmty(self.context), 0),
-        //             CString::new("").unwrap().as_ptr(),
-        //         ),
-        //     );
-        // }
-        //
-        // let arg_1 = LLVMGetParam(func, 1);
-        // for i in 0..local_vars.len() {
-        //     env.insert(
-        //         (local_vars[i].0, false),
-        //         LLVMBuildPointerCast(
-        //             self.builder,
-        //             LLVMBuildLoad(
-        //                 self.builder,
-        //                 LLVMBuildGEP(
-        //                     self.builder,
-        //                     arg_1,
-        //                     vec![LLVMConstInt(
-        //                         LLVMInt32TypeInContext(self.context),
-        //                         i as u64,
-        //                         0,
-        //                     )].as_mut_slice()
-        //                         .as_mut_ptr(),
-        //                     1,
-        //                     CString::new("").unwrap().as_ptr(),
-        //                 ),
-        //                 CString::new("").unwrap().as_ptr(),
-        //             ),
-        //             LLVMPointerType(local_vars[i].1.to_llvmty(self.context), 0),
-        //             CString::new("").unwrap().as_ptr(),
-        //         ),
-        //     );
-        // }
-        //
-        // let mut compilation_failed = false;
-        // if let Err(_) = self.gen_body(insts, const_table, bgn, bgn, end, false, &mut env) {
-        //     compilation_failed = true;
-        // }
-        //
-        // let mut iter_bb = LLVMGetFirstBasicBlock(func);
-        // while iter_bb != ptr::null_mut() {
-        //     if LLVMIsATerminatorInst(LLVMGetLastInstruction(iter_bb)) == ptr::null_mut() {
-        //         let terminator_builder = LLVMCreateBuilderInContext(self.context);
-        //         LLVMPositionBuilderAtEnd(terminator_builder, iter_bb);
-        //         LLVMBuildRet(
-        //             terminator_builder,
-        //             LLVMConstInt(LLVMInt32TypeInContext(self.context), end as u64, 0),
-        //         );
-        //     }
-        //     iter_bb = LLVMGetNextBasicBlock(iter_bb);
-        // }
-        //
-        // llvm::analysis::LLVMVerifyFunction(
-        //     func,
-        //     llvm::analysis::LLVMVerifierFailureAction::LLVMAbortProcessAction,
-        // );
-        //
-        // // LLVMDumpValue(func);
-        //
-        // if compilation_failed {
-        //     // Remove the unnecessary function.
-        //     // TODO: Following code has a bug. Need fixing.
-        //     //  ref. https://groups.google.com/forum/#!topic/llvm-dev/ovvfIe_zU3Y
-        //     // LLVMReplaceAllUsesWith(func, LLVMGetUndef(LLVMTypeOf(func)));
-        //     // LLVMInstructionEraseFromParent(func);
-        //     return Err(());
-        // }
-        //
-        // LLVMRunPassManager(self.pass_manager, self.module);
-        //
-        // Ok((func, arg_vars, local_vars))
+    ) -> Result<(LLVMValueRef, Vec<(usize, ValueType)>), ()> {
+        let local_vars = self.collect_local_variables(vm_state, insts, const_table, bgn, end)?;
+
+        let func_ret_ty = LLVMInt32TypeInContext(self.context);
+        let func_ty = LLVMFunctionType(
+            func_ret_ty,
+            vec![
+                LLVMPointerType(LLVMPointerType(LLVMInt8TypeInContext(self.context), 0), 0),
+                LLVMPointerType(LLVMPointerType(LLVMInt8TypeInContext(self.context), 0), 0),
+            ].as_mut_slice()
+                .as_mut_ptr(),
+            2,
+            0,
+        );
+        let func = LLVMAddFunction(
+            self.module,
+            CString::new(name.as_str()).unwrap().as_ptr(),
+            func_ty,
+        );
+        let bb_entry = LLVMAppendBasicBlockInContext(
+            self.context,
+            func,
+            CString::new("entry").unwrap().as_ptr(),
+        );
+        LLVMPositionBuilderAtEnd(self.builder, bb_entry);
+
+        let mut env = HashMap::new();
+        self.cur_func = Some(func);
+
+        let arg_0 = LLVMGetParam(func, 0);
+        for i in 0..local_vars.len() {
+            env.insert(
+                const_table.string[local_vars[i].0].clone(),
+                LLVMBuildPointerCast(
+                    self.builder,
+                    LLVMBuildLoad(
+                        self.builder,
+                        LLVMBuildGEP(
+                            self.builder,
+                            arg_0,
+                            vec![LLVMConstInt(
+                                LLVMInt32TypeInContext(self.context),
+                                i as u64,
+                                0,
+                            )].as_mut_slice()
+                                .as_mut_ptr(),
+                            1,
+                            CString::new("").unwrap().as_ptr(),
+                        ),
+                        CString::new("").unwrap().as_ptr(),
+                    ),
+                    LLVMPointerType(local_vars[i].1.to_llvmty(self.context), 0),
+                    CString::new("").unwrap().as_ptr(),
+                ),
+            );
+        }
+
+        let mut compilation_failed = false;
+        if let Err(_) = self.gen_body(
+            insts,
+            &vm_state.scope.last().unwrap().borrow(),
+            const_table,
+            bgn,
+            bgn,
+            end,
+            false,
+            &mut env,
+        ) {
+            compilation_failed = true;
+        }
+
+        let mut iter_bb = LLVMGetFirstBasicBlock(func);
+        while iter_bb != ptr::null_mut() {
+            if LLVMIsATerminatorInst(LLVMGetLastInstruction(iter_bb)) == ptr::null_mut() {
+                let terminator_builder = LLVMCreateBuilderInContext(self.context);
+                LLVMPositionBuilderAtEnd(terminator_builder, iter_bb);
+                LLVMBuildRet(
+                    terminator_builder,
+                    LLVMConstInt(LLVMInt32TypeInContext(self.context), end as u64, 0),
+                );
+            }
+            iter_bb = LLVMGetNextBasicBlock(iter_bb);
+        }
+
+        llvm::analysis::LLVMVerifyFunction(
+            func,
+            llvm::analysis::LLVMVerifierFailureAction::LLVMAbortProcessAction,
+        );
+
+        // LLVMDumpValue(func);
+
+        if compilation_failed {
+            // Remove the unnecessary function.
+            // TODO: Following code has a bug. Need fixing.
+            //  ref. https://groups.google.com/forum/#!topic/llvm-dev/ovvfIe_zU3Y
+            // LLVMReplaceAllUsesWith(func, LLVMGetUndef(LLVMTypeOf(func)));
+            // LLVMInstructionEraseFromParent(func);
+            return Err(());
+        }
+
+        LLVMRunPassManager(self.pass_manager, self.module);
+
+        Ok((func, local_vars))
     }
 
     unsafe fn declare_local_var(
@@ -797,39 +761,38 @@ impl TracingJit {
         var
     }
 
-    unsafe fn collect_arg_and_local_vars(
+    unsafe fn collect_local_variables(
         &mut self,
         vm_state: &mut vm::VMState,
         insts: &Vec<u8>,
+        const_table: &vm::ConstantTable,
         mut pc: usize,
         end: usize,
-    ) -> Result<(Vec<(usize, ValueType)>, Vec<(usize, ValueType)>), ()> {
-        let mut arg_vars = HashSet::new();
+    ) -> Result<Vec<(usize, ValueType)>, ()> {
         let mut local_vars = HashSet::new();
+        let local_scope = &vm_state.scope.last().unwrap().borrow();
 
         while pc < end {
             let inst_size = try_opt!(VMInst::get_inst_size(insts[pc]));
             match insts[pc] {
-                VMInst::SET_ARG_LOCAL | VMInst::GET_ARG_LOCAL => {
+                VMInst::DECL_VAR | VMInst::SET_NAME | VMInst::GET_NAME => {
                     pc += 1;
                     get_int32!(insts, pc, id, usize);
-                    let ty = try_opt!(get_value_type(&vm_state.stack[vm_state.bp + id]));
-                    arg_vars.insert((id, ty));
-                }
-                VMInst::GET_LOCAL | VMInst::SET_LOCAL => {
-                    pc += 1;
-                    get_int32!(insts, pc, id, usize);
-                    let ty = try_opt!(get_value_type(&vm_state.stack[vm_state.lp + id]));
-                    local_vars.insert((id, ty));
+                    let name = &const_table.string[id];
+                    if let Some(val) = local_scope.vals.borrow().get(name) {
+                        let ty = if let Some(ty) = get_value_type(val) {
+                            ty
+                        } else {
+                            continue;
+                        };
+                        local_vars.insert((id, ty));
+                    }
                 }
                 _ => pc += inst_size,
             }
         }
 
-        Ok((
-            arg_vars.iter().map(|x| x.clone()).collect(),
-            local_vars.iter().map(|x| x.clone()).collect(),
-        ))
+        Ok(local_vars.iter().map(|x| x.clone()).collect())
     }
 
     unsafe fn gen_body(
@@ -1226,8 +1189,14 @@ impl TracingJit {
                             LLVMBuildLoad(self.builder, *val, CString::new("").unwrap().as_ptr())
                         }
                         None => match scope.get_value(name) {
-                            // Don't have to LLVMBuildLoad `func`
                             vm::Value::Function(pos, _, _) if pos == func_pos => func,
+                            vm::Value::Function(pos, _, _) => match self.func_info.get(&pos) {
+                                Some(FuncInfo { llvm_func, .. }) if llvm_func.is_some() => {
+                                    llvm_func.unwrap()
+                                }
+                                _ => return Err(()),
+                            },
+
                             _ => return Err(()),
                         },
                     };
@@ -1393,7 +1362,6 @@ impl TracingJit {
                             llvm_args.push(try_opt!(stack.pop()).0);
                         }
                         llvm_args.reverse();
-                        LLVMDumpValue(func);
                         stack.push((
                             LLVMBuildCall(
                                 self.builder,
@@ -1404,7 +1372,6 @@ impl TracingJit {
                             ),
                             None,
                         ));
-                        LLVMDumpValue(func);
                     }
                 }
                 VMInst::GET_MEMBER => {
@@ -1545,7 +1512,7 @@ impl TracingJit {
             }
         }
 
-        LLVMDumpModule(self.module);
+        // LLVMDumpModule(self.module);
 
         Ok(())
     }
@@ -1609,29 +1576,15 @@ impl TracingJit {
 pub unsafe fn run_loop_llvm_func(
     f: fn(*mut f64, *mut f64) -> i32,
     vm_state: &mut vm::VMState,
-    arg_vars: Vec<(usize, ValueType)>,
+    const_table: &vm::ConstantTable,
     local_vars: Vec<(usize, ValueType)>,
 ) -> Option<isize> {
-    let mut args_of_arg_vars = vec![];
+    let mut scope = vm_state.scope.last().unwrap().borrow_mut();
     let mut args_of_local_vars = vec![];
 
-    for (id, _) in &arg_vars {
-        args_of_arg_vars.push(match vm_state.stack[vm_state.bp + id].clone() {
-            vm::Value::Number(f) => {
-                let p = libc::calloc(1, ::std::mem::size_of::<f64>()) as *mut f64;
-                *p = f;
-                p as *mut libc::c_void
-            }
-            vm::Value::Bool(b) => {
-                let p = libc::calloc(1, ::std::mem::size_of::<bool>()) as *mut bool;
-                *p = b;
-                p as *mut libc::c_void
-            }
-            _ => return None,
-        });
-    }
     for (id, _) in &local_vars {
-        args_of_local_vars.push(match vm_state.stack[vm_state.lp + id].clone() {
+        let name = &const_table.string[*id];
+        args_of_local_vars.push(match scope.get_value(name) {
             vm::Value::Number(f) => {
                 let p = libc::calloc(1, ::std::mem::size_of::<f64>()) as *mut f64;
                 *p = f;
@@ -1649,27 +1602,20 @@ pub unsafe fn run_loop_llvm_func(
     // println!("before: farg[{:?}] local[{:?}]", args_of_arg_vars, args_of_local_vars);
     let pc = ::std::mem::transmute::<
         fn(*mut f64, *mut f64) -> i32,
-        fn(*mut *mut libc::c_void, *mut *mut libc::c_void) -> i32,
-    >(f)(
-        args_of_arg_vars.as_mut_slice().as_mut_ptr(),
-        args_of_local_vars.as_mut_slice().as_mut_ptr(),
-    );
+        fn(*mut *mut libc::c_void) -> i32,
+    >(f)(args_of_local_vars.as_mut_slice().as_mut_ptr());
     // println!("after:  farg[{:?}] local[{:?}]", args_of_arg_vars, args_of_local_vars);
 
-    for (i, (id, ty)) in arg_vars.iter().enumerate() {
-        vm_state.stack[vm_state.bp + id] = match ty {
-            ValueType::Number => vm::Value::Number(*(args_of_arg_vars[i] as *mut f64)),
-            ValueType::Bool => vm::Value::Bool(*(args_of_arg_vars[i] as *mut bool)),
-            _ => unimplemented!(),
-        };
-        libc::free(args_of_arg_vars[i]);
-    }
     for (i, (id, ty)) in local_vars.iter().enumerate() {
-        vm_state.stack[vm_state.lp + id] = match ty {
-            ValueType::Number => vm::Value::Number(*(args_of_local_vars[i] as *mut f64)),
-            ValueType::Bool => vm::Value::Bool(*(args_of_local_vars[i] as *mut bool)),
-            _ => unimplemented!(),
-        };
+        let name = const_table.string[*id].clone();
+        scope.set_value_if_exist(
+            name,
+            match ty {
+                ValueType::Number => vm::Value::Number(*(args_of_local_vars[i] as *mut f64)),
+                ValueType::Bool => vm::Value::Bool(*(args_of_local_vars[i] as *mut bool)),
+                _ => unimplemented!(),
+            },
+        );
         libc::free(args_of_local_vars[i]);
     }
 
