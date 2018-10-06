@@ -148,28 +148,25 @@ pub unsafe fn math_pow(_: CallObject, args: Vec<Value>, self_: &mut VM) {
 pub unsafe fn function_prototype_call(callobj: CallObject, args: Vec<Value>, self_: &mut VM) {
     let mut callee = *callobj.this;
     let arg_this = args[0].clone();
-    loop {
-        match callee {
-            Value::Function(dst, obj, mut callobj) => {
-                for (i, arg) in args[1..].iter().enumerate() {
-                    let param_name = callobj.param_names[i].clone();
-                    callobj.set_value(param_name, arg.clone());
-                }
-
-                *callobj.this = arg_this;
-                self_.state.scope.push(Rc::new(RefCell::new(callobj)));
-                self_
-                    .state
-                    .history
-                    .push((0, 0, self_.state.stack.len(), self_.state.pc));
-                self_.state.pc = dst as isize;
-
-                self_.do_run();
-
-                self_.state.scope.pop();
-                break;
+    match callee {
+        Value::Function(dst, obj, mut callobj) => {
+            for (i, arg) in args[1..].iter().enumerate() {
+                let param_name = callobj.get_parameter_nth_name(i).unwrap();
+                callobj.set_value(param_name, arg.clone());
             }
-            _ => break,
+
+            *callobj.this = arg_this;
+            self_.state.scope.push(Rc::new(RefCell::new(callobj)));
+            self_
+                .state
+                .history
+                .push((0, 0, self_.state.stack.len(), self_.state.pc));
+            self_.state.pc = dst as isize;
+
+            self_.do_run();
+
+            self_.state.scope.pop();
         }
+        _ => {}
     }
 }

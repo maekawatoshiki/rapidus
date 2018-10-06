@@ -157,27 +157,28 @@ impl VMCodeGen {
         ) in &self.functions
         {
             let pos = insts.len();
-            let mut val;
-
-            val = new_value_function(pos, {
+            let val = new_value_function(pos, {
                 let mut callobj =
                     CallObject::new(Value::Object(self.global_varmap.borrow().vals.clone()));
                 // TODO: Implement rest paramter
-                callobj.param_names = params
+                callobj.params = params
                     .clone()
                     .iter()
-                    .map(|FormalParameter { name, .. }| name.clone())
+                    .map(
+                        |FormalParameter {
+                             name,
+                             is_rest_param,
+                             ..
+                         }| (name.clone(), *is_rest_param),
+                    )
                     .collect();
                 callobj.parent = Some(self.global_varmap.clone());
                 callobj
             });
-
             self.global_varmap
                 .borrow_mut()
                 .set_value(name.clone(), val.clone());
-
-            let mut func_insts = func_insts.clone();
-            insts.append(&mut func_insts);
+            insts.append(&mut func_insts.clone());
         }
 
         // let mut i = 0;

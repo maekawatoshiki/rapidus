@@ -59,7 +59,7 @@ pub type CallObjectRef = Rc<RefCell<CallObject>>;
 #[derive(Clone, Debug, PartialEq)]
 pub struct CallObject {
     pub vals: Rc<RefCell<HashMap<String, Value>>>,
-    pub param_names: Vec<String>,
+    pub params: Vec<(String, bool)>, // (name, rest param?)
     pub arg_rest_vals: Vec<Value>,
     pub this: Box<Value>,
     pub parent: Option<CallObjectRef>,
@@ -69,7 +69,7 @@ impl CallObject {
     pub fn new(this: Value) -> CallObject {
         CallObject {
             vals: Rc::new(RefCell::new(HashMap::new())),
-            param_names: vec![],
+            params: vec![],
             arg_rest_vals: vec![],
             this: Box::new(this),
             parent: None,
@@ -80,7 +80,7 @@ impl CallObject {
         let vals = Rc::new(RefCell::new(HashMap::new()));
         let callobj = Rc::new(RefCell::new(CallObject {
             vals: vals.clone(),
-            param_names: vec![],
+            params: vec![],
             arg_rest_vals: vec![],
             this: Box::new(Value::Undefined),
             parent: None,
@@ -116,12 +116,12 @@ impl CallObject {
     }
 
     pub fn get_arguments_nth_value(&self, n: usize) -> Value {
-        if n < self.param_names.len() {
-            let param_name = &self.param_names[n];
+        if n < self.params.len() {
+            let param_name = &self.params[n].0;
             return self.get_value(param_name);
         }
 
-        let n = n - self.param_names.len();
+        let n = n - self.params.len();
         if n >= self.arg_rest_vals.len() {
             return Value::Undefined;
         }
@@ -129,13 +129,13 @@ impl CallObject {
     }
 
     pub fn set_arguments_nth_value(&mut self, n: usize, val: Value) {
-        if n < self.param_names.len() {
-            let param_name = self.param_names[n].clone();
+        if n < self.params.len() {
+            let param_name = self.params[n].0.clone();
             self.set_value(param_name, val);
             return;
         }
 
-        let n = n - self.param_names.len();
+        let n = n - self.params.len();
         if n >= self.arg_rest_vals.len() {
             return;
         }
@@ -143,12 +143,12 @@ impl CallObject {
     }
 
     pub fn get_arguments_length(&self) -> usize {
-        self.param_names.len() + self.arg_rest_vals.len()
+        self.params.len() + self.arg_rest_vals.len()
     }
 
     pub fn get_parameter_nth_name(&self, n: usize) -> Option<String> {
-        if n < self.param_names.len() {
-            return Some(self.param_names[n].clone());
+        if n < self.params.len() {
+            return Some(self.params[n].0.clone());
         }
         None
     }
@@ -463,13 +463,35 @@ fn construct(self_: &mut VM) {
                     Rc::new(RefCell::new(map))
                 };
 
+                // similar code is used some times. should make it a function.
                 let mut args = vec![];
+                let mut rest_args = vec![];
+                let mut rest_param_name = None;
                 for _ in 0..argc {
                     args.push(self_.state.stack.pop().unwrap());
                 }
                 for (i, arg) in args.iter().rev().enumerate() {
-                    let param_name = callobj.param_names[i].clone();
-                    callobj.set_value(param_name, arg.clone());
+                    if let Some(name) = callobj.get_parameter_nth_name(i) {
+                        // When rest parameter
+                        if callobj.params[i].1 {
+                            rest_param_name = Some(name);
+                            rest_args.push(arg.clone());
+                        } else {
+                            callobj.set_value(name, arg.clone());
+                        }
+                    } else {
+                        rest_args.push(arg.clone());
+                    }
+                }
+                if let Some(rest_param_name) = rest_param_name {
+                    callobj.set_value(
+                        rest_param_name,
+                        Value::Array(Rc::new(RefCell::new(ArrayValue::new(rest_args)))),
+                    );
+                } else {
+                    for arg in rest_args {
+                        callobj.arg_rest_vals.push(arg.clone());
+                    }
                 }
 
                 *callobj.this = Value::Object(new_this.clone());
@@ -944,20 +966,37 @@ fn call(self_: &mut VM) {
 
                 let mut args = vec![];
                 let mut args_all_numbers = true;
+                let mut rest_args = vec![];
+                let mut rest_param_name = None;
                 for _ in 0..argc {
                     args.push(self_.state.stack.pop().unwrap());
                 }
                 for (i, arg) in args.iter().rev().enumerate() {
-                    if i < callobj.param_names.len() {
-                        let param_name = callobj.param_names[i].clone();
-                        callobj.set_value(param_name, arg.clone());
+                    if let Some(name) = callobj.get_parameter_nth_name(i) {
+                        // When rest parameter
+                        if callobj.params[i].1 {
+                            rest_param_name = Some(name);
+                            rest_args.push(arg.clone());
+                        } else {
+                            callobj.set_value(name, arg.clone());
+                        }
                     } else {
-                        callobj.arg_rest_vals.push(arg.clone());
+                        rest_args.push(arg.clone());
                     }
 
                     match &arg {
                         &Value::Number(_) => {}
                         _ => args_all_numbers = false,
+                    }
+                }
+                if let Some(rest_param_name) = rest_param_name {
+                    callobj.set_value(
+                        rest_param_name,
+                        Value::Array(Rc::new(RefCell::new(ArrayValue::new(rest_args)))),
+                    );
+                } else {
+                    for arg in rest_args {
+                        callobj.arg_rest_vals.push(arg.clone());
                     }
                 }
 
