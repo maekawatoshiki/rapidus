@@ -1235,22 +1235,18 @@ impl TracingJit {
                 }
                 VMInst::SET_NAME => {
                     pc += 1;
-                    println!("set in");
                     get_int32!(insts, pc, id, usize);
                     let name = &const_table.string[id];
                     let val = try_stack!(stack.pop());
                     LLVMBuildStore(self.builder, val, *try_opt!(env.get(name)));
-                    println!("set out");
                 }
                 VMInst::DECL_VAR => {
                     pc += 1;
-                    println!("decl in");
                     get_int32!(insts, pc, id, usize);
                     let name = const_table.string[id].clone();
                     let dst = self.declare_local_var(name, env);
                     let src = try_stack!(stack.pop());
                     LLVMBuildStore(self.builder, src, dst);
-                    println!("decl out");
                 }
 
                 // These instructions are no longer used.
