@@ -1217,45 +1217,6 @@ impl TracingJit {
                     let src = try_stack!(stack.pop());
                     LLVMBuildStore(self.builder, src, dst);
                 }
-
-                // These instructions are no longer used.
-                // VMInst::GET_ARG_LOCAL => {
-                //     pc += 1;
-                //     get_int32!(insts, pc, n, usize);
-                //     stack.push((
-                //         LLVMBuildLoad(
-                //             self.builder,
-                //             *try_opt!(env.get(&(n, true))),
-                //             CString::new("").unwrap().as_ptr(),
-                //         ),
-                //         None,
-                //     ));
-                // }
-                // // Rarely used?
-                // VMInst::SET_ARG_LOCAL => {
-                //     pc += 1;
-                //     get_int32!(insts, pc, n, usize);
-                //     let src = try_stack!(stack.pop());
-                //     LLVMBuildStore(self.builder, src, *try_opt!(env.get(&(n, true))));
-                // }
-                // VMInst::GET_LOCAL => {
-                //     pc += 1;
-                //     get_int32!(insts, pc, n, usize);
-                //     stack.push((
-                //         LLVMBuildLoad(
-                //             self.builder,
-                //             self.declare_local_var(n, false, env),
-                //             CString::new("").unwrap().as_ptr(),
-                //         ),
-                //         None,
-                //     ));
-                // }
-                // VMInst::SET_LOCAL => {
-                //     pc += 1;
-                //     get_int32!(insts, pc, n, usize);
-                //     let src = try_stack!(stack.pop());
-                //     LLVMBuildStore(self.builder, src, self.declare_local_var(n, false, env));
-                // }
                 VMInst::CALL => {
                     pc += 1;
                     get_int32!(insts, pc, argc, usize);

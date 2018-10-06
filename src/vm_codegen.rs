@@ -136,7 +136,10 @@ impl VMCodeGen {
                     "random".to_string(),
                     Value::BuiltinFunction(builtin::MATH_RANDOM),
                 );
-                map.insert("pow".to_string(), Value::BuiltinFunction(builtin::MATH_POW));
+                map.insert(
+                    "pow".to_string(),
+                    Value::BuiltinFunction(builtin::MATH_POW),
+                );
                 Value::Object(Rc::new(RefCell::new(map)))
             });
         }
@@ -175,44 +178,44 @@ impl VMCodeGen {
             insts.append(&mut func_insts);
         }
 
-        let mut i = 0;
-        while i < insts.len() {
-            let inst_size = VMInst::get_inst_size(insts[i])
-                .unwrap_or_else(|| panic!("Illegal VM Instruction occurred"));
-            match insts[i] {
-                VMInst::GET_NAME => {
-                    let id = insts[i + 1] as i32
-                        + ((insts[i + 2] as i32) << 8)
-                        + ((insts[i + 3] as i32) << 16)
-                        + ((insts[i + 4] as i32) << 24);
-                    if let Some(val) = function_value_list
-                        .get(self.bytecode_gen.const_table.string[id as usize].as_str())
-                    {
-                        match val {
-                            Value::NeedThis(callee) => {
-                                insts[i] = VMInst::PUSH_CONST;
-                                let id = self.bytecode_gen.const_table.value.len();
-                                self.bytecode_gen
-                                    .const_table
-                                    .value
-                                    .push(Value::NeedThis(callee.clone()));
-                                self.bytecode_gen
-                                    .replace_int32(id as i32, &mut insts[i + 1..i + 5]);
-                            }
-                            _ => {
-                                insts[i] = VMInst::PUSH_CONST;
-                                let id = self.bytecode_gen.const_table.value.len();
-                                self.bytecode_gen.const_table.value.push(val.clone());
-                                self.bytecode_gen
-                                    .replace_int32(id as i32, &mut insts[i + 1..i + 5]);
-                            }
-                        }
-                    }
-                    i += inst_size
-                }
-                _ => i += inst_size,
-            }
-        }
+        // let mut i = 0;
+        // while i < insts.len() {
+        //     let inst_size = VMInst::get_inst_size(insts[i])
+        //         .unwrap_or_else(|| panic!("Illegal VM Instruction occurred"));
+        //     match insts[i] {
+        //         VMInst::GET_NAME => {
+        //             let id = insts[i + 1] as i32
+        //                 + ((insts[i + 2] as i32) << 8)
+        //                 + ((insts[i + 3] as i32) << 16)
+        //                 + ((insts[i + 4] as i32) << 24);
+        //             if let Some(val) = function_value_list
+        //                 .get(self.bytecode_gen.const_table.string[id as usize].as_str())
+        //             {
+        //                 match val {
+        //                     Value::NeedThis(callee) => {
+        //                         insts[i] = VMInst::PUSH_CONST;
+        //                         let id = self.bytecode_gen.const_table.value.len();
+        //                         self.bytecode_gen
+        //                             .const_table
+        //                             .value
+        //                             .push(Value::NeedThis(callee.clone()));
+        //                         self.bytecode_gen
+        //                             .replace_int32(id as i32, &mut insts[i + 1..i + 5]);
+        //                     }
+        //                     _ => {
+        //                         insts[i] = VMInst::PUSH_CONST;
+        //                         let id = self.bytecode_gen.const_table.value.len();
+        //                         self.bytecode_gen.const_table.value.push(val.clone());
+        //                         self.bytecode_gen
+        //                             .replace_int32(id as i32, &mut insts[i + 1..i + 5]);
+        //                     }
+        //                 }
+        //             }
+        //             i += inst_size
+        //         }
+        //         _ => i += inst_size,
+        //     }
+        // }
     }
 
     fn run(&mut self, node: &Node, insts: &mut ByteCode) {

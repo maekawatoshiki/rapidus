@@ -40,7 +40,7 @@ impl ArrayValue {
                         let mut hm = HashMap::new();
                         hm.insert(
                             "push".to_string(),
-                            Value::NeedThis(Box::new(Value::BuiltinFunction(builtin::ARRAY_PUSH))),
+                            Value::BuiltinFunction(builtin::ARRAY_PUSH),
                         );
                         hm
                     }))),
@@ -158,9 +158,8 @@ pub enum Value {
     Number(f64),
     String(CString),
     Function(usize, Rc<RefCell<HashMap<String, Value>>>, CallObject),
-    NeedThis(Box<Value>),
-    WithThis(Box<(Value, Value)>),               // Function, This
-    BuiltinFunction(usize), // unknown if usize == 0; specific function if usize > 0
+    WithParent(Box<Value>, Box<Value>),          // parent, value
+    BuiltinFunction(usize),                      // id(==0:unknown),
     Object(Rc<RefCell<HashMap<String, Value>>>), // Object(HashMap<String, Value>),
     Array(Rc<RefCell<ArrayValue>>),
     Arguments,
@@ -183,11 +182,7 @@ pub fn new_value_function(pos: usize, callobj: CallObject) -> Value {
             let mut hm = HashMap::new();
             hm.insert(
                 "prototype".to_string(),
-                Value::Object(Rc::new(RefCell::new({
-                    let mut hm = HashMap::new();
-                    // hm.insert("call".to_string(), Value::NeedThis(Box::new(Value::BuiltinFunction(6))));
-                    hm
-                }))),
+                Value::Object(Rc::new(RefCell::new(HashMap::new()))),
             );
             hm.insert(
                 "__proto__".to_string(),
@@ -195,9 +190,7 @@ pub fn new_value_function(pos: usize, callobj: CallObject) -> Value {
                     let mut hm = HashMap::new();
                     hm.insert(
                         "call".to_string(),
-                        Value::NeedThis(Box::new(Value::BuiltinFunction(
-                            builtin::FUNCTION_PROTOTYPE_CALL,
-                        ))),
+                        Value::BuiltinFunction(builtin::FUNCTION_PROTOTYPE_CALL),
                     );
                     hm
                 }))),
@@ -239,7 +232,7 @@ pub struct VM {
     pub insts: ByteCode,
     pub loop_bgn_end: HashMap<isize, isize>,
     pub op_table: [fn(&mut VM); 49],
-    pub builtin_functions: [unsafe fn(Vec<Value>, &mut VM); 7],
+    pub builtin_functions: [unsafe fn(Option<Value>, Vec<Value>, &mut VM); 7],
 }
 
 pub struct VMState {
@@ -488,10 +481,7 @@ fn construct(self_: &mut VM) {
                 };
                 break;
             }
-            Value::NeedThis(callee_) => {
-                callee = *callee_;
-            }
-            Value::WithThis(box (callee_, _)) => {
+            Value::WithParent(box parent, box callee_) => {
                 callee = callee_;
             }
             c => {
@@ -710,13 +700,19 @@ fn get_member(self_: &mut VM) {
                 val => self_.state.stack.push(val),
             }
         }
-        Value::Function(_, map, _) | Value::NeedThis(box Value::Function(_, map, _)) => {
+        Value::Function(_, map, _) => {
             match obj_find_val(&map.borrow().clone(), member.to_string().as_str()) {
                 Value::Function(pos, map2, mut callobj) => {
                     self_.state.stack.push(Value::Function(pos, map2, {
                         callobj.this = Some(map.clone());
                         callobj
                     }))
+                }
+                Value::BuiltinFunction(id) => {
+                    self_.state.stack.push(Value::WithParent(
+                        Box::new(parent),
+                        Box::new(Value::BuiltinFunction(id)),
+                    ));
                 }
                 val => self_.state.stack.push(val),
             }
@@ -737,10 +733,14 @@ fn get_member(self_: &mut VM) {
                     self_.state.stack.push(Value::Number(map.length as f64));
                 }
                 _ => match obj_find_val(&map.obj, member.to_string().as_str()) {
-                    Value::NeedThis(callee) => self_
-                        .state
-                        .stack
-                        .push(Value::WithThis(Box::new((*callee, parent)))),
+                    Value::BuiltinFunction(pos) => self_.state.stack.push(Value::WithParent(
+                        Box::new(parent),
+                        Box::new(Value::BuiltinFunction(pos)),
+                    )),
+                    // Value::NeedThis(callee) => self_
+                    //     .state
+                    //     .stack
+                    //     .push(Value::WithThis(Box::new((*callee, parent)))),
                     val => self_.state.stack.push(val),
                 },
             }
@@ -791,9 +791,7 @@ fn set_member(self_: &mut VM) {
     let parent = self_.state.stack.pop().unwrap();
     let val = self_.state.stack.pop().unwrap();
     match parent {
-        Value::Object(map)
-        | Value::Function(_, map, _)
-        | Value::NeedThis(box Value::Function(_, map, _)) => {
+        Value::Object(map) | Value::Function(_, map, _) => {
             *map.borrow_mut()
                 .entry(member.to_string())
                 .or_insert_with(|| Value::Undefined) = val;
@@ -926,10 +924,7 @@ fn call(self_: &mut VM) {
                     args.push(self_.state.stack.pop().unwrap());
                 }
                 args.reverse();
-                if let Some(this) = this {
-                    args.insert(0, this)
-                }
-                unsafe { self_.builtin_functions[x](args, self_) };
+                unsafe { self_.builtin_functions[x](this, args, self_) };
                 break;
             }
             Value::Function(dst, _, mut callobj) => {
@@ -988,13 +983,9 @@ fn call(self_: &mut VM) {
                     .register_return_type(dst, self_.state.stack.last().unwrap());
                 break;
             }
-            Value::NeedThis(callee_) => {
-                // this = Some(Value::Object(self_.global_objects.clone()));
-                callee = *callee_;
-            }
-            Value::WithThis(box callee_this) => {
-                this = Some(callee_this.1);
-                callee = callee_this.0;
+            Value::WithParent(box parent, box callee_) => {
+                this = Some(parent);
+                callee = callee_;
             }
             c => {
                 println!("Call: err: {:?}, pc = {}", c, self_.state.pc);

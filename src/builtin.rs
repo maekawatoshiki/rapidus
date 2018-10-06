@@ -3,7 +3,10 @@ use vm::{RawStringPtr, Value, VM};
 use libc;
 use rand::random;
 
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::ffi::CString;
+use std::rc::Rc;
 
 pub const CONSOLE_LOG: usize = 0;
 pub const PROCESS_STDOUT_WRITE: usize = 1;
@@ -14,7 +17,7 @@ pub const MATH_POW: usize = 5;
 pub const FUNCTION_PROTOTYPE_CALL: usize = 6;
 
 // BuiltinFunction(0)
-pub unsafe fn console_log(args: Vec<Value>, _: &mut VM) {
+pub unsafe fn console_log(_: Option<Value>, args: Vec<Value>, _: &mut VM) {
     let args_len = args.len();
     for i in 0..args_len {
         match args[i] {
@@ -30,7 +33,7 @@ pub unsafe fn console_log(args: Vec<Value>, _: &mut VM) {
             Value::Bool(false) => {
                 libc::printf(b"false\0".as_ptr() as RawStringPtr);
             }
-            Value::Object(_) | Value::Array(_) | Value::Function(_, _,_) => debug_print(&args[i]),
+            Value::Object(_) | Value::Array(_) | Value::Function(_, _, _) => debug_print(&args[i]),
             Value::Undefined => {
                 libc::printf(b"undefined\0".as_ptr() as RawStringPtr);
             }
@@ -44,7 +47,7 @@ pub unsafe fn console_log(args: Vec<Value>, _: &mut VM) {
 }
 
 // BuiltinFunction(1)
-pub unsafe fn process_stdout_write(args: Vec<Value>, _: &mut VM) {
+pub unsafe fn process_stdout_write(_: Option<Value>, args: Vec<Value>, _: &mut VM) {
     let args_len = args.len();
     for i in 0..args_len {
         match args[i] {
@@ -96,7 +99,7 @@ pub unsafe fn debug_print(val: &Value) {
             }
             libc::printf("]\0".as_ptr() as RawStringPtr);
         }
-        &Value::Function(_, _,_) => {
+        &Value::Function(_, _, _) => {
             libc::printf("[Function]\0".as_ptr() as RawStringPtr);
         }
         &Value::Undefined => {
@@ -107,33 +110,33 @@ pub unsafe fn debug_print(val: &Value) {
 }
 
 // BuiltinFunction(2)
-pub unsafe fn array_push(args: Vec<Value>, _: &mut VM) {
-    if let Value::Array(ref map) = args[0] {
+pub unsafe fn array_push(parent: Option<Value>, args: Vec<Value>, _: &mut VM) {
+    if let Some(Value::Array(ref map)) = parent {
         let mut map = map.borrow_mut();
         // let mut elems = &mut map.elems;
-        for val in args[1..].iter() {
+        for val in &args {
             map.elems.push(val.clone());
         }
-        map.length += args[1..].len();
+        map.length += args.len();
     } else {
         unreachable!()
     };
 }
 
 // BuiltinFunction(3)
-pub unsafe fn math_floor(args: Vec<Value>, self_: &mut VM) {
+pub unsafe fn math_floor(_: Option<Value>, args: Vec<Value>, self_: &mut VM) {
     if let Value::Number(f) = args[0] {
         self_.state.stack.push(Value::Number(f.floor()))
     }
 }
 
 // BuiltinFunction(4)
-pub unsafe fn math_random(_args: Vec<Value>, self_: &mut VM) {
+pub unsafe fn math_random(_: Option<Value>, _args: Vec<Value>, self_: &mut VM) {
     self_.state.stack.push(Value::Number(random::<f64>()))
 }
 
 // BuiltinFunction(5)
-pub unsafe fn math_pow(args: Vec<Value>, self_: &mut VM) {
+pub unsafe fn math_pow(_: Option<Value>, args: Vec<Value>, self_: &mut VM) {
     if let Value::Number(f1) = args[0] {
         if let Value::Number(f2) = args[1] {
             self_.state.stack.push(Value::Number(f1.powf(f2)))
@@ -142,50 +145,41 @@ pub unsafe fn math_pow(args: Vec<Value>, self_: &mut VM) {
 }
 
 // BuiltinFunction(6)
-pub unsafe fn function_prototype_call(args: Vec<Value>, self_: &mut VM) {
-    unimplemented!();
-    // let mut callee = args[0].clone();
-    // loop {
-    //     match callee {
-    //         Value::Function(dst, _obj,) => {
-    //             self_.state.history.push((0, 0, 0, self_.state.pc));
-    //
-    //             self_.state.stack.push(args[1].clone());
-    //
-    //             for arg in args[2..].iter() {
-    //                 self_.state.stack.push(arg.clone());
-    //             }
-    //
-    //             self_.state.pc = dst as isize;
-    //             self_
-    //                 .state
-    //                 .stack
-    //                 .push(Value::Number(args.len() as f64 - 1.0 /*callee*/));
-    //
-    //             self_.do_run();
-    //
-    //             match self_.state.stack.last_mut().unwrap() {
-    //                 &mut Value::Object(_)
-    //                 | &mut Value::Array(_)
-    //                 | &mut Value::Function(_, _)
-    //                 | &mut Value::BuiltinFunction(_) => {}
-    //                 others => *others = args[1].clone(),
-    //             };
-    //             break;
-    //         }
-    //         Value::NeedThis(callee_) => {
-    //             callee = *callee_;
-    //         }
-    //         Value::WithThis(box (callee_, _)) => {
-    //             callee = callee_;
-    //         }
-    //         c => {
-    //             println!(
-    //                 "Function.prototype.call: err: {:?}, pc = {}",
-    //                 c, self_.state.pc
-    //             );
-    //             break;
-    //         }
-    //     }
-    // }
+pub unsafe fn function_prototype_call(parent: Option<Value>, args: Vec<Value>, self_: &mut VM) {
+    let mut callee = parent.unwrap();
+    let arg_this = match args[0] {
+        Value::Object(ref obj) => obj.clone(),
+        _ => unimplemented!(),
+    };
+
+    loop {
+        match callee {
+            Value::Function(dst, obj, mut callobj) => {
+                for (i, arg) in args[1..].iter().enumerate() {
+                    let param_name = callobj.param_names[i].clone();
+                    callobj.set_value(param_name, arg.clone());
+                }
+
+                callobj.this = Some(arg_this);
+                self_.state.scope.push(Rc::new(RefCell::new(callobj)));
+                self_
+                    .state
+                    .history
+                    .push((0, 0, self_.state.stack.len(), self_.state.pc));
+                self_.state.pc = dst as isize;
+
+                self_.do_run();
+
+                self_.state.scope.pop();
+                break;
+            }
+            Value::WithParent(box parent, box callee_) => {
+                callee = callee_;
+            }
+            c => {
+                println!("Constract: err: {:?}, pc = {}", c, self_.state.pc);
+                break;
+            }
+        }
+    }
 }
