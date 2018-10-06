@@ -8,7 +8,7 @@ use libc;
 
 use builtin;
 use bytecode_gen::{ByteCode, VMInst};
-// use jit::TracingJit;
+use jit::TracingJit;
 use node::BinOp;
 
 pub type RawStringPtr = *mut libc::c_char;
@@ -142,6 +142,13 @@ impl CallObject {
     pub fn get_arguments_length(&self) -> usize {
         self.param_names.len() + self.arg_rest_vals.len()
     }
+
+    pub fn get_parameter_nth_name(&self, n: usize) -> Option<String> {
+        if n < self.param_names.len() {
+            return Some(self.param_names[n].clone());
+        }
+        None
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -226,7 +233,7 @@ impl ConstantTable {
 }
 
 pub struct VM {
-    // pub jit: TracingJit,
+    pub jit: TracingJit,
     pub state: VMState,
     pub const_table: ConstantTable,
     pub insts: ByteCode,
@@ -283,7 +290,7 @@ impl VM {
         });
 
         VM {
-            // jit: unsafe { TracingJit::new() },
+            jit: unsafe { TracingJit::new() },
             state: VMState {
                 stack: { Vec::with_capacity(128) },
                 scope: vec![global_vals],
@@ -381,20 +388,20 @@ impl VM {
 
     pub fn do_run(&mut self) {
         loop {
-            // if let Some(end) = self.loop_bgn_end.get(&self.state.pc) {
-            //     unsafe {
-            //         // println!("range: [{:x}, {:x})", self.state.pc, end);
-            //         if let Some(pc) = self.jit.can_loop_jit(
-            //             &self.insts,
-            //             &self.const_table,
-            //             &mut self.state,
-            //             *end as usize,
-            //         ) {
-            //             self.state.pc = pc;
-            //             continue;
-            //         }
-            //     }
-            // }
+            if let Some(end) = self.loop_bgn_end.get(&self.state.pc) {
+                unsafe {
+                    // println!("range: [{:x}, {:x})", self.state.pc, end);
+                    if let Some(pc) = self.jit.can_loop_jit(
+                        &self.insts,
+                        &self.const_table,
+                        &mut self.state,
+                        *end as usize,
+                    ) {
+                        self.state.pc = pc;
+                        continue;
+                    }
+                }
+            }
             let code = self.insts[self.state.pc as usize];
             self.op_table[code as usize](self);
             if code == VMInst::RETURN || code == VMInst::END {
@@ -837,50 +844,50 @@ fn set_member(self_: &mut VM) {
 
 fn get_global(self_: &mut VM) {
     self_.state.pc += 1; // get_global
-    // get_int32!(self_, n, usize);
-    // let val = (*(*self_.global_objects)
-    //     .borrow()
-    //     .get(self_.const_table.string[n].as_str())
-    //     .unwrap())
-    //     .clone();
-    // self_.state.stack.push(val);
+                         // get_int32!(self_, n, usize);
+                         // let val = (*(*self_.global_objects)
+                         //     .borrow()
+                         //     .get(self_.const_table.string[n].as_str())
+                         //     .unwrap())
+                         //     .clone();
+                         // self_.state.stack.push(val);
 }
 
 fn set_global(self_: &mut VM) {
     self_.state.pc += 1; // set_global
-    // get_int32!(self_, n, usize);
-    // *(*self_.global_objects)
-    //     .borrow_mut()
-    //     .entry(self_.const_table.string[n].clone())
-    //     .or_insert_with(|| Value::Undefined) = self_.state.stack.pop().unwrap();
+                         // get_int32!(self_, n, usize);
+                         // *(*self_.global_objects)
+                         //     .borrow_mut()
+                         //     .entry(self_.const_table.string[n].clone())
+                         //     .or_insert_with(|| Value::Undefined) = self_.state.stack.pop().unwrap();
 }
 
 fn get_local(self_: &mut VM) {
     self_.state.pc += 1; // get_local
-    // get_int32!(self_, n, usize);
-    // let val = self_.state.stack[self_.state.lp + n].clone();
-    // self_.state.stack.push(val);
+                         // get_int32!(self_, n, usize);
+                         // let val = self_.state.stack[self_.state.lp + n].clone();
+                         // self_.state.stack.push(val);
 }
 
 fn set_local(self_: &mut VM) {
     self_.state.pc += 1; // set_local
-    // get_int32!(self_, n, usize);
-    // let val = self_.state.stack.pop().unwrap();
-    // self_.state.stack[self_.state.lp + n] = val;
+                         // get_int32!(self_, n, usize);
+                         // let val = self_.state.stack.pop().unwrap();
+                         // self_.state.stack[self_.state.lp + n] = val;
 }
 
 fn get_arg_local(self_: &mut VM) {
     self_.state.pc += 1; // get_arg_local
-    // get_int32!(self_, n, usize);
-    // let val = self_.state.stack[self_.state.bp + n].clone();
-    // self_.state.stack.push(val);
+                         // get_int32!(self_, n, usize);
+                         // let val = self_.state.stack[self_.state.bp + n].clone();
+                         // self_.state.stack.push(val);
 }
 
 fn set_arg_local(self_: &mut VM) {
     self_.state.pc += 1; // set_arg_local
-    // get_int32!(self_, n, usize);
-    // let val = self_.state.stack.pop().unwrap();
-    // self_.state.stack[self_.state.bp + n] = val;
+                         // get_int32!(self_, n, usize);
+                         // let val = self_.state.stack.pop().unwrap();
+                         // self_.state.stack[self_.state.bp + n] = val;
 }
 
 fn jmp(self_: &mut VM) {
@@ -927,22 +934,26 @@ fn call(self_: &mut VM) {
             }
             Value::Function(dst, _, mut callobj) => {
                 if args_all_number(&self_.state.stack, argc) {
-                    // if let Some(f) = unsafe {
-                    //     self_
-                    //         .jit
-                    //         .can_jit(&self_.insts, &self_.const_table, dst, argc)
-                    // } {
-                    //     let mut args = vec![];
-                    //     for _ in 0..argc {
-                    //         args.push(self_.state.stack.pop().unwrap());
-                    //     }
-                    //     args.reverse();
-                    //     self_
-                    //         .state
-                    //         .stack
-                    //         .push(unsafe { self_.jit.run_llvm_func(dst, f, args) });
-                    //     break;
-                    // }
+                    if let Some(f) = unsafe {
+                        self_.jit.can_jit(
+                            &self_.insts,
+                            &self_.state.scope.last().unwrap().borrow(),
+                            &self_.const_table,
+                            dst,
+                            argc,
+                        )
+                    } {
+                        let mut args = vec![];
+                        for _ in 0..argc {
+                            args.push(self_.state.stack.pop().unwrap());
+                        }
+                        args.reverse();
+                        self_
+                            .state
+                            .stack
+                            .push(unsafe { self_.jit.run_llvm_func(dst, f, args) });
+                        break;
+                    }
                 }
 
                 callobj.vals = Rc::new(RefCell::new(HashMap::new()));
@@ -971,9 +982,9 @@ fn call(self_: &mut VM) {
 
                 self_.state.scope.pop();
 
-                // self_
-                //     .jit
-                //     .register_return_type(dst, self_.state.stack.last().unwrap());
+                self_
+                    .jit
+                    .register_return_type(dst, self_.state.stack.last().unwrap());
                 break;
             }
             Value::NeedThis(callee_) => {

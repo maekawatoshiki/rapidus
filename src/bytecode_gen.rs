@@ -50,6 +50,7 @@ pub mod VMInst {
     pub const POP: u8 = 0x2a;
     pub const LAND: u8 = 0x2b;
     pub const LOR: u8 = 0x2c;
+    //
     pub const SET_CUR_CALLOBJ: u8 = 0x2d;
     pub const GET_NAME: u8 = 0x2e;
     pub const SET_NAME: u8 = 0x2f;
