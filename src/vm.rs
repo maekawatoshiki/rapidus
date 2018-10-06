@@ -388,20 +388,20 @@ impl VM {
 
     pub fn do_run(&mut self) {
         loop {
-            if let Some(end) = self.loop_bgn_end.get(&self.state.pc) {
-                unsafe {
-                    // println!("range: [{:x}, {:x})", self.state.pc, end);
-                    if let Some(pc) = self.jit.can_loop_jit(
-                        &self.insts,
-                        &self.const_table,
-                        &mut self.state,
-                        *end as usize,
-                    ) {
-                        self.state.pc = pc;
-                        continue;
-                    }
-                }
-            }
+            // if let Some(end) = self.loop_bgn_end.get(&self.state.pc) {
+            //     unsafe {
+            //         // println!("range: [{:x}, {:x})", self.state.pc, end);
+            //         if let Some(pc) = self.jit.can_loop_jit(
+            //             &self.insts,
+            //             &self.const_table,
+            //             &mut self.state,
+            //             *end as usize,
+            //         ) {
+            //             self.state.pc = pc;
+            //             continue;
+            //         }
+            //     }
+            // }
             let code = self.insts[self.state.pc as usize];
             self.op_table[code as usize](self);
             if code == VMInst::RETURN || code == VMInst::END {
@@ -933,32 +933,10 @@ fn call(self_: &mut VM) {
                 break;
             }
             Value::Function(dst, _, mut callobj) => {
-                if args_all_number(&self_.state.stack, argc) {
-                    if let Some(f) = unsafe {
-                        self_.jit.can_jit(
-                            &self_.insts,
-                            &self_.state.scope.last().unwrap().borrow(),
-                            &self_.const_table,
-                            dst,
-                            argc,
-                        )
-                    } {
-                        let mut args = vec![];
-                        for _ in 0..argc {
-                            args.push(self_.state.stack.pop().unwrap());
-                        }
-                        args.reverse();
-                        self_
-                            .state
-                            .stack
-                            .push(unsafe { self_.jit.run_llvm_func(dst, f, args) });
-                        break;
-                    }
-                }
-
                 callobj.vals = Rc::new(RefCell::new(HashMap::new()));
 
                 let mut args = vec![];
+                let mut args_all_numbers = true;
                 for _ in 0..argc {
                     args.push(self_.state.stack.pop().unwrap());
                 }
@@ -969,9 +947,32 @@ fn call(self_: &mut VM) {
                     } else {
                         callobj.arg_rest_vals.push(arg.clone());
                     }
+
+                    match &arg {
+                        &Value::Number(_) => {}
+                        _ => args_all_numbers = false,
+                    }
                 }
 
                 self_.state.scope.push(Rc::new(RefCell::new(callobj)));
+
+                if args_all_numbers {
+                    let scope = self_.state.scope.last().unwrap().borrow().clone();
+                    if let Some(f) = unsafe {
+                        self_
+                            .jit
+                            .can_jit(&self_.insts, &scope, &self_.const_table, dst, argc)
+                    } {
+                        args.reverse();
+                        self_
+                            .state
+                            .stack
+                            .push(unsafe { self_.jit.run_llvm_func(dst, f, args) });
+                        self_.state.scope.pop();
+                        break;
+                    }
+                }
+
                 self_
                     .state
                     .history
@@ -1000,14 +1001,6 @@ fn call(self_: &mut VM) {
                 break;
             }
         }
-    }
-
-    fn args_all_number(stack: &Vec<Value>, argc: usize) -> bool {
-        let stack_len = stack.len();
-        stack[stack_len - argc..stack_len].iter().all(|v| match v {
-            &Value::Number(_) => true,
-            _ => false,
-        })
     }
 }
 

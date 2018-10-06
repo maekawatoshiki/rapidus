@@ -1233,6 +1233,25 @@ impl TracingJit {
                     };
                     stack.push((val, None));
                 }
+                VMInst::SET_NAME => {
+                    pc += 1;
+                    println!("set in");
+                    get_int32!(insts, pc, id, usize);
+                    let name = &const_table.string[id];
+                    let val = try_stack!(stack.pop());
+                    LLVMBuildStore(self.builder, val, *try_opt!(env.get(name)));
+                    println!("set out");
+                }
+                VMInst::DECL_VAR => {
+                    pc += 1;
+                    println!("decl in");
+                    get_int32!(insts, pc, id, usize);
+                    let name = const_table.string[id].clone();
+                    let dst = self.declare_local_var(name, env);
+                    let src = try_stack!(stack.pop());
+                    LLVMBuildStore(self.builder, src, dst);
+                    println!("decl out");
+                }
 
                 // These instructions are no longer used.
                 // VMInst::GET_ARG_LOCAL => {
@@ -1530,7 +1549,7 @@ impl TracingJit {
             }
         }
 
-        // LLVMDumpModule(self.module);
+        LLVMDumpModule(self.module);
 
         Ok(())
     }
@@ -1554,7 +1573,7 @@ impl TracingJit {
 
         let func_ret_ty = self.return_ty_map.get(&pc).unwrap_or(&ValueType::Number);
 
-        // By a bug of LLVM, llvm::execution_engine::runFunction can not be used.
+        // Because of a bug of LLVM, llvm::execution_engine::runFunction can not be used.
         // So, all I can do is this:
         // TODO: MAX_FUNCTION_PARAMS is too small?
         match func_ret_ty {
