@@ -1,4 +1,4 @@
-use vm::{RawStringPtr, Value, VM};
+use vm::{CallObject, RawStringPtr, Value, VM};
 
 use libc;
 use rand::random;
@@ -17,7 +17,7 @@ pub const MATH_POW: usize = 5;
 pub const FUNCTION_PROTOTYPE_CALL: usize = 6;
 
 // BuiltinFunction(0)
-pub unsafe fn console_log(_: Option<Value>, args: Vec<Value>, _: &mut VM) {
+pub unsafe fn console_log(_: CallObject, args: Vec<Value>, _: &mut VM) {
     let args_len = args.len();
     for i in 0..args_len {
         match args[i] {
@@ -47,7 +47,7 @@ pub unsafe fn console_log(_: Option<Value>, args: Vec<Value>, _: &mut VM) {
 }
 
 // BuiltinFunction(1)
-pub unsafe fn process_stdout_write(_: Option<Value>, args: Vec<Value>, _: &mut VM) {
+pub unsafe fn process_stdout_write(_: CallObject, args: Vec<Value>, _: &mut VM) {
     let args_len = args.len();
     for i in 0..args_len {
         match args[i] {
@@ -110,8 +110,8 @@ pub unsafe fn debug_print(val: &Value) {
 }
 
 // BuiltinFunction(2)
-pub unsafe fn array_push(parent: Option<Value>, args: Vec<Value>, _: &mut VM) {
-    if let Some(Value::Array(ref map)) = parent {
+pub unsafe fn array_push(callobj: CallObject, args: Vec<Value>, _: &mut VM) {
+    if let box Value::Array(ref map) = callobj.this {
         let mut map = map.borrow_mut();
         // let mut elems = &mut map.elems;
         for val in &args {
@@ -124,19 +124,19 @@ pub unsafe fn array_push(parent: Option<Value>, args: Vec<Value>, _: &mut VM) {
 }
 
 // BuiltinFunction(3)
-pub unsafe fn math_floor(_: Option<Value>, args: Vec<Value>, self_: &mut VM) {
+pub unsafe fn math_floor(_: CallObject, args: Vec<Value>, self_: &mut VM) {
     if let Value::Number(f) = args[0] {
         self_.state.stack.push(Value::Number(f.floor()))
     }
 }
 
 // BuiltinFunction(4)
-pub unsafe fn math_random(_: Option<Value>, _args: Vec<Value>, self_: &mut VM) {
+pub unsafe fn math_random(_: CallObject, _args: Vec<Value>, self_: &mut VM) {
     self_.state.stack.push(Value::Number(random::<f64>()))
 }
 
 // BuiltinFunction(5)
-pub unsafe fn math_pow(_: Option<Value>, args: Vec<Value>, self_: &mut VM) {
+pub unsafe fn math_pow(_: CallObject, args: Vec<Value>, self_: &mut VM) {
     if let Value::Number(f1) = args[0] {
         if let Value::Number(f2) = args[1] {
             self_.state.stack.push(Value::Number(f1.powf(f2)))
@@ -145,13 +145,9 @@ pub unsafe fn math_pow(_: Option<Value>, args: Vec<Value>, self_: &mut VM) {
 }
 
 // BuiltinFunction(6)
-pub unsafe fn function_prototype_call(parent: Option<Value>, args: Vec<Value>, self_: &mut VM) {
-    let mut callee = parent.unwrap();
-    let arg_this = match args[0] {
-        Value::Object(ref obj) => obj.clone(),
-        _ => unimplemented!(),
-    };
-
+pub unsafe fn function_prototype_call(callobj: CallObject, args: Vec<Value>, self_: &mut VM) {
+    let mut callee = *callobj.this;
+    let arg_this = args[0].clone();
     loop {
         match callee {
             Value::Function(dst, obj, mut callobj) => {
@@ -160,7 +156,7 @@ pub unsafe fn function_prototype_call(parent: Option<Value>, args: Vec<Value>, s
                     callobj.set_value(param_name, arg.clone());
                 }
 
-                callobj.this = Some(arg_this);
+                *callobj.this = arg_this;
                 self_.state.scope.push(Rc::new(RefCell::new(callobj)));
                 self_
                     .state
@@ -173,13 +169,7 @@ pub unsafe fn function_prototype_call(parent: Option<Value>, args: Vec<Value>, s
                 self_.state.scope.pop();
                 break;
             }
-            Value::WithParent(box parent, box callee_) => {
-                callee = callee_;
-            }
-            c => {
-                println!("Constract: err: {:?}, pc = {}", c, self_.state.pc);
-                break;
-            }
+            _ => break,
         }
     }
 }

@@ -101,48 +101,51 @@ impl VMCodeGen {
 
         self.bytecode_gen.gen_end(insts);
 
-        let mut function_value_list = HashMap::new();
-
-        {
-            function_value_list.insert("console".to_string(), {
-                let mut map = HashMap::new();
-                map.insert(
-                    "log".to_string(),
-                    Value::BuiltinFunction(builtin::CONSOLE_LOG),
-                );
-                Value::Object(Rc::new(RefCell::new(map)))
-            });
-
-            function_value_list.insert("process".to_string(), {
-                let mut map = HashMap::new();
-                map.insert("stdout".to_string(), {
-                    let mut map = HashMap::new();
-                    map.insert(
-                        "write".to_string(),
-                        Value::BuiltinFunction(builtin::PROCESS_STDOUT_WRITE),
-                    );
-                    Value::Object(Rc::new(RefCell::new(map)))
-                });
-                Value::Object(Rc::new(RefCell::new(map)))
-            });
-
-            function_value_list.insert("Math".to_string(), {
-                let mut map = HashMap::new();
-                map.insert(
-                    "floor".to_string(),
-                    Value::BuiltinFunction(builtin::MATH_FLOOR),
-                );
-                map.insert(
-                    "random".to_string(),
-                    Value::BuiltinFunction(builtin::MATH_RANDOM),
-                );
-                map.insert(
-                    "pow".to_string(),
-                    Value::BuiltinFunction(builtin::MATH_POW),
-                );
-                Value::Object(Rc::new(RefCell::new(map)))
-            });
-        }
+        // let mut function_value_list = HashMap::new();
+        //
+        // {
+        //     function_value_list.insert("console".to_string(), {
+        //         let mut map = HashMap::new();
+        //         map.insert(
+        //             "log".to_string(),
+        //             Value::BuiltinFunction(builtin::CONSOLE_LOG, CallObject::new(Value::Undefined)),
+        //         );
+        //         Value::Object(Rc::new(RefCell::new(map)))
+        //     });
+        //
+        //     function_value_list.insert("process".to_string(), {
+        //         let mut map = HashMap::new();
+        //         map.insert("stdout".to_string(), {
+        //             let mut map = HashMap::new();
+        //             map.insert(
+        //                 "write".to_string(),
+        //                 Value::BuiltinFunction(
+        //                     builtin::PROCESS_STDOUT_WRITE,
+        //                     CallObject::new(Value::Undefined),
+        //                 ),
+        //             );
+        //             Value::Object(Rc::new(RefCell::new(map)))
+        //         });
+        //         Value::Object(Rc::new(RefCell::new(map)))
+        //     });
+        //
+        //     function_value_list.insert("Math".to_string(), {
+        //         let mut map = HashMap::new();
+        //         map.insert(
+        //             "floor".to_string(),
+        //             Value::BuiltinFunction(builtin::MATH_FLOOR, CallObject::new(Value::Undefined)),
+        //         );
+        //         map.insert(
+        //             "random".to_string(),
+        //             Value::BuiltinFunction(builtin::MATH_RANDOM, CallObject::new(Value::Undefined)),
+        //         );
+        //         map.insert(
+        //             "pow".to_string(),
+        //             Value::BuiltinFunction(builtin::MATH_POW, CallObject::new(Value::Undefined)),
+        //         );
+        //         Value::Object(Rc::new(RefCell::new(map)))
+        //     });
+        // }
 
         for (
             _,
@@ -157,7 +160,8 @@ impl VMCodeGen {
             let mut val;
 
             val = new_value_function(pos, {
-                let mut callobj = CallObject::new(Some(self.global_varmap.borrow().vals.clone()));
+                let mut callobj =
+                    CallObject::new(Value::Object(self.global_varmap.borrow().vals.clone()));
                 // TODO: Implement rest paramter
                 callobj.param_names = params
                     .clone()
@@ -171,8 +175,6 @@ impl VMCodeGen {
             self.global_varmap
                 .borrow_mut()
                 .set_value(name.clone(), val.clone());
-
-            // function_value_list.insert(name.clone(), val.clone());
 
             let mut func_insts = func_insts.clone();
             insts.append(&mut func_insts);

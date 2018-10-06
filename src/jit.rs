@@ -1184,23 +1184,37 @@ impl TracingJit {
                     pc += 1;
                     get_int32!(insts, pc, id, usize);
                     let name = &const_table.string[id];
-                    let val = match env.get(name) {
+                    match env.get(name) {
                         Some(val) => {
-                            LLVMBuildLoad(self.builder, *val, CString::new("").unwrap().as_ptr())
+                            stack.push((
+                                LLVMBuildLoad(
+                                    self.builder,
+                                    *val,
+                                    CString::new("").unwrap().as_ptr(),
+                                ),
+                                None,
+                            ));
                         }
                         None => match scope.get_value(name) {
-                            vm::Value::Function(pos, _, _) if pos == func_pos => func,
+                            vm::Value::Function(pos, _, _) if pos == func_pos => {
+                                stack.push((func, None));
+                            }
                             vm::Value::Function(pos, _, _) => match self.func_info.get(&pos) {
                                 Some(FuncInfo { llvm_func, .. }) if llvm_func.is_some() => {
-                                    llvm_func.unwrap()
+                                    stack.push((llvm_func.unwrap(), None));
                                 }
                                 _ => return Err(()),
                             },
-
+                            vm::Value::BuiltinFunction(n, _) => match self.builtin_funcs.get(&n) {
+                                Some(f) => stack.push((*f, None)),
+                                _ => return Err(()),
+                            },
+                            vm::Value::Object(obj) => {
+                                stack.push((ptr::null_mut(), Some(vm::Value::Object(obj))))
+                            }
                             _ => return Err(()),
                         },
-                    };
-                    stack.push((val, None));
+                    }
                 }
                 VMInst::SET_NAME => {
                     pc += 1;
@@ -1231,7 +1245,7 @@ impl TracingJit {
                         }
                         args.reverse();
                         match callee {
-                            vm::Value::BuiltinFunction(builtin::CONSOLE_LOG) => {
+                            vm::Value::BuiltinFunction(builtin::CONSOLE_LOG, _) => {
                                 for (arg, ty) in args {
                                     LLVMBuildCall(
                                         self.builder,
@@ -1259,7 +1273,7 @@ impl TracingJit {
                                     CString::new("").unwrap().as_ptr(),
                                 );
                             }
-                            vm::Value::BuiltinFunction(builtin::PROCESS_STDOUT_WRITE) => {
+                            vm::Value::BuiltinFunction(builtin::PROCESS_STDOUT_WRITE, _) => {
                                 for (arg, ty) in args {
                                     match ty {
                                         ValueType::String => LLVMBuildCall(
@@ -1276,7 +1290,7 @@ impl TracingJit {
                                     };
                                 }
                             }
-                            vm::Value::BuiltinFunction(builtin::MATH_FLOOR) => stack.push((
+                            vm::Value::BuiltinFunction(builtin::MATH_FLOOR, _) => stack.push((
                                 LLVMBuildCall(
                                     self.builder,
                                     *self.builtin_funcs.get(&BUILTIN_MATH_FLOOR).unwrap(),
@@ -1289,7 +1303,7 @@ impl TracingJit {
                                 ),
                                 None,
                             )),
-                            vm::Value::BuiltinFunction(builtin::MATH_RANDOM) => stack.push((
+                            vm::Value::BuiltinFunction(builtin::MATH_RANDOM, _) => stack.push((
                                 LLVMBuildCall(
                                     self.builder,
                                     *self.builtin_funcs.get(&BUILTIN_MATH_RANDOM).unwrap(),
@@ -1302,7 +1316,7 @@ impl TracingJit {
                                 ),
                                 None,
                             )),
-                            vm::Value::BuiltinFunction(builtin::MATH_POW) => stack.push((
+                            vm::Value::BuiltinFunction(builtin::MATH_POW, _) => stack.push((
                                 LLVMBuildCall(
                                     self.builder,
                                     *self.builtin_funcs.get(&BUILTIN_MATH_POW).unwrap(),
@@ -1394,7 +1408,7 @@ impl TracingJit {
                         vm::Value::Object(_) => {
                             stack.push((ptr::null_mut(), Some(const_table.value[n].clone())))
                         }
-                        vm::Value::BuiltinFunction(n) => stack.push((
+                        vm::Value::BuiltinFunction(n, _) => stack.push((
                             if let Some(f) = self.builtin_funcs.get(&n) {
                                 *f
                             } else {

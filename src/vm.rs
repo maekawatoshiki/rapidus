@@ -40,7 +40,10 @@ impl ArrayValue {
                         let mut hm = HashMap::new();
                         hm.insert(
                             "push".to_string(),
-                            Value::BuiltinFunction(builtin::ARRAY_PUSH),
+                            Value::BuiltinFunction(
+                                builtin::ARRAY_PUSH,
+                                CallObject::new(Value::Undefined),
+                            ),
                         );
                         hm
                     }))),
@@ -58,17 +61,17 @@ pub struct CallObject {
     pub vals: Rc<RefCell<HashMap<String, Value>>>,
     pub param_names: Vec<String>,
     pub arg_rest_vals: Vec<Value>,
-    pub this: Option<Rc<RefCell<HashMap<String, Value>>>>,
+    pub this: Box<Value>,
     pub parent: Option<CallObjectRef>,
 }
 
 impl CallObject {
-    pub fn new(this: Option<Rc<RefCell<HashMap<String, Value>>>>) -> CallObject {
+    pub fn new(this: Value) -> CallObject {
         CallObject {
             vals: Rc::new(RefCell::new(HashMap::new())),
             param_names: vec![],
             arg_rest_vals: vec![],
-            this: this,
+            this: Box::new(this),
             parent: None,
         }
     }
@@ -79,10 +82,10 @@ impl CallObject {
             vals: vals.clone(),
             param_names: vec![],
             arg_rest_vals: vec![],
-            this: None,
+            this: Box::new(Value::Undefined),
             parent: None,
         }));
-        callobj.borrow_mut().this = Some(vals);
+        *callobj.borrow_mut().this = Value::Object(vals);
         callobj
     }
 
@@ -159,7 +162,7 @@ pub enum Value {
     String(CString),
     Function(usize, Rc<RefCell<HashMap<String, Value>>>, CallObject),
     WithParent(Box<Value>, Box<Value>),          // parent, value
-    BuiltinFunction(usize),                      // id(==0:unknown),
+    BuiltinFunction(usize, CallObject),          // id(==0:unknown)
     Object(Rc<RefCell<HashMap<String, Value>>>), // Object(HashMap<String, Value>),
     Array(Rc<RefCell<ArrayValue>>),
     Arguments,
@@ -190,7 +193,10 @@ pub fn new_value_function(pos: usize, callobj: CallObject) -> Value {
                     let mut hm = HashMap::new();
                     hm.insert(
                         "call".to_string(),
-                        Value::BuiltinFunction(builtin::FUNCTION_PROTOTYPE_CALL),
+                        Value::BuiltinFunction(
+                            builtin::FUNCTION_PROTOTYPE_CALL,
+                            CallObject::new(Value::Undefined),
+                        ),
                     );
                     hm
                 }))),
@@ -232,7 +238,7 @@ pub struct VM {
     pub insts: ByteCode,
     pub loop_bgn_end: HashMap<isize, isize>,
     pub op_table: [fn(&mut VM); 49],
-    pub builtin_functions: [unsafe fn(Option<Value>, Vec<Value>, &mut VM); 7],
+    pub builtin_functions: [unsafe fn(CallObject, Vec<Value>, &mut VM); 7],
 }
 
 pub struct VMState {
@@ -250,7 +256,7 @@ impl VM {
             let mut map = HashMap::new();
             map.insert(
                 "log".to_string(),
-                Value::BuiltinFunction(builtin::CONSOLE_LOG),
+                Value::BuiltinFunction(builtin::CONSOLE_LOG, CallObject::new(Value::Undefined)),
             );
             Value::Object(Rc::new(RefCell::new(map)))
         });
@@ -261,7 +267,10 @@ impl VM {
                 let mut map = HashMap::new();
                 map.insert(
                     "write".to_string(),
-                    Value::BuiltinFunction(builtin::PROCESS_STDOUT_WRITE),
+                    Value::BuiltinFunction(
+                        builtin::PROCESS_STDOUT_WRITE,
+                        CallObject::new(Value::Undefined),
+                    ),
                 );
                 Value::Object(Rc::new(RefCell::new(map)))
             });
@@ -272,13 +281,16 @@ impl VM {
             let mut map = HashMap::new();
             map.insert(
                 "floor".to_string(),
-                Value::BuiltinFunction(builtin::MATH_FLOOR),
+                Value::BuiltinFunction(builtin::MATH_FLOOR, CallObject::new(Value::Undefined)),
             );
             map.insert(
                 "random".to_string(),
-                Value::BuiltinFunction(builtin::MATH_RANDOM),
+                Value::BuiltinFunction(builtin::MATH_RANDOM, CallObject::new(Value::Undefined)),
             );
-            map.insert("pow".to_string(), Value::BuiltinFunction(builtin::MATH_POW));
+            map.insert(
+                "pow".to_string(),
+                Value::BuiltinFunction(builtin::MATH_POW, CallObject::new(Value::Undefined)),
+            );
             Value::Object(Rc::new(RefCell::new(map)))
         });
 
@@ -460,7 +472,7 @@ fn construct(self_: &mut VM) {
                     callobj.set_value(param_name, arg.clone());
                 }
 
-                callobj.this = Some(new_this.clone());
+                *callobj.this = Value::Object(new_this.clone());
                 self_.state.scope.push(Rc::new(RefCell::new(callobj)));
                 self_
                     .state
@@ -476,7 +488,7 @@ fn construct(self_: &mut VM) {
                     &mut Value::Object(_)
                     | &mut Value::Array(_)
                     | &mut Value::Function(_, _, _)
-                    | &mut Value::BuiltinFunction(_) => {}
+                    | &mut Value::BuiltinFunction(_, _) => {}
                     others => *others = Value::Object(new_this),
                 };
                 break;
@@ -558,17 +570,7 @@ fn push_const(self_: &mut VM) {
 
 fn push_this(self_: &mut VM) {
     self_.state.pc += 1; // push_this
-    let this = Value::Object(
-        self_
-            .state
-            .scope
-            .last()
-            .unwrap()
-            .borrow()
-            .this
-            .clone()
-            .unwrap(),
-    );
+    let this = *self_.state.scope.last().unwrap().borrow().this.clone();
     self_.state.stack.push(this);
 }
 
@@ -693,7 +695,13 @@ fn get_member(self_: &mut VM) {
             match obj_find_val(&map.borrow().clone(), member.to_string().as_str()) {
                 Value::Function(pos, map2, mut callobj) => {
                     self_.state.stack.push(Value::Function(pos, map2, {
-                        callobj.this = Some(map.clone());
+                        *callobj.this = parent;
+                        callobj
+                    }))
+                }
+                Value::BuiltinFunction(id, mut callobj) => {
+                    self_.state.stack.push(Value::BuiltinFunction(id, {
+                        *callobj.this = parent;
                         callobj
                     }))
                 }
@@ -704,15 +712,15 @@ fn get_member(self_: &mut VM) {
             match obj_find_val(&map.borrow().clone(), member.to_string().as_str()) {
                 Value::Function(pos, map2, mut callobj) => {
                     self_.state.stack.push(Value::Function(pos, map2, {
-                        callobj.this = Some(map.clone());
+                        *callobj.this = parent;
                         callobj
                     }))
                 }
-                Value::BuiltinFunction(id) => {
-                    self_.state.stack.push(Value::WithParent(
-                        Box::new(parent),
-                        Box::new(Value::BuiltinFunction(id)),
-                    ));
+                Value::BuiltinFunction(id, mut callobj) => {
+                    self_.state.stack.push(Value::BuiltinFunction(id, {
+                        *callobj.this = parent;
+                        callobj
+                    }))
                 }
                 val => self_.state.stack.push(val),
             }
@@ -733,14 +741,18 @@ fn get_member(self_: &mut VM) {
                     self_.state.stack.push(Value::Number(map.length as f64));
                 }
                 _ => match obj_find_val(&map.obj, member.to_string().as_str()) {
-                    Value::BuiltinFunction(pos) => self_.state.stack.push(Value::WithParent(
-                        Box::new(parent),
-                        Box::new(Value::BuiltinFunction(pos)),
-                    )),
-                    // Value::NeedThis(callee) => self_
-                    //     .state
-                    //     .stack
-                    //     .push(Value::WithThis(Box::new((*callee, parent)))),
+                    Value::BuiltinFunction(id, mut callobj) => {
+                        self_.state.stack.push(Value::BuiltinFunction(id, {
+                            *callobj.this = parent;
+                            callobj
+                        }))
+                    }
+                    Value::Function(pos, map2, mut callobj) => {
+                        self_.state.stack.push(Value::Function(pos, map2, {
+                            *callobj.this = parent;
+                            callobj
+                        }))
+                    }
                     val => self_.state.stack.push(val),
                 },
             }
@@ -918,13 +930,13 @@ fn call(self_: &mut VM) {
 
     loop {
         match callee {
-            Value::BuiltinFunction(x) => {
+            Value::BuiltinFunction(x, callobj) => {
                 let mut args = vec![];
                 for _ in 0..argc {
                     args.push(self_.state.stack.pop().unwrap());
                 }
                 args.reverse();
-                unsafe { self_.builtin_functions[x](this, args, self_) };
+                unsafe { self_.builtin_functions[x](callobj, args, self_) };
                 break;
             }
             Value::Function(dst, _, mut callobj) => {
