@@ -1,12 +1,9 @@
-use builtin;
 use bytecode_gen::{ByteCode, ByteCodeGen, VMInst};
 use node::{BinOp, FormalParameter, FormalParameters, Node, NodeBase, PropertyDefinition, UnaryOp};
 use vm::{new_value_function, CallObject, CallObjectRef, Value};
 
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::CString;
-use std::rc::Rc;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct FunctionInfo {

@@ -161,7 +161,6 @@ pub enum Value {
     Number(f64),
     String(CString),
     Function(usize, Rc<RefCell<HashMap<String, Value>>>, CallObject),
-    WithParent(Box<Value>, Box<Value>),          // parent, value
     BuiltinFunction(usize, CallObject),          // id(==0:unknown)
     Object(Rc<RefCell<HashMap<String, Value>>>), // Object(HashMap<String, Value>),
     Array(Rc<RefCell<ArrayValue>>),
@@ -444,84 +443,79 @@ fn construct(self_: &mut VM) {
     self_.state.pc += 1; // construct
     get_int32!(self_, argc, usize);
 
-    let mut callee = self_.state.stack.pop().unwrap();
+    let callee = self_.state.stack.pop().unwrap();
 
-    loop {
-        match callee {
-            Value::Function(dst, obj, mut callobj) => {
-                // insert new 'this'
-                let new_this = {
-                    let mut map = HashMap::new();
-                    map.insert(
-                        "__proto__".to_string(),
-                        (*obj)
-                            .borrow()
-                            .get("prototype")
-                            .unwrap_or(&Value::Undefined)
-                            .clone(),
-                    );
-                    Rc::new(RefCell::new(map))
-                };
+    match callee {
+        Value::Function(dst, obj, mut callobj) => {
+            // insert new 'this'
+            let new_this = {
+                let mut map = HashMap::new();
+                map.insert(
+                    "__proto__".to_string(),
+                    (*obj)
+                        .borrow()
+                        .get("prototype")
+                        .unwrap_or(&Value::Undefined)
+                        .clone(),
+                );
+                Rc::new(RefCell::new(map))
+            };
 
-                // similar code is used some times. should make it a function.
-                let mut args = vec![];
-                let mut rest_args = vec![];
-                let mut rest_param_name = None;
-                for _ in 0..argc {
-                    args.push(self_.state.stack.pop().unwrap());
-                }
-                for (i, arg) in args.iter().rev().enumerate() {
-                    if let Some(name) = callobj.get_parameter_nth_name(i) {
-                        // When rest parameter
-                        if callobj.params[i].1 {
-                            rest_param_name = Some(name);
-                            rest_args.push(arg.clone());
-                        } else {
-                            callobj.set_value(name, arg.clone());
-                        }
-                    } else {
+            callobj.vals = Rc::new(RefCell::new(HashMap::new()));
+
+            // similar code is used some times. should make it a function.
+            let mut args = vec![];
+            let mut rest_args = vec![];
+            let mut rest_param_name = None;
+            for _ in 0..argc {
+                args.push(self_.state.stack.pop().unwrap());
+            }
+            for (i, arg) in args.iter().rev().enumerate() {
+                if let Some(name) = callobj.get_parameter_nth_name(i) {
+                    // When rest parameter
+                    if callobj.params[i].1 {
+                        rest_param_name = Some(name);
                         rest_args.push(arg.clone());
+                    } else {
+                        callobj.set_value(name, arg.clone());
                     }
-                }
-                if let Some(rest_param_name) = rest_param_name {
-                    callobj.set_value(
-                        rest_param_name,
-                        Value::Array(Rc::new(RefCell::new(ArrayValue::new(rest_args)))),
-                    );
                 } else {
-                    for arg in rest_args {
-                        callobj.arg_rest_vals.push(arg.clone());
-                    }
+                    rest_args.push(arg.clone());
                 }
-
-                *callobj.this = Value::Object(new_this.clone());
-                self_.state.scope.push(Rc::new(RefCell::new(callobj)));
-                self_
-                    .state
-                    .history
-                    .push((0, 0, self_.state.stack.len(), self_.state.pc));
-                self_.state.pc = dst as isize;
-
-                self_.do_run();
-
-                self_.state.scope.pop();
-
-                match self_.state.stack.last_mut().unwrap() {
-                    &mut Value::Object(_)
-                    | &mut Value::Array(_)
-                    | &mut Value::Function(_, _, _)
-                    | &mut Value::BuiltinFunction(_, _) => {}
-                    others => *others = Value::Object(new_this),
-                };
-                break;
             }
-            Value::WithParent(box parent, box callee_) => {
-                callee = callee_;
+            if let Some(rest_param_name) = rest_param_name {
+                callobj.set_value(
+                    rest_param_name,
+                    Value::Array(Rc::new(RefCell::new(ArrayValue::new(rest_args)))),
+                );
+            } else {
+                for arg in rest_args {
+                    callobj.arg_rest_vals.push(arg.clone());
+                }
             }
-            c => {
-                println!("Constract: err: {:?}, pc = {}", c, self_.state.pc);
-                break;
-            }
+
+            *callobj.this = Value::Object(new_this.clone());
+            self_.state.scope.push(Rc::new(RefCell::new(callobj)));
+            self_
+                .state
+                .history
+                .push((0, 0, self_.state.stack.len(), self_.state.pc));
+            self_.state.pc = dst as isize;
+
+            self_.do_run();
+
+            self_.state.scope.pop();
+
+            match self_.state.stack.last_mut().unwrap() {
+                &mut Value::Object(_)
+                | &mut Value::Array(_)
+                | &mut Value::Function(_, _, _)
+                | &mut Value::BuiltinFunction(_, _) => {}
+                others => *others = Value::Object(new_this),
+            };
+        }
+        c => {
+            println!("Constract: err: {:?}, pc = {}", c, self_.state.pc);
         }
     }
 }
@@ -942,106 +936,101 @@ fn jmp_if_false(self_: &mut VM) {
     }
 }
 
+pub fn call_function(self_: &mut VM, dst: usize, args: Vec<Value>, mut callobj: CallObject) {
+    let argc = args.len();
+    let mut args_all_numbers = true;
+    let mut rest_args = vec![];
+    let mut rest_param_name = None;
+    for (i, arg) in args.iter().enumerate() {
+        if let Some(name) = callobj.get_parameter_nth_name(i) {
+            // When rest parameter
+            if callobj.params[i].1 {
+                rest_param_name = Some(name);
+                rest_args.push(arg.clone());
+            } else {
+                callobj.set_value(name, arg.clone());
+            }
+        } else {
+            rest_args.push(arg.clone());
+        }
+
+        match &arg {
+            &Value::Number(_) => {}
+            _ => args_all_numbers = false,
+        }
+    }
+    if let Some(rest_param_name) = rest_param_name {
+        callobj.set_value(
+            rest_param_name,
+            Value::Array(Rc::new(RefCell::new(ArrayValue::new(rest_args)))),
+        );
+    } else {
+        for arg in rest_args {
+            callobj.arg_rest_vals.push(arg.clone());
+        }
+    }
+
+    self_.state.scope.push(Rc::new(RefCell::new(callobj)));
+
+    if args_all_numbers {
+        let scope = self_.state.scope.last().unwrap().borrow().clone();
+        if let Some(f) = unsafe {
+            self_
+                .jit
+                .can_jit(&self_.insts, &scope, &self_.const_table, dst, argc)
+        } {
+            self_
+                .state
+                .stack
+                .push(unsafe { self_.jit.run_llvm_func(dst, f, args) });
+            self_.state.scope.pop();
+            return;
+        }
+    }
+
+    self_
+        .state
+        .history
+        .push((0, 0, self_.state.stack.len(), self_.state.pc));
+    self_.state.pc = dst as isize;
+
+    self_.do_run();
+
+    self_.state.scope.pop();
+
+    self_
+        .jit
+        .register_return_type(dst, self_.state.stack.last().unwrap());
+}
+
 fn call(self_: &mut VM) {
     self_.state.pc += 1; // Call
     get_int32!(self_, argc, usize);
 
-    let mut this = None;
+    let callee = self_.state.stack.pop().unwrap();
 
-    let mut callee = self_.state.stack.pop().unwrap();
-
-    loop {
-        match callee {
-            Value::BuiltinFunction(x, callobj) => {
-                let mut args = vec![];
-                for _ in 0..argc {
-                    args.push(self_.state.stack.pop().unwrap());
-                }
-                args.reverse();
-                unsafe { self_.builtin_functions[x](callobj, args, self_) };
-                break;
+    match callee {
+        Value::BuiltinFunction(x, callobj) => {
+            let mut args = vec![];
+            for _ in 0..argc {
+                args.push(self_.state.stack.pop().unwrap());
             }
-            Value::Function(dst, _, mut callobj) => {
-                callobj.vals = Rc::new(RefCell::new(HashMap::new()));
+            args.reverse();
+            unsafe { self_.builtin_functions[x](callobj, args, self_) };
+        }
+        Value::Function(dst, _, mut callobj) => {
+            callobj.vals = Rc::new(RefCell::new(HashMap::new()));
 
-                let mut args = vec![];
-                let mut args_all_numbers = true;
-                let mut rest_args = vec![];
-                let mut rest_param_name = None;
-                for _ in 0..argc {
-                    args.push(self_.state.stack.pop().unwrap());
-                }
-                for (i, arg) in args.iter().rev().enumerate() {
-                    if let Some(name) = callobj.get_parameter_nth_name(i) {
-                        // When rest parameter
-                        if callobj.params[i].1 {
-                            rest_param_name = Some(name);
-                            rest_args.push(arg.clone());
-                        } else {
-                            callobj.set_value(name, arg.clone());
-                        }
-                    } else {
-                        rest_args.push(arg.clone());
-                    }
-
-                    match &arg {
-                        &Value::Number(_) => {}
-                        _ => args_all_numbers = false,
-                    }
-                }
-                if let Some(rest_param_name) = rest_param_name {
-                    callobj.set_value(
-                        rest_param_name,
-                        Value::Array(Rc::new(RefCell::new(ArrayValue::new(rest_args)))),
-                    );
-                } else {
-                    for arg in rest_args {
-                        callobj.arg_rest_vals.push(arg.clone());
-                    }
-                }
-
-                self_.state.scope.push(Rc::new(RefCell::new(callobj)));
-
-                if args_all_numbers {
-                    let scope = self_.state.scope.last().unwrap().borrow().clone();
-                    if let Some(f) = unsafe {
-                        self_
-                            .jit
-                            .can_jit(&self_.insts, &scope, &self_.const_table, dst, argc)
-                    } {
-                        args.reverse();
-                        self_
-                            .state
-                            .stack
-                            .push(unsafe { self_.jit.run_llvm_func(dst, f, args) });
-                        self_.state.scope.pop();
-                        break;
-                    }
-                }
-
-                self_
-                    .state
-                    .history
-                    .push((0, 0, self_.state.stack.len(), self_.state.pc));
-                self_.state.pc = dst as isize;
-
-                self_.do_run();
-
-                self_.state.scope.pop();
-
-                self_
-                    .jit
-                    .register_return_type(dst, self_.state.stack.last().unwrap());
-                break;
+            let mut args = vec![];
+            for _ in 0..argc {
+                args.push(self_.state.stack.pop().unwrap());
             }
-            Value::WithParent(box parent, box callee_) => {
-                this = Some(parent);
-                callee = callee_;
-            }
-            c => {
-                println!("Call: err: {:?}, pc = {}", c, self_.state.pc);
-                break;
-            }
+            args.reverse();
+
+            call_function(self_, dst, args, callobj);
+        }
+        c => {
+            println!("Call: err: {:?}, pc = {}", c, self_.state.pc);
         }
     }
 }

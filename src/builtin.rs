@@ -1,4 +1,4 @@
-use vm::{CallObject, RawStringPtr, Value, VM};
+use vm::{call_function, CallObject, RawStringPtr, Value, VM};
 
 use libc;
 use rand::random;
@@ -146,26 +146,13 @@ pub unsafe fn math_pow(_: CallObject, args: Vec<Value>, self_: &mut VM) {
 
 // BuiltinFunction(6)
 pub unsafe fn function_prototype_call(callobj: CallObject, args: Vec<Value>, self_: &mut VM) {
-    let mut callee = *callobj.this;
+    let callee = *callobj.this;
     let arg_this = args[0].clone();
     match callee {
-        Value::Function(dst, obj, mut callobj) => {
-            for (i, arg) in args[1..].iter().enumerate() {
-                let param_name = callobj.get_parameter_nth_name(i).unwrap();
-                callobj.set_value(param_name, arg.clone());
-            }
-
+        Value::Function(dst, _obj, mut callobj) => {
             *callobj.this = arg_this;
-            self_.state.scope.push(Rc::new(RefCell::new(callobj)));
-            self_
-                .state
-                .history
-                .push((0, 0, self_.state.stack.len(), self_.state.pc));
-            self_.state.pc = dst as isize;
-
-            self_.do_run();
-
-            self_.state.scope.pop();
+            callobj.vals = Rc::new(RefCell::new(HashMap::new()));
+            call_function(self_,dst, args[1..].to_vec(), callobj);
         }
         _ => {}
     }

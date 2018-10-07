@@ -90,7 +90,7 @@ pub struct JITInfo {
 
 #[derive(Debug, Clone)]
 pub struct LoopInfo {
-    func_addr: Option<fn(*mut f64, *mut f64) -> i32>,
+    func_addr: Option<fn(*mut f64) -> i32>,
     llvm_func: Option<LLVMValueRef>,
     local_vars_id: Vec<(usize, ValueType)>, // the (ids, types) of local variables used in this loop
     jit_info: JITInfo,
@@ -316,7 +316,7 @@ impl TracingJit {
             }
         }
 
-        let name = format!("func.{}", random::<u32>());
+        let name = format!("func-{}", random::<u32>());
 
         // If gen_code fails, it means the function can't be JIT-compiled and should never be
         // compiled. (cannot_jit = true)
@@ -532,7 +532,7 @@ impl TracingJit {
             }
         }
 
-        let name = format!("func.{}", random::<u32>());
+        let name = format!("loop-{}", random::<u32>());
 
         // If gen_code fails, it means the function can't be JIT-compiled and should never be
         // compiled. (cannot_jit = true)
@@ -610,7 +610,7 @@ impl TracingJit {
             ee,
             CString::new(name.as_str()).unwrap().as_ptr(),
         );
-        let f = ::std::mem::transmute::<u64, fn(*mut f64, *mut f64) -> i32>(f_raw);
+        let f = ::std::mem::transmute::<u64, fn(*mut f64) -> i32>(f_raw);
 
         let info = self.loop_info.get_mut(&bgn).unwrap();
         info.func_addr = Some(f);
@@ -634,12 +634,12 @@ impl TracingJit {
         let func_ret_ty = LLVMInt32TypeInContext(self.context);
         let func_ty = LLVMFunctionType(
             func_ret_ty,
-            vec![
-                LLVMPointerType(LLVMPointerType(LLVMInt8TypeInContext(self.context), 0), 0),
-                LLVMPointerType(LLVMPointerType(LLVMInt8TypeInContext(self.context), 0), 0),
-            ].as_mut_slice()
+            vec![LLVMPointerType(
+                LLVMPointerType(LLVMInt8TypeInContext(self.context), 0),
+                0,
+            )].as_mut_slice()
                 .as_mut_ptr(),
-            2,
+            1,
             0,
         );
         let func = LLVMAddFunction(
@@ -1549,7 +1549,7 @@ impl TracingJit {
 }
 
 pub unsafe fn run_loop_llvm_func(
-    f: fn(*mut f64, *mut f64) -> i32,
+    f: fn(*mut f64) -> i32,
     vm_state: &mut vm::VMState,
     const_table: &vm::ConstantTable,
     local_vars: Vec<(usize, ValueType)>,
@@ -1575,10 +1575,9 @@ pub unsafe fn run_loop_llvm_func(
     }
 
     // println!("before: farg[{:?}] local[{:?}]", args_of_arg_vars, args_of_local_vars);
-    let pc = ::std::mem::transmute::<
-        fn(*mut f64, *mut f64) -> i32,
-        fn(*mut *mut libc::c_void) -> i32,
-    >(f)(args_of_local_vars.as_mut_slice().as_mut_ptr());
+    let pc = ::std::mem::transmute::<fn(*mut f64) -> i32, fn(*mut *mut libc::c_void) -> i32>(f)(
+        args_of_local_vars.as_mut_slice().as_mut_ptr(),
+    );
     // println!("after:  farg[{:?}] local[{:?}]", args_of_arg_vars, args_of_local_vars);
 
     for (i, (id, ty)) in local_vars.iter().enumerate() {
