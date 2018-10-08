@@ -629,52 +629,114 @@ bin_op!(sne, SNe);
 bin_op!(and, And);
 bin_op!(or, Or);
 
+#[rustfmt::skip]
 #[inline]
 fn binary(self_: &mut VM, op: &BinOp) {
     let rhs = self_.state.stack.pop().unwrap();
     let lhs = self_.state.stack.pop().unwrap();
-    match (lhs, rhs) {
-        (Value::Number(n1), Value::Number(n2)) => self_.state.stack.push(match op {
-            &BinOp::Add => Value::Number(n1 + n2),
-            &BinOp::Sub => Value::Number(n1 - n2),
-            &BinOp::Mul => Value::Number(n1 * n2),
-            &BinOp::Div => Value::Number(n1 / n2),
-            &BinOp::Rem => Value::Number((n1 as i64 % n2 as i64) as f64),
-            &BinOp::Lt => Value::Bool(n1 < n2),
-            &BinOp::Gt => Value::Bool(n1 > n2),
-            &BinOp::Le => Value::Bool(n1 <= n2),
-            &BinOp::Ge => Value::Bool(n1 >= n2),
-            &BinOp::Eq => Value::Bool(n1 == n2),
-            &BinOp::Ne => Value::Bool(n1 != n2),
-            &BinOp::SEq => Value::Bool(n1 == n2),
-            &BinOp::SNe => Value::Bool(n1 != n2),
-            &BinOp::And => Value::Number(((n1 as i64) & (n2 as i64)) as f64),
-            &BinOp::Or => Value::Number(((n1 as i64) | (n2 as i64)) as f64),
-            _ => panic!(),
-        }),
-        (Value::String(s1), Value::Number(n2)) => self_.state.stack.push(match op {
-            &BinOp::Add => {
-                let concat = format!("{}{}", s1.to_str().unwrap(), n2);
-                Value::String(CString::new(concat).unwrap())
-            }
-            _ => panic!(),
-        }),
-        (Value::Number(n1), Value::String(s2)) => self_.state.stack.push(match op {
-            &BinOp::Add => {
-                let concat = format!("{}{}", n1, s2.to_str().unwrap());
-                Value::String(CString::new(concat).unwrap())
-            }
-            _ => panic!(),
-        }),
-        (Value::String(s1), Value::String(s2)) => self_.state.stack.push(match op {
-            &BinOp::Add => {
-                let concat = format!("{}{}", s1.to_str().unwrap(), s2.to_str().unwrap());
-                Value::String(CString::new(concat).unwrap())
-            }
-            _ => panic!(),
-        }),
-        _ => {}
+
+    match op {
+        &BinOp::Add => add (self_, lhs, rhs),
+        &BinOp::Sub => sub (self_, lhs, rhs),
+        &BinOp::Mul => mul (self_, lhs, rhs),
+        &BinOp::Div => div (self_, lhs, rhs),
+        &BinOp::Rem => rem (self_, lhs, rhs),
+        &BinOp::Lt  => lt  (self_, lhs, rhs),
+        &BinOp::Gt  => gt  (self_, lhs, rhs),
+        &BinOp::Le  => le  (self_, lhs, rhs),
+        &BinOp::Ge  => ge  (self_, lhs, rhs),
+        &BinOp::Eq  => eq  (self_, lhs, rhs),
+        &BinOp::Ne  => ne  (self_, lhs, rhs),
+        &BinOp::SEq => seq (self_, lhs, rhs),
+        &BinOp::SNe => sne (self_, lhs, rhs),
+        &BinOp::And => and (self_, lhs, rhs),
+        &BinOp::Or  => or  (self_, lhs, rhs),
+        _ => unimplemented!(),
     }
+
+    fn add(self_: &mut VM, lhs: Value, rhs: Value) {
+        self_.state.stack.push(match (lhs, rhs) {
+            (Value::Number(l), Value::Number(r)) => Value::Number(l + r),
+            (Value::Bool(false), Value::Number(x)) | (Value::Number(x), Value::Bool(false)) => {
+                Value::Number(x)
+            }
+            (Value::Bool(true), Value::Number(x)) | (Value::Number(x), Value::Bool(true)) => {
+                Value::Number(x + 1.0)
+            }
+            (Value::String(l), Value::Number(r)) => {
+                Value::String(CString::new(format!("{}{}", l.to_str().unwrap(), r)).unwrap())
+            }
+            (Value::Number(l), Value::String(r)) => {
+                Value::String(CString::new(format!("{}{}", l, r.to_str().unwrap())).unwrap())
+            }
+            (Value::String(l), Value::Bool(r)) => {
+                Value::String(CString::new(format!("{}{}", l.to_str().unwrap(), r)).unwrap())
+            }
+            (Value::Bool(l), Value::String(r)) => {
+                Value::String(CString::new(format!("{}{}", l, r.to_str().unwrap())).unwrap())
+            }
+            _ => unimplemented!(),
+        })
+    };
+    fn sub(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs, rhs) {
+        (Value::Number(l), Value::Number(r)) => Value::Number(l - r),
+        _ => unimplemented!(),
+    }) };
+    fn mul(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs, rhs) {
+        (Value::Number(l), Value::Number(r)) => Value::Number(l * r),
+        (Value::String(l), Value::Number(r)) => 
+            Value::String(CString::new(l.to_str().unwrap().repeat(r as usize)).unwrap()),
+        _ => unimplemented!(),
+    }) };
+    fn div(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs, rhs) {
+        (Value::Number(l), Value::Number(r)) => Value::Number(l / r),
+        _ => unimplemented!(),
+    }) };
+    fn rem(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs, rhs) {
+        (Value::Number(l), Value::Number(r)) => Value::Number((l as i64 % r as i64) as f64),
+        _ => unimplemented!(),
+    }) };
+    fn lt(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs, rhs) {
+        (Value::Number(l), Value::Number(r)) => Value::Bool(l < r),
+        _ => unimplemented!(),
+    }) };
+    fn gt(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs, rhs) {
+        (Value::Number(l), Value::Number(r)) => Value::Bool(l > r),
+        _ => unimplemented!(),
+    }) };
+    fn le(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs, rhs) {
+        (Value::Number(l), Value::Number(r)) => Value::Bool(l <= r),
+        _ => unimplemented!(),
+    }) };
+    fn ge(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs, rhs) {
+        (Value::Number(l), Value::Number(r)) => Value::Bool(l >= r),
+        _ => unimplemented!(),
+    }) };
+    // TODO: Need more precise implementation 
+    fn eq(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs, rhs) {
+        (Value::Number(l), Value::Number(r)) => Value::Bool(l == r),
+        _ => unimplemented!(),
+    }) };
+    fn ne(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs, rhs) {
+        (Value::Number(l), Value::Number(r)) => Value::Bool(l != r),
+        _ => unimplemented!(),
+    }) };
+    fn seq(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs, rhs) {
+        (Value::Number(l), Value::Number(r)) => Value::Bool(l == r),
+        _ => unimplemented!(),
+    }) };
+    fn sne(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs, rhs) {
+        (Value::Number(l), Value::Number(r)) => Value::Bool(l != r),
+        _ => unimplemented!(),
+    }) };
+    fn and(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs, rhs) {
+        (Value::Number(l), Value::Number(r)) => Value::Number(((l as i64) & (r as i64)) as f64),
+        _ => unimplemented!(),
+    }) };
+    fn or(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs, rhs) {
+        (Value::Number(l), Value::Number(r)) => Value::Number(((l as i64) | (r as i64)) as f64),
+        _ => unimplemented!(),
+    }) };
 }
 
 fn get_member(self_: &mut VM) {
