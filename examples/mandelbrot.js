@@ -2,8 +2,7 @@
 
 function mandelbrot(c_x, c_y, n) {
   var x_n = 0, y_n = 0, x_n_1 = 0, y_n_1 = 0;
-  var i = 0;
-  while (i < n) {
+  for (var i = 0; i < n; i += 1) {
     x_n_1 = x_n * x_n - (y_n * y_n) + c_x;
     y_n_1 = 2.0 * x_n * y_n + c_y;
     var t = x_n_1 * x_n_1 + y_n_1 * y_n_1;
@@ -13,17 +12,13 @@ function mandelbrot(c_x, c_y, n) {
       x_n = x_n_1;
       y_n = y_n_1;
     }
-    i += 1;
   }
   return 0
 }
 
 var x_max = 2, x_min = -2, y_max = 1, y_min = -1, dx = 0.03, dy = 0.045;
-var y = y_max;
-while (y > y_min) {
-  var x = x_min;
-  var str = ""
-  while (x < x_max) {
+for (var y = y_max; y > y_min; y -= dy) {
+  for (var x = x_min; x < x_max; x += dx) {
     var t = mandelbrot(x, y, 300);
     if (t > 8) 
       process.stdout.write('#')
@@ -33,8 +28,6 @@ while (y > y_min) {
       process.stdout.write('.')
     else 
       process.stdout.write(' ')
-    x += dx
   }
   console.log()
-  y -= dy
 }
