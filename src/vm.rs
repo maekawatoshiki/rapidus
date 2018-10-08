@@ -470,7 +470,7 @@ fn construct(self_: &mut VM) {
             for _ in 0..argc {
                 args.push(self_.state.stack.pop().unwrap());
             }
-            for (i, arg) in args.iter().rev().enumerate() {
+            for (i, arg) in args.iter().enumerate() {
                 if let Some(name) = callobj.get_parameter_nth_name(i) {
                     // When rest parameter
                     if callobj.params[i].1 {
@@ -1015,7 +1015,6 @@ fn call(self_: &mut VM) {
             for _ in 0..argc {
                 args.push(self_.state.stack.pop().unwrap());
             }
-            args.reverse();
             unsafe { self_.builtin_functions[x](callobj, args, self_) };
         }
         Value::Function(dst, _, mut callobj) => {
@@ -1025,7 +1024,6 @@ fn call(self_: &mut VM) {
             for _ in 0..argc {
                 args.push(self_.state.stack.pop().unwrap());
             }
-            args.reverse();
 
             call_function(self_, dst, args, callobj);
         }

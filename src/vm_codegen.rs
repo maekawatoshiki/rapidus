@@ -594,7 +594,7 @@ impl VMCodeGen {
 
 impl VMCodeGen {
     pub fn run_call(&mut self, callee: &Node, args: &Vec<Node>, insts: &mut ByteCode) {
-        for arg in args {
+        for arg in args.iter().rev() {
             self.run(arg, insts);
         }
 

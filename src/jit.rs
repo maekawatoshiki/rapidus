@@ -1243,7 +1243,6 @@ impl TracingJit {
                             let arg = try_opt!(stack.pop());
                             args.push((arg.0, infer_ty(arg.0, &arg.1)?));
                         }
-                        args.reverse();
                         match callee {
                             vm::Value::BuiltinFunction(builtin::CONSOLE_LOG, _) => {
                                 for (arg, ty) in args {
@@ -1336,7 +1335,6 @@ impl TracingJit {
                         for _ in 0..argc {
                             llvm_args.push(try_opt!(stack.pop()).0);
                         }
-                        llvm_args.reverse();
                         stack.push((
                             LLVMBuildCall(
                                 self.builder,
