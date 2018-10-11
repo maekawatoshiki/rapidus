@@ -237,7 +237,7 @@ pub struct VM {
     pub insts: ByteCode,
     pub loop_bgn_end: HashMap<isize, isize>,
     pub op_table: [fn(&mut VM); 49],
-    pub builtin_functions: [unsafe fn(CallObject, Vec<Value>, &mut VM); 7],
+    pub builtin_functions: Vec<unsafe fn(CallObject, Vec<Value>, &mut VM)>,
 }
 
 pub struct VMState {
@@ -276,20 +276,38 @@ impl VM {
             Value::Object(Rc::new(RefCell::new(map)))
         });
 
+        #[rustfmt::skip]
         global_vals.borrow_mut().set_value("Math".to_string(), {
             let mut map = HashMap::new();
-            map.insert(
-                "floor".to_string(),
-                Value::BuiltinFunction(builtin::MATH_FLOOR, CallObject::new(Value::Undefined)),
-            );
-            map.insert(
-                "random".to_string(),
-                Value::BuiltinFunction(builtin::MATH_RANDOM, CallObject::new(Value::Undefined)),
-            );
-            map.insert(
-                "pow".to_string(),
-                Value::BuiltinFunction(builtin::MATH_POW, CallObject::new(Value::Undefined)),
-            );
+            map.insert("PI".to_string(), Value::Number(::std::f64::consts::PI));
+            map.insert("floor".to_string(),
+                Value::BuiltinFunction(builtin::MATH_FLOOR, CallObject::new(Value::Undefined)));
+            map.insert("random".to_string(),
+                Value::BuiltinFunction(builtin::MATH_RANDOM, CallObject::new(Value::Undefined)));
+            map.insert("pow".to_string(),
+                Value::BuiltinFunction(builtin::MATH_POW, CallObject::new(Value::Undefined)));
+            map.insert("abs".to_string(),
+                Value::BuiltinFunction(builtin::MATH_ABS, CallObject::new(Value::Undefined)));
+            map.insert("acos".to_string(),
+                Value::BuiltinFunction(builtin::MATH_ACOS, CallObject::new(Value::Undefined)));
+            map.insert("acosh".to_string(),
+                Value::BuiltinFunction(builtin::MATH_ACOSH, CallObject::new(Value::Undefined)));
+            map.insert("asin".to_string(),
+                Value::BuiltinFunction(builtin::MATH_ASIN, CallObject::new(Value::Undefined)));
+            map.insert("asinh".to_string(),
+                Value::BuiltinFunction(builtin::MATH_ASINH, CallObject::new(Value::Undefined)));
+            map.insert("atan".to_string(),
+                Value::BuiltinFunction(builtin::MATH_ATAN, CallObject::new(Value::Undefined)));
+            map.insert("atanh".to_string(),
+                Value::BuiltinFunction(builtin::MATH_ATANH, CallObject::new(Value::Undefined)));
+            map.insert("atan2".to_string(),
+                Value::BuiltinFunction(builtin::MATH_ATAN2, CallObject::new(Value::Undefined)));
+            map.insert("cbrt".to_string(),
+                Value::BuiltinFunction(builtin::MATH_CBRT, CallObject::new(Value::Undefined)));
+            map.insert("ceil".to_string(),
+                Value::BuiltinFunction(builtin::MATH_CEIL, CallObject::new(Value::Undefined)));
+            map.insert("clz32".to_string(),
+                Value::BuiltinFunction(builtin::MATH_CLZ32, CallObject::new(Value::Undefined)));
             Value::Object(Rc::new(RefCell::new(map)))
         });
 
@@ -361,13 +379,24 @@ impl VM {
                 set_name,
                 decl_var,
             ],
-            builtin_functions: [
+            builtin_functions: vec![
                 builtin::console_log,
                 builtin::process_stdout_write,
                 builtin::array_push,
                 builtin::math_floor,
                 builtin::math_random,
                 builtin::math_pow,
+                builtin::math_abs,
+                builtin::math_acos,
+                builtin::math_acosh,
+                builtin::math_asin,
+                builtin::math_asinh,
+                builtin::math_atan,
+                builtin::math_atanh,
+                builtin::math_atan2,
+                builtin::math_cbrt,
+                builtin::math_ceil,
+                builtin::math_clz32,
                 builtin::function_prototype_call,
             ],
         }
