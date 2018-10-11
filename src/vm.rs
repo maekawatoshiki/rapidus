@@ -308,6 +308,46 @@ impl VM {
                 Value::BuiltinFunction(builtin::MATH_CEIL, CallObject::new(Value::Undefined)));
             map.insert("clz32".to_string(),
                 Value::BuiltinFunction(builtin::MATH_CLZ32, CallObject::new(Value::Undefined)));
+            map.insert("cos".to_string(),
+                Value::BuiltinFunction(builtin::MATH_COS, CallObject::new(Value::Undefined)));
+            map.insert("cosh".to_string(),
+                Value::BuiltinFunction(builtin::MATH_COSH, CallObject::new(Value::Undefined)));
+            map.insert("exp".to_string(),
+                Value::BuiltinFunction(builtin::MATH_EXP, CallObject::new(Value::Undefined)));
+            map.insert("expm1".to_string(),
+                Value::BuiltinFunction(builtin::MATH_EXPM1, CallObject::new(Value::Undefined)));
+            map.insert("fround".to_string(),
+                Value::BuiltinFunction(builtin::MATH_FROUND, CallObject::new(Value::Undefined)));
+            map.insert("hypot".to_string(),
+                Value::BuiltinFunction(builtin::MATH_HYPOT, CallObject::new(Value::Undefined)));
+            map.insert("log".to_string(),
+                Value::BuiltinFunction(builtin::MATH_LOG, CallObject::new(Value::Undefined)));
+            map.insert("log1p".to_string(),
+                Value::BuiltinFunction(builtin::MATH_LOG1P, CallObject::new(Value::Undefined)));
+            map.insert("log10".to_string(),
+                Value::BuiltinFunction(builtin::MATH_LOG10, CallObject::new(Value::Undefined)));
+            map.insert("log2".to_string(),
+                Value::BuiltinFunction(builtin::MATH_LOG2, CallObject::new(Value::Undefined)));
+            map.insert("max".to_string(),
+                Value::BuiltinFunction(builtin::MATH_MAX, CallObject::new(Value::Undefined)));
+            map.insert("min".to_string(),
+                Value::BuiltinFunction(builtin::MATH_MIN, CallObject::new(Value::Undefined)));
+            map.insert("round".to_string(),
+                Value::BuiltinFunction(builtin::MATH_ROUND, CallObject::new(Value::Undefined)));
+            map.insert("sign".to_string(),
+                Value::BuiltinFunction(builtin::MATH_SIGN, CallObject::new(Value::Undefined)));
+            map.insert("sin".to_string(),
+                Value::BuiltinFunction(builtin::MATH_SIN, CallObject::new(Value::Undefined)));
+            map.insert("sinh".to_string(),
+                Value::BuiltinFunction(builtin::MATH_SINH, CallObject::new(Value::Undefined)));
+            map.insert("sqrt".to_string(),
+                Value::BuiltinFunction(builtin::MATH_SQRT, CallObject::new(Value::Undefined)));
+            map.insert("tan".to_string(),
+                Value::BuiltinFunction(builtin::MATH_TAN, CallObject::new(Value::Undefined)));
+            map.insert("tanh".to_string(),
+                Value::BuiltinFunction(builtin::MATH_TANH, CallObject::new(Value::Undefined)));
+            map.insert("trunc".to_string(),
+                Value::BuiltinFunction(builtin::MATH_TRUNC, CallObject::new(Value::Undefined)));
             Value::Object(Rc::new(RefCell::new(map)))
         });
 
@@ -397,6 +437,26 @@ impl VM {
                 builtin::math_cbrt,
                 builtin::math_ceil,
                 builtin::math_clz32,
+                builtin::math_cos,
+                builtin::math_cosh,
+                builtin::math_exp,
+                builtin::math_expm1,
+                builtin::math_fround,
+                builtin::math_hypot,
+                builtin::math_log,
+                builtin::math_log1p,
+                builtin::math_log10,
+                builtin::math_log2,
+                builtin::math_max,
+                builtin::math_min,
+                builtin::math_round,
+                builtin::math_sign,
+                builtin::math_sin,
+                builtin::math_sinh,
+                builtin::math_sqrt,
+                builtin::math_tan,
+                builtin::math_tanh,
+                builtin::math_trunc,
                 builtin::function_prototype_call,
             ],
         }

@@ -25,7 +25,27 @@ pub const MATH_ATAN2: usize = 13;
 pub const MATH_CBRT: usize = 14;
 pub const MATH_CEIL: usize = 15;
 pub const MATH_CLZ32: usize = 16;
-pub const FUNCTION_PROTOTYPE_CALL: usize = 17;
+pub const MATH_COS: usize = 17;
+pub const MATH_COSH: usize = 18;
+pub const MATH_EXP: usize = 19;
+pub const MATH_EXPM1: usize = 20;
+pub const MATH_FROUND: usize = 21;
+pub const MATH_HYPOT: usize = 22;
+pub const MATH_LOG: usize = 23;
+pub const MATH_LOG1P: usize = 24;
+pub const MATH_LOG10: usize = 25;
+pub const MATH_LOG2: usize = 26;
+pub const MATH_MAX: usize = 27;
+pub const MATH_MIN: usize = 28;
+pub const MATH_ROUND: usize = 29;
+pub const MATH_SIGN: usize = 30;
+pub const MATH_SIN: usize = 31;
+pub const MATH_SINH: usize = 32;
+pub const MATH_SQRT: usize = 33;
+pub const MATH_TAN: usize = 34;
+pub const MATH_TANH: usize = 35;
+pub const MATH_TRUNC: usize = 36;
+pub const FUNCTION_PROTOTYPE_CALL: usize = 37;
 
 // BuiltinFunction(0)
 pub unsafe fn console_log(_: CallObject, args: Vec<Value>, _: &mut VM) {
@@ -135,45 +155,24 @@ pub unsafe fn array_push(callobj: CallObject, args: Vec<Value>, _: &mut VM) {
 }
 
 macro_rules! simple_math {
-    ($self:ident, $args:ident, $f:ident) => {
-        if let Value::Number(n) = $args[0] {
-            $self.state.stack.push(Value::Number(n.$f()))
+    ($name:ident, $f:ident) => {
+        pub unsafe fn $name(_: CallObject, args: Vec<Value>, self_: &mut VM) {
+            if let Value::Number(n) = args[0] {
+                self_.state.stack.push(Value::Number(n.$f()))
+            }
         }
     };
 }
 
-// BuiltinFunction(3)
-pub unsafe fn math_floor(_: CallObject, args: Vec<Value>, self_: &mut VM) {
-    simple_math!(self_, args, floor);
-}
-// builtinfunction(6)
-pub unsafe fn math_abs(_: CallObject, args: Vec<Value>, self_: &mut VM) {
-    simple_math!(self_, args, abs);
-}
-// builtinfunction(7)
-pub unsafe fn math_acos(_: CallObject, args: Vec<Value>, self_: &mut VM) {
-    simple_math!(self_, args, acos);
-}
-// builtinfunction(8)
-pub unsafe fn math_acosh(_: CallObject, args: Vec<Value>, self_: &mut VM) {
-    simple_math!(self_, args, acosh);
-}
-// builtinfunction(9)
-pub unsafe fn math_asin(_: CallObject, args: Vec<Value>, self_: &mut VM) {
-    simple_math!(self_, args, asin);
-}
-// builtinfunction(10)
-pub unsafe fn math_asinh(_: CallObject, args: Vec<Value>, self_: &mut VM) {
-    simple_math!(self_, args, asinh);
-}
-// builtinfunction(11)
-pub unsafe fn math_atan(_: CallObject, args: Vec<Value>, self_: &mut VM) {
-    simple_math!(self_, args, atan);
-}
-// builtinfunction(12)
-pub unsafe fn math_atanh(_: CallObject, args: Vec<Value>, self_: &mut VM) {
-    simple_math!(self_, args, atanh);
-}
+simple_math!(math_floor, floor); // BuiltinFunction(3)
+simple_math!(math_abs, abs); // builtinfunction(6)
+simple_math!(math_acos, acos); // builtinfunction(7)
+simple_math!(math_acosh, acosh); // builtinfunction(8)
+simple_math!(math_asin, asin); // builtinfunction(9)
+simple_math!(math_asinh, asinh); // builtinfunction(10)
+simple_math!(math_atan, atan); // builtinfunction(11)
+simple_math!(math_atanh, atanh); // builtinfunction(12)
+
 // builtinfunction(13)
 pub unsafe fn math_atan2(_: CallObject, args: Vec<Value>, self_: &mut VM) {
     if let Value::Number(n1) = args[0] {
@@ -182,14 +181,9 @@ pub unsafe fn math_atan2(_: CallObject, args: Vec<Value>, self_: &mut VM) {
         }
     }
 }
-// builtinfunction(14)
-pub unsafe fn math_cbrt(_: CallObject, args: Vec<Value>, self_: &mut VM) {
-    simple_math!(self_, args, cbrt);
-}
-// builtinfunction(15)
-pub unsafe fn math_ceil(_: CallObject, args: Vec<Value>, self_: &mut VM) {
-    simple_math!(self_, args, ceil);
-}
+simple_math!(math_cbrt, cbrt); // builtinfunction(14)
+simple_math!(math_ceil, ceil); // builtinfunction(15)
+
 // builtinfunction(16)
 pub unsafe fn math_clz32(_: CallObject, args: Vec<Value>, self_: &mut VM) {
     if let Value::Number(n) = args[0] {
@@ -203,6 +197,101 @@ pub unsafe fn math_clz32(_: CallObject, args: Vec<Value>, self_: &mut VM) {
         }))
     }
 }
+simple_math!(math_cos, cos); // builtinfunction(17)
+simple_math!(math_cosh, cosh); // builtinfunction(18)
+simple_math!(math_exp, exp); // builtinfunction(19)
+simple_math!(math_expm1, exp_m1); // builtinfunction(20)
+simple_math!(math_fround, round); // builtinfunction(21) TODO: Implement correctly
+
+// builtinfunction(22)
+pub unsafe fn math_hypot(_: CallObject, args: Vec<Value>, self_: &mut VM) {
+    let mut sum2 = 0.0;
+    for n in args {
+        if let Value::Number(n) = n {
+            sum2 += n * n;
+        }
+    }
+    self_.state.stack.push(Value::Number(sum2.sqrt()));
+}
+
+// builtinfunction(23)
+pub unsafe fn math_log(_: CallObject, args: Vec<Value>, self_: &mut VM) {
+    if let Value::Number(n1) = args[0] {
+        self_
+            .state
+            .stack
+            .push(Value::Number(n1.log(::std::f64::consts::E)));
+    }
+}
+
+// builtinfunction(24)
+pub unsafe fn math_log1p(_: CallObject, args: Vec<Value>, self_: &mut VM) {
+    if let Value::Number(n1) = args[0] {
+        self_
+            .state
+            .stack
+            .push(Value::Number(n1.log(1.0 + ::std::f64::consts::E)));
+    }
+}
+
+simple_math!(math_log10, log10); // builtinfunction(25)
+simple_math!(math_log2, log2); // builtinfunction(26)
+
+// builtinfunction(27)
+pub unsafe fn math_max(_: CallObject, args: Vec<Value>, self_: &mut VM) {
+    let mut max = if let Value::Number(n) = args[0] {
+        n
+    } else {
+        0.0
+    };
+    for n in args[1..].iter() {
+        if let Value::Number(n) = n {
+            if *n > max {
+                max = *n;
+            }
+        }
+    }
+    self_.state.stack.push(Value::Number(max));
+}
+
+// builtinfunction(28)
+pub unsafe fn math_min(_: CallObject, args: Vec<Value>, self_: &mut VM) {
+    let mut min = if let Value::Number(n) = args[0] {
+        n
+    } else {
+        0.0
+    };
+    for n in args[1..].iter() {
+        if let Value::Number(n) = n {
+            if *n < min {
+                min = *n;
+            }
+        }
+    }
+    self_.state.stack.push(Value::Number(min));
+}
+
+simple_math!(math_round, round); // builtinfunction(29)
+
+// builtinfunction(30)
+pub unsafe fn math_sign(_: CallObject, args: Vec<Value>, self_: &mut VM) {
+    if let Value::Number(n) = args[0] {
+        self_.state.stack.push(Value::Number(if n == 0.0 {
+            n
+        } else if n > 0.0 {
+            1.0
+        } else {
+            -1.0
+        }));
+    }
+}
+
+simple_math!(math_sin, sin); // builtinfunction(31)
+simple_math!(math_sinh, sinh); // builtinfunction(32)
+simple_math!(math_sqrt, sqrt); // builtinfunction(33)
+simple_math!(math_tan, tan); // builtinfunction(34)
+simple_math!(math_tanh, tanh); // builtinfunction(35)
+simple_math!(math_trunc, trunc); // builtinfunction(36)
 
 // BuiltinFunction(4)
 pub unsafe fn math_random(_: CallObject, _args: Vec<Value>, self_: &mut VM) {
@@ -218,7 +307,7 @@ pub unsafe fn math_pow(_: CallObject, args: Vec<Value>, self_: &mut VM) {
     }
 }
 
-// BuiltinFunction(10)
+// BuiltinFunction(37)
 pub unsafe fn function_prototype_call(callobj: CallObject, args: Vec<Value>, self_: &mut VM) {
     let callee = *callobj.this;
     let arg_this = args[0].clone();
