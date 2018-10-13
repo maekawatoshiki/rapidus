@@ -154,9 +154,13 @@ impl ArrayValue {
     }
 
     pub fn to_string(&self) -> String {
-        self.elems[0..self.length].iter().fold("".to_string(), |acc, val|{
-            acc + val.to_string().as_str()
-        })
+        self.elems[0..self.length]
+            .iter()
+            .fold("".to_string(), |acc, val| {
+                acc + val.to_string().as_str() + ","
+            })
+            .trim_right_matches(",")
+            .to_string()
     }
 }
 
@@ -176,6 +180,7 @@ pub enum Value {
 impl Value {
     pub fn to_string(&self) -> String {
         match self {
+            Value::Undefined => "undefined".to_string(),
             Value::Bool(b) => {
                 if *b {
                     "true".to_string()
@@ -202,7 +207,25 @@ impl Value {
             }
             Value::String(s) => s.clone().into_string().unwrap(),
             Value::Array(ary_val) => ary_val.borrow().to_string(),
+            Value::Object(_) => "[object Object]".to_string(),
             e => unimplemented!("{:?}", e),
+        }
+    }
+
+    // TODO: Need a correct implementation!
+    pub fn to_number(&self) -> f64 {
+        match self {
+            Value::Undefined => ::std::f64::NAN,
+            Value::Bool(false) => 0.0,
+            Value::Bool(true) => 1.0,
+            Value::Number(n) => *n,
+            Value::String(s) => s
+                .clone()
+                .into_string()
+                .unwrap()
+                .parse()
+                .unwrap_or(::std::f64::NAN),
+            _ => ::std::f64::NAN,
         }
     }
 }
@@ -782,19 +805,9 @@ fn binary(self_: &mut VM, op: &BinOp) {
             (Value::Bool(true), Value::Number(x)) | (Value::Number(x), Value::Bool(true)) => {
                 Value::Number(x + 1.0)
             }
-            (Value::String(l), Value::Number(r)) => {
-                Value::String(CString::new(format!("{}{}", l.to_str().unwrap(), r)).unwrap())
+            (l, r) => {
+                Value::String(CString::new(l.to_string() + r.to_string().as_str()).unwrap())
             }
-            (Value::Number(l), Value::String(r)) => {
-                Value::String(CString::new(format!("{}{}", l, r.to_str().unwrap())).unwrap())
-            }
-            (Value::String(l), Value::Bool(r)) => {
-                Value::String(CString::new(format!("{}{}", l.to_str().unwrap(), r)).unwrap())
-            }
-            (Value::Bool(l), Value::String(r)) => {
-                Value::String(CString::new(format!("{}{}", l, r.to_str().unwrap())).unwrap())
-            }
-            _ => unimplemented!(),
         })
     };
     fn sub(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs, rhs) {
