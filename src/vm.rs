@@ -19,41 +19,6 @@ pub unsafe fn alloc_rawstring(s: &str) -> RawStringPtr {
     p
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct ArrayValue {
-    pub elems: Vec<Value>,
-    pub length: usize,
-    pub obj: HashMap<String, Value>,
-}
-
-impl ArrayValue {
-    pub fn new(arr: Vec<Value>) -> ArrayValue {
-        let len = arr.len();
-        ArrayValue {
-            elems: arr,
-            length: len,
-            obj: {
-                let mut hm = HashMap::new();
-                hm.insert(
-                    "__proto__".to_string(),
-                    Value::Object(Rc::new(RefCell::new({
-                        let mut hm = HashMap::new();
-                        hm.insert(
-                            "push".to_string(),
-                            Value::BuiltinFunction(
-                                builtin::ARRAY_PUSH,
-                                CallObject::new(Value::Undefined),
-                            ),
-                        );
-                        hm
-                    }))),
-                );
-                hm
-            },
-        }
-    }
-}
-
 pub type CallObjectRef = Rc<RefCell<CallObject>>;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -155,6 +120,47 @@ impl CallObject {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct ArrayValue {
+    pub elems: Vec<Value>,
+    pub length: usize,
+    pub obj: HashMap<String, Value>,
+}
+
+impl ArrayValue {
+    pub fn new(arr: Vec<Value>) -> ArrayValue {
+        let len = arr.len();
+        ArrayValue {
+            elems: arr,
+            length: len,
+            obj: {
+                let mut hm = HashMap::new();
+                hm.insert(
+                    "__proto__".to_string(),
+                    Value::Object(Rc::new(RefCell::new({
+                        let mut hm = HashMap::new();
+                        hm.insert(
+                            "push".to_string(),
+                            Value::BuiltinFunction(
+                                builtin::ARRAY_PUSH,
+                                CallObject::new(Value::Undefined),
+                            ),
+                        );
+                        hm
+                    }))),
+                );
+                hm
+            },
+        }
+    }
+
+    pub fn to_string(&self) -> String {
+        self.elems[0..self.length].iter().fold("".to_string(), |acc, val|{
+            acc + val.to_string().as_str()
+        })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     Undefined,
     Bool(bool),
@@ -168,10 +174,34 @@ pub enum Value {
 }
 
 impl Value {
-    pub fn to_string(self) -> String {
+    pub fn to_string(&self) -> String {
         match self {
-            Value::String(name) => name.into_string().unwrap(),
-            Value::Number(n) => format!("{}", n),
+            Value::Bool(b) => {
+                if *b {
+                    "true".to_string()
+                } else {
+                    "false".to_string()
+                }
+            }
+            Value::Number(n) => {
+                if n.is_nan() {
+                    return "NaN".to_string();
+                }
+
+                if *n == 0.0 {
+                    return "0".to_string();
+                }
+
+                if n.is_infinite() {
+                    return "Infinity".to_string();
+                }
+
+                // TODO: Need a correct implementation!
+                //  ref. https://tc39.github.io/ecma262/#sec-tostring-applied-to-the-number-type
+                format!("{}", *n)
+            }
+            Value::String(s) => s.clone().into_string().unwrap(),
+            Value::Array(ary_val) => ary_val.borrow().to_string(),
             e => unimplemented!("{:?}", e),
         }
     }
