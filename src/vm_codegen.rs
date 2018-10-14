@@ -485,6 +485,30 @@ impl VMCodeGen {
         self.run(expr, insts);
         match op {
             &UnaryOp::Minus => self.bytecode_gen.gen_neg(insts),
+            &UnaryOp::PrInc => {
+                self.bytecode_gen.gen_push_int8(1, insts);
+                self.bytecode_gen.gen_add(insts);
+                self.bytecode_gen.gen_double(insts);
+                self.assign_stack_top(expr, insts)
+            }
+            &UnaryOp::PoInc => {
+                self.bytecode_gen.gen_double(insts);
+                self.bytecode_gen.gen_push_int8(1, insts);
+                self.bytecode_gen.gen_add(insts);
+                self.assign_stack_top(expr, insts)
+            }
+            &UnaryOp::PrDec => {
+                self.bytecode_gen.gen_push_int8(1, insts);
+                self.bytecode_gen.gen_sub(insts);
+                self.bytecode_gen.gen_double(insts);
+                self.assign_stack_top(expr, insts)
+            }
+            &UnaryOp::PoDec => {
+                self.bytecode_gen.gen_double(insts);
+                self.bytecode_gen.gen_push_int8(1, insts);
+                self.bytecode_gen.gen_sub(insts);
+                self.assign_stack_top(expr, insts)
+            }
             _ => unimplemented!(),
         }
     }
@@ -571,7 +595,10 @@ impl VMCodeGen {
 
     pub fn run_assign(&mut self, dst: &Node, src: &Node, insts: &mut ByteCode) {
         self.run(src, insts);
+        self.assign_stack_top(dst, insts);
+    }
 
+    pub fn assign_stack_top(&mut self, dst: &Node, insts: &mut ByteCode) {
         match dst.base {
             NodeBase::Identifier(ref name) => {
                 self.bytecode_gen.gen_set_name(name, insts);
