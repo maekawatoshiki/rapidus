@@ -49,18 +49,18 @@ fn get_value_type(val: &vm::Value) -> Option<ValueType> {
 }
 
 macro_rules! get_int8 {
-    ($insts:ident, $pc:ident, $var:ident, $ty:ty) => {
-        let $var = $insts[$pc as usize] as $ty;
+    ($iseq:ident, $pc:ident, $var:ident, $ty:ty) => {
+        let $var = $iseq[$pc as usize] as $ty;
         $pc += 1;
     };
 }
 
 macro_rules! get_int32 {
-    ($insts:ident, $pc:ident, $var:ident, $ty:ty) => {
-        let $var = (($insts[$pc as usize + 3] as $ty) << 24)
-            + (($insts[$pc as usize + 2] as $ty) << 16)
-            + (($insts[$pc as usize + 1] as $ty) << 8)
-            + ($insts[$pc as usize + 0] as $ty);
+    ($iseq:ident, $pc:ident, $var:ident, $ty:ty) => {
+        let $var = (($iseq[$pc as usize + 3] as $ty) << 24)
+            + (($iseq[$pc as usize + 2] as $ty) << 16)
+            + (($iseq[$pc as usize + 1] as $ty) << 8)
+            + ($iseq[$pc as usize + 0] as $ty);
         $pc += 4;
     };
 }
@@ -291,7 +291,7 @@ unsafe fn cur_bb_has_no_terminator(builder: LLVMBuilderRef) -> bool {
 impl TracingJit {
     pub unsafe fn can_jit(
         &mut self,
-        insts: &Vec<u8>,
+        iseq: &Vec<u8>,
         scope: &CallObject,
         const_table: &vm::ConstantTable,
         pc: usize,
@@ -322,7 +322,7 @@ impl TracingJit {
         // compiled. (cannot_jit = true)
         // llvm::execution_engine::LLVMAddModule(self.exec_engine, self.module);
         let llvm_func =
-            match self.gen_code_for_func(name.clone(), insts, scope, const_table, pc, argc) {
+            match self.gen_code_for_func(name.clone(), iseq, scope, const_table, pc, argc) {
                 Ok(llvm_func) => llvm_func,
                 Err(()) => {
                     self.func_info.get_mut(&pc).unwrap().jit_info.cannot_jit = true;
@@ -407,7 +407,7 @@ impl TracingJit {
     unsafe fn gen_code_for_func(
         &mut self,
         name: String,
-        insts: &Vec<u8>,
+        iseq: &Vec<u8>,
         scope: &CallObject,
         const_table: &vm::ConstantTable,
         mut pc: usize,
@@ -460,12 +460,12 @@ impl TracingJit {
 
         let mut compilation_failed = false;
         if let Err(_) = self.gen_body(
-            insts,
+            iseq,
             scope,
             const_table,
             func_pos,
             pc,
-            insts.len(),
+            iseq.len(),
             true,
             &mut env,
         ) {
@@ -505,7 +505,7 @@ impl TracingJit {
 
     pub unsafe fn can_loop_jit(
         &mut self,
-        insts: &Vec<u8>,
+        iseq: &Vec<u8>,
         const_table: &vm::ConstantTable,
         vm_state: &mut vm::VMState,
         end: usize,
@@ -537,7 +537,7 @@ impl TracingJit {
         // If gen_code fails, it means the function can't be JIT-compiled and should never be
         // compiled. (cannot_jit = true)
         let (llvm_func, local_vars) =
-            match self.gen_code_for_loop(name.clone(), vm_state, insts, const_table, bgn, end) {
+            match self.gen_code_for_loop(name.clone(), vm_state, iseq, const_table, bgn, end) {
                 Ok(info) => info,
                 Err(()) => {
                     self.loop_info.get_mut(&bgn).unwrap().jit_info.cannot_jit = true;
@@ -624,12 +624,12 @@ impl TracingJit {
         &mut self,
         name: String,
         vm_state: &mut vm::VMState,
-        insts: &Vec<u8>,
+        iseq: &Vec<u8>,
         const_table: &vm::ConstantTable,
         bgn: usize,
         end: usize,
     ) -> Result<(LLVMValueRef, Vec<(usize, ValueType)>), ()> {
-        let local_vars = self.collect_local_variables(vm_state, insts, const_table, bgn, end)?;
+        let local_vars = self.collect_local_variables(vm_state, iseq, const_table, bgn, end)?;
 
         let func_ret_ty = LLVMInt32TypeInContext(self.context);
         let func_ty = LLVMFunctionType(
@@ -687,7 +687,7 @@ impl TracingJit {
 
         let mut compilation_failed = false;
         if let Err(_) = self.gen_body(
-            insts,
+            iseq,
             &vm_state.scope.last().unwrap().borrow(),
             const_table,
             bgn,
@@ -764,7 +764,7 @@ impl TracingJit {
     unsafe fn collect_local_variables(
         &mut self,
         vm_state: &mut vm::VMState,
-        insts: &Vec<u8>,
+        iseq: &Vec<u8>,
         const_table: &vm::ConstantTable,
         mut pc: usize,
         end: usize,
@@ -773,11 +773,11 @@ impl TracingJit {
         let local_scope = &vm_state.scope.last().unwrap().borrow();
 
         while pc < end {
-            let inst_size = try_opt!(VMInst::get_inst_size(insts[pc]));
-            match insts[pc] {
+            let inst_size = try_opt!(VMInst::get_inst_size(iseq[pc]));
+            match iseq[pc] {
                 VMInst::DECL_VAR | VMInst::SET_NAME | VMInst::GET_NAME => {
                     pc += 1;
-                    get_int32!(insts, pc, id, usize);
+                    get_int32!(iseq, pc, id, usize);
                     let name = &const_table.string[id];
                     if let Some(val) = local_scope.vals.borrow().get(name) {
                         let ty = if let Some(ty) = get_value_type(val) {
@@ -797,7 +797,7 @@ impl TracingJit {
 
     unsafe fn gen_body(
         &mut self,
-        insts: &Vec<u8>,
+        iseq: &Vec<u8>,
         scope: &CallObject,
         const_table: &vm::ConstantTable,
         func_pos: usize,
@@ -844,13 +844,13 @@ impl TracingJit {
         {
             let mut pc = bgn;
             while pc < end {
-                let inst_size = try_opt!(VMInst::get_inst_size(insts[pc]));
-                match insts[pc] {
+                let inst_size = try_opt!(VMInst::get_inst_size(iseq[pc]));
+                match iseq[pc] {
                     VMInst::END => break,
                     VMInst::CREATE_CONTEXT if is_func_jit => break,
                     VMInst::JMP | VMInst::JMP_IF_FALSE => {
                         pc += 1;
-                        get_int32!(insts, pc, dst, i32);
+                        get_int32!(iseq, pc, dst, i32);
                         // println!("pc: {}, dst: {}, = {}", pc, dst, pc as i32 + dst);
                         labels.insert(
                             (pc as i32 + dst) as usize,
@@ -884,13 +884,13 @@ impl TracingJit {
                 *label_kind = LabelKind::Positioned(bb);
             }
 
-            match insts[pc] {
+            match iseq[pc] {
                 VMInst::END => break,
                 VMInst::CREATE_CONTEXT => break,
                 VMInst::CONSTRUCT | VMInst::CREATE_OBJECT | VMInst::CREATE_ARRAY => pc += 5,
                 VMInst::JMP_IF_FALSE => {
                     pc += 1;
-                    get_int32!(insts, pc, dst, i32);
+                    get_int32!(iseq, pc, dst, i32);
                     land.push(LLVMGetInsertBlock(self.builder));
                     let bb_then = LLVMAppendBasicBlock(func, CString::new("").unwrap().as_ptr());
                     lcom.push(bb_then);
@@ -903,7 +903,7 @@ impl TracingJit {
                 }
                 VMInst::JMP => {
                     pc += 1;
-                    get_int32!(insts, pc, dst, i32);
+                    get_int32!(iseq, pc, dst, i32);
                     let bb = label_retrieve(try_opt!(labels.get(&((pc as i32 + dst) as usize))));
                     if cur_bb_has_no_terminator(self.builder) {
                         LLVMBuildBr(self.builder, bb);
@@ -1178,7 +1178,7 @@ impl TracingJit {
                 }
                 VMInst::GET_NAME => {
                     pc += 1;
-                    get_int32!(insts, pc, id, usize);
+                    get_int32!(iseq, pc, id, usize);
                     let name = &const_table.string[id];
                     match env.get(name) {
                         Some(val) => {
@@ -1214,14 +1214,14 @@ impl TracingJit {
                 }
                 VMInst::SET_NAME => {
                     pc += 1;
-                    get_int32!(insts, pc, id, usize);
+                    get_int32!(iseq, pc, id, usize);
                     let name = &const_table.string[id];
                     let val = try_stack!(stack.pop());
                     LLVMBuildStore(self.builder, val, *try_opt!(env.get(name)));
                 }
                 VMInst::DECL_VAR => {
                     pc += 1;
-                    get_int32!(insts, pc, id, usize);
+                    get_int32!(iseq, pc, id, usize);
                     let name = const_table.string[id].clone();
                     let dst = self.declare_local_var(name, env);
                     let src = try_stack!(stack.pop());
@@ -1229,7 +1229,7 @@ impl TracingJit {
                 }
                 VMInst::CALL => {
                     pc += 1;
-                    get_int32!(insts, pc, argc, usize);
+                    get_int32!(iseq, pc, argc, usize);
 
                     let callee = try_opt!(stack.pop());
 
@@ -1360,7 +1360,7 @@ impl TracingJit {
                 }
                 VMInst::PUSH_CONST => {
                     pc += 1;
-                    get_int32!(insts, pc, n, usize);
+                    get_int32!(iseq, pc, n, usize);
                     match const_table.value[n] {
                         vm::Value::Bool(false) => stack.push((
                             LLVMConstInt(LLVMInt1TypeInContext(self.context), 0, 0),
@@ -1415,7 +1415,7 @@ impl TracingJit {
                 }
                 VMInst::PUSH_INT8 => {
                     pc += 1;
-                    get_int8!(insts, pc, n, isize);
+                    get_int8!(iseq, pc, n, isize);
                     stack.push((
                         LLVMConstReal(LLVMDoubleTypeInContext(self.context), n as f64),
                         None,
@@ -1423,7 +1423,7 @@ impl TracingJit {
                 }
                 VMInst::PUSH_INT32 => {
                     pc += 1;
-                    get_int32!(insts, pc, n, isize);
+                    get_int32!(iseq, pc, n, isize);
                     stack.push((
                         LLVMConstReal(LLVMDoubleTypeInContext(self.context), n as f64),
                         None,

@@ -75,159 +75,159 @@ impl ByteCodeGen {
 }
 
 impl ByteCodeGen {
-    pub fn gen_end(&self, insts: &mut ByteCode) {
-        insts.push(VMInst::END);
+    pub fn gen_end(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::END);
     }
 
-    pub fn gen_create_context(&self, num_local_var: usize, insts: &mut ByteCode) {
-        insts.push(VMInst::CREATE_CONTEXT);
-        self.gen_int32(num_local_var as i32, insts);
+    pub fn gen_create_context(&self, num_local_var: usize, iseq: &mut ByteCode) {
+        iseq.push(VMInst::CREATE_CONTEXT);
+        self.gen_int32(num_local_var as i32, iseq);
     }
 
-    pub fn gen_constract(&self, argc: usize, insts: &mut ByteCode) {
-        insts.push(VMInst::CONSTRUCT);
-        self.gen_int32(argc as i32, insts);
+    pub fn gen_constract(&self, argc: usize, iseq: &mut ByteCode) {
+        iseq.push(VMInst::CONSTRUCT);
+        self.gen_int32(argc as i32, iseq);
     }
 
-    pub fn gen_create_object(&self, len: usize, insts: &mut ByteCode) {
-        insts.push(VMInst::CREATE_OBJECT);
-        self.gen_int32(len as i32, insts);
+    pub fn gen_create_object(&self, len: usize, iseq: &mut ByteCode) {
+        iseq.push(VMInst::CREATE_OBJECT);
+        self.gen_int32(len as i32, iseq);
     }
 
-    pub fn gen_create_array(&self, len: usize, insts: &mut ByteCode) {
-        insts.push(VMInst::CREATE_ARRAY);
-        self.gen_int32(len as i32, insts);
+    pub fn gen_create_array(&self, len: usize, iseq: &mut ByteCode) {
+        iseq.push(VMInst::CREATE_ARRAY);
+        self.gen_int32(len as i32, iseq);
     }
 
-    pub fn gen_push_int8(&self, n: i8, insts: &mut ByteCode) {
-        insts.push(VMInst::PUSH_INT8);
-        self.gen_int8(n, insts);
+    pub fn gen_push_int8(&self, n: i8, iseq: &mut ByteCode) {
+        iseq.push(VMInst::PUSH_INT8);
+        self.gen_int8(n, iseq);
     }
 
-    pub fn gen_push_int32(&self, n: i32, insts: &mut ByteCode) {
-        insts.push(VMInst::PUSH_INT32);
-        self.gen_int32(n, insts);
+    pub fn gen_push_int32(&self, n: i32, iseq: &mut ByteCode) {
+        iseq.push(VMInst::PUSH_INT32);
+        self.gen_int32(n, iseq);
     }
 
-    pub fn gen_push_bool(&self, b: bool, insts: &mut ByteCode) {
-        insts.push(if b {
+    pub fn gen_push_bool(&self, b: bool, iseq: &mut ByteCode) {
+        iseq.push(if b {
             VMInst::PUSH_TRUE
         } else {
             VMInst::PUSH_FALSE
         })
     }
 
-    pub fn gen_push_const(&mut self, val: Value, insts: &mut ByteCode) {
-        insts.push(VMInst::PUSH_CONST);
+    pub fn gen_push_const(&mut self, val: Value, iseq: &mut ByteCode) {
+        iseq.push(VMInst::PUSH_CONST);
         let id = self.const_table.value.len();
         self.const_table.value.push(val);
-        self.gen_int32(id as i32, insts);
+        self.gen_int32(id as i32, iseq);
     }
 
-    pub fn gen_push_this(&self, insts: &mut ByteCode) {
-        insts.push(VMInst::PUSH_THIS);
+    pub fn gen_push_this(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::PUSH_THIS);
     }
 
-    pub fn gen_push_arguments(&self, insts: &mut ByteCode) {
-        insts.push(VMInst::PUSH_ARGUMENTS);
+    pub fn gen_push_arguments(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::PUSH_ARGUMENTS);
     }
 
-    pub fn gen_neg(&self, insts: &mut ByteCode) {
-        insts.push(VMInst::NEG);
+    pub fn gen_neg(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::NEG);
     }
 
-    pub fn gen_add(&self, insts: &mut ByteCode) {
-        insts.push(VMInst::ADD);
+    pub fn gen_add(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::ADD);
     }
-    pub fn gen_sub(&self, insts: &mut ByteCode) {
-        insts.push(VMInst::SUB);
+    pub fn gen_sub(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::SUB);
     }
-    pub fn gen_mul(&self, insts: &mut ByteCode) {
-        insts.push(VMInst::MUL);
+    pub fn gen_mul(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::MUL);
     }
-    pub fn gen_div(&self, insts: &mut ByteCode) {
-        insts.push(VMInst::DIV);
+    pub fn gen_div(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::DIV);
     }
-    pub fn gen_rem(&self, insts: &mut ByteCode) {
-        insts.push(VMInst::REM);
+    pub fn gen_rem(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::REM);
     }
-    pub fn gen_lt(&self, insts: &mut ByteCode) {
-        insts.push(VMInst::LT);
+    pub fn gen_lt(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::LT);
     }
-    pub fn gen_gt(&self, insts: &mut ByteCode) {
-        insts.push(VMInst::GT);
+    pub fn gen_gt(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::GT);
     }
-    pub fn gen_le(&self, insts: &mut ByteCode) {
-        insts.push(VMInst::LE);
+    pub fn gen_le(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::LE);
     }
-    pub fn gen_ge(&self, insts: &mut ByteCode) {
-        insts.push(VMInst::GE);
+    pub fn gen_ge(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::GE);
     }
-    pub fn gen_eq(&self, insts: &mut ByteCode) {
-        insts.push(VMInst::EQ);
+    pub fn gen_eq(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::EQ);
     }
-    pub fn gen_ne(&self, insts: &mut ByteCode) {
-        insts.push(VMInst::NE);
+    pub fn gen_ne(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::NE);
     }
-    pub fn gen_seq(&self, insts: &mut ByteCode) {
-        insts.push(VMInst::SEQ);
+    pub fn gen_seq(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::SEQ);
     }
-    pub fn gen_sne(&self, insts: &mut ByteCode) {
-        insts.push(VMInst::SNE);
+    pub fn gen_sne(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::SNE);
     }
-    pub fn gen_and(&self, insts: &mut ByteCode) {
-        insts.push(VMInst::AND);
+    pub fn gen_and(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::AND);
     }
-    pub fn gen_or(&self, insts: &mut ByteCode) {
-        insts.push(VMInst::OR);
-    }
-
-    pub fn gen_land(&self, insts: &mut ByteCode) {
-        insts.push(VMInst::LAND);
-    }
-    pub fn gen_lor(&self, insts: &mut ByteCode) {
-        insts.push(VMInst::LOR);
+    pub fn gen_or(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::OR);
     }
 
-    pub fn gen_double(&self, insts: &mut ByteCode) {
-        insts.push(VMInst::DOUBLE);
+    pub fn gen_land(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::LAND);
     }
-    pub fn gen_pop(&self, insts: &mut ByteCode) {
-        insts.push(VMInst::POP);
-    }
-
-    pub fn gen_get_member(&self, insts: &mut ByteCode) {
-        insts.push(VMInst::GET_MEMBER);
+    pub fn gen_lor(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::LOR);
     }
 
-    pub fn gen_set_member(&self, insts: &mut ByteCode) {
-        insts.push(VMInst::SET_MEMBER);
+    pub fn gen_double(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::DOUBLE);
+    }
+    pub fn gen_pop(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::POP);
     }
 
-    pub fn gen_call(&self, argc: u32, insts: &mut ByteCode) {
-        insts.push(VMInst::CALL);
-        self.gen_int32(argc as i32, insts);
+    pub fn gen_get_member(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::GET_MEMBER);
     }
 
-    pub fn gen_jmp(&self, dst: i32, insts: &mut ByteCode) {
-        insts.push(VMInst::JMP);
-        self.gen_int32(dst, insts);
+    pub fn gen_set_member(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::SET_MEMBER);
     }
 
-    pub fn gen_jmp_if_false(&self, dst: i32, insts: &mut ByteCode) {
-        insts.push(VMInst::JMP_IF_FALSE);
-        self.gen_int32(dst, insts);
+    pub fn gen_call(&self, argc: u32, iseq: &mut ByteCode) {
+        iseq.push(VMInst::CALL);
+        self.gen_int32(argc as i32, iseq);
     }
 
-    pub fn gen_return(&self, insts: &mut ByteCode) {
-        insts.push(VMInst::RETURN);
+    pub fn gen_jmp(&self, dst: i32, iseq: &mut ByteCode) {
+        iseq.push(VMInst::JMP);
+        self.gen_int32(dst, iseq);
     }
 
-    pub fn gen_set_cur_callobj(&self, insts: &mut ByteCode) {
-        insts.push(VMInst::SET_CUR_CALLOBJ);
+    pub fn gen_jmp_if_false(&self, dst: i32, iseq: &mut ByteCode) {
+        iseq.push(VMInst::JMP_IF_FALSE);
+        self.gen_int32(dst, iseq);
     }
 
-    pub fn gen_get_name(&mut self, name: &String, insts: &mut ByteCode) {
+    pub fn gen_return(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::RETURN);
+    }
+
+    pub fn gen_set_cur_callobj(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::SET_CUR_CALLOBJ);
+    }
+
+    pub fn gen_get_name(&mut self, name: &String, iseq: &mut ByteCode) {
         let id = (|| {
             for (i, string) in self.const_table.string.iter().enumerate() {
                 if name == string {
@@ -239,11 +239,11 @@ impl ByteCodeGen {
             self.const_table.string.push(name.clone());
             id
         })();
-        insts.push(VMInst::GET_NAME);
-        self.gen_int32(id as i32, insts);
+        iseq.push(VMInst::GET_NAME);
+        self.gen_int32(id as i32, iseq);
     }
 
-    pub fn gen_set_name(&mut self, name: &String, insts: &mut ByteCode) {
+    pub fn gen_set_name(&mut self, name: &String, iseq: &mut ByteCode) {
         let id = (|| {
             for (i, string) in self.const_table.string.iter().enumerate() {
                 if name == string {
@@ -255,11 +255,11 @@ impl ByteCodeGen {
             self.const_table.string.push(name.clone());
             id
         })();
-        insts.push(VMInst::SET_NAME);
-        self.gen_int32(id as i32, insts);
+        iseq.push(VMInst::SET_NAME);
+        self.gen_int32(id as i32, iseq);
     }
 
-    pub fn gen_decl_var(&mut self, name: &String, insts: &mut ByteCode) {
+    pub fn gen_decl_var(&mut self, name: &String, iseq: &mut ByteCode) {
         let id = (|| {
             for (i, string) in self.const_table.string.iter().enumerate() {
                 if name == string {
@@ -271,36 +271,36 @@ impl ByteCodeGen {
             self.const_table.string.push(name.clone());
             id
         })();
-        insts.push(VMInst::DECL_VAR);
-        self.gen_int32(id as i32, insts);
+        iseq.push(VMInst::DECL_VAR);
+        self.gen_int32(id as i32, iseq);
     }
 
     // Utils
 
-    pub fn gen_int8(&self, n: i8, insts: &mut ByteCode) {
-        insts.push(n as u8);
+    pub fn gen_int8(&self, n: i8, iseq: &mut ByteCode) {
+        iseq.push(n as u8);
     }
 
-    pub fn gen_int32(&self, n: i32, insts: &mut ByteCode) {
-        insts.push(((n >> 0) & 0xff as i32) as u8);
-        insts.push(((n >> 8) & 0xff as i32) as u8);
-        insts.push(((n >> 16) & 0xff as i32) as u8);
-        insts.push(((n >> 24) & 0xff as i32) as u8);
+    pub fn gen_int32(&self, n: i32, iseq: &mut ByteCode) {
+        iseq.push(((n >> 0) & 0xff as i32) as u8);
+        iseq.push(((n >> 8) & 0xff as i32) as u8);
+        iseq.push(((n >> 16) & 0xff as i32) as u8);
+        iseq.push(((n >> 24) & 0xff as i32) as u8);
     }
 
-    pub fn replace_int32(&self, n: i32, insts: &mut [u8]) {
-        insts[3] = (n >> 24) as u8;
-        insts[2] = (n >> 16) as u8;
-        insts[1] = (n >> 8) as u8;
-        insts[0] = (n >> 0) as u8;
+    pub fn replace_int32(&self, n: i32, iseq: &mut [u8]) {
+        iseq[3] = (n >> 24) as u8;
+        iseq[2] = (n >> 16) as u8;
+        iseq[1] = (n >> 8) as u8;
+        iseq[0] = (n >> 0) as u8;
     }
 }
 
-pub fn slice_to_int32(insts: &[u8]) -> i32 {
-    ((insts[3] as i32) << 24)
-        + ((insts[2] as i32) << 16)
-        + ((insts[1] as i32) << 8)
-        + (insts[0] as i32)
+pub fn slice_to_int32(iseq: &[u8]) -> i32 {
+    ((iseq[3] as i32) << 24)
+        + ((iseq[2] as i32) << 16)
+        + ((iseq[1] as i32) << 8)
+        + (iseq[0] as i32)
 }
 
 pub fn show(code: &ByteCode) {

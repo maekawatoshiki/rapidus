@@ -9,15 +9,15 @@ use std::ffi::CString;
 pub struct FunctionInfo {
     pub name: String,
     pub params: FormalParameters,
-    pub insts: ByteCode,
+    pub iseq: ByteCode,
 }
 
 impl FunctionInfo {
-    pub fn new(name: String, params: FormalParameters, insts: ByteCode) -> FunctionInfo {
+    pub fn new(name: String, params: FormalParameters, iseq: ByteCode) -> FunctionInfo {
         FunctionInfo {
             name: name,
             params: params,
-            insts: insts,
+            iseq: iseq,
         }
     }
 }
@@ -39,13 +39,13 @@ impl Labels {
     fn replace_break_jmps(
         &mut self,
         bytecode_gen: &mut ByteCodeGen,
-        insts: &mut ByteCode,
+        iseq: &mut ByteCode,
         break_label_pos: isize,
     ) {
         for jmp_pos in &self.break_jmp_list {
             bytecode_gen.replace_int32(
                 (break_label_pos - jmp_pos) as i32 - 5,
-                &mut insts[*jmp_pos as usize + 1..*jmp_pos as usize + 5],
+                &mut iseq[*jmp_pos as usize + 1..*jmp_pos as usize + 5],
             );
         }
         self.break_jmp_list.clear();
@@ -54,13 +54,13 @@ impl Labels {
     fn replace_continue_jmps(
         &mut self,
         bytecode_gen: &mut ByteCodeGen,
-        insts: &mut ByteCode,
+        iseq: &mut ByteCode,
         continue_label_pos: isize,
     ) {
         for jmp_pos in &self.continue_jmp_list {
             bytecode_gen.replace_int32(
                 (continue_label_pos - jmp_pos) as i32 - 5,
-                &mut insts[*jmp_pos as usize + 1..*jmp_pos as usize + 5],
+                &mut iseq[*jmp_pos as usize + 1..*jmp_pos as usize + 5],
             );
         }
         self.continue_jmp_list.clear();
@@ -87,16 +87,16 @@ impl VMCodeGen {
 }
 
 impl VMCodeGen {
-    pub fn compile(&mut self, node: &Node, insts: &mut ByteCode) {
-        let pos = insts.len();
-        self.bytecode_gen.gen_create_context(0, insts);
+    pub fn compile(&mut self, node: &Node, iseq: &mut ByteCode) {
+        let pos = iseq.len();
+        self.bytecode_gen.gen_create_context(0, iseq);
 
-        self.run(node, insts);
+        self.run(node, iseq);
 
         self.bytecode_gen
-            .replace_int32(0, &mut insts[pos + 1..pos + 5]);
+            .replace_int32(0, &mut iseq[pos + 1..pos + 5]);
 
-        self.bytecode_gen.gen_end(insts);
+        self.bytecode_gen.gen_end(iseq);
 
         // let mut function_value_list = HashMap::new();
         //
@@ -149,11 +149,11 @@ impl VMCodeGen {
             FunctionInfo {
                 name,
                 params,
-                insts: func_insts,
+                iseq: func_iseq,
             },
         ) in &self.functions
         {
-            let pos = insts.len();
+            let pos = iseq.len();
             let val = new_value_function(pos, {
                 let mut callobj =
                     CallObject::new(Value::Object(self.global_varmap.borrow().vals.clone()));
@@ -175,39 +175,39 @@ impl VMCodeGen {
             self.global_varmap
                 .borrow_mut()
                 .set_value(name.clone(), val.clone());
-            insts.append(&mut func_insts.clone());
+            iseq.append(&mut func_iseq.clone());
         }
 
         // let mut i = 0;
-        // while i < insts.len() {
-        //     let inst_size = VMInst::get_inst_size(insts[i])
+        // while i < iseq.len() {
+        //     let inst_size = VMInst::get_inst_size(iseq[i])
         //         .unwrap_or_else(|| panic!("Illegal VM Instruction occurred"));
-        //     match insts[i] {
+        //     match iseq[i] {
         //         VMInst::GET_NAME => {
-        //             let id = insts[i + 1] as i32
-        //                 + ((insts[i + 2] as i32) << 8)
-        //                 + ((insts[i + 3] as i32) << 16)
-        //                 + ((insts[i + 4] as i32) << 24);
+        //             let id = iseq[i + 1] as i32
+        //                 + ((iseq[i + 2] as i32) << 8)
+        //                 + ((iseq[i + 3] as i32) << 16)
+        //                 + ((iseq[i + 4] as i32) << 24);
         //             if let Some(val) = function_value_list
         //                 .get(self.bytecode_gen.const_table.string[id as usize].as_str())
         //             {
         //                 match val {
         //                     Value::NeedThis(callee) => {
-        //                         insts[i] = VMInst::PUSH_CONST;
+        //                         iseq[i] = VMInst::PUSH_CONST;
         //                         let id = self.bytecode_gen.const_table.value.len();
         //                         self.bytecode_gen
         //                             .const_table
         //                             .value
         //                             .push(Value::NeedThis(callee.clone()));
         //                         self.bytecode_gen
-        //                             .replace_int32(id as i32, &mut insts[i + 1..i + 5]);
+        //                             .replace_int32(id as i32, &mut iseq[i + 1..i + 5]);
         //                     }
         //                     _ => {
-        //                         insts[i] = VMInst::PUSH_CONST;
+        //                         iseq[i] = VMInst::PUSH_CONST;
         //                         let id = self.bytecode_gen.const_table.value.len();
         //                         self.bytecode_gen.const_table.value.push(val.clone());
         //                         self.bytecode_gen
-        //                             .replace_int32(id as i32, &mut insts[i + 1..i + 5]);
+        //                             .replace_int32(id as i32, &mut iseq[i + 1..i + 5]);
         //                     }
         //                 }
         //             }
@@ -218,55 +218,55 @@ impl VMCodeGen {
         // }
     }
 
-    fn run(&mut self, node: &Node, insts: &mut ByteCode) {
+    fn run(&mut self, node: &Node, iseq: &mut ByteCode) {
         match &node.base {
-            &NodeBase::StatementList(ref node_list) => self.run_statement_list(node_list, insts),
+            &NodeBase::StatementList(ref node_list) => self.run_statement_list(node_list, iseq),
             &NodeBase::FunctionDecl(ref name, ref params, ref body) => {
                 self.run_function_decl(name, params, &*body)
             }
             &NodeBase::VarDecl(ref name, ref init) => {
-                self.run_var_decl(name, init, insts);
+                self.run_var_decl(name, init, iseq);
             }
             &NodeBase::If(ref cond, ref then_, ref else_) => {
-                self.run_if(&*cond, &*then_, &*else_, insts)
+                self.run_if(&*cond, &*then_, &*else_, iseq)
             }
-            &NodeBase::While(ref cond, ref body) => self.run_while(&*cond, &*body, insts),
+            &NodeBase::While(ref cond, ref body) => self.run_while(&*cond, &*body, iseq),
             &NodeBase::For(ref init, ref cond, ref step, ref body) => {
-                self.run_for(&*init, &*cond, &*step, &*body, insts)
+                self.run_for(&*init, &*cond, &*step, &*body, iseq)
             }
-            &NodeBase::Assign(ref dst, ref src) => self.run_assign(&*dst, &*src, insts),
-            &NodeBase::UnaryOp(ref expr, ref op) => self.run_unary_op(&*expr, op, insts),
+            &NodeBase::Assign(ref dst, ref src) => self.run_assign(&*dst, &*src, iseq),
+            &NodeBase::UnaryOp(ref expr, ref op) => self.run_unary_op(&*expr, op, iseq),
             &NodeBase::BinaryOp(ref lhs, ref rhs, ref op) => {
-                self.run_binary_op(&*lhs, &*rhs, op, insts)
+                self.run_binary_op(&*lhs, &*rhs, op, iseq)
             }
-            &NodeBase::Call(ref callee, ref args) => self.run_call(&*callee, args, insts),
-            &NodeBase::Member(ref parent, ref member) => self.run_member(&*parent, member, insts),
-            &NodeBase::Index(ref parent, ref idx) => self.run_index(&*parent, &*idx, insts),
-            &NodeBase::Return(ref val) => self.run_return(val, insts),
-            &NodeBase::Break => self.run_break(insts),
-            &NodeBase::Continue => self.run_continue(insts),
-            &NodeBase::New(ref expr) => self.run_new_expr(&*expr, insts),
-            &NodeBase::Object(ref properties) => self.run_object_literal(properties, insts),
-            &NodeBase::Array(ref properties) => self.run_array_literal(properties, insts),
-            &NodeBase::Identifier(ref name) => self.run_identifier(name, insts),
-            &NodeBase::This => self.bytecode_gen.gen_push_this(insts),
-            &NodeBase::Arguments => self.bytecode_gen.gen_push_arguments(insts),
+            &NodeBase::Call(ref callee, ref args) => self.run_call(&*callee, args, iseq),
+            &NodeBase::Member(ref parent, ref member) => self.run_member(&*parent, member, iseq),
+            &NodeBase::Index(ref parent, ref idx) => self.run_index(&*parent, &*idx, iseq),
+            &NodeBase::Return(ref val) => self.run_return(val, iseq),
+            &NodeBase::Break => self.run_break(iseq),
+            &NodeBase::Continue => self.run_continue(iseq),
+            &NodeBase::New(ref expr) => self.run_new_expr(&*expr, iseq),
+            &NodeBase::Object(ref properties) => self.run_object_literal(properties, iseq),
+            &NodeBase::Array(ref properties) => self.run_array_literal(properties, iseq),
+            &NodeBase::Identifier(ref name) => self.run_identifier(name, iseq),
+            &NodeBase::This => self.bytecode_gen.gen_push_this(iseq),
+            &NodeBase::Arguments => self.bytecode_gen.gen_push_arguments(iseq),
             &NodeBase::String(ref s) => self
                 .bytecode_gen
-                .gen_push_const(Value::String(CString::new(s.as_str()).unwrap()), insts),
+                .gen_push_const(Value::String(CString::new(s.as_str()).unwrap()), iseq),
             // When 'n' is an integer
             &NodeBase::Number(n) if n - n.floor() == 0.0 => {
                 if -128.0 < n && n < 127.0 {
-                    self.bytecode_gen.gen_push_int8(n as i8, insts)
+                    self.bytecode_gen.gen_push_int8(n as i8, iseq)
                 } else {
-                    self.bytecode_gen.gen_push_int32(n as i32, insts)
+                    self.bytecode_gen.gen_push_int32(n as i32, iseq)
                 }
             }
-            &NodeBase::Number(n) => self.bytecode_gen.gen_push_const(Value::Number(n), insts),
-            &NodeBase::Boolean(b) => self.bytecode_gen.gen_push_bool(b, insts),
+            &NodeBase::Number(n) => self.bytecode_gen.gen_push_const(Value::Number(n), iseq),
+            &NodeBase::Boolean(b) => self.bytecode_gen.gen_push_bool(b, iseq),
             &NodeBase::SetCurCallObj(ref name) => {
-                self.bytecode_gen.gen_get_name(name, insts);
-                self.bytecode_gen.gen_set_cur_callobj(insts);
+                self.bytecode_gen.gen_get_name(name, iseq);
+                self.bytecode_gen.gen_set_cur_callobj(iseq);
             }
             _ => {}
         }
@@ -274,54 +274,54 @@ impl VMCodeGen {
 }
 
 impl VMCodeGen {
-    pub fn run_statement_list(&mut self, node_list: &Vec<Node>, insts: &mut ByteCode) {
+    pub fn run_statement_list(&mut self, node_list: &Vec<Node>, iseq: &mut ByteCode) {
         for node in node_list {
-            self.run(node, insts)
+            self.run(node, iseq)
         }
     }
 }
 
 impl VMCodeGen {
     pub fn run_function_decl(&mut self, name: &String, params: &FormalParameters, body: &Node) {
-        let mut func_insts = vec![];
+        let mut func_iseq = vec![];
 
-        self.bytecode_gen.gen_create_context(0, &mut func_insts);
+        self.bytecode_gen.gen_create_context(0, &mut func_iseq);
 
         // TODO: Implement Rest Parameter ASAP
 
-        self.run(body, &mut func_insts);
+        self.run(body, &mut func_iseq);
 
-        match func_insts.last() {
+        match func_iseq.last() {
             Some(&VMInst::RETURN) => {}
             _ => {
                 self.bytecode_gen
-                    .gen_push_const(Value::Undefined, &mut func_insts);
-                self.bytecode_gen.gen_return(&mut func_insts);
+                    .gen_push_const(Value::Undefined, &mut func_iseq);
+                self.bytecode_gen.gen_return(&mut func_iseq);
             }
         }
 
-        self.bytecode_gen.replace_int32(0, &mut func_insts[1..5]);
+        self.bytecode_gen.replace_int32(0, &mut func_iseq[1..5]);
 
         self.functions.insert(
             name.clone(),
-            FunctionInfo::new(name.clone(), params.clone(), func_insts),
+            FunctionInfo::new(name.clone(), params.clone(), func_iseq),
         );
     }
 
-    pub fn run_return(&mut self, val: &Option<Box<Node>>, insts: &mut ByteCode) {
+    pub fn run_return(&mut self, val: &Option<Box<Node>>, iseq: &mut ByteCode) {
         if let &Some(ref val) = val {
-            self.run(&*val, insts)
+            self.run(&*val, iseq)
         } else {
-            self.bytecode_gen.gen_push_const(Value::Undefined, insts);
+            self.bytecode_gen.gen_push_const(Value::Undefined, iseq);
         }
-        self.bytecode_gen.gen_return(insts);
+        self.bytecode_gen.gen_return(iseq);
     }
 }
 
 impl VMCodeGen {
-    pub fn run_break(&mut self, insts: &mut ByteCode) {
-        let break_jmp_pos = insts.len() as isize;
-        self.bytecode_gen.gen_jmp(0, insts);
+    pub fn run_break(&mut self, iseq: &mut ByteCode) {
+        let break_jmp_pos = iseq.len() as isize;
+        self.bytecode_gen.gen_jmp(0, iseq);
         self.labels
             .last_mut()
             .unwrap()
@@ -329,9 +329,9 @@ impl VMCodeGen {
             .push(break_jmp_pos);
     }
 
-    pub fn run_continue(&mut self, insts: &mut ByteCode) {
-        let continue_jmp_pos = insts.len() as isize;
-        self.bytecode_gen.gen_jmp(0, insts);
+    pub fn run_continue(&mut self, iseq: &mut ByteCode) {
+        let continue_jmp_pos = iseq.len() as isize;
+        self.bytecode_gen.gen_jmp(0, iseq);
         self.labels
             .last_mut()
             .unwrap()
@@ -341,11 +341,11 @@ impl VMCodeGen {
 }
 
 impl VMCodeGen {
-    pub fn run_new_expr(&mut self, expr: &Node, insts: &mut ByteCode) {
-        self.run(expr, insts);
-        let len = insts.len();
-        if insts[len - 1 - 4] == VMInst::CALL {
-            insts[len - 1 - 4] = VMInst::CONSTRUCT;
+    pub fn run_new_expr(&mut self, expr: &Node, iseq: &mut ByteCode) {
+        self.run(expr, iseq);
+        let len = iseq.len();
+        if iseq[len - 1 - 4] == VMInst::CALL {
+            iseq[len - 1 - 4] = VMInst::CONSTRUCT;
         } else {
             unreachable!()
         }
@@ -353,82 +353,82 @@ impl VMCodeGen {
 }
 
 impl VMCodeGen {
-    pub fn run_var_decl(&mut self, name: &String, init: &Option<Box<Node>>, insts: &mut ByteCode) {
+    pub fn run_var_decl(&mut self, name: &String, init: &Option<Box<Node>>, iseq: &mut ByteCode) {
         if let &Some(ref init) = init {
-            self.run(&*init, insts);
+            self.run(&*init, iseq);
         } else {
-            self.bytecode_gen.gen_push_const(Value::Undefined, insts);
+            self.bytecode_gen.gen_push_const(Value::Undefined, iseq);
         }
-        self.bytecode_gen.gen_decl_var(name, insts);
+        self.bytecode_gen.gen_decl_var(name, iseq);
     }
 }
 
 impl VMCodeGen {
-    pub fn run_if(&mut self, cond: &Node, then_: &Node, else_: &Node, insts: &mut ByteCode) {
-        self.run(cond, insts);
+    pub fn run_if(&mut self, cond: &Node, then_: &Node, else_: &Node, iseq: &mut ByteCode) {
+        self.run(cond, iseq);
 
-        let cond_pos = insts.len() as isize;
-        self.bytecode_gen.gen_jmp_if_false(0, insts);
+        let cond_pos = iseq.len() as isize;
+        self.bytecode_gen.gen_jmp_if_false(0, iseq);
 
-        self.run(then_, insts);
+        self.run(then_, iseq);
 
         if else_.base == NodeBase::Nope {
-            let pos = insts.len() as isize;
+            let pos = iseq.len() as isize;
             self.bytecode_gen.replace_int32(
                 (pos - cond_pos) as i32 - 5,
-                &mut insts[cond_pos as usize + 1..cond_pos as usize + 5],
+                &mut iseq[cond_pos as usize + 1..cond_pos as usize + 5],
             );
         } else {
-            let then_end_pos = insts.len() as isize;
-            self.bytecode_gen.gen_jmp(0, insts);
+            let then_end_pos = iseq.len() as isize;
+            self.bytecode_gen.gen_jmp(0, iseq);
 
-            let pos = insts.len() as isize;
+            let pos = iseq.len() as isize;
             self.bytecode_gen.replace_int32(
                 (pos - cond_pos) as i32 - 5,
-                &mut insts[cond_pos as usize + 1..cond_pos as usize + 5],
+                &mut iseq[cond_pos as usize + 1..cond_pos as usize + 5],
             );
 
-            self.run(else_, insts);
+            self.run(else_, iseq);
 
-            let pos = insts.len() as isize;
+            let pos = iseq.len() as isize;
             self.bytecode_gen.replace_int32(
                 (pos - then_end_pos) as i32 - 5,
-                &mut insts[then_end_pos as usize + 1..then_end_pos as usize + 5],
+                &mut iseq[then_end_pos as usize + 1..then_end_pos as usize + 5],
             );
         }
     }
 
-    pub fn run_while(&mut self, cond: &Node, body: &Node, insts: &mut ByteCode) {
-        let pos1 = insts.len() as isize;
+    pub fn run_while(&mut self, cond: &Node, body: &Node, iseq: &mut ByteCode) {
+        let pos1 = iseq.len() as isize;
         self.labels.push(Labels::new());
 
-        self.run(cond, insts);
+        self.run(cond, iseq);
 
-        let cond_pos = insts.len() as isize;
-        self.bytecode_gen.gen_jmp_if_false(0, insts);
+        let cond_pos = iseq.len() as isize;
+        self.bytecode_gen.gen_jmp_if_false(0, iseq);
 
-        self.run(body, insts);
+        self.run(body, iseq);
 
-        let loop_pos = insts.len() as isize;
+        let loop_pos = iseq.len() as isize;
         self.bytecode_gen
-            .gen_jmp((pos1 - loop_pos) as i32 - 5, insts);
+            .gen_jmp((pos1 - loop_pos) as i32 - 5, iseq);
 
-        let break_label_pos = insts.len() as isize;
+        let break_label_pos = iseq.len() as isize;
         self.labels.last_mut().unwrap().replace_break_jmps(
             &mut self.bytecode_gen,
-            insts,
+            iseq,
             break_label_pos,
         );
         self.labels
             .last_mut()
             .unwrap()
-            .replace_continue_jmps(&mut self.bytecode_gen, insts, pos1);
+            .replace_continue_jmps(&mut self.bytecode_gen, iseq, pos1);
         self.labels.pop();
 
-        let pos2 = insts.len() as isize;
+        let pos2 = iseq.len() as isize;
         self.bytecode_gen.replace_int32(
             (pos2 - cond_pos) as i32 - 5,
-            &mut insts[cond_pos as usize + 1..cond_pos as usize + 5],
+            &mut iseq[cond_pos as usize + 1..cond_pos as usize + 5],
         );
     }
 
@@ -438,181 +438,181 @@ impl VMCodeGen {
         cond: &Node,
         step: &Node,
         body: &Node,
-        insts: &mut ByteCode,
+        iseq: &mut ByteCode,
     ) {
-        self.run(init, insts);
+        self.run(init, iseq);
 
-        let pos = insts.len() as isize;
+        let pos = iseq.len() as isize;
         self.labels.push(Labels::new());
 
-        self.run(cond, insts);
+        self.run(cond, iseq);
 
-        let cond_pos = insts.len() as isize;
-        self.bytecode_gen.gen_jmp_if_false(0, insts);
+        let cond_pos = iseq.len() as isize;
+        self.bytecode_gen.gen_jmp_if_false(0, iseq);
 
-        self.run(body, insts);
+        self.run(body, iseq);
 
-        let continue_label_pos = insts.len() as isize;
+        let continue_label_pos = iseq.len() as isize;
         self.labels.last_mut().unwrap().replace_continue_jmps(
             &mut self.bytecode_gen,
-            insts,
+            iseq,
             continue_label_pos,
         );
-        self.run(step, insts);
+        self.run(step, iseq);
 
-        let loop_pos = insts.len() as isize;
+        let loop_pos = iseq.len() as isize;
         self.bytecode_gen
-            .gen_jmp((pos - loop_pos) as i32 - 5, insts);
+            .gen_jmp((pos - loop_pos) as i32 - 5, iseq);
 
-        let break_label_pos = insts.len() as isize;
+        let break_label_pos = iseq.len() as isize;
         self.labels.last_mut().unwrap().replace_break_jmps(
             &mut self.bytecode_gen,
-            insts,
+            iseq,
             break_label_pos,
         );
         self.labels.pop();
 
-        let pos = insts.len() as isize;
+        let pos = iseq.len() as isize;
         self.bytecode_gen.replace_int32(
             (pos - cond_pos) as i32 - 5,
-            &mut insts[cond_pos as usize + 1..cond_pos as usize + 5],
+            &mut iseq[cond_pos as usize + 1..cond_pos as usize + 5],
         );
     }
 }
 
 impl VMCodeGen {
-    pub fn run_unary_op(&mut self, expr: &Node, op: &UnaryOp, insts: &mut ByteCode) {
-        self.run(expr, insts);
+    pub fn run_unary_op(&mut self, expr: &Node, op: &UnaryOp, iseq: &mut ByteCode) {
+        self.run(expr, iseq);
         match op {
-            &UnaryOp::Minus => self.bytecode_gen.gen_neg(insts),
+            &UnaryOp::Minus => self.bytecode_gen.gen_neg(iseq),
             &UnaryOp::PrInc => {
-                self.bytecode_gen.gen_push_int8(1, insts);
-                self.bytecode_gen.gen_add(insts);
-                self.bytecode_gen.gen_double(insts);
-                self.assign_stack_top(expr, insts)
+                self.bytecode_gen.gen_push_int8(1, iseq);
+                self.bytecode_gen.gen_add(iseq);
+                self.bytecode_gen.gen_double(iseq);
+                self.assign_stack_top(expr, iseq)
             }
             &UnaryOp::PoInc => {
-                self.bytecode_gen.gen_double(insts);
-                self.bytecode_gen.gen_push_int8(1, insts);
-                self.bytecode_gen.gen_add(insts);
-                self.assign_stack_top(expr, insts)
+                self.bytecode_gen.gen_double(iseq);
+                self.bytecode_gen.gen_push_int8(1, iseq);
+                self.bytecode_gen.gen_add(iseq);
+                self.assign_stack_top(expr, iseq)
             }
             &UnaryOp::PrDec => {
-                self.bytecode_gen.gen_push_int8(1, insts);
-                self.bytecode_gen.gen_sub(insts);
-                self.bytecode_gen.gen_double(insts);
-                self.assign_stack_top(expr, insts)
+                self.bytecode_gen.gen_push_int8(1, iseq);
+                self.bytecode_gen.gen_sub(iseq);
+                self.bytecode_gen.gen_double(iseq);
+                self.assign_stack_top(expr, iseq)
             }
             &UnaryOp::PoDec => {
-                self.bytecode_gen.gen_double(insts);
-                self.bytecode_gen.gen_push_int8(1, insts);
-                self.bytecode_gen.gen_sub(insts);
-                self.assign_stack_top(expr, insts)
+                self.bytecode_gen.gen_double(iseq);
+                self.bytecode_gen.gen_push_int8(1, iseq);
+                self.bytecode_gen.gen_sub(iseq);
+                self.assign_stack_top(expr, iseq)
             }
             _ => unimplemented!(),
         }
     }
 
-    pub fn run_binary_op(&mut self, lhs: &Node, rhs: &Node, op: &BinOp, insts: &mut ByteCode) {
+    pub fn run_binary_op(&mut self, lhs: &Node, rhs: &Node, op: &BinOp, iseq: &mut ByteCode) {
         // Editing this (LAnd and LOr) source code has influence on the source code of JIT
         // compiler(src/jit.rs).
         match op {
             &BinOp::LAnd => {
-                self.run(lhs, insts);
+                self.run(lhs, iseq);
 
-                self.bytecode_gen.gen_double(insts);
+                self.bytecode_gen.gen_double(iseq);
 
-                let lhs_cond_pos = insts.len() as isize;
-                self.bytecode_gen.gen_jmp_if_false(0, insts);
+                let lhs_cond_pos = iseq.len() as isize;
+                self.bytecode_gen.gen_jmp_if_false(0, iseq);
 
-                self.bytecode_gen.gen_pop(insts);
+                self.bytecode_gen.gen_pop(iseq);
 
-                self.run(rhs, insts);
+                self.run(rhs, iseq);
 
-                let pos = insts.len() as isize;
+                let pos = iseq.len() as isize;
                 self.bytecode_gen.replace_int32(
                     (pos - lhs_cond_pos) as i32 - 5,
-                    &mut insts[lhs_cond_pos as usize + 1..lhs_cond_pos as usize + 5],
+                    &mut iseq[lhs_cond_pos as usize + 1..lhs_cond_pos as usize + 5],
                 );
 
-                self.bytecode_gen.gen_land(insts);
+                self.bytecode_gen.gen_land(iseq);
                 return;
             }
             &BinOp::LOr => {
-                self.run(lhs, insts);
+                self.run(lhs, iseq);
 
-                self.bytecode_gen.gen_double(insts);
+                self.bytecode_gen.gen_double(iseq);
 
-                let lhs_cond_pos = insts.len() as isize;
-                self.bytecode_gen.gen_jmp_if_false(0, insts);
+                let lhs_cond_pos = iseq.len() as isize;
+                self.bytecode_gen.gen_jmp_if_false(0, iseq);
 
-                let lhs_true_pos = insts.len() as isize;
-                self.bytecode_gen.gen_jmp(0, insts);
+                let lhs_true_pos = iseq.len() as isize;
+                self.bytecode_gen.gen_jmp(0, iseq);
 
-                let pos = insts.len() as isize;
+                let pos = iseq.len() as isize;
                 self.bytecode_gen.replace_int32(
                     (pos - lhs_cond_pos) as i32 - 5,
-                    &mut insts[lhs_cond_pos as usize + 1..lhs_cond_pos as usize + 5],
+                    &mut iseq[lhs_cond_pos as usize + 1..lhs_cond_pos as usize + 5],
                 );
 
-                self.bytecode_gen.gen_pop(insts);
+                self.bytecode_gen.gen_pop(iseq);
 
-                self.run(rhs, insts);
+                self.run(rhs, iseq);
 
-                let pos = insts.len() as isize;
+                let pos = iseq.len() as isize;
                 self.bytecode_gen.replace_int32(
                     (pos - lhs_true_pos) as i32 - 5,
-                    &mut insts[lhs_true_pos as usize + 1..lhs_true_pos as usize + 5],
+                    &mut iseq[lhs_true_pos as usize + 1..lhs_true_pos as usize + 5],
                 );
 
-                self.bytecode_gen.gen_lor(insts);
+                self.bytecode_gen.gen_lor(iseq);
                 return;
             }
             _ => {}
         };
 
-        self.run(lhs, insts);
-        self.run(rhs, insts);
+        self.run(lhs, iseq);
+        self.run(rhs, iseq);
         match op {
-            &BinOp::Add => self.bytecode_gen.gen_add(insts),
-            &BinOp::Sub => self.bytecode_gen.gen_sub(insts),
-            &BinOp::Mul => self.bytecode_gen.gen_mul(insts),
-            &BinOp::Div => self.bytecode_gen.gen_div(insts),
-            &BinOp::Rem => self.bytecode_gen.gen_rem(insts),
-            &BinOp::Eq => self.bytecode_gen.gen_eq(insts),
-            &BinOp::Ne => self.bytecode_gen.gen_ne(insts),
-            &BinOp::SEq => self.bytecode_gen.gen_seq(insts),
-            &BinOp::SNe => self.bytecode_gen.gen_sne(insts),
-            &BinOp::And => self.bytecode_gen.gen_and(insts),
-            &BinOp::Or => self.bytecode_gen.gen_or(insts),
-            &BinOp::Lt => self.bytecode_gen.gen_lt(insts),
-            &BinOp::Gt => self.bytecode_gen.gen_gt(insts),
-            &BinOp::Le => self.bytecode_gen.gen_le(insts),
-            &BinOp::Ge => self.bytecode_gen.gen_ge(insts),
+            &BinOp::Add => self.bytecode_gen.gen_add(iseq),
+            &BinOp::Sub => self.bytecode_gen.gen_sub(iseq),
+            &BinOp::Mul => self.bytecode_gen.gen_mul(iseq),
+            &BinOp::Div => self.bytecode_gen.gen_div(iseq),
+            &BinOp::Rem => self.bytecode_gen.gen_rem(iseq),
+            &BinOp::Eq => self.bytecode_gen.gen_eq(iseq),
+            &BinOp::Ne => self.bytecode_gen.gen_ne(iseq),
+            &BinOp::SEq => self.bytecode_gen.gen_seq(iseq),
+            &BinOp::SNe => self.bytecode_gen.gen_sne(iseq),
+            &BinOp::And => self.bytecode_gen.gen_and(iseq),
+            &BinOp::Or => self.bytecode_gen.gen_or(iseq),
+            &BinOp::Lt => self.bytecode_gen.gen_lt(iseq),
+            &BinOp::Gt => self.bytecode_gen.gen_gt(iseq),
+            &BinOp::Le => self.bytecode_gen.gen_le(iseq),
+            &BinOp::Ge => self.bytecode_gen.gen_ge(iseq),
             _ => {}
         }
     }
 
-    pub fn run_assign(&mut self, dst: &Node, src: &Node, insts: &mut ByteCode) {
-        self.run(src, insts);
-        self.assign_stack_top(dst, insts);
+    pub fn run_assign(&mut self, dst: &Node, src: &Node, iseq: &mut ByteCode) {
+        self.run(src, iseq);
+        self.assign_stack_top(dst, iseq);
     }
 
-    pub fn assign_stack_top(&mut self, dst: &Node, insts: &mut ByteCode) {
+    pub fn assign_stack_top(&mut self, dst: &Node, iseq: &mut ByteCode) {
         match dst.base {
             NodeBase::Identifier(ref name) => {
-                self.bytecode_gen.gen_set_name(name, insts);
+                self.bytecode_gen.gen_set_name(name, iseq);
             }
             NodeBase::Member(ref parent, ref member) => {
-                self.run(&*parent, insts);
+                self.run(&*parent, iseq);
                 self.bytecode_gen
-                    .gen_push_const(Value::String(CString::new(member.as_str()).unwrap()), insts);
-                self.bytecode_gen.gen_set_member(insts);
+                    .gen_push_const(Value::String(CString::new(member.as_str()).unwrap()), iseq);
+                self.bytecode_gen.gen_set_member(iseq);
             }
             NodeBase::Index(ref parent, ref idx) => {
-                self.run(&*parent, insts);
-                self.run(&*idx, insts);
-                self.bytecode_gen.gen_set_member(insts);
+                self.run(&*parent, iseq);
+                self.run(&*idx, iseq);
+                self.bytecode_gen.gen_set_member(iseq);
             }
             _ => unimplemented!(),
         }
@@ -620,62 +620,62 @@ impl VMCodeGen {
 }
 
 impl VMCodeGen {
-    pub fn run_call(&mut self, callee: &Node, args: &Vec<Node>, insts: &mut ByteCode) {
+    pub fn run_call(&mut self, callee: &Node, args: &Vec<Node>, iseq: &mut ByteCode) {
         for arg in args.iter().rev() {
-            self.run(arg, insts);
+            self.run(arg, iseq);
         }
 
-        self.run(callee, insts);
+        self.run(callee, iseq);
 
-        self.bytecode_gen.gen_call(args.len() as u32, insts);
+        self.bytecode_gen.gen_call(args.len() as u32, iseq);
     }
 }
 
 impl VMCodeGen {
-    fn run_object_literal(&mut self, properties: &Vec<PropertyDefinition>, insts: &mut ByteCode) {
+    fn run_object_literal(&mut self, properties: &Vec<PropertyDefinition>, iseq: &mut ByteCode) {
         for property in properties {
             match property {
                 PropertyDefinition::IdentifierReference(_) => unimplemented!(),
                 PropertyDefinition::Property(name, node) => {
-                    self.run(&node, insts);
+                    self.run(&node, iseq);
                     self.bytecode_gen
-                        .gen_push_const(Value::String(CString::new(name.as_str()).unwrap()), insts);
+                        .gen_push_const(Value::String(CString::new(name.as_str()).unwrap()), iseq);
                 }
             }
         }
 
         self.bytecode_gen
-            .gen_create_object(properties.len() as usize, insts);
+            .gen_create_object(properties.len() as usize, iseq);
     }
 
-    fn run_array_literal(&mut self, elems: &Vec<Node>, insts: &mut ByteCode) {
+    fn run_array_literal(&mut self, elems: &Vec<Node>, iseq: &mut ByteCode) {
         for elem in elems.iter().rev() {
-            self.run(elem, insts);
+            self.run(elem, iseq);
         }
 
         self.bytecode_gen
-            .gen_create_array(elems.len() as usize, insts);
+            .gen_create_array(elems.len() as usize, iseq);
     }
 }
 
 impl VMCodeGen {
-    fn run_member(&mut self, parent: &Node, member: &String, insts: &mut ByteCode) {
-        self.run(parent, insts);
+    fn run_member(&mut self, parent: &Node, member: &String, iseq: &mut ByteCode) {
+        self.run(parent, iseq);
 
         self.bytecode_gen
-            .gen_push_const(Value::String(CString::new(member.as_str()).unwrap()), insts);
-        self.bytecode_gen.gen_get_member(insts);
+            .gen_push_const(Value::String(CString::new(member.as_str()).unwrap()), iseq);
+        self.bytecode_gen.gen_get_member(iseq);
     }
 
-    fn run_index(&mut self, parent: &Node, idx: &Node, insts: &mut ByteCode) {
-        self.run(parent, insts);
+    fn run_index(&mut self, parent: &Node, idx: &Node, iseq: &mut ByteCode) {
+        self.run(parent, iseq);
 
-        self.run(idx, insts);
-        self.bytecode_gen.gen_get_member(insts);
+        self.run(idx, iseq);
+        self.bytecode_gen.gen_get_member(iseq);
     }
 
-    fn run_identifier(&mut self, name: &String, insts: &mut ByteCode) {
-        self.bytecode_gen.gen_get_name(name, insts);
+    fn run_identifier(&mut self, name: &String, iseq: &mut ByteCode) {
+        self.bytecode_gen.gen_get_name(name, iseq);
     }
 }
 

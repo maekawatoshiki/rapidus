@@ -287,7 +287,7 @@ pub struct VM {
     pub jit: TracingJit,
     pub state: VMState,
     pub const_table: ConstantTable,
-    pub insts: ByteCode,
+    pub iseq: ByteCode,
     pub loop_bgn_end: HashMap<isize, isize>,
     pub op_table: [fn(&mut VM); 42],
     pub builtin_functions: Vec<unsafe fn(CallObject, Vec<Value>, &mut VM)>,
@@ -419,7 +419,7 @@ impl VM {
                 pc: 0isize,
             },
             const_table: ConstantTable::new(),
-            insts: vec![],
+            iseq: vec![],
             loop_bgn_end: HashMap::new(),
             op_table: [
                 end,
@@ -510,8 +510,8 @@ impl VM {
 }
 
 impl VM {
-    pub fn run(&mut self, insts: ByteCode) {
-        self.insts = insts;
+    pub fn run(&mut self, iseq: ByteCode) {
+        self.iseq = iseq;
         // Unlock the mutex and start the profiler
         // PROFILER
         //     .lock()
@@ -531,7 +531,7 @@ impl VM {
                 unsafe {
                     // println!("range: [{:x}, {:x})", self.state.pc, end);
                     if let Some(pc) = self.jit.can_loop_jit(
-                        &self.insts,
+                        &self.iseq,
                         &self.const_table,
                         &mut self.state,
                         *end as usize,
@@ -541,7 +541,7 @@ impl VM {
                     }
                 }
             }
-            let code = self.insts[self.state.pc as usize];
+            let code = self.iseq[self.state.pc as usize];
             self.op_table[code as usize](self);
             if code == VMInst::RETURN || code == VMInst::END {
                 break;
@@ -553,17 +553,17 @@ impl VM {
 
 macro_rules! get_int8 {
     ($self:ident, $var:ident, $ty:ty) => {
-        let $var = $self.insts[$self.state.pc as usize] as $ty;
+        let $var = $self.iseq[$self.state.pc as usize] as $ty;
         $self.state.pc += 1;
     };
 }
 
 macro_rules! get_int32 {
     ($self:ident, $var:ident, $ty:ty) => {
-        let $var = (($self.insts[$self.state.pc as usize + 3] as $ty) << 24)
-            + (($self.insts[$self.state.pc as usize + 2] as $ty) << 16)
-            + (($self.insts[$self.state.pc as usize + 1] as $ty) << 8)
-            + ($self.insts[$self.state.pc as usize + 0] as $ty);
+        let $var = (($self.iseq[$self.state.pc as usize + 3] as $ty) << 24)
+            + (($self.iseq[$self.state.pc as usize + 2] as $ty) << 16)
+            + (($self.iseq[$self.state.pc as usize + 1] as $ty) << 8)
+            + ($self.iseq[$self.state.pc as usize + 0] as $ty);
         $self.state.pc += 4;
     };
 }
@@ -1116,7 +1116,7 @@ pub fn call_function(self_: &mut VM, dst: usize, args: Vec<Value>, mut callobj: 
         if let Some(f) = unsafe {
             self_
                 .jit
-                .can_jit(&self_.insts, &scope, &self_.const_table, dst, argc)
+                .can_jit(&self_.iseq, &scope, &self_.const_table, dst, argc)
         } {
             self_
                 .state

@@ -81,15 +81,15 @@ fn main() {
     println!("extract_anony_func:\n {:?}", node);
 
     let mut vm_codegen = vm_codegen::VMCodeGen::new();
-    let mut insts = vec![];
-    vm_codegen.compile(&node, &mut insts);
+    let mut iseq = vec![];
+    vm_codegen.compile(&node, &mut iseq);
 
-    bytecode_gen::show(&insts);
+    bytecode_gen::show(&iseq);
 
     // println!("Result:");
     // let mut vm = vm::VM::new();
     // vm.global_objects.extend(vm_codegen.global_varmap);
-    // vm.run(insts);
+    // vm.run(iseq);
 
     // println!("VM CodeGen Test:");
     // vm_codegen::test();
@@ -155,16 +155,16 @@ fn run(file_name: &str) {
             // fv_solver::FreeVariableSolver::new().run_toplevel(&mut node);
 
             let mut vm_codegen = vm_codegen::VMCodeGen::new();
-            let mut insts = vec![];
-            vm_codegen.compile(&node, &mut insts);
+            let mut iseq = vec![];
+            vm_codegen.compile(&node, &mut iseq);
 
-            // bytecode_gen::show(&insts);
+            // bytecode_gen::show(&iseq);
 
-            // println!("{:?}", insts);
+            // println!("{:?}", iseq);
 
             let mut vm = vm::VM::new(vm_codegen.global_varmap);
             vm.const_table = vm_codegen.bytecode_gen.const_table;
-            vm.run(insts);
+            vm.run(iseq);
         }
         Err(e) => panic!("Rapidus Internal Error: fork failed: {:?}", e),
     }
