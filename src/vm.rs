@@ -289,7 +289,7 @@ pub struct VM {
     pub const_table: ConstantTable,
     pub insts: ByteCode,
     pub loop_bgn_end: HashMap<isize, isize>,
-    pub op_table: [fn(&mut VM); 49],
+    pub op_table: [fn(&mut VM); 42],
     pub builtin_functions: Vec<unsafe fn(CallObject, Vec<Value>, &mut VM)>,
 }
 
@@ -452,17 +452,10 @@ impl VM {
                 or,
                 get_member,
                 set_member,
-                get_global,
-                set_global,
-                get_local,
-                set_local,
-                get_arg_local,
-                set_arg_local,
                 jmp_if_false,
                 jmp,
                 call,
                 return_,
-                assign_func_rest_param,
                 double,
                 pop,
                 land,
@@ -1062,54 +1055,6 @@ fn set_member(self_: &mut VM) {
     }
 }
 
-fn get_global(self_: &mut VM) {
-    self_.state.pc += 1; // get_global
-                         // get_int32!(self_, n, usize);
-                         // let val = (*(*self_.global_objects)
-                         //     .borrow()
-                         //     .get(self_.const_table.string[n].as_str())
-                         //     .unwrap())
-                         //     .clone();
-                         // self_.state.stack.push(val);
-}
-
-fn set_global(self_: &mut VM) {
-    self_.state.pc += 1; // set_global
-                         // get_int32!(self_, n, usize);
-                         // *(*self_.global_objects)
-                         //     .borrow_mut()
-                         //     .entry(self_.const_table.string[n].clone())
-                         //     .or_insert_with(|| Value::Undefined) = self_.state.stack.pop().unwrap();
-}
-
-fn get_local(self_: &mut VM) {
-    self_.state.pc += 1; // get_local
-                         // get_int32!(self_, n, usize);
-                         // let val = self_.state.stack[self_.state.lp + n].clone();
-                         // self_.state.stack.push(val);
-}
-
-fn set_local(self_: &mut VM) {
-    self_.state.pc += 1; // set_local
-                         // get_int32!(self_, n, usize);
-                         // let val = self_.state.stack.pop().unwrap();
-                         // self_.state.stack[self_.state.lp + n] = val;
-}
-
-fn get_arg_local(self_: &mut VM) {
-    self_.state.pc += 1; // get_arg_local
-                         // get_int32!(self_, n, usize);
-                         // let val = self_.state.stack[self_.state.bp + n].clone();
-                         // self_.state.stack.push(val);
-}
-
-fn set_arg_local(self_: &mut VM) {
-    self_.state.pc += 1; // set_arg_local
-                         // get_int32!(self_, n, usize);
-                         // let val = self_.state.stack.pop().unwrap();
-                         // self_.state.stack[self_.state.bp + n] = val;
-}
-
 fn jmp(self_: &mut VM) {
     self_.state.pc += 1; // jmp
     get_int32!(self_, dst, i32);
@@ -1237,18 +1182,6 @@ fn return_(self_: &mut VM) {
         unreachable!()
     }
     // println!("a: {:?}", self_.state.stack);
-}
-
-fn assign_func_rest_param(self_: &mut VM) {
-    self_.state.pc += 1; // assign_func_rest_param
-    get_int32!(self_, num_func_param, usize);
-    get_int32!(self_, dst_var_id, usize);
-    let mut rest_params = vec![];
-    for i in num_func_param..(self_.state.lp - self_.state.bp) {
-        rest_params.push(self_.state.stack[self_.state.bp + i].clone());
-    }
-    self_.state.stack[self_.state.lp + dst_var_id] =
-        Value::Array(Rc::new(RefCell::new(ArrayValue::new(rest_params))));
 }
 
 fn double(self_: &mut VM) {

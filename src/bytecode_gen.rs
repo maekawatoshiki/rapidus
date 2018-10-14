@@ -1,4 +1,3 @@
-use id::Id;
 use vm::{ConstantTable, Value};
 
 pub type ByteCode = Vec<u8>;
@@ -35,33 +34,24 @@ pub mod VMInst {
     pub const OR: u8 = 0x1b;
     pub const GET_MEMBER: u8 = 0x1c;
     pub const SET_MEMBER: u8 = 0x1d;
-    pub const GET_GLOBAL: u8 = 0x1e;
-    pub const SET_GLOBAL: u8 = 0x1f;
-    pub const GET_LOCAL: u8 = 0x20;
-    pub const SET_LOCAL: u8 = 0x21;
-    pub const GET_ARG_LOCAL: u8 = 0x22;
-    pub const SET_ARG_LOCAL: u8 = 0x23;
-    pub const JMP_IF_FALSE: u8 = 0x24;
-    pub const JMP: u8 = 0x25;
-    pub const CALL: u8 = 0x26;
-    pub const RETURN: u8 = 0x27;
-    pub const ASG_FREST_PARAM: u8 = 0x28;
-    pub const DOUBLE: u8 = 0x29;
-    pub const POP: u8 = 0x2a;
-    pub const LAND: u8 = 0x2b;
-    pub const LOR: u8 = 0x2c;
-    pub const SET_CUR_CALLOBJ: u8 = 0x2d;
-    pub const GET_NAME: u8 = 0x2e;
-    pub const SET_NAME: u8 = 0x2f;
-    pub const DECL_VAR: u8 = 0x30;
+    pub const JMP_IF_FALSE: u8 = 0x1e;
+    pub const JMP: u8 = 0x1f;
+    pub const CALL: u8 = 0x20;
+    pub const RETURN: u8 = 0x21;
+    pub const DOUBLE: u8 = 0x22;
+    pub const POP: u8 = 0x23;
+    pub const LAND: u8 = 0x24;
+    pub const LOR: u8 = 0x25;
+    pub const SET_CUR_CALLOBJ: u8 = 0x26;
+    pub const GET_NAME: u8 = 0x27;
+    pub const SET_NAME: u8 = 0x28;
+    pub const DECL_VAR: u8 = 0x29;
 
     pub fn get_inst_size(inst: u8) -> Option<usize> {
         match inst {
-            ASG_FREST_PARAM => Some(9),
             CREATE_CONTEXT => Some(5),
-            CONSTRUCT | CREATE_OBJECT | PUSH_CONST | PUSH_INT32 | SET_GLOBAL | GET_LOCAL
-            | SET_ARG_LOCAL | GET_ARG_LOCAL | CREATE_ARRAY | SET_LOCAL | JMP_IF_FALSE | JMP
-            | DECL_VAR | SET_NAME | GET_NAME | GET_GLOBAL | CALL => Some(5),
+            CONSTRUCT | CREATE_OBJECT | PUSH_CONST | PUSH_INT32 | CREATE_ARRAY | JMP_IF_FALSE
+            | JMP | DECL_VAR | SET_NAME | GET_NAME | CALL => Some(5),
             PUSH_INT8 => Some(2),
             PUSH_FALSE | END | PUSH_TRUE | PUSH_THIS | ADD | SUB | MUL | DIV | REM | LT
             | PUSH_ARGUMENTS | NEG | GT | LE | GE | EQ | NE | GET_MEMBER | RETURN | SNE | LAND
@@ -214,40 +204,6 @@ impl ByteCodeGen {
         insts.push(VMInst::SET_MEMBER);
     }
 
-    pub fn gen_get_global(&mut self, name: String, insts: &mut ByteCode) {
-        insts.push(VMInst::GET_GLOBAL);
-        let id = self.const_table.string.len();
-        self.const_table.string.push(name);
-        self.gen_int32(id as i32, insts);
-    }
-
-    pub fn gen_set_global(&mut self, name: String, insts: &mut ByteCode) {
-        insts.push(VMInst::SET_GLOBAL);
-        let id = self.const_table.string.len();
-        self.const_table.string.push(name);
-        self.gen_int32(id as i32, insts);
-    }
-
-    pub fn gen_get_local(&self, id: u32, insts: &mut ByteCode) {
-        insts.push(VMInst::GET_LOCAL);
-        self.gen_int32(id as i32, insts);
-    }
-
-    pub fn gen_set_local(&self, id: u32, insts: &mut ByteCode) {
-        insts.push(VMInst::SET_LOCAL);
-        self.gen_int32(id as i32, insts);
-    }
-
-    pub fn gen_get_arg_local(&self, id: u32, insts: &mut ByteCode) {
-        insts.push(VMInst::GET_ARG_LOCAL);
-        self.gen_int32(id as i32, insts);
-    }
-
-    pub fn gen_set_arg_local(&self, id: u32, insts: &mut ByteCode) {
-        insts.push(VMInst::SET_ARG_LOCAL);
-        self.gen_int32(id as i32, insts);
-    }
-
     pub fn gen_call(&self, argc: u32, insts: &mut ByteCode) {
         insts.push(VMInst::CALL);
         self.gen_int32(argc as i32, insts);
@@ -265,17 +221,6 @@ impl ByteCodeGen {
 
     pub fn gen_return(&self, insts: &mut ByteCode) {
         insts.push(VMInst::RETURN);
-    }
-
-    pub fn gen_assign_func_rest_param(
-        &self,
-        num_func_params: usize,
-        dst_var_id: Id,
-        insts: &mut ByteCode,
-    ) {
-        insts.push(VMInst::ASG_FREST_PARAM);
-        self.gen_int32(num_func_params as i32, insts);
-        self.gen_int32(dst_var_id as i32, insts);
     }
 
     pub fn gen_set_cur_callobj(&self, insts: &mut ByteCode) {
@@ -463,30 +408,6 @@ pub fn show(code: &ByteCode) {
                 println!("SetMember");
                 i += 1
             }
-            VMInst::GET_GLOBAL => {
-                println!("GetGlobal");
-                i += 5
-            }
-            VMInst::SET_GLOBAL => {
-                println!("SetGlobal");
-                i += 5
-            }
-            VMInst::GET_LOCAL => {
-                println!("GetLocal",);
-                i += 5
-            }
-            VMInst::SET_LOCAL => {
-                println!("SetLocal",);
-                i += 5
-            }
-            VMInst::GET_ARG_LOCAL => {
-                println!("GetArgLocal",);
-                i += 5
-            }
-            VMInst::SET_ARG_LOCAL => {
-                println!("SetArgLocal",);
-                i += 5
-            }
             VMInst::JMP_IF_FALSE => {
                 println!("JmpIfFalse");
                 i += 5
@@ -502,10 +423,6 @@ pub fn show(code: &ByteCode) {
             VMInst::RETURN => {
                 println!("Return");
                 i += 1
-            }
-            VMInst::ASG_FREST_PARAM => {
-                println!("AssignFunctionRestParam");
-                i += 9
             }
             VMInst::SET_CUR_CALLOBJ => {
                 println!("SetCurCallObj");

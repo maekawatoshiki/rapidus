@@ -887,11 +887,7 @@ impl TracingJit {
             match insts[pc] {
                 VMInst::END => break,
                 VMInst::CREATE_CONTEXT => break,
-                VMInst::ASG_FREST_PARAM => pc += 9,
-                VMInst::CONSTRUCT
-                | VMInst::CREATE_OBJECT
-                | VMInst::SET_GLOBAL
-                | VMInst::CREATE_ARRAY => pc += 5,
+                VMInst::CONSTRUCT | VMInst::CREATE_OBJECT | VMInst::CREATE_ARRAY => pc += 5,
                 VMInst::JMP_IF_FALSE => {
                     pc += 1;
                     get_int32!(insts, pc, dst, i32);
@@ -1462,7 +1458,6 @@ impl TracingJit {
                     let val = try_stack!(stack.pop());
                     LLVMBuildRet(self.builder, val);
                 }
-                VMInst::GET_GLOBAL => pc += 5,
                 _ => return Err(()),
             }
         }
