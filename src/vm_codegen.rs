@@ -157,7 +157,6 @@ impl VMCodeGen {
             let val = new_value_function(pos, {
                 let mut callobj =
                     CallObject::new(Value::object(self.global_varmap.borrow().vals.clone()));
-                // TODO: Implement rest paramter
                 callobj.params = params
                     .clone()
                     .iter()
@@ -461,8 +460,7 @@ impl VMCodeGen {
         self.run(step, iseq);
 
         let loop_pos = iseq.len() as isize;
-        self.bytecode_gen
-            .gen_jmp((pos - loop_pos) as i32 - 5, iseq);
+        self.bytecode_gen.gen_jmp((pos - loop_pos) as i32 - 5, iseq);
 
         let break_label_pos = iseq.len() as isize;
         self.labels.last_mut().unwrap().replace_break_jmps(
