@@ -156,7 +156,7 @@ impl VMCodeGen {
             let pos = iseq.len();
             let val = new_value_function(pos, {
                 let mut callobj =
-                    CallObject::new(Value::Object(self.global_varmap.borrow().vals.clone()));
+                    CallObject::new(Value::object(self.global_varmap.borrow().vals.clone()));
                 // TODO: Implement rest paramter
                 callobj.params = params
                     .clone()
@@ -253,7 +253,7 @@ impl VMCodeGen {
             &NodeBase::Arguments => self.bytecode_gen.gen_push_arguments(iseq),
             &NodeBase::String(ref s) => self
                 .bytecode_gen
-                .gen_push_const(Value::String(CString::new(s.as_str()).unwrap()), iseq),
+                .gen_push_const(Value::string(CString::new(s.as_str()).unwrap()), iseq),
             // When 'n' is an integer
             &NodeBase::Number(n) if n - n.floor() == 0.0 => {
                 if -128.0 < n && n < 127.0 {
@@ -262,7 +262,7 @@ impl VMCodeGen {
                     self.bytecode_gen.gen_push_int32(n as i32, iseq)
                 }
             }
-            &NodeBase::Number(n) => self.bytecode_gen.gen_push_const(Value::Number(n), iseq),
+            &NodeBase::Number(n) => self.bytecode_gen.gen_push_const(Value::number(n), iseq),
             &NodeBase::Boolean(b) => self.bytecode_gen.gen_push_bool(b, iseq),
             &NodeBase::SetCurCallObj(ref name) => {
                 self.bytecode_gen.gen_get_name(name, iseq);
@@ -295,7 +295,7 @@ impl VMCodeGen {
             Some(&VMInst::RETURN) => {}
             _ => {
                 self.bytecode_gen
-                    .gen_push_const(Value::Undefined, &mut func_iseq);
+                    .gen_push_const(Value::undefined(), &mut func_iseq);
                 self.bytecode_gen.gen_return(&mut func_iseq);
             }
         }
@@ -312,7 +312,7 @@ impl VMCodeGen {
         if let &Some(ref val) = val {
             self.run(&*val, iseq)
         } else {
-            self.bytecode_gen.gen_push_const(Value::Undefined, iseq);
+            self.bytecode_gen.gen_push_const(Value::undefined(), iseq);
         }
         self.bytecode_gen.gen_return(iseq);
     }
@@ -357,7 +357,7 @@ impl VMCodeGen {
         if let &Some(ref init) = init {
             self.run(&*init, iseq);
         } else {
-            self.bytecode_gen.gen_push_const(Value::Undefined, iseq);
+            self.bytecode_gen.gen_push_const(Value::undefined(), iseq);
         }
         self.bytecode_gen.gen_decl_var(name, iseq);
     }
@@ -606,7 +606,7 @@ impl VMCodeGen {
             NodeBase::Member(ref parent, ref member) => {
                 self.run(&*parent, iseq);
                 self.bytecode_gen
-                    .gen_push_const(Value::String(CString::new(member.as_str()).unwrap()), iseq);
+                    .gen_push_const(Value::string(CString::new(member.as_str()).unwrap()), iseq);
                 self.bytecode_gen.gen_set_member(iseq);
             }
             NodeBase::Index(ref parent, ref idx) => {
@@ -639,7 +639,7 @@ impl VMCodeGen {
                 PropertyDefinition::Property(name, node) => {
                     self.run(&node, iseq);
                     self.bytecode_gen
-                        .gen_push_const(Value::String(CString::new(name.as_str()).unwrap()), iseq);
+                        .gen_push_const(Value::string(CString::new(name.as_str()).unwrap()), iseq);
                 }
             }
         }
@@ -663,7 +663,7 @@ impl VMCodeGen {
         self.run(parent, iseq);
 
         self.bytecode_gen
-            .gen_push_const(Value::String(CString::new(member.as_str()).unwrap()), iseq);
+            .gen_push_const(Value::string(CString::new(member.as_str()).unwrap()), iseq);
         self.bytecode_gen.gen_get_member(iseq);
     }
 

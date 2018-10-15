@@ -39,10 +39,10 @@ impl CastIntoLLVMType for ValueType {
 }
 
 fn get_value_type(val: &vm::Value) -> Option<ValueType> {
-    match val {
-        &vm::Value::Bool(_) => Some(ValueType::Bool),
-        &vm::Value::Number(_) => Some(ValueType::Number),
-        &vm::Value::String(_) => Some(ValueType::String),
+    match val.val {
+        vm::ValueBase::Bool(_) => Some(ValueType::Bool),
+        vm::ValueBase::Number(_) => Some(ValueType::Number),
+        vm::ValueBase::String(_) => Some(ValueType::String),
         // TODO: Support more types.
         _ => None,
     }
@@ -822,7 +822,10 @@ impl TracingJit {
             vm_val: &Option<vm::Value>,
         ) -> Result<ValueType, ()> {
             match vm_val {
-                &Some(vm::Value::String(_)) => Ok(ValueType::String),
+                &Some(vm::Value {
+                    val: vm::ValueBase::String(_),
+                    ..
+                }) => Ok(ValueType::String),
                 _ => match LLVMGetTypeKind(LLVMTypeOf(llvm_val)) {
                     llvm::LLVMTypeKind::LLVMIntegerTypeKind
                         if LLVMGetIntTypeWidth(LLVMTypeOf(llvm_val)) == 1 =>
@@ -1191,22 +1194,24 @@ impl TracingJit {
                                 None,
                             ));
                         }
-                        None => match scope.get_value(name) {
-                            vm::Value::Function(pos, _, _) if pos == func_pos => {
+                        None => match scope.get_value(name).val {
+                            vm::ValueBase::Function(pos, _, _) if pos == func_pos => {
                                 stack.push((func, None));
                             }
-                            vm::Value::Function(pos, _, _) => match self.func_info.get(&pos) {
+                            vm::ValueBase::Function(pos, _, _) => match self.func_info.get(&pos) {
                                 Some(FuncInfo { llvm_func, .. }) if llvm_func.is_some() => {
                                     stack.push((llvm_func.unwrap(), None));
                                 }
                                 _ => return Err(()),
                             },
-                            vm::Value::BuiltinFunction(n, _) => match self.builtin_funcs.get(&n) {
-                                Some(f) => stack.push((*f, None)),
-                                _ => return Err(()),
-                            },
-                            vm::Value::Object(obj) => {
-                                stack.push((ptr::null_mut(), Some(vm::Value::Object(obj))))
+                            vm::ValueBase::BuiltinFunction(n, _) => {
+                                match self.builtin_funcs.get(&n) {
+                                    Some(f) => stack.push((*f, None)),
+                                    _ => return Err(()),
+                                }
+                            }
+                            vm::ValueBase::Object(obj) => {
+                                stack.push((ptr::null_mut(), Some(vm::Value::object(obj))))
                             }
                             _ => return Err(()),
                         },
@@ -1239,8 +1244,8 @@ impl TracingJit {
                             let arg = try_opt!(stack.pop());
                             args.push((arg.0, infer_ty(arg.0, &arg.1)?));
                         }
-                        match callee {
-                            vm::Value::BuiltinFunction(builtin::CONSOLE_LOG, _) => {
+                        match callee.val {
+                            vm::ValueBase::BuiltinFunction(builtin::CONSOLE_LOG, _) => {
                                 for (arg, ty) in args {
                                     LLVMBuildCall(
                                         self.builder,
@@ -1268,7 +1273,7 @@ impl TracingJit {
                                     CString::new("").unwrap().as_ptr(),
                                 );
                             }
-                            vm::Value::BuiltinFunction(builtin::PROCESS_STDOUT_WRITE, _) => {
+                            vm::ValueBase::BuiltinFunction(builtin::PROCESS_STDOUT_WRITE, _) => {
                                 for (arg, ty) in args {
                                     match ty {
                                         ValueType::String => LLVMBuildCall(
@@ -1285,7 +1290,7 @@ impl TracingJit {
                                     };
                                 }
                             }
-                            vm::Value::BuiltinFunction(builtin::MATH_FLOOR, _) => stack.push((
+                            vm::ValueBase::BuiltinFunction(builtin::MATH_FLOOR, _) => stack.push((
                                 LLVMBuildCall(
                                     self.builder,
                                     *self.builtin_funcs.get(&BUILTIN_MATH_FLOOR).unwrap(),
@@ -1298,20 +1303,22 @@ impl TracingJit {
                                 ),
                                 None,
                             )),
-                            vm::Value::BuiltinFunction(builtin::MATH_RANDOM, _) => stack.push((
-                                LLVMBuildCall(
-                                    self.builder,
-                                    *self.builtin_funcs.get(&BUILTIN_MATH_RANDOM).unwrap(),
-                                    args.iter()
-                                        .map(|(x, _)| *x)
-                                        .collect::<Vec<LLVMValueRef>>()
-                                        .as_mut_ptr(),
-                                    0,
-                                    CString::new("").unwrap().as_ptr(),
-                                ),
-                                None,
-                            )),
-                            vm::Value::BuiltinFunction(builtin::MATH_POW, _) => stack.push((
+                            vm::ValueBase::BuiltinFunction(builtin::MATH_RANDOM, _) => {
+                                stack.push((
+                                    LLVMBuildCall(
+                                        self.builder,
+                                        *self.builtin_funcs.get(&BUILTIN_MATH_RANDOM).unwrap(),
+                                        args.iter()
+                                            .map(|(x, _)| *x)
+                                            .collect::<Vec<LLVMValueRef>>()
+                                            .as_mut_ptr(),
+                                        0,
+                                        CString::new("").unwrap().as_ptr(),
+                                    ),
+                                    None,
+                                ))
+                            }
+                            vm::ValueBase::BuiltinFunction(builtin::MATH_POW, _) => stack.push((
                                 LLVMBuildCall(
                                     self.builder,
                                     *self.builtin_funcs.get(&BUILTIN_MATH_POW).unwrap(),
@@ -1347,8 +1354,8 @@ impl TracingJit {
                     pc += 1; // get_member
                     let member = try_opt!(try_opt!(stack.pop()).1);
                     let parent = try_opt!(try_opt!(stack.pop()).1);
-                    match parent {
-                        vm::Value::Object(map) => stack.push((
+                    match parent.val {
+                        vm::ValueBase::Object(map) => stack.push((
                             ptr::null_mut(),
                             Some(vm::obj_find_val(
                                 &*map.borrow(),
@@ -1361,23 +1368,23 @@ impl TracingJit {
                 VMInst::PUSH_CONST => {
                     pc += 1;
                     get_int32!(iseq, pc, n, usize);
-                    match const_table.value[n] {
-                        vm::Value::Bool(false) => stack.push((
+                    match const_table.value[n].val {
+                        vm::ValueBase::Bool(false) => stack.push((
                             LLVMConstInt(LLVMInt1TypeInContext(self.context), 0, 0),
                             None,
                         )),
-                        vm::Value::Bool(true) => stack.push((
+                        vm::ValueBase::Bool(true) => stack.push((
                             LLVMConstInt(LLVMInt1TypeInContext(self.context), 1, 0),
                             None,
                         )),
-                        vm::Value::Number(n) => stack.push((
+                        vm::ValueBase::Number(n) => stack.push((
                             LLVMConstReal(LLVMDoubleTypeInContext(self.context), n as f64),
                             None,
                         )),
-                        vm::Value::Function(pos, _, _) if is_func_jit && pos == func_pos => {
+                        vm::ValueBase::Function(pos, _, _) if is_func_jit && pos == func_pos => {
                             stack.push((func, None))
                         }
-                        vm::Value::Function(pos, _, _) => stack.push((
+                        vm::ValueBase::Function(pos, _, _) => stack.push((
                             match self.func_info.get(&pos) {
                                 Some(FuncInfo { llvm_func, .. }) if llvm_func.is_some() => {
                                     llvm_func.unwrap()
@@ -1386,7 +1393,7 @@ impl TracingJit {
                             },
                             None,
                         )),
-                        vm::Value::String(ref s) => stack.push((
+                        vm::ValueBase::String(ref s) => stack.push((
                             LLVMBuildIntToPtr(
                                 self.builder,
                                 LLVMConstInt(
@@ -1399,10 +1406,10 @@ impl TracingJit {
                             ),
                             Some(const_table.value[n].clone()),
                         )),
-                        vm::Value::Object(_) => {
+                        vm::ValueBase::Object(_) => {
                             stack.push((ptr::null_mut(), Some(const_table.value[n].clone())))
                         }
-                        vm::Value::BuiltinFunction(n, _) => stack.push((
+                        vm::ValueBase::BuiltinFunction(n, _) => stack.push((
                             if let Some(f) = self.builtin_funcs.get(&n) {
                                 *f
                             } else {
@@ -1486,9 +1493,9 @@ impl TracingJit {
     }
 
     pub fn register_return_type(&mut self, pc: usize, val: &vm::Value) {
-        match val {
-            &vm::Value::Number(_) => self.return_ty_map.insert(pc, ValueType::Number),
-            &vm::Value::Bool(_) => self.return_ty_map.insert(pc, ValueType::Bool),
+        match val.val {
+            vm::ValueBase::Number(_) => self.return_ty_map.insert(pc, ValueType::Number),
+            vm::ValueBase::Bool(_) => self.return_ty_map.insert(pc, ValueType::Bool),
             _ => None,
         };
     }
@@ -1496,8 +1503,8 @@ impl TracingJit {
     pub unsafe fn run_llvm_func(&mut self, pc: usize, f: fn(), args: Vec<vm::Value>) -> vm::Value {
         let mut llvm_args = vec![];
         for arg in args {
-            llvm_args.push(match arg {
-                vm::Value::Number(f) => f,
+            llvm_args.push(match arg.val {
+                vm::ValueBase::Number(f) => f,
                 _ => unimplemented!(),
             });
         }
@@ -1508,7 +1515,7 @@ impl TracingJit {
         // So, all I can do is this:
         // TODO: MAX_FUNCTION_PARAMS is too small?
         match func_ret_ty {
-            &ValueType::Number => vm::Value::Number(match llvm_args.len() {
+            &ValueType::Number => vm::Value::number(match llvm_args.len() {
                 0 => ::std::mem::transmute::<fn(), fn() -> f64>(f)(),
                 1 => ::std::mem::transmute::<fn(), fn(f64) -> f64>(f)(llvm_args[0]),
                 2 => ::std::mem::transmute::<fn(), fn(f64, f64) -> f64>(f)(
@@ -1522,7 +1529,7 @@ impl TracingJit {
                 ),
                 _ => unimplemented!("should be implemented.."),
             }),
-            &ValueType::Bool => vm::Value::Bool(match llvm_args.len() {
+            &ValueType::Bool => vm::Value::bool(match llvm_args.len() {
                 0 => ::std::mem::transmute::<fn(), fn() -> bool>(f)(),
                 1 => ::std::mem::transmute::<fn(), fn(f64) -> bool>(f)(llvm_args[0]),
                 2 => ::std::mem::transmute::<fn(), fn(f64, f64) -> bool>(f)(
@@ -1552,13 +1559,13 @@ pub unsafe fn run_loop_llvm_func(
 
     for (id, _) in &local_vars {
         let name = &const_table.string[*id];
-        args_of_local_vars.push(match scope.get_value(name) {
-            vm::Value::Number(f) => {
+        args_of_local_vars.push(match scope.get_value(name).val {
+            vm::ValueBase::Number(f) => {
                 let p = libc::calloc(1, ::std::mem::size_of::<f64>()) as *mut f64;
                 *p = f;
                 p as *mut libc::c_void
             }
-            vm::Value::Bool(b) => {
+            vm::ValueBase::Bool(b) => {
                 let p = libc::calloc(1, ::std::mem::size_of::<bool>()) as *mut bool;
                 *p = b;
                 p as *mut libc::c_void
@@ -1578,8 +1585,8 @@ pub unsafe fn run_loop_llvm_func(
         scope.set_value_if_exist(
             name,
             match ty {
-                ValueType::Number => vm::Value::Number(*(args_of_local_vars[i] as *mut f64)),
-                ValueType::Bool => vm::Value::Bool(*(args_of_local_vars[i] as *mut bool)),
+                ValueType::Number => vm::Value::number(*(args_of_local_vars[i] as *mut f64)),
+                ValueType::Bool => vm::Value::bool(*(args_of_local_vars[i] as *mut bool)),
                 _ => unimplemented!(),
             },
         );

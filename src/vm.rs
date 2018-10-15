@@ -47,10 +47,10 @@ impl CallObject {
             vals: vals.clone(),
             params: vec![],
             arg_rest_vals: vec![],
-            this: Box::new(Value::Undefined),
+            this: Box::new(Value::new(ValueBase::Undefined)),
             parent: None,
         }));
-        *callobj.borrow_mut().this = Value::Object(vals);
+        *callobj.borrow_mut().this = Value::new(ValueBase::Object(vals));
         callobj
     }
 
@@ -88,7 +88,7 @@ impl CallObject {
 
         let n = n - self.params.len();
         if n >= self.arg_rest_vals.len() {
-            return Value::Undefined;
+            return Value::new(ValueBase::Undefined);
         }
         self.arg_rest_vals[n].clone()
     }
@@ -136,17 +136,17 @@ impl ArrayValue {
                 let mut hm = HashMap::new();
                 hm.insert(
                     "__proto__".to_string(),
-                    Value::Object(Rc::new(RefCell::new({
+                    Value::new(ValueBase::Object(Rc::new(RefCell::new({
                         let mut hm = HashMap::new();
                         hm.insert(
                             "push".to_string(),
-                            Value::BuiltinFunction(
+                            Value::new(ValueBase::BuiltinFunction(
                                 builtin::ARRAY_PUSH,
-                                CallObject::new(Value::Undefined),
-                            ),
+                                CallObject::new(Value::new(ValueBase::Undefined)),
+                            )),
                         );
                         hm
-                    }))),
+                    })))),
                 );
                 hm
             },
@@ -165,7 +165,70 @@ impl ArrayValue {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Value {
+pub struct Value {
+    pub val: ValueBase,
+    pub writable: bool,
+    pub enumerable: bool,
+    pub configurable: bool,
+}
+
+impl Value {
+    pub fn new(val: ValueBase) -> Value {
+        Value {
+            val: val,
+            writable: true,
+            enumerable: true,
+            configurable: true,
+        }
+    }
+
+    pub fn to_string(&self) -> String {
+        self.val.to_string()
+    }
+
+    pub fn undefined() -> Value {
+        Value::new(ValueBase::Undefined)
+    }
+
+    pub fn bool(b: bool) -> Value {
+        Value::new(ValueBase::Bool(b))
+    }
+
+    pub fn number(n: f64) -> Value {
+        Value::new(ValueBase::Number(n))
+    }
+
+    pub fn string(s: CString) -> Value {
+        Value::new(ValueBase::String(s))
+    }
+
+    pub fn function(
+        pc: usize,
+        obj: Rc<RefCell<HashMap<String, Value>>>,
+        callobj: CallObject,
+    ) -> Value {
+        Value::new(ValueBase::Function(pc, obj, callobj))
+    }
+
+    pub fn builtin_function(pc: usize, callobj: CallObject) -> Value {
+        Value::new(ValueBase::BuiltinFunction(pc, callobj))
+    }
+
+    pub fn object(obj: Rc<RefCell<HashMap<String, Value>>>) -> Value {
+        Value::new(ValueBase::Object(obj))
+    }
+
+    pub fn array(ary: Rc<RefCell<ArrayValue>>) -> Value {
+        Value::new(ValueBase::Array(ary))
+    }
+
+    pub fn arguments() -> Value {
+        Value::new(ValueBase::Arguments)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ValueBase {
     Undefined,
     Bool(bool),
     Number(f64),
@@ -177,18 +240,18 @@ pub enum Value {
     Arguments,
 }
 
-impl Value {
+impl ValueBase {
     pub fn to_string(&self) -> String {
         match self {
-            Value::Undefined => "undefined".to_string(),
-            Value::Bool(b) => {
+            ValueBase::Undefined => "undefined".to_string(),
+            ValueBase::Bool(b) => {
                 if *b {
                     "true".to_string()
                 } else {
                     "false".to_string()
                 }
             }
-            Value::Number(n) => {
+            ValueBase::Number(n) => {
                 if n.is_nan() {
                     return "NaN".to_string();
                 }
@@ -205,9 +268,9 @@ impl Value {
                 //  ref. https://tc39.github.io/ecma262/#sec-tostring-applied-to-the-number-type
                 format!("{}", *n)
             }
-            Value::String(s) => s.clone().into_string().unwrap(),
-            Value::Array(ary_val) => ary_val.borrow().to_string(),
-            Value::Object(_) => "[object Object]".to_string(),
+            ValueBase::String(s) => s.clone().into_string().unwrap(),
+            ValueBase::Array(ary_val) => ary_val.borrow().to_string(),
+            ValueBase::Object(_) => "[object Object]".to_string(),
             e => unimplemented!("{:?}", e),
         }
     }
@@ -215,11 +278,11 @@ impl Value {
     // TODO: Need a correct implementation!
     pub fn to_number(&self) -> f64 {
         match self {
-            Value::Undefined => ::std::f64::NAN,
-            Value::Bool(false) => 0.0,
-            Value::Bool(true) => 1.0,
-            Value::Number(n) => *n,
-            Value::String(s) => s
+            ValueBase::Undefined => ::std::f64::NAN,
+            ValueBase::Bool(false) => 0.0,
+            ValueBase::Bool(true) => 1.0,
+            ValueBase::Number(n) => *n,
+            ValueBase::String(s) => s
                 .clone()
                 .into_string()
                 .unwrap()
@@ -231,37 +294,39 @@ impl Value {
 }
 
 pub fn new_value_function(pos: usize, callobj: CallObject) -> Value {
-    let mut val = Value::Function(
+    let mut val = Value::new(ValueBase::Function(
         pos,
         Rc::new(RefCell::new({
             let mut hm = HashMap::new();
             hm.insert(
                 "prototype".to_string(),
-                Value::Object(Rc::new(RefCell::new(HashMap::new()))),
+                Value::new(ValueBase::Object(Rc::new(RefCell::new(HashMap::new())))),
             );
             hm.insert(
                 "__proto__".to_string(),
-                Value::Object(Rc::new(RefCell::new({
+                Value::new(ValueBase::Object(Rc::new(RefCell::new({
                     let mut hm = HashMap::new();
                     hm.insert(
                         "call".to_string(),
-                        Value::BuiltinFunction(
+                        Value::builtin_function(
                             builtin::FUNCTION_PROTOTYPE_CALL,
-                            CallObject::new(Value::Undefined),
+                            CallObject::new(Value::undefined()),
                         ),
                     );
                     hm
-                }))),
+                })))),
             );
             hm
         })),
         callobj,
-    );
+    ));
 
     let v2 = val.clone();
-    if let Value::Function(_, ref mut obj, _) = &mut val {
+    if let ValueBase::Function(_, ref mut obj, _) = &mut val.val {
         // TODO: Add constructor of this function itself (==Function). (not prototype.constructor)
-        if let Value::Object(ref mut obj) = (*obj.borrow_mut()).get_mut("prototype").unwrap() {
+        if let ValueBase::Object(ref mut obj) =
+            (*obj.borrow_mut()).get_mut("prototype").unwrap().val
+        {
             obj.borrow_mut().insert("constructor".to_string(), v2);
         }
     }
@@ -308,9 +373,9 @@ impl VM {
             let mut map = HashMap::new();
             map.insert(
                 "log".to_string(),
-                Value::BuiltinFunction(builtin::CONSOLE_LOG, CallObject::new(Value::Undefined)),
+                Value::builtin_function(builtin::CONSOLE_LOG, CallObject::new(Value::undefined())),
             );
-            Value::Object(Rc::new(RefCell::new(map)))
+            Value::object(Rc::new(RefCell::new(map)))
         });
 
         global_vals.borrow_mut().set_value("process".to_string(), {
@@ -319,89 +384,89 @@ impl VM {
                 let mut map = HashMap::new();
                 map.insert(
                     "write".to_string(),
-                    Value::BuiltinFunction(
+                    Value::builtin_function(
                         builtin::PROCESS_STDOUT_WRITE,
-                        CallObject::new(Value::Undefined),
+                        CallObject::new(Value::undefined()),
                     ),
                 );
-                Value::Object(Rc::new(RefCell::new(map)))
+                Value::object(Rc::new(RefCell::new(map)))
             });
-            Value::Object(Rc::new(RefCell::new(map)))
+            Value::object(Rc::new(RefCell::new(map)))
         });
 
         #[rustfmt::skip]
         global_vals.borrow_mut().set_value("Math".to_string(), {
             let mut map = HashMap::new();
-            map.insert("PI".to_string(), Value::Number(::std::f64::consts::PI));
+            map.insert("PI".to_string(), Value::number(::std::f64::consts::PI));
             map.insert("floor".to_string(),
-                Value::BuiltinFunction(builtin::MATH_FLOOR, CallObject::new(Value::Undefined)));
+                Value::builtin_function(builtin::MATH_FLOOR, CallObject::new(Value::undefined())));
             map.insert("random".to_string(),
-                Value::BuiltinFunction(builtin::MATH_RANDOM, CallObject::new(Value::Undefined)));
+                Value::builtin_function(builtin::MATH_RANDOM, CallObject::new(Value::undefined())));
             map.insert("pow".to_string(),
-                Value::BuiltinFunction(builtin::MATH_POW, CallObject::new(Value::Undefined)));
+                Value::builtin_function(builtin::MATH_POW, CallObject::new(Value::undefined())));
             map.insert("abs".to_string(),
-                Value::BuiltinFunction(builtin::MATH_ABS, CallObject::new(Value::Undefined)));
+                Value::builtin_function(builtin::MATH_ABS, CallObject::new(Value::undefined())));
             map.insert("acos".to_string(),
-                Value::BuiltinFunction(builtin::MATH_ACOS, CallObject::new(Value::Undefined)));
+                Value::builtin_function(builtin::MATH_ACOS, CallObject::new(Value::undefined())));
             map.insert("acosh".to_string(),
-                Value::BuiltinFunction(builtin::MATH_ACOSH, CallObject::new(Value::Undefined)));
+                Value::builtin_function(builtin::MATH_ACOSH, CallObject::new(Value::undefined())));
             map.insert("asin".to_string(),
-                Value::BuiltinFunction(builtin::MATH_ASIN, CallObject::new(Value::Undefined)));
+                Value::builtin_function(builtin::MATH_ASIN, CallObject::new(Value::undefined())));
             map.insert("asinh".to_string(),
-                Value::BuiltinFunction(builtin::MATH_ASINH, CallObject::new(Value::Undefined)));
+                Value::builtin_function(builtin::MATH_ASINH, CallObject::new(Value::undefined())));
             map.insert("atan".to_string(),
-                Value::BuiltinFunction(builtin::MATH_ATAN, CallObject::new(Value::Undefined)));
+                Value::builtin_function(builtin::MATH_ATAN, CallObject::new(Value::undefined())));
             map.insert("atanh".to_string(),
-                Value::BuiltinFunction(builtin::MATH_ATANH, CallObject::new(Value::Undefined)));
+                Value::builtin_function(builtin::MATH_ATANH, CallObject::new(Value::undefined())));
             map.insert("atan2".to_string(),
-                Value::BuiltinFunction(builtin::MATH_ATAN2, CallObject::new(Value::Undefined)));
+                Value::builtin_function(builtin::MATH_ATAN2, CallObject::new(Value::undefined())));
             map.insert("cbrt".to_string(),
-                Value::BuiltinFunction(builtin::MATH_CBRT, CallObject::new(Value::Undefined)));
+                Value::builtin_function(builtin::MATH_CBRT, CallObject::new(Value::undefined())));
             map.insert("ceil".to_string(),
-                Value::BuiltinFunction(builtin::MATH_CEIL, CallObject::new(Value::Undefined)));
+                Value::builtin_function(builtin::MATH_CEIL, CallObject::new(Value::undefined())));
             map.insert("clz32".to_string(),
-                Value::BuiltinFunction(builtin::MATH_CLZ32, CallObject::new(Value::Undefined)));
+                Value::builtin_function(builtin::MATH_CLZ32, CallObject::new(Value::undefined())));
             map.insert("cos".to_string(),
-                Value::BuiltinFunction(builtin::MATH_COS, CallObject::new(Value::Undefined)));
+                Value::builtin_function(builtin::MATH_COS, CallObject::new(Value::undefined())));
             map.insert("cosh".to_string(),
-                Value::BuiltinFunction(builtin::MATH_COSH, CallObject::new(Value::Undefined)));
+                Value::builtin_function(builtin::MATH_COSH, CallObject::new(Value::undefined())));
             map.insert("exp".to_string(),
-                Value::BuiltinFunction(builtin::MATH_EXP, CallObject::new(Value::Undefined)));
+                Value::builtin_function(builtin::MATH_EXP, CallObject::new(Value::undefined())));
             map.insert("expm1".to_string(),
-                Value::BuiltinFunction(builtin::MATH_EXPM1, CallObject::new(Value::Undefined)));
+                Value::builtin_function(builtin::MATH_EXPM1, CallObject::new(Value::undefined())));
             map.insert("fround".to_string(),
-                Value::BuiltinFunction(builtin::MATH_FROUND, CallObject::new(Value::Undefined)));
+                Value::builtin_function(builtin::MATH_FROUND, CallObject::new(Value::undefined())));
             map.insert("hypot".to_string(),
-                Value::BuiltinFunction(builtin::MATH_HYPOT, CallObject::new(Value::Undefined)));
+                Value::builtin_function(builtin::MATH_HYPOT, CallObject::new(Value::undefined())));
             map.insert("log".to_string(),
-                Value::BuiltinFunction(builtin::MATH_LOG, CallObject::new(Value::Undefined)));
+                Value::builtin_function(builtin::MATH_LOG, CallObject::new(Value::undefined())));
             map.insert("log1p".to_string(),
-                Value::BuiltinFunction(builtin::MATH_LOG1P, CallObject::new(Value::Undefined)));
+                Value::builtin_function(builtin::MATH_LOG1P, CallObject::new(Value::undefined())));
             map.insert("log10".to_string(),
-                Value::BuiltinFunction(builtin::MATH_LOG10, CallObject::new(Value::Undefined)));
+                Value::builtin_function(builtin::MATH_LOG10, CallObject::new(Value::undefined())));
             map.insert("log2".to_string(),
-                Value::BuiltinFunction(builtin::MATH_LOG2, CallObject::new(Value::Undefined)));
+                Value::builtin_function(builtin::MATH_LOG2, CallObject::new(Value::undefined())));
             map.insert("max".to_string(),
-                Value::BuiltinFunction(builtin::MATH_MAX, CallObject::new(Value::Undefined)));
+                Value::builtin_function(builtin::MATH_MAX, CallObject::new(Value::undefined())));
             map.insert("min".to_string(),
-                Value::BuiltinFunction(builtin::MATH_MIN, CallObject::new(Value::Undefined)));
+                Value::builtin_function(builtin::MATH_MIN, CallObject::new(Value::undefined())));
             map.insert("round".to_string(),
-                Value::BuiltinFunction(builtin::MATH_ROUND, CallObject::new(Value::Undefined)));
+                Value::builtin_function(builtin::MATH_ROUND, CallObject::new(Value::undefined())));
             map.insert("sign".to_string(),
-                Value::BuiltinFunction(builtin::MATH_SIGN, CallObject::new(Value::Undefined)));
+                Value::builtin_function(builtin::MATH_SIGN, CallObject::new(Value::undefined())));
             map.insert("sin".to_string(),
-                Value::BuiltinFunction(builtin::MATH_SIN, CallObject::new(Value::Undefined)));
+                Value::builtin_function(builtin::MATH_SIN, CallObject::new(Value::undefined())));
             map.insert("sinh".to_string(),
-                Value::BuiltinFunction(builtin::MATH_SINH, CallObject::new(Value::Undefined)));
+                Value::builtin_function(builtin::MATH_SINH, CallObject::new(Value::undefined())));
             map.insert("sqrt".to_string(),
-                Value::BuiltinFunction(builtin::MATH_SQRT, CallObject::new(Value::Undefined)));
+                Value::builtin_function(builtin::MATH_SQRT, CallObject::new(Value::undefined())));
             map.insert("tan".to_string(),
-                Value::BuiltinFunction(builtin::MATH_TAN, CallObject::new(Value::Undefined)));
+                Value::builtin_function(builtin::MATH_TAN, CallObject::new(Value::undefined())));
             map.insert("tanh".to_string(),
-                Value::BuiltinFunction(builtin::MATH_TANH, CallObject::new(Value::Undefined)));
+                Value::builtin_function(builtin::MATH_TANH, CallObject::new(Value::undefined())));
             map.insert("trunc".to_string(),
-                Value::BuiltinFunction(builtin::MATH_TRUNC, CallObject::new(Value::Undefined)));
-            Value::Object(Rc::new(RefCell::new(map)))
+                Value::builtin_function(builtin::MATH_TRUNC, CallObject::new(Value::undefined())));
+            Value::object(Rc::new(RefCell::new(map)))
         });
 
         VM {
@@ -580,8 +645,8 @@ fn construct(self_: &mut VM) {
 
     let callee = self_.state.stack.pop().unwrap();
 
-    match callee {
-        Value::Function(dst, obj, mut callobj) => {
+    match callee.val {
+        ValueBase::Function(dst, obj, mut callobj) => {
             // insert new 'this'
             let new_this = {
                 let mut map = HashMap::new();
@@ -590,7 +655,7 @@ fn construct(self_: &mut VM) {
                     (*obj)
                         .borrow()
                         .get("prototype")
-                        .unwrap_or(&Value::Undefined)
+                        .unwrap_or(&Value::undefined())
                         .clone(),
                 );
                 Rc::new(RefCell::new(map))
@@ -621,7 +686,7 @@ fn construct(self_: &mut VM) {
             if let Some(rest_param_name) = rest_param_name {
                 callobj.set_value(
                     rest_param_name,
-                    Value::Array(Rc::new(RefCell::new(ArrayValue::new(rest_args)))),
+                    Value::array(Rc::new(RefCell::new(ArrayValue::new(rest_args)))),
                 );
             } else {
                 for arg in rest_args {
@@ -629,7 +694,7 @@ fn construct(self_: &mut VM) {
                 }
             }
 
-            *callobj.this = Value::Object(new_this.clone());
+            *callobj.this = Value::object(new_this.clone());
             self_.state.scope.push(Rc::new(RefCell::new(callobj)));
             self_
                 .state
@@ -642,11 +707,23 @@ fn construct(self_: &mut VM) {
             self_.state.scope.pop();
 
             match self_.state.stack.last_mut().unwrap() {
-                &mut Value::Object(_)
-                | &mut Value::Array(_)
-                | &mut Value::Function(_, _, _)
-                | &mut Value::BuiltinFunction(_, _) => {}
-                others => *others = Value::Object(new_this),
+                &mut Value {
+                    val: ValueBase::Object(_),
+                    ..
+                }
+                | &mut Value {
+                    val: ValueBase::Array(_),
+                    ..
+                }
+                | &mut Value {
+                    val: ValueBase::Function(_, _, _),
+                    ..
+                }
+                | &mut Value {
+                    val: ValueBase::BuiltinFunction(_, _),
+                    ..
+                } => {}
+                others => *others = Value::object(new_this),
             };
         }
         c => {
@@ -661,7 +738,7 @@ fn create_object(self_: &mut VM) {
 
     let mut map = HashMap::new();
     for _ in 0..len {
-        let name = if let Value::String(name) = self_.state.stack.pop().unwrap() {
+        let name = if let ValueBase::String(name) = self_.state.stack.pop().unwrap().val {
             name.into_string().unwrap()
         } else {
             panic!()
@@ -672,7 +749,7 @@ fn create_object(self_: &mut VM) {
     self_
         .state
         .stack
-        .push(Value::Object(Rc::new(RefCell::new(map))));
+        .push(Value::object(Rc::new(RefCell::new(map))));
 }
 
 fn create_array(self_: &mut VM) {
@@ -688,29 +765,29 @@ fn create_array(self_: &mut VM) {
     self_
         .state
         .stack
-        .push(Value::Array(Rc::new(RefCell::new(ArrayValue::new(arr)))));
+        .push(Value::array(Rc::new(RefCell::new(ArrayValue::new(arr)))));
 }
 
 fn push_int8(self_: &mut VM) {
     self_.state.pc += 1; // push_int
     get_int8!(self_, n, i32);
-    self_.state.stack.push(Value::Number(n as f64));
+    self_.state.stack.push(Value::number(n as f64));
 }
 
 fn push_int32(self_: &mut VM) {
     self_.state.pc += 1; // push_int
     get_int32!(self_, n, i32);
-    self_.state.stack.push(Value::Number(n as f64));
+    self_.state.stack.push(Value::number(n as f64));
 }
 
 fn push_false(self_: &mut VM) {
     self_.state.pc += 1; // push_false
-    self_.state.stack.push(Value::Bool(false));
+    self_.state.stack.push(Value::bool(false));
 }
 
 fn push_true(self_: &mut VM) {
     self_.state.pc += 1; // push_true
-    self_.state.stack.push(Value::Bool(true));
+    self_.state.stack.push(Value::bool(true));
 }
 
 fn push_const(self_: &mut VM) {
@@ -727,14 +804,14 @@ fn push_this(self_: &mut VM) {
 
 fn push_arguments(self_: &mut VM) {
     self_.state.pc += 1; // push_arguments
-    self_.state.stack.push(Value::Arguments);
+    self_.state.stack.push(Value::arguments());
 }
 
 fn neg(self_: &mut VM) {
     self_.state.pc += 1; // neg
     let expr = self_.state.stack.last_mut().unwrap();
-    match expr {
-        &mut Value::Number(ref mut n) => *n = -*n,
+    match &mut expr.val {
+        &mut ValueBase::Number(ref mut n) => *n = -*n,
         _ => unimplemented!(),
     }
 }
@@ -790,76 +867,76 @@ fn binary(self_: &mut VM, op: &BinOp) {
     }
 
     fn add(self_: &mut VM, lhs: Value, rhs: Value) {
-        self_.state.stack.push(match (lhs, rhs) {
-            (Value::Number(l), Value::Number(r)) => Value::Number(l + r),
-            (Value::Bool(false), Value::Number(x)) | (Value::Number(x), Value::Bool(false)) => {
-                Value::Number(x)
+        self_.state.stack.push(match (lhs.val, rhs.val) {
+            (ValueBase::Number(l), ValueBase::Number(r)) => Value::number(l + r),
+            (ValueBase::Bool(false), ValueBase::Number(x)) | (ValueBase::Number(x), ValueBase::Bool(false)) => {
+                Value::number(x)
             }
-            (Value::Bool(true), Value::Number(x)) | (Value::Number(x), Value::Bool(true)) => {
-                Value::Number(x + 1.0)
+            (ValueBase::Bool(true), ValueBase::Number(x)) | (ValueBase::Number(x), ValueBase::Bool(true)) => {
+                Value::number(x + 1.0)
             }
             (l, r) => {
-                Value::String(CString::new(l.to_string() + r.to_string().as_str()).unwrap())
+                Value::string(CString::new(l.to_string() + r.to_string().as_str()).unwrap())
             }
         })
     };
-    fn sub(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs, rhs) {
-        (Value::Number(l), Value::Number(r)) => Value::Number(l - r),
+    fn sub(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
+        (ValueBase::Number(l), ValueBase::Number(r)) => Value::number(l - r),
         _ => unimplemented!(),
     }) };
-    fn mul(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs, rhs) {
-        (Value::Number(l), Value::Number(r)) => Value::Number(l * r),
-        (Value::String(l), Value::Number(r)) => 
-            Value::String(CString::new(l.to_str().unwrap().repeat(r as usize)).unwrap()),
+    fn mul(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
+        (ValueBase::Number(l), ValueBase::Number(r)) => Value::number(l * r),
+        (ValueBase::String(l), ValueBase::Number(r)) => 
+            Value::string(CString::new(l.to_str().unwrap().repeat(r as usize)).unwrap()),
         _ => unimplemented!(),
     }) };
-    fn div(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs, rhs) {
-        (Value::Number(l), Value::Number(r)) => Value::Number(l / r),
+    fn div(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
+        (ValueBase::Number(l), ValueBase::Number(r)) => Value::number(l / r),
         _ => unimplemented!(),
     }) };
-    fn rem(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs, rhs) {
-        (Value::Number(l), Value::Number(r)) => Value::Number((l as i64 % r as i64) as f64),
+    fn rem(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
+        (ValueBase::Number(l), ValueBase::Number(r)) => Value::number((l as i64 % r as i64) as f64),
         _ => unimplemented!(),
     }) };
-    fn lt(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs, rhs) {
-        (Value::Number(l), Value::Number(r)) => Value::Bool(l < r),
+    fn lt(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
+        (ValueBase::Number(l), ValueBase::Number(r)) => Value::bool(l < r),
         _ => unimplemented!(),
     }) };
-    fn gt(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs, rhs) {
-        (Value::Number(l), Value::Number(r)) => Value::Bool(l > r),
+    fn gt(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
+        (ValueBase::Number(l), ValueBase::Number(r)) => Value::bool(l > r),
         _ => unimplemented!(),
     }) };
-    fn le(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs, rhs) {
-        (Value::Number(l), Value::Number(r)) => Value::Bool(l <= r),
+    fn le(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
+        (ValueBase::Number(l), ValueBase::Number(r)) => Value::bool(l <= r),
         _ => unimplemented!(),
     }) };
-    fn ge(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs, rhs) {
-        (Value::Number(l), Value::Number(r)) => Value::Bool(l >= r),
+    fn ge(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
+        (ValueBase::Number(l), ValueBase::Number(r)) => Value::bool(l >= r),
         _ => unimplemented!(),
     }) };
     // TODO: Need more precise implementation 
-    fn eq(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs, rhs) {
-        (Value::Number(l), Value::Number(r)) => Value::Bool(l == r),
+    fn eq(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
+        (ValueBase::Number(l), ValueBase::Number(r)) => Value::bool(l == r),
         _ => unimplemented!(),
     }) };
-    fn ne(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs, rhs) {
-        (Value::Number(l), Value::Number(r)) => Value::Bool(l != r),
+    fn ne(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
+        (ValueBase::Number(l), ValueBase::Number(r)) => Value::bool(l != r),
         _ => unimplemented!(),
     }) };
-    fn seq(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs, rhs) {
-        (Value::Number(l), Value::Number(r)) => Value::Bool(l == r),
+    fn seq(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
+        (ValueBase::Number(l), ValueBase::Number(r)) => Value::bool(l == r),
         _ => unimplemented!(),
     }) };
-    fn sne(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs, rhs) {
-        (Value::Number(l), Value::Number(r)) => Value::Bool(l != r),
+    fn sne(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
+        (ValueBase::Number(l), ValueBase::Number(r)) => Value::bool(l != r),
         _ => unimplemented!(),
     }) };
-    fn and(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs, rhs) {
-        (Value::Number(l), Value::Number(r)) => Value::Number(((l as i64) & (r as i64)) as f64),
+    fn and(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
+        (ValueBase::Number(l), ValueBase::Number(r)) => Value::number(((l as i64) & (r as i64)) as f64),
         _ => unimplemented!(),
     }) };
-    fn or(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs, rhs) {
-        (Value::Number(l), Value::Number(r)) => Value::Number(((l as i64) | (r as i64)) as f64),
+    fn or(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
+        (ValueBase::Number(l), ValueBase::Number(r)) => Value::number(((l as i64) | (r as i64)) as f64),
         _ => unimplemented!(),
     }) };
 }
@@ -868,22 +945,24 @@ fn get_member(self_: &mut VM) {
     self_.state.pc += 1; // get_global
     let member = self_.state.stack.pop().unwrap();
     let parent = self_.state.stack.pop().unwrap();
-    match parent.clone() {
-        Value::String(s) => {
-            match member {
+    match parent.clone().val {
+        ValueBase::String(s) => {
+            match member.val {
                 // Index
-                Value::Number(n) if n - n.floor() == 0.0 => self_.state.stack.push(Value::String(
-                    CString::new(
-                        s.to_str()
-                            .unwrap()
-                            .chars()
-                            .nth(n as usize)
-                            .unwrap()
-                            .to_string(),
-                    ).unwrap(),
-                )),
-                Value::String(ref member) if member.to_str().unwrap() == "length" => {
-                    self_.state.stack.push(Value::Number(
+                ValueBase::Number(n) if n - n.floor() == 0.0 => {
+                    self_.state.stack.push(Value::string(
+                        CString::new(
+                            s.to_str()
+                                .unwrap()
+                                .chars()
+                                .nth(n as usize)
+                                .unwrap()
+                                .to_string(),
+                        ).unwrap(),
+                    ))
+                }
+                ValueBase::String(ref member) if member.to_str().unwrap() == "length" => {
+                    self_.state.stack.push(Value::number(
                         s.to_str()
                             .unwrap()
                             .chars()
@@ -891,79 +970,79 @@ fn get_member(self_: &mut VM) {
                     ));
                 }
                 // TODO: Support all features.
-                _ => self_.state.stack.push(Value::Undefined),
+                _ => self_.state.stack.push(Value::undefined()),
             }
         }
-        Value::Object(map) => {
-            match obj_find_val(&map.borrow().clone(), member.to_string().as_str()) {
-                Value::Function(pos, map2, mut callobj) => {
-                    self_.state.stack.push(Value::Function(pos, map2, {
+        ValueBase::Object(map) => {
+            match obj_find_val(&map.borrow().clone(), member.to_string().as_str()).val {
+                ValueBase::Function(pos, map2, mut callobj) => {
+                    self_.state.stack.push(Value::function(pos, map2, {
                         *callobj.this = parent;
                         callobj
                     }))
                 }
-                Value::BuiltinFunction(id, mut callobj) => {
-                    self_.state.stack.push(Value::BuiltinFunction(id, {
+                ValueBase::BuiltinFunction(id, mut callobj) => {
+                    self_.state.stack.push(Value::builtin_function(id, {
                         *callobj.this = parent;
                         callobj
                     }))
                 }
-                val => self_.state.stack.push(val),
+                val => self_.state.stack.push(Value::new(val)),
             }
         }
-        Value::Function(_, map, _) => {
-            match obj_find_val(&map.borrow().clone(), member.to_string().as_str()) {
-                Value::Function(pos, map2, mut callobj) => {
-                    self_.state.stack.push(Value::Function(pos, map2, {
+        ValueBase::Function(_, map, _) => {
+            match obj_find_val(&map.borrow().clone(), member.to_string().as_str()).val {
+                ValueBase::Function(pos, map2, mut callobj) => {
+                    self_.state.stack.push(Value::function(pos, map2, {
                         *callobj.this = parent;
                         callobj
                     }))
                 }
-                Value::BuiltinFunction(id, mut callobj) => {
-                    self_.state.stack.push(Value::BuiltinFunction(id, {
+                ValueBase::BuiltinFunction(id, mut callobj) => {
+                    self_.state.stack.push(Value::builtin_function(id, {
                         *callobj.this = parent;
                         callobj
                     }))
                 }
-                val => self_.state.stack.push(val),
+                val => self_.state.stack.push(Value::new(val)),
             }
         }
-        Value::Array(map) => {
+        ValueBase::Array(map) => {
             let mut map = map.borrow_mut();
-            match member {
+            match member.val {
                 // Index
-                Value::Number(n) if n - n.floor() == 0.0 => {
+                ValueBase::Number(n) if n - n.floor() == 0.0 => {
                     let arr = &map.elems;
                     if n as usize >= map.length {
-                        self_.state.stack.push(Value::Undefined);
+                        self_.state.stack.push(Value::undefined());
                     } else {
                         self_.state.stack.push(arr[n as usize].clone())
                     }
                 }
-                Value::String(ref s) if s.to_str().unwrap() == "length" => {
-                    self_.state.stack.push(Value::Number(map.length as f64));
+                ValueBase::String(ref s) if s.to_str().unwrap() == "length" => {
+                    self_.state.stack.push(Value::number(map.length as f64));
                 }
-                _ => match obj_find_val(&map.obj, member.to_string().as_str()) {
-                    Value::BuiltinFunction(id, mut callobj) => {
-                        self_.state.stack.push(Value::BuiltinFunction(id, {
+                _ => match obj_find_val(&map.obj, member.to_string().as_str()).val {
+                    ValueBase::BuiltinFunction(id, mut callobj) => {
+                        self_.state.stack.push(Value::builtin_function(id, {
                             *callobj.this = parent;
                             callobj
                         }))
                     }
-                    Value::Function(pos, map2, mut callobj) => {
-                        self_.state.stack.push(Value::Function(pos, map2, {
+                    ValueBase::Function(pos, map2, mut callobj) => {
+                        self_.state.stack.push(Value::function(pos, map2, {
                             *callobj.this = parent;
                             callobj
                         }))
                     }
-                    val => self_.state.stack.push(val),
+                    val => self_.state.stack.push(Value::new(val)),
                 },
             }
         }
-        Value::Arguments => {
-            match member {
+        ValueBase::Arguments => {
+            match member.val {
                 // Index
-                Value::Number(n) if n - n.floor() == 0.0 => {
+                ValueBase::Number(n) if n - n.floor() == 0.0 => {
                     let val = self_
                         .state
                         .scope
@@ -973,7 +1052,7 @@ fn get_member(self_: &mut VM) {
                         .get_arguments_nth_value(n as usize);
                     self_.state.stack.push(val);
                 }
-                Value::String(ref s) if s.to_str().unwrap() == "length" => {
+                ValueBase::String(ref s) if s.to_str().unwrap() == "length" => {
                     let length = self_
                         .state
                         .scope
@@ -981,9 +1060,9 @@ fn get_member(self_: &mut VM) {
                         .unwrap()
                         .borrow()
                         .get_arguments_length();
-                    self_.state.stack.push(Value::Number(length as f64));
+                    self_.state.stack.push(Value::number(length as f64));
                 }
-                _ => self_.state.stack.push(Value::Undefined),
+                _ => self_.state.stack.push(Value::undefined()),
             }
         }
         e => unreachable!("{:?}", e),
@@ -994,8 +1073,11 @@ pub fn obj_find_val(obj: &HashMap<String, Value>, key: &str) -> Value {
     match obj.get(key) {
         Some(addr) => addr.clone(),
         None => match obj.get("__proto__") {
-            Some(Value::Object(obj)) => obj_find_val(&*(*obj).borrow(), key),
-            _ => Value::Undefined,
+            Some(Value {
+                val: ValueBase::Object(obj),
+                ..
+            }) => obj_find_val(&*(*obj).borrow(), key),
+            _ => Value::undefined(),
         },
     }
 }
@@ -1005,17 +1087,17 @@ fn set_member(self_: &mut VM) {
     let member = self_.state.stack.pop().unwrap();
     let parent = self_.state.stack.pop().unwrap();
     let val = self_.state.stack.pop().unwrap();
-    match parent {
-        Value::Object(map) | Value::Function(_, map, _) => {
+    match parent.val {
+        ValueBase::Object(map) | ValueBase::Function(_, map, _) => {
             *map.borrow_mut()
                 .entry(member.to_string())
-                .or_insert_with(|| Value::Undefined) = val;
+                .or_insert_with(|| Value::undefined()) = val;
         }
-        Value::Array(map) => {
+        ValueBase::Array(map) => {
             let mut map = map.borrow_mut();
-            match member {
+            match member.val {
                 // Index
-                Value::Number(n) if n - n.floor() == 0.0 => {
+                ValueBase::Number(n) if n - n.floor() == 0.0 => {
                     if n as usize >= map.length as usize {
                         map.length = n as usize;
                         unsafe {
@@ -1024,21 +1106,21 @@ fn set_member(self_: &mut VM) {
                     }
                     map.elems[n as usize] = val;
                 }
-                Value::String(ref s) if s.to_str().unwrap() == "length" => match val {
-                    Value::Number(n) if n - n.floor() == 0.0 => map.length = n as usize,
+                ValueBase::String(ref s) if s.to_str().unwrap() == "length" => match val.val {
+                    ValueBase::Number(n) if n - n.floor() == 0.0 => map.length = n as usize,
                     _ => {}
                 },
                 _ => {
                     *map.obj
                         .entry(member.to_string())
-                        .or_insert_with(|| Value::Undefined) = val
+                        .or_insert_with(|| Value::undefined()) = val
                 }
             }
         }
-        Value::Arguments => {
-            match member {
+        ValueBase::Arguments => {
+            match member.val {
                 // Index
-                Value::Number(n) if n - n.floor() == 0.0 => {
+                ValueBase::Number(n) if n - n.floor() == 0.0 => {
                     self_
                         .state
                         .scope
@@ -1070,7 +1152,7 @@ fn jmp_if_false(self_: &mut VM) {
     self_.state.pc += 1; // jmp_if_false
     get_int32!(self_, dst, i32);
     let cond = self_.state.stack.pop().unwrap();
-    if let Value::Bool(false) = cond {
+    if let ValueBase::Bool(false) = cond.val {
         self_.state.pc += dst as isize
     }
 }
@@ -1093,15 +1175,15 @@ pub fn call_function(self_: &mut VM, dst: usize, args: Vec<Value>, mut callobj: 
             rest_args.push(arg.clone());
         }
 
-        match &arg {
-            &Value::Number(_) => {}
+        match &arg.val {
+            &ValueBase::Number(_) => {}
             _ => args_all_numbers = false,
         }
     }
     if let Some(rest_param_name) = rest_param_name {
         callobj.set_value(
             rest_param_name,
-            Value::Array(Rc::new(RefCell::new(ArrayValue::new(rest_args)))),
+            Value::array(Rc::new(RefCell::new(ArrayValue::new(rest_args)))),
         );
     } else {
         for arg in rest_args {
@@ -1148,15 +1230,15 @@ fn call(self_: &mut VM) {
 
     let callee = self_.state.stack.pop().unwrap();
 
-    match callee {
-        Value::BuiltinFunction(x, callobj) => {
+    match callee.val {
+        ValueBase::BuiltinFunction(x, callobj) => {
             let mut args = vec![];
             for _ in 0..argc {
                 args.push(self_.state.stack.pop().unwrap());
             }
             unsafe { self_.builtin_functions[x](callobj, args, self_) };
         }
-        Value::Function(dst, _, mut callobj) => {
+        ValueBase::Function(dst, _, mut callobj) => {
             callobj.vals = Rc::new(RefCell::new(HashMap::new()));
 
             let mut args = vec![];
@@ -1207,7 +1289,11 @@ fn lor(self_: &mut VM) {
 
 fn set_cur_callobj(self_: &mut VM) {
     self_.state.pc += 1;
-    if let Some(Value::Function(_, _, ref mut callobj)) = self_.state.stack.last_mut() {
+    if let Some(Value {
+        val: ValueBase::Function(_, _, ref mut callobj),
+        ..
+    }) = self_.state.stack.last_mut()
+    {
         callobj.parent = Some(self_.state.scope.last().unwrap().clone());
     }
 }
