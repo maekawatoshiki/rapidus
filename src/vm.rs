@@ -361,10 +361,8 @@ pub struct VM {
 pub struct VMState {
     pub stack: Vec<Value>,
     pub scope: Vec<CallObjectRef>,
-    pub bp: usize,
-    pub lp: usize,
     pub pc: isize,
-    pub history: Vec<(usize, usize, usize, isize)>, // bp, lp, sp, return_pc
+    pub history: Vec<(usize, isize)>, // sp, return_pc
 }
 
 impl VM {
@@ -476,11 +474,9 @@ impl VM {
                 scope: vec![global_vals],
                 history: {
                     let mut s = Vec::with_capacity(128);
-                    s.push((0, 0, 0, 0));
+                    s.push((0, 0));
                     s
                 },
-                bp: 0,
-                lp: 0,
                 pc: 0isize,
             },
             const_table: ConstantTable::new(),
@@ -699,7 +695,7 @@ fn construct(self_: &mut VM) {
             self_
                 .state
                 .history
-                .push((0, 0, self_.state.stack.len(), self_.state.pc));
+                .push((self_.state.stack.len(), self_.state.pc));
             self_.state.pc = dst as isize;
 
             self_.do_run();
@@ -1212,7 +1208,7 @@ pub fn call_function(self_: &mut VM, dst: usize, args: Vec<Value>, mut callobj: 
     self_
         .state
         .history
-        .push((0, 0, self_.state.stack.len(), self_.state.pc));
+        .push((self_.state.stack.len(), self_.state.pc));
     self_.state.pc = dst as isize;
 
     self_.do_run();
@@ -1257,7 +1253,7 @@ fn call(self_: &mut VM) {
 fn return_(self_: &mut VM) {
     let len = self_.state.stack.len();
     // println!("s: {:?}", self_.state.stack);
-    if let Some((_, _, sp, return_pc)) = self_.state.history.pop() {
+    if let Some((sp, return_pc)) = self_.state.history.pop() {
         self_.state.stack.drain(sp..len - 1);
         self_.state.pc = return_pc;
     } else {
