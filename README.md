@@ -18,27 +18,42 @@ A toy JavaScript engine aiming to pass test262
 
 ## Building on Linux
 
-1. Install dependencies
+1. Install Rust
+
+Run the command below and follow the onscreen instructions. 
+
+```sh
+curl https://sh.rustup.rs -sSf | sh
+```
+
+2. Use Nightly
+
+```sh
+rustup override set nightly
+```
+
+3. Install dependencies
   - LLVM 6.0
+  - (Other packages as necessary...)
   
 ```sh
 $ # e.g. Ubuntu or Debian
 $ apt-get install llvm-6.0
 ```
 
-2. Test 
+4. Test 
 
 ```sh
 $ cargo test
 ```
 
-3. Build
+5. Build
 
 ```sh
 $ cargo run --release
 ```
 
-4. Run
+6. Run
 
 ```sh
 $ cargo run --release example/XXX.js
@@ -55,6 +70,6 @@ I don't know.
 - Docker image: uint256/rapidus
 
 ```sh
-$ docker build -t rapidus:1.0 .
-$ docker run -it rapidus:1.0
+$ docker build -t rapidus:0.1.1 .
+$ docker run -it rapidus:0.1.1
 ```
