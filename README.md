@@ -37,26 +37,32 @@ rustup override set nightly
   - (Other packages as necessary...)
   
 ```sh
-$ # e.g. Ubuntu or Debian
-$ apt-get install llvm-6.0
+# e.g. Ubuntu or Debian
+apt-get install llvm-6.0
 ```
 
 4. Test 
 
 ```sh
-$ cargo test
+cargo test
+```
+
+- If the compilation failed because of LLVM-related errors, the following command may help.
+
+```sh
+ln -sf /usr/bin/llvm-config-6.0 /usr/bin/llvm-config
 ```
 
 5. Build
 
 ```sh
-$ cargo run --release
+cargo run --release
 ```
 
 6. Run
 
 ```sh
-$ cargo run --release example/XXX.js
+cargo run --release example/XXX.js
 ```
 
 ## Building on other platforms
