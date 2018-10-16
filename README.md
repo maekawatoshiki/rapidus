@@ -20,7 +20,7 @@ A toy JavaScript engine aiming to pass test262
 
 1. Install Rust
 
-Run the command below and follow the onscreen instructions. 
+  Run the command below and follow the onscreen instructions. 
 
 ```sh
 curl https://sh.rustup.rs -sSf | sh
