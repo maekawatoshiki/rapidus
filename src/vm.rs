@@ -287,7 +287,11 @@ impl ValueBase {
         fn ary_to_num(ary: &ArrayValue) -> f64 {
             match ary.length {
                 0 => 0.0,
-                1 => ary.elems[0].val.to_number(),
+                // TODO: FIX!!!
+                1 => match ary.elems[0].val {
+                    ValueBase::Bool(_) => ::std::f64::NAN,
+                    ref otherwise => otherwise.to_number(),
+                },
                 _ => ::std::f64::NAN,
             }
         }
@@ -300,6 +304,21 @@ impl ValueBase {
             ValueBase::String(s) => str_to_num(s.to_str().unwrap()),
             ValueBase::Array(ary) => ary_to_num(&*ary.borrow()),
             _ => ::std::f64::NAN,
+        }
+    }
+
+    // TODO: Need a correct implementation!
+    pub fn to_boolean(&self) -> bool {
+        match self {
+            ValueBase::Undefined => false,
+            ValueBase::Bool(b) => *b,
+            ValueBase::Number(n) if *n == 0.0 || n.is_nan() => false,
+            ValueBase::Number(_) => true,
+            ValueBase::String(s) if s.to_str().unwrap().len() == 0 => false,
+            ValueBase::String(_) => true,
+            ValueBase::Array(_) => true,
+            ValueBase::Object(_) => true,
+            _ => false,
         }
     }
 }
@@ -365,7 +384,7 @@ pub struct VM {
     pub const_table: ConstantTable,
     pub iseq: ByteCode,
     pub loop_bgn_end: HashMap<isize, isize>,
-    pub op_table: [fn(&mut VM); 43],
+    pub op_table: [fn(&mut VM); 44],
     pub builtin_functions: Vec<unsafe fn(CallObject, Vec<Value>, &mut VM)>,
 }
 
@@ -506,6 +525,7 @@ impl VM {
                 push_const,
                 push_this,
                 push_arguments,
+                lnot,
                 posi,
                 neg,
                 add,
@@ -813,6 +833,12 @@ fn push_this(self_: &mut VM) {
 fn push_arguments(self_: &mut VM) {
     self_.state.pc += 1; // push_arguments
     self_.state.stack.push(Value::arguments());
+}
+
+fn lnot(self_: &mut VM) {
+    self_.state.pc += 1; // lnot
+    let expr = self_.state.stack.last_mut().unwrap();
+    expr.val = ValueBase::Bool(!expr.val.to_boolean());
 }
 
 fn posi(self_: &mut VM) {

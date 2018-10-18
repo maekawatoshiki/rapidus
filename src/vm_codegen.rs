@@ -484,6 +484,7 @@ impl VMCodeGen {
         match op {
             &UnaryOp::Plus => self.bytecode_gen.gen_posi(iseq),
             &UnaryOp::Minus => self.bytecode_gen.gen_neg(iseq),
+            &UnaryOp::Not => self.bytecode_gen.gen_lnot(iseq),
             &UnaryOp::PrInc => {
                 self.bytecode_gen.gen_push_int8(1, iseq);
                 self.bytecode_gen.gen_add(iseq);
