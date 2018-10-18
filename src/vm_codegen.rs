@@ -482,6 +482,7 @@ impl VMCodeGen {
     pub fn run_unary_op(&mut self, expr: &Node, op: &UnaryOp, iseq: &mut ByteCode) {
         self.run(expr, iseq);
         match op {
+            &UnaryOp::Plus => self.bytecode_gen.gen_posi(iseq),
             &UnaryOp::Minus => self.bytecode_gen.gen_neg(iseq),
             &UnaryOp::PrInc => {
                 self.bytecode_gen.gen_push_int8(1, iseq);

@@ -13,12 +13,6 @@ use node::BinOp;
 
 pub type RawStringPtr = *mut libc::c_char;
 
-pub unsafe fn alloc_rawstring(s: &str) -> RawStringPtr {
-    let p = libc::calloc(1, s.len() + 2) as RawStringPtr;
-    libc::strncpy(p, s.as_ptr() as *const i8, s.len());
-    p
-}
-
 pub type CallObjectRef = Rc<RefCell<CallObject>>;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -277,17 +271,34 @@ impl ValueBase {
 
     // TODO: Need a correct implementation!
     pub fn to_number(&self) -> f64 {
+        fn str_to_num(s: &str) -> f64 {
+            let all_ws = s.chars().all(|c| c.is_whitespace());
+
+            if all_ws {
+                return 0.0;
+            }
+
+            match s.parse::<f64>() {
+                Ok(n) => n,
+                _ => ::std::f64::NAN,
+            }
+        }
+
+        fn ary_to_num(ary: &ArrayValue) -> f64 {
+            match ary.length {
+                0 => 0.0,
+                1 => ary.elems[0].val.to_number(),
+                _ => ::std::f64::NAN,
+            }
+        }
+
         match self {
             ValueBase::Undefined => ::std::f64::NAN,
             ValueBase::Bool(false) => 0.0,
             ValueBase::Bool(true) => 1.0,
             ValueBase::Number(n) => *n,
-            ValueBase::String(s) => s
-                .clone()
-                .into_string()
-                .unwrap()
-                .parse()
-                .unwrap_or(::std::f64::NAN),
+            ValueBase::String(s) => str_to_num(s.to_str().unwrap()),
+            ValueBase::Array(ary) => ary_to_num(&*ary.borrow()),
             _ => ::std::f64::NAN,
         }
     }
@@ -354,7 +365,7 @@ pub struct VM {
     pub const_table: ConstantTable,
     pub iseq: ByteCode,
     pub loop_bgn_end: HashMap<isize, isize>,
-    pub op_table: [fn(&mut VM); 42],
+    pub op_table: [fn(&mut VM); 43],
     pub builtin_functions: Vec<unsafe fn(CallObject, Vec<Value>, &mut VM)>,
 }
 
@@ -495,6 +506,7 @@ impl VM {
                 push_const,
                 push_this,
                 push_arguments,
+                posi,
                 neg,
                 add,
                 sub,
@@ -801,6 +813,12 @@ fn push_this(self_: &mut VM) {
 fn push_arguments(self_: &mut VM) {
     self_.state.pc += 1; // push_arguments
     self_.state.stack.push(Value::arguments());
+}
+
+fn posi(self_: &mut VM) {
+    self_.state.pc += 1; // posi
+    let expr = self_.state.stack.last_mut().unwrap();
+    expr.val = ValueBase::Number(expr.val.to_number());
 }
 
 fn neg(self_: &mut VM) {

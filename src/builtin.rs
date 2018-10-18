@@ -51,27 +51,7 @@ pub const FUNCTION_PROTOTYPE_CALL: usize = 37;
 pub unsafe fn console_log(_: CallObject, args: Vec<Value>, _: &mut VM) {
     let args_len = args.len();
     for i in 0..args_len {
-        match args[i].val {
-            ValueBase::String(ref s) => {
-                libc::printf(b"%s\0".as_ptr() as RawStringPtr, s.as_ptr());
-            }
-            ValueBase::Number(ref n) => {
-                libc::printf(b"%.15g\0".as_ptr() as RawStringPtr, *n);
-            }
-            ValueBase::Bool(true) => {
-                libc::printf(b"true\0".as_ptr() as RawStringPtr);
-            }
-            ValueBase::Bool(false) => {
-                libc::printf(b"false\0".as_ptr() as RawStringPtr);
-            }
-            ValueBase::Object(_) | ValueBase::Array(_) | ValueBase::Function(_, _, _) => {
-                debug_print(&args[i])
-            }
-            ValueBase::Undefined => {
-                libc::printf(b"undefined\0".as_ptr() as RawStringPtr);
-            }
-            _ => {}
-        }
+        debug_print(&args[i], false);
         if args_len - 1 != i {
             libc::printf(b" \0".as_ptr() as RawStringPtr);
         }
@@ -83,31 +63,38 @@ pub unsafe fn console_log(_: CallObject, args: Vec<Value>, _: &mut VM) {
 pub unsafe fn process_stdout_write(_: CallObject, args: Vec<Value>, _: &mut VM) {
     let args_len = args.len();
     for i in 0..args_len {
-        match args[i].val {
-            ValueBase::String(ref s) => {
-                libc::printf(b"%s\0".as_ptr() as RawStringPtr, s.as_ptr());
-            }
-            ValueBase::Number(ref n) => {
-                libc::printf(b"%.15g\0".as_ptr() as RawStringPtr, *n);
-            }
-            ValueBase::Undefined => {
-                libc::printf(b"undefined\0".as_ptr() as RawStringPtr);
-            }
-            _ => {}
-        }
+        debug_print(&args[i], false);
         if args_len - 1 != i {
             libc::printf(b" \0".as_ptr() as RawStringPtr);
         }
     }
 }
 
-pub unsafe fn debug_print(val: &Value) {
+pub unsafe fn debug_print(val: &Value, nest: bool) {
     match val.val {
-        ValueBase::String(ref s) => {
-            libc::printf("'%s'\0".as_ptr() as RawStringPtr, s.as_ptr());
+        ValueBase::Undefined => {
+            libc::printf(b"undefined\0".as_ptr() as RawStringPtr);
         }
-        ValueBase::Number(ref n) => {
-            libc::printf("%.15g\0".as_ptr() as RawStringPtr, *n);
+        ValueBase::Bool(true) => {
+            libc::printf(b"true\0".as_ptr() as RawStringPtr);
+        }
+        ValueBase::Bool(false) => {
+            libc::printf(b"false\0".as_ptr() as RawStringPtr);
+        }
+        ValueBase::Number(n) => {
+            if n.is_nan() {
+                libc::printf("NaN\0".as_ptr() as RawStringPtr);
+            } else if n.is_infinite() {
+                libc::printf("Infinity\0".as_ptr() as RawStringPtr);
+            } else {
+                libc::printf("%.15g\0".as_ptr() as RawStringPtr, n);
+            }
+        }
+        ValueBase::String(ref s) => {
+            libc::printf(
+                if nest { "'%s'\0" } else { "%s\0" }.as_ptr() as RawStringPtr,
+                s.as_ptr(),
+            );
         }
         ValueBase::Object(ref values) => {
             libc::printf("{ \0".as_ptr() as RawStringPtr);
@@ -117,7 +104,7 @@ pub unsafe fn debug_print(val: &Value) {
                     CString::new(key.as_str()).unwrap().into_raw(),
                 );
                 libc::printf(": \0".as_ptr() as RawStringPtr);
-                debug_print(&val);
+                debug_print(&val, true);
                 libc::printf(", \0".as_ptr() as RawStringPtr);
             }
             libc::printf("}\0".as_ptr() as RawStringPtr);
@@ -127,16 +114,13 @@ pub unsafe fn debug_print(val: &Value) {
             let arr = &*(*values).borrow();
             let elems = &arr.elems;
             for i in 0..arr.length {
-                debug_print(&elems[i]);
+                debug_print(&elems[i], true);
                 libc::printf(", \0".as_ptr() as RawStringPtr);
             }
             libc::printf("]\0".as_ptr() as RawStringPtr);
         }
         ValueBase::Function(_, _, _) => {
             libc::printf("[Function]\0".as_ptr() as RawStringPtr);
-        }
-        ValueBase::Undefined => {
-            libc::printf(b"undefined\0".as_ptr() as RawStringPtr);
         }
         _ => {}
     }

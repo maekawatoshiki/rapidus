@@ -145,7 +145,7 @@ fn run(file_name: &str) {
                 let first_ln = file_body.find('\n').unwrap_or(file_body.len());
                 file_body.drain(..first_ln);
             }
-    
+
             let mut parser = parser::Parser::new(file_body);
 
             let mut node = parser.parse_all();

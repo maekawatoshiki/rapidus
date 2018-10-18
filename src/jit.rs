@@ -1179,6 +1179,64 @@ impl TracingJit {
                         None,
                     ));
                 }
+                VMInst::AND => {
+                    pc += 1;
+                    let rhs = try_stack!(stack.pop());
+                    let lhs = try_stack!(stack.pop());
+                    stack.push((
+                        LLVMBuildSIToFP(
+                            self.builder,
+                            LLVMBuildAnd(
+                                self.builder,
+                                LLVMBuildFPToSI(
+                                    self.builder,
+                                    lhs,
+                                    LLVMInt64TypeInContext(self.context),
+                                    CString::new("").unwrap().as_ptr(),
+                                ),
+                                LLVMBuildFPToSI(
+                                    self.builder,
+                                    rhs,
+                                    LLVMInt64TypeInContext(self.context),
+                                    CString::new("").unwrap().as_ptr(),
+                                ),
+                                CString::new("and").unwrap().as_ptr(),
+                            ),
+                            LLVMDoubleTypeInContext(self.context),
+                            CString::new("").unwrap().as_ptr(),
+                        ),
+                        None,
+                    ));
+                }
+                VMInst::OR => {
+                    pc += 1;
+                    let rhs = try_stack!(stack.pop());
+                    let lhs = try_stack!(stack.pop());
+                    stack.push((
+                        LLVMBuildSIToFP(
+                            self.builder,
+                            LLVMBuildOr(
+                                self.builder,
+                                LLVMBuildFPToSI(
+                                    self.builder,
+                                    lhs,
+                                    LLVMInt64TypeInContext(self.context),
+                                    CString::new("").unwrap().as_ptr(),
+                                ),
+                                LLVMBuildFPToSI(
+                                    self.builder,
+                                    rhs,
+                                    LLVMInt64TypeInContext(self.context),
+                                    CString::new("").unwrap().as_ptr(),
+                                ),
+                                CString::new("or").unwrap().as_ptr(),
+                            ),
+                            LLVMDoubleTypeInContext(self.context),
+                            CString::new("").unwrap().as_ptr(),
+                        ),
+                        None,
+                    ));
+                }
                 VMInst::GET_NAME => {
                     pc += 1;
                     get_int32!(iseq, pc, id, usize);
