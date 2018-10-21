@@ -1317,7 +1317,7 @@ fn pop(self_: &mut VM) {
     self_.state.stack.pop();
 }
 
-// land & lor are for JIT compiler. They don't make sense in VM.
+// 'land' and 'lor' are for JIT compiler. Nope for VM.
 
 fn land(self_: &mut VM) {
     self_.state.pc += 1; // land

@@ -868,9 +868,9 @@ impl TracingJit {
             }
         }
 
-        let mut land: Vec<LLVMBasicBlockRef> = Vec::new();
-        let mut lcom: Vec<LLVMBasicBlockRef> = Vec::new();
-        let mut lor: Vec<LLVMBasicBlockRef> = Vec::new();
+        let mut logand: Vec<LLVMBasicBlockRef> = Vec::new();
+        let mut logcom: Vec<LLVMBasicBlockRef> = Vec::new();
+        let mut logor: Vec<LLVMBasicBlockRef> = Vec::new();
 
         let mut pc = bgn;
         while pc < end {
@@ -894,12 +894,14 @@ impl TracingJit {
                 VMInst::JMP_IF_FALSE => {
                     pc += 1;
                     get_int32!(iseq, pc, dst, i32);
-                    land.push(LLVMGetInsertBlock(self.builder));
                     let bb_then = LLVMAppendBasicBlock(func, CString::new("").unwrap().as_ptr());
-                    lcom.push(bb_then);
                     let bb_else =
                         label_retrieve(try_opt!(labels.get(&((pc as i32 + dst) as usize))));
-                    lor.push(bb_else);
+
+                    logand.push(LLVMGetInsertBlock(self.builder));
+                    logcom.push(bb_then);
+                    logor.push(bb_else);
+
                     let cond_val = try_stack!(stack.pop());
                     LLVMBuildCondBr(self.builder, cond_val, bb_then, bb_else);
                     LLVMPositionBuilderAtEnd(self.builder, bb_then);
@@ -924,19 +926,21 @@ impl TracingJit {
                         vec![LLVMConstInt(LLVMInt1TypeInContext(self.context), 0, 0)]
                             .as_mut_slice()
                             .as_mut_ptr(),
-                        vec![land.pop().unwrap()].as_mut_slice().as_mut_ptr(),
+                        vec![logand.pop().unwrap()].as_mut_slice().as_mut_ptr(),
                         1,
                     );
                     LLVMAddIncoming(
                         phi,
                         vec![try_stack!(stack.pop())].as_mut_slice().as_mut_ptr(),
-                        vec![lcom.pop().unwrap()].as_mut_slice().as_mut_ptr(),
+                        vec![logcom.pop().unwrap()].as_mut_slice().as_mut_ptr(),
                         1,
                     );
-                    lor.pop();
-                    if let Some(x) = lor.last_mut() {
+
+                    logor.pop();
+                    if let Some(x) = logor.last_mut() {
                         *x = LLVMGetInsertBlock(self.builder);
                     }
+
                     stack.push((phi, None));
                 }
                 VMInst::LOR => {
@@ -951,19 +955,21 @@ impl TracingJit {
                         vec![LLVMConstInt(LLVMInt1TypeInContext(self.context), 1, 0)]
                             .as_mut_slice()
                             .as_mut_ptr(),
-                        vec![lcom.pop().unwrap()].as_mut_slice().as_mut_ptr(),
+                        vec![logcom.pop().unwrap()].as_mut_slice().as_mut_ptr(),
                         1,
                     );
                     LLVMAddIncoming(
                         phi,
                         vec![try_stack!(stack.pop())].as_mut_slice().as_mut_ptr(),
-                        vec![lor.pop().unwrap()].as_mut_slice().as_mut_ptr(),
+                        vec![logor.pop().unwrap()].as_mut_slice().as_mut_ptr(),
                         1,
                     );
-                    land.pop();
-                    if let Some(x) = lcom.last_mut() {
+
+                    logand.pop();
+                    if let Some(x) = logcom.last_mut() {
                         *x = LLVMGetInsertBlock(self.builder);
                     }
+
                     stack.push((phi, None));
                 }
                 VMInst::ADD => {

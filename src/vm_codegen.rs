@@ -514,8 +514,7 @@ impl VMCodeGen {
     }
 
     pub fn run_binary_op(&mut self, lhs: &Node, rhs: &Node, op: &BinOp, iseq: &mut ByteCode) {
-        // Editing this (LAnd and LOr) source code has influence on the source code of JIT
-        // compiler(src/jit.rs).
+        // Following code has influence on JIT(src/jit.rs) code.
         match op {
             &BinOp::LAnd => {
                 self.run(lhs, iseq);
