@@ -98,14 +98,23 @@ pub unsafe fn debug_print(val: &Value, nest: bool) {
         }
         ValueBase::Object(ref values) => {
             libc::printf("{ \0".as_ptr() as RawStringPtr);
-            for (key, val) in &*(*values).borrow() {
+
+            let key_val = (*values).borrow();
+            let mut sorted_key_val = key_val.iter().collect::<Vec<(&String, &Value)>>();
+            sorted_key_val.sort_by(|(key1, _), (key2, _)| key1.as_str().cmp(key2.as_str()));
+
+            for (i, (key, val)) in sorted_key_val.iter().enumerate() {
                 libc::printf(
                     "'%s'\0".as_ptr() as RawStringPtr,
                     CString::new(key.as_str()).unwrap().into_raw(),
                 );
                 libc::printf(": \0".as_ptr() as RawStringPtr);
                 debug_print(&val, true);
-                libc::printf(", \0".as_ptr() as RawStringPtr);
+                libc::printf(if i != sorted_key_val.len() - 1 {
+                    ", \0".as_ptr() as RawStringPtr
+                } else {
+                    " \0".as_ptr() as RawStringPtr
+                });
             }
             libc::printf("}\0".as_ptr() as RawStringPtr);
         }
@@ -115,7 +124,11 @@ pub unsafe fn debug_print(val: &Value, nest: bool) {
             let elems = &arr.elems;
             for i in 0..arr.length {
                 debug_print(&elems[i], true);
-                libc::printf(", \0".as_ptr() as RawStringPtr);
+                libc::printf(if i != arr.length - 1 {
+                    ", \0".as_ptr() as RawStringPtr
+                } else {
+                    " \0".as_ptr() as RawStringPtr
+                });
             }
             libc::printf("]\0".as_ptr() as RawStringPtr);
         }
