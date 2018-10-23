@@ -4,15 +4,12 @@
 [![codecov](https://codecov.io/gh/maekawatoshiki/rapidus/branch/master/graph/badge.svg)](https://codecov.io/gh/maekawatoshiki/rapidus)
 [![](http://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
-A toy JavaScript engine aiming to pass test262
+A toy JavaScript engine (aiming to pass test262)
 
 # Features 
 
 - Small
-- Support Tracing-JIT compiling. Currently, any functions or loops fitting for the following rules would be JIT-compiled. 
-  - Accessing only its arguments or local variables (not global variables) 
-  - Number and Boolean (Boolean is only for function's returning type) are used
-  - (There are exceptions...)
+- Partly support for Tracing-JIT compiling
 
 # Building from Source
 
@@ -26,7 +23,7 @@ A toy JavaScript engine aiming to pass test262
 curl https://sh.rustup.rs -sSf | sh
 ```
 
-2. Use Nightly
+2. Use Rust Nightly
 
 ```sh
 rustup override set nightly
