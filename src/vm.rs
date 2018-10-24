@@ -24,6 +24,67 @@ pub struct CallObject {
     pub parent: Option<CallObjectRef>,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct ArrayValue {
+    pub elems: Vec<Value>,
+    pub length: usize,
+    pub obj: HashMap<String, Value>,
+}
+
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Value {
+    pub val: ValueBase,
+    pub writable: bool,
+    pub enumerable: bool,
+    pub configurable: bool,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ValueBase {
+    Undefined,
+    Bool(bool),
+    Number(f64),
+    String(CString),
+    Function(usize, Rc<RefCell<HashMap<String, Value>>>, CallObject),
+    BuiltinFunction(usize, CallObject),          // id(==0:unknown)
+    Object(Rc<RefCell<HashMap<String, Value>>>), // Object(HashMap<String, Value>),
+    Array(Rc<RefCell<ArrayValue>>),
+    Arguments,
+}
+
+#[derive(Debug, Clone)]
+pub struct ConstantTable {
+    pub value: Vec<Value>,
+    pub string: Vec<String>,
+}
+
+impl ConstantTable {
+    pub fn new() -> ConstantTable {
+        ConstantTable {
+            value: vec![],
+            string: vec![],
+        }
+    }
+}
+
+pub struct VM {
+    pub jit: TracingJit,
+    pub state: VMState,
+    pub const_table: ConstantTable,
+    pub iseq: ByteCode,
+    pub loop_bgn_end: HashMap<isize, isize>,
+    pub op_table: [fn(&mut VM); 44],
+    pub builtin_functions: Vec<unsafe fn(CallObject, Vec<Value>, &mut VM)>,
+}
+
+pub struct VMState {
+    pub stack: Vec<Value>,
+    pub scope: Vec<CallObjectRef>,
+    pub pc: isize,
+    pub history: Vec<(usize, isize)>, // sp, return_pc
+}
+
 impl CallObject {
     pub fn new(this: Value) -> CallObject {
         CallObject {
@@ -113,13 +174,6 @@ impl CallObject {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct ArrayValue {
-    pub elems: Vec<Value>,
-    pub length: usize,
-    pub obj: HashMap<String, Value>,
-}
-
 impl ArrayValue {
     pub fn new(arr: Vec<Value>) -> ArrayValue {
         let len = arr.len();
@@ -156,14 +210,6 @@ impl ArrayValue {
             .trim_right_matches(",")
             .to_string()
     }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct Value {
-    pub val: ValueBase,
-    pub writable: bool,
-    pub enumerable: bool,
-    pub configurable: bool,
 }
 
 impl Value {
@@ -302,40 +348,10 @@ impl Value {
             }
             ValueBase::Array(ref ary) => property_of_array(ary),
             ValueBase::Arguments => property_of_arguments(),
-            ref e => unreachable!("{:?}", e),
+            // TODO: Implement
+            _ => Value::undefined(),
         }
     }
-}
-
-pub fn obj_find_val(obj: &HashMap<String, Value>, key: &str) -> Value {
-    match obj.get(key) {
-        Some(addr) => addr.clone(),
-        None => match obj.get("__proto__") {
-            Some(Value {
-                val: ValueBase::Object(obj),
-                ..
-            }) => obj_find_val(&*(*obj).borrow(), key),
-            _ => Value::undefined(),
-        },
-    }
-}
-
-#[inline]
-fn is_integer(f: f64) -> bool {
-    f - f.floor() == 0.0
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum ValueBase {
-    Undefined,
-    Bool(bool),
-    Number(f64),
-    String(CString),
-    Function(usize, Rc<RefCell<HashMap<String, Value>>>, CallObject),
-    BuiltinFunction(usize, CallObject),          // id(==0:unknown)
-    Object(Rc<RefCell<HashMap<String, Value>>>), // Object(HashMap<String, Value>),
-    Array(Rc<RefCell<ArrayValue>>),
-    Arguments,
 }
 
 impl ValueBase {
@@ -467,36 +483,22 @@ pub fn new_value_function(pos: usize, callobj: CallObject) -> Value {
     val
 }
 
-#[derive(Debug, Clone)]
-pub struct ConstantTable {
-    pub value: Vec<Value>,
-    pub string: Vec<String>,
-}
-
-impl ConstantTable {
-    pub fn new() -> ConstantTable {
-        ConstantTable {
-            value: vec![],
-            string: vec![],
-        }
+pub fn obj_find_val(obj: &HashMap<String, Value>, key: &str) -> Value {
+    match obj.get(key) {
+        Some(addr) => addr.clone(),
+        None => match obj.get("__proto__") {
+            Some(Value {
+                val: ValueBase::Object(obj),
+                ..
+            }) => obj_find_val(&*(*obj).borrow(), key),
+            _ => Value::undefined(),
+        },
     }
 }
 
-pub struct VM {
-    pub jit: TracingJit,
-    pub state: VMState,
-    pub const_table: ConstantTable,
-    pub iseq: ByteCode,
-    pub loop_bgn_end: HashMap<isize, isize>,
-    pub op_table: [fn(&mut VM); 44],
-    pub builtin_functions: Vec<unsafe fn(CallObject, Vec<Value>, &mut VM)>,
-}
-
-pub struct VMState {
-    pub stack: Vec<Value>,
-    pub scope: Vec<CallObjectRef>,
-    pub pc: isize,
-    pub history: Vec<(usize, isize)>, // sp, return_pc
+#[inline]
+fn is_integer(f: f64) -> bool {
+    f - f.floor() == 0.0
 }
 
 impl VM {
