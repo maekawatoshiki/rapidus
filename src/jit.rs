@@ -456,7 +456,6 @@ impl TracingJit {
 
         let func_pos = pc;
         pc += 1; // CreateContext
-        pc += 4; // |- num_local_var
 
         let mut compilation_failed = false;
         if let Err(_) = self.gen_body(

@@ -51,13 +51,13 @@ pub mod VMInst {
 
     pub fn get_inst_size(inst: u8) -> Option<usize> {
         match inst {
-            CREATE_CONTEXT => Some(5),
+            CREATE_CONTEXT => Some(1),
             CONSTRUCT | CREATE_OBJECT | PUSH_CONST | PUSH_INT32 | CREATE_ARRAY | JMP_IF_FALSE
             | JMP | DECL_VAR | SET_NAME | GET_NAME | CALL => Some(5),
             PUSH_INT8 => Some(2),
             PUSH_FALSE | END | PUSH_TRUE | PUSH_THIS | ADD | SUB | MUL | DIV | REM | LT
             | PUSH_ARGUMENTS | NEG | POSI | GT | LE | GE | EQ | NE | GET_MEMBER | RETURN | SNE
-            | LAND | POP | DOUBLE | AND | OR | SEQ | SET_MEMBER | LOR | SET_CUR_CALLOBJ => Some(1),
+            | POP | DOUBLE | AND | OR | SEQ | SET_MEMBER | SET_CUR_CALLOBJ | LAND | LOR => Some(1),
             _ => None,
         }
     }
@@ -81,9 +81,8 @@ impl ByteCodeGen {
         iseq.push(VMInst::END);
     }
 
-    pub fn gen_create_context(&self, num_local_var: usize, iseq: &mut ByteCode) {
+    pub fn gen_create_context(&self, iseq: &mut ByteCode) {
         iseq.push(VMInst::CREATE_CONTEXT);
-        self.gen_int32(num_local_var as i32, iseq);
     }
 
     pub fn gen_constract(&self, argc: usize, iseq: &mut ByteCode) {
@@ -321,7 +320,7 @@ pub fn show(code: &ByteCode) {
             }
             VMInst::CREATE_CONTEXT => {
                 println!("CreateContext");
-                i += 5
+                i += 1
             }
             VMInst::CONSTRUCT => {
                 println!("Construct");

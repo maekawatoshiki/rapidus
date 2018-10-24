@@ -88,13 +88,9 @@ impl VMCodeGen {
 
 impl VMCodeGen {
     pub fn compile(&mut self, node: &Node, iseq: &mut ByteCode) {
-        let pos = iseq.len();
-        self.bytecode_gen.gen_create_context(0, iseq);
+        self.bytecode_gen.gen_create_context(iseq);
 
         self.run(node, iseq);
-
-        self.bytecode_gen
-            .replace_int32(0, &mut iseq[pos + 1..pos + 5]);
 
         self.bytecode_gen.gen_end(iseq);
 
@@ -284,7 +280,7 @@ impl VMCodeGen {
     pub fn run_function_decl(&mut self, name: &String, params: &FormalParameters, body: &Node) {
         let mut func_iseq = vec![];
 
-        self.bytecode_gen.gen_create_context(0, &mut func_iseq);
+        self.bytecode_gen.gen_create_context(&mut func_iseq);
 
         // TODO: Implement Rest Parameter ASAP
 
@@ -298,8 +294,6 @@ impl VMCodeGen {
                 self.bytecode_gen.gen_return(&mut func_iseq);
             }
         }
-
-        self.bytecode_gen.replace_int32(0, &mut func_iseq[1..5]);
 
         self.functions.insert(
             name.clone(),

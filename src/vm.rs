@@ -393,6 +393,7 @@ pub struct VMState {
     pub scope: Vec<CallObjectRef>,
     pub pc: isize,
     pub history: Vec<(usize, isize)>, // sp, return_pc
+
 }
 
 impl VM {
@@ -622,7 +623,6 @@ impl VM {
         loop {
             if let Some(end) = self.loop_bgn_end.get(&self.state.pc) {
                 unsafe {
-                    // println!("range: [{:x}, {:x})", self.state.pc, end);
                     if let Some(pc) = self.jit.can_loop_jit(
                         &self.iseq,
                         &self.const_table,
@@ -664,7 +664,7 @@ macro_rules! get_int32 {
 fn end(_self: &mut VM) {}
 
 fn create_context(self_: &mut VM) {
-    self_.state.pc += 5; // create_context
+    self_.state.pc += 1; // create_context
 }
 
 fn construct(self_: &mut VM) {
@@ -761,7 +761,7 @@ fn construct(self_: &mut VM) {
 }
 
 fn create_object(self_: &mut VM) {
-    self_.state.pc += 1; // create_context
+    self_.state.pc += 1; // create_object
     get_int32!(self_, len, usize);
 
     let mut map = HashMap::new();
@@ -781,7 +781,7 @@ fn create_object(self_: &mut VM) {
 }
 
 fn create_array(self_: &mut VM) {
-    self_.state.pc += 1; // create_context
+    self_.state.pc += 1; // create_array
     get_int32!(self_, len, usize);
 
     let mut arr = vec![];
@@ -1296,14 +1296,12 @@ fn call(self_: &mut VM) {
 
 fn return_(self_: &mut VM) {
     let len = self_.state.stack.len();
-    // println!("s: {:?}", self_.state.stack);
-    if let Some((sp, return_pc)) = self_.state.history.pop() {
-        self_.state.stack.drain(sp..len - 1);
+    if let Some((previous_sp, return_pc)) = self_.state.history.pop() {
+        self_.state.stack.drain(previous_sp..len - 1);
         self_.state.pc = return_pc;
     } else {
         unreachable!()
     }
-    // println!("a: {:?}", self_.state.stack);
 }
 
 fn double(self_: &mut VM) {
