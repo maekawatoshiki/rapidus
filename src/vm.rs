@@ -219,6 +219,110 @@ impl Value {
     pub fn arguments() -> Value {
         Value::new(ValueBase::Arguments)
     }
+
+    pub fn get_property(&self, property: ValueBase, callobjref: &CallObjectRef) -> Value {
+        let property_of_simple = |obj: &HashMap<String, Value>| -> Value {
+            match obj_find_val(&obj, property.to_string().as_str()).val {
+                ValueBase::Function(pos, map2, mut callobj) => Value::function(pos, map2, {
+                    *callobj.this = self.clone();
+                    callobj
+                }),
+                ValueBase::BuiltinFunction(id, mut callobj) => Value::builtin_function(id, {
+                    *callobj.this = self.clone();
+                    callobj
+                }),
+                val => Value::new(val),
+            }
+        };
+        let property_of_string = |s: &CString| -> Value {
+            match property {
+                // Character at the index 'n'
+                ValueBase::Number(n) if is_integer(n) => Value::string(
+                    CString::new(
+                        s.to_str()
+                            .unwrap()
+                            .chars()
+                            .nth(n as usize)
+                            .unwrap()
+                            .to_string(),
+                    ).unwrap(),
+                ),
+                // Length of string. TODO: Is this implementation correct?
+                ValueBase::String(ref member) if member.to_str().unwrap() == "length" => {
+                    Value::number(
+                        s.to_str()
+                            .unwrap()
+                            .chars()
+                            .fold(0, |x, c| x + c.len_utf16()) as f64,
+                    )
+                }
+                // TODO: Support all features.
+                _ => Value::undefined(),
+            }
+        };
+        let property_of_object = |properties: &Rc<RefCell<HashMap<String, Value>>>| -> Value {
+            property_of_simple(&properties.borrow().clone())
+        };
+        let property_of_array = |ary: &Rc<RefCell<ArrayValue>>| -> Value {
+            let ary = ary.borrow_mut();
+            match property {
+                // Index
+                ValueBase::Number(n) if is_integer(n) => {
+                    let arr = &ary.elems;
+                    if n as usize >= ary.length {
+                        Value::undefined()
+                    } else {
+                        arr[n as usize].clone()
+                    }
+                }
+                ValueBase::String(ref s) if s.to_str().unwrap() == "length" => {
+                    Value::number(ary.length as f64)
+                }
+                _ => property_of_simple(&ary.obj),
+            }
+        };
+        let property_of_arguments = || -> Value {
+            match property {
+                // Index
+                ValueBase::Number(n) if is_integer(n) => {
+                    callobjref.borrow().get_arguments_nth_value(n as usize)
+                }
+                ValueBase::String(ref s) if s.to_str().unwrap() == "length" => {
+                    let length = callobjref.borrow().get_arguments_length();
+                    Value::number(length as f64)
+                }
+                _ => Value::undefined(),
+            }
+        };
+
+        match self.val {
+            ValueBase::String(ref s) => property_of_string(s),
+            ValueBase::Function(_, ref obj, _) | ValueBase::Object(ref obj) => {
+                property_of_object(obj)
+            }
+            ValueBase::Array(ref ary) => property_of_array(ary),
+            ValueBase::Arguments => property_of_arguments(),
+            ref e => unreachable!("{:?}", e),
+        }
+    }
+}
+
+pub fn obj_find_val(obj: &HashMap<String, Value>, key: &str) -> Value {
+    match obj.get(key) {
+        Some(addr) => addr.clone(),
+        None => match obj.get("__proto__") {
+            Some(Value {
+                val: ValueBase::Object(obj),
+                ..
+            }) => obj_find_val(&*(*obj).borrow(), key),
+            _ => Value::undefined(),
+        },
+    }
+}
+
+#[inline]
+fn is_integer(f: f64) -> bool {
+    f - f.floor() == 0.0
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -393,7 +497,6 @@ pub struct VMState {
     pub scope: Vec<CallObjectRef>,
     pub pc: isize,
     pub history: Vec<(usize, isize)>, // sp, return_pc
-
 }
 
 impl VM {
@@ -985,141 +1088,8 @@ fn get_member(self_: &mut VM) {
     self_.state.pc += 1; // get_global
     let member = self_.state.stack.pop().unwrap();
     let parent = self_.state.stack.pop().unwrap();
-    match parent.clone().val {
-        ValueBase::String(s) => {
-            match member.val {
-                // Index
-                ValueBase::Number(n) if n - n.floor() == 0.0 => {
-                    self_.state.stack.push(Value::string(
-                        CString::new(
-                            s.to_str()
-                                .unwrap()
-                                .chars()
-                                .nth(n as usize)
-                                .unwrap()
-                                .to_string(),
-                        ).unwrap(),
-                    ))
-                }
-                ValueBase::String(ref member) if member.to_str().unwrap() == "length" => {
-                    self_.state.stack.push(Value::number(
-                        s.to_str()
-                            .unwrap()
-                            .chars()
-                            .fold(0, |x, c| x + c.len_utf16()) as f64,
-                    ));
-                }
-                // TODO: Support all features.
-                _ => self_.state.stack.push(Value::undefined()),
-            }
-        }
-        ValueBase::Object(map) => {
-            match obj_find_val(&map.borrow().clone(), member.to_string().as_str()).val {
-                ValueBase::Function(pos, map2, mut callobj) => {
-                    self_.state.stack.push(Value::function(pos, map2, {
-                        *callobj.this = parent;
-                        callobj
-                    }))
-                }
-                ValueBase::BuiltinFunction(id, mut callobj) => {
-                    self_.state.stack.push(Value::builtin_function(id, {
-                        *callobj.this = parent;
-                        callobj
-                    }))
-                }
-                val => self_.state.stack.push(Value::new(val)),
-            }
-        }
-        ValueBase::Function(_, map, _) => {
-            match obj_find_val(&map.borrow().clone(), member.to_string().as_str()).val {
-                ValueBase::Function(pos, map2, mut callobj) => {
-                    self_.state.stack.push(Value::function(pos, map2, {
-                        *callobj.this = parent;
-                        callobj
-                    }))
-                }
-                ValueBase::BuiltinFunction(id, mut callobj) => {
-                    self_.state.stack.push(Value::builtin_function(id, {
-                        *callobj.this = parent;
-                        callobj
-                    }))
-                }
-                val => self_.state.stack.push(Value::new(val)),
-            }
-        }
-        ValueBase::Array(map) => {
-            let mut map = map.borrow_mut();
-            match member.val {
-                // Index
-                ValueBase::Number(n) if n - n.floor() == 0.0 => {
-                    let arr = &map.elems;
-                    if n as usize >= map.length {
-                        self_.state.stack.push(Value::undefined());
-                    } else {
-                        self_.state.stack.push(arr[n as usize].clone())
-                    }
-                }
-                ValueBase::String(ref s) if s.to_str().unwrap() == "length" => {
-                    self_.state.stack.push(Value::number(map.length as f64));
-                }
-                _ => match obj_find_val(&map.obj, member.to_string().as_str()).val {
-                    ValueBase::BuiltinFunction(id, mut callobj) => {
-                        self_.state.stack.push(Value::builtin_function(id, {
-                            *callobj.this = parent;
-                            callobj
-                        }))
-                    }
-                    ValueBase::Function(pos, map2, mut callobj) => {
-                        self_.state.stack.push(Value::function(pos, map2, {
-                            *callobj.this = parent;
-                            callobj
-                        }))
-                    }
-                    val => self_.state.stack.push(Value::new(val)),
-                },
-            }
-        }
-        ValueBase::Arguments => {
-            match member.val {
-                // Index
-                ValueBase::Number(n) if n - n.floor() == 0.0 => {
-                    let val = self_
-                        .state
-                        .scope
-                        .last()
-                        .unwrap()
-                        .borrow()
-                        .get_arguments_nth_value(n as usize);
-                    self_.state.stack.push(val);
-                }
-                ValueBase::String(ref s) if s.to_str().unwrap() == "length" => {
-                    let length = self_
-                        .state
-                        .scope
-                        .last()
-                        .unwrap()
-                        .borrow()
-                        .get_arguments_length();
-                    self_.state.stack.push(Value::number(length as f64));
-                }
-                _ => self_.state.stack.push(Value::undefined()),
-            }
-        }
-        e => unreachable!("{:?}", e),
-    }
-}
-
-pub fn obj_find_val(obj: &HashMap<String, Value>, key: &str) -> Value {
-    match obj.get(key) {
-        Some(addr) => addr.clone(),
-        None => match obj.get("__proto__") {
-            Some(Value {
-                val: ValueBase::Object(obj),
-                ..
-            }) => obj_find_val(&*(*obj).borrow(), key),
-            _ => Value::undefined(),
-        },
-    }
+    let val = parent.get_property(member.val, self_.state.scope.last().unwrap());
+    self_.state.stack.push(val);
 }
 
 fn set_member(self_: &mut VM) {
