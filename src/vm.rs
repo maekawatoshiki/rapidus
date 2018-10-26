@@ -1233,7 +1233,7 @@ pub fn call_function(self_: &mut VM, dst: usize, args: Vec<Value>, mut callobj: 
 
     self_
         .jit
-        .register_return_type(dst, self_.state.stack.last().unwrap());
+        .record_function_return_type(dst, self_.state.stack.last().unwrap());
 }
 
 fn call(self_: &mut VM) {

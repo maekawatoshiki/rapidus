@@ -128,7 +128,7 @@ impl FuncInfo {
 pub struct TracingJit {
     loop_info: HashMap<usize, LoopInfo>, // <pos in bytecode, loop info>
     func_info: HashMap<usize, FuncInfo>, // <pos in bytecode, func info>
-    return_ty_map: HashMap<usize, ValueType>,
+    function_return_types: HashMap<usize, ValueType>,
     count: HashMap<usize, usize>,
     cur_func: Option<LLVMValueRef>,
     builtin_funcs: HashMap<usize, LLVMValueRef>,
@@ -163,7 +163,7 @@ impl TracingJit {
         TracingJit {
             loop_info: HashMap::new(),
             func_info: HashMap::new(),
-            return_ty_map: HashMap::new(),
+            function_return_types: HashMap::new(),
             count: HashMap::new(),
             context: context,
             module: module,
@@ -417,7 +417,7 @@ impl TracingJit {
             return Err(());
         }
 
-        let func_ret_ty = if let Some(ty) = self.return_ty_map.get(&pc) {
+        let func_ret_ty = if let Some(ty) = self.function_return_types.get(&pc) {
             ty.to_llvmty(self.context)
         } else {
             LLVMDoubleTypeInContext(self.context) // Assume as double
@@ -1555,12 +1555,10 @@ impl TracingJit {
         Ok(())
     }
 
-    pub fn register_return_type(&mut self, pc: usize, val: &vm::Value) {
-        match val.val {
-            vm::ValueBase::Number(_) => self.return_ty_map.insert(pc, ValueType::Number),
-            vm::ValueBase::Bool(_) => self.return_ty_map.insert(pc, ValueType::Bool),
-            _ => None,
-        };
+    pub fn record_function_return_type(&mut self, func_pos: usize, val: &vm::Value) {
+        if let Some(ty) = get_value_type(val) {
+            self.function_return_types.insert(func_pos, ty);
+        }
     }
 
     pub unsafe fn run_llvm_func(&mut self, pc: usize, f: fn(), args: Vec<vm::Value>) -> vm::Value {
@@ -1572,7 +1570,10 @@ impl TracingJit {
             });
         }
 
-        let func_ret_ty = self.return_ty_map.get(&pc).unwrap_or(&ValueType::Number);
+        let func_ret_ty = self
+            .function_return_types
+            .get(&pc)
+            .unwrap_or(&ValueType::Number);
 
         // Because of a bug of LLVM, llvm::execution_engine::runFunction can not be used.
         // So, all I can do is this:
