@@ -5,7 +5,9 @@ use vm::CallObject;
 
 use rand::{random, thread_rng, RngCore};
 
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 
 use libc;
 use llvm;
@@ -22,6 +24,7 @@ pub enum ValueType {
     Number,
     String,
     Bool,
+    Array,
 }
 
 trait CastIntoLLVMType {
@@ -34,6 +37,7 @@ impl CastIntoLLVMType for ValueType {
             &ValueType::Number => LLVMDoubleTypeInContext(ctx),
             &ValueType::String => LLVMPointerType(LLVMInt8TypeInContext(ctx), 0),
             &ValueType::Bool => LLVMInt1TypeInContext(ctx),
+            &ValueType::Array => LLVMPointerType(LLVMInt8TypeInContext(ctx), 0),
         }
     }
 }
@@ -43,6 +47,7 @@ fn get_value_type(val: &vm::Value) -> Option<ValueType> {
         vm::ValueBase::Bool(_) => Some(ValueType::Bool),
         vm::ValueBase::Number(_) => Some(ValueType::Number),
         vm::ValueBase::String(_) => Some(ValueType::String),
+        vm::ValueBase::Array(_) => Some(ValueType::Array),
         // TODO: Support more types.
         _ => None,
     }
@@ -277,6 +282,39 @@ impl TracingJit {
                     ),
                 );
                 hmap.insert(BUILTIN_MATH_RANDOM, f_math_random);
+
+                let f_array_get_num_val_at = LLVMAddFunction(
+                    module,
+                    CString::new("array_get_num_val_at").unwrap().as_ptr(),
+                    LLVMFunctionType(
+                        LLVMDoubleTypeInContext(context),
+                        vec![
+                            LLVMPointerType(LLVMInt8TypeInContext(context), 0),
+                            LLVMDoubleTypeInContext(context),
+                        ].as_mut_slice()
+                            .as_mut_ptr(),
+                        2,
+                        0,
+                    ),
+                );
+                hmap.insert(BUILTIN_ARRAY_GET_NUM_VAL_AT, f_array_get_num_val_at);
+
+                let f_array_set_num_val_at = LLVMAddFunction(
+                    module,
+                    CString::new("array_set_num_val_at").unwrap().as_ptr(),
+                    LLVMFunctionType(
+                        LLVMVoidType(),
+                        vec![
+                            LLVMPointerType(LLVMInt8TypeInContext(context), 0),
+                            LLVMDoubleTypeInContext(context),
+                            LLVMDoubleTypeInContext(context),
+                        ].as_mut_slice()
+                            .as_mut_ptr(),
+                        3,
+                        0,
+                    ),
+                );
+                hmap.insert(BUILTIN_ARRAY_SET_NUM_VAL_AT, f_array_set_num_val_at);
 
                 hmap
             },
@@ -603,6 +641,22 @@ impl TracingJit {
                 ee,
                 *self.builtin_funcs.get(&BUILTIN_MATH_RANDOM).unwrap(),
                 math_random as *mut libc::c_void,
+            );
+            llvm::execution_engine::LLVMAddGlobalMapping(
+                ee,
+                *self
+                    .builtin_funcs
+                    .get(&BUILTIN_ARRAY_GET_NUM_VAL_AT)
+                    .unwrap(),
+                array_get_num_val_at as *mut libc::c_void,
+            );
+            llvm::execution_engine::LLVMAddGlobalMapping(
+                ee,
+                *self
+                    .builtin_funcs
+                    .get(&BUILTIN_ARRAY_SET_NUM_VAL_AT)
+                    .unwrap(),
+                array_set_num_val_at as *mut libc::c_void,
             );
         }
         let f_raw = llvm::execution_engine::LLVMGetFunctionAddress(
@@ -1318,6 +1372,7 @@ impl TracingJit {
                                                 ValueType::Number => BUILTIN_CONSOLE_LOG_F64,
                                                 ValueType::Bool => BUILTIN_CONSOLE_LOG_BOOL,
                                                 ValueType::String => BUILTIN_CONSOLE_LOG_STRING,
+                                                _ => return Err(()),
                                             })
                                             .unwrap(),
                                         vec![arg].as_mut_ptr(),
@@ -1415,17 +1470,67 @@ impl TracingJit {
                 }
                 VMInst::GET_MEMBER => {
                     pc += 1; // get_member
-                    let member = try_opt!(try_opt!(stack.pop()).1);
-                    let parent = try_opt!(try_opt!(stack.pop()).1);
-                    match parent.val {
-                        vm::ValueBase::Object(map) => stack.push((
-                            ptr::null_mut(),
-                            Some(vm::obj_find_val(
-                                &*map.borrow(),
-                                member.to_string().as_str(),
+                    let member = try_opt!(stack.pop());
+                    let parent = try_opt!(stack.pop());
+                    if let Some(parent) = parent.1 {
+                        let member = try_opt!(member.1);
+                        match parent.val {
+                            vm::ValueBase::Object(map) => stack.push((
+                                ptr::null_mut(),
+                                Some(vm::obj_find_val(
+                                    &*map.borrow(),
+                                    member.to_string().as_str(),
+                                )),
                             )),
-                        )),
-                        _ => return Err(()),
+                            _ => return Err(()),
+                        }
+                    } else {
+                        LLVMDumpValue(member.0);
+                        if LLVMGetTypeKind(LLVMTypeOf(member.0))
+                            == llvm::LLVMTypeKind::LLVMDoubleTypeKind
+                        {
+                            stack.push((
+                                LLVMBuildCall(
+                                    self.builder,
+                                    *self
+                                        .builtin_funcs
+                                        .get(&BUILTIN_ARRAY_GET_NUM_VAL_AT)
+                                        .unwrap(),
+                                    vec![parent.0, member.0].as_mut_ptr(),
+                                    2,
+                                    CString::new("").unwrap().as_ptr(),
+                                ),
+                                None,
+                            ));
+                        } else {
+                            return Err(());
+                        }
+                    }
+                }
+                VMInst::SET_MEMBER => {
+                    pc += 1; // get_member
+                    let member = try_opt!(stack.pop());
+                    let parent = try_opt!(stack.pop());
+                    let val = try_opt!(stack.pop());
+                    if let Some(parent) = parent.1 {
+                    } else {
+                        LLVMDumpValue(member.0);
+                        if LLVMGetTypeKind(LLVMTypeOf(member.0))
+                            == llvm::LLVMTypeKind::LLVMDoubleTypeKind
+                        {
+                            LLVMBuildCall(
+                                self.builder,
+                                *self
+                                    .builtin_funcs
+                                    .get(&BUILTIN_ARRAY_SET_NUM_VAL_AT)
+                                    .unwrap(),
+                                vec![parent.0, member.0, val.0].as_mut_ptr(),
+                                3,
+                                CString::new("").unwrap().as_ptr(),
+                            );
+                        } else {
+                            return Err(());
+                        }
                     }
                 }
                 VMInst::PUSH_CONST => {
@@ -1513,7 +1618,7 @@ impl TracingJit {
                         None,
                     ));
                 }
-                VMInst::PUSH_THIS | VMInst::PUSH_ARGUMENTS | VMInst::SET_MEMBER => pc += 1,
+                VMInst::PUSH_THIS | VMInst::PUSH_ARGUMENTS => pc += 1,
                 VMInst::POP => {
                     pc += 1;
                     stack.pop();
@@ -1550,7 +1655,7 @@ impl TracingJit {
             }
         }
 
-        // LLVMDumpModule(self.module);
+        LLVMDumpModule(self.module);
 
         Ok(())
     }
@@ -1608,6 +1713,7 @@ impl TracingJit {
                 _ => unimplemented!("should be implemented.."),
             }),
             &ValueType::String => unimplemented!(),
+            &ValueType::Array => unimplemented!(),
         }
     }
 }
@@ -1623,26 +1729,43 @@ pub unsafe fn run_loop_llvm_func(
 
     for (id, _) in &local_vars {
         let name = &const_table.string[*id];
+        println!("> {}", name);
         args_of_local_vars.push(match scope.get_value(name).val {
             vm::ValueBase::Number(f) => {
                 let p = libc::calloc(1, ::std::mem::size_of::<f64>()) as *mut f64;
                 *p = f;
+                println!("{:?}", p);
                 p as *mut libc::c_void
             }
             vm::ValueBase::Bool(b) => {
                 let p = libc::calloc(1, ::std::mem::size_of::<bool>()) as *mut bool;
                 *p = b;
+                println!("{:?}", p);
                 p as *mut libc::c_void
+            }
+            vm::ValueBase::Array(ary) => {
+                let p =
+                    libc::calloc(1, ::std::mem::size_of::<vm::ArrayValue>()) as *mut vm::ArrayValue;
+                libc::memcpy(
+                    p as *mut libc::c_void,
+                    ::std::mem::transmute::<&vm::ArrayValue, *const libc::c_void>(
+                        &ary.borrow().clone(),
+                    ),
+                    ::std::mem::size_of::<vm::ArrayValue>(),
+                );
+                println!("{:?}", p);
+                let q = libc::calloc(1, 8) as *mut *mut vm::ArrayValue;
+                *q = p;
+                q as *mut libc::c_void
             }
             _ => return None,
         });
+        println!("< {}", name);
     }
 
-    // println!("before: farg[{:?}] local[{:?}]", args_of_arg_vars, args_of_local_vars);
     let pc = ::std::mem::transmute::<fn(*mut f64) -> i32, fn(*mut *mut libc::c_void) -> i32>(f)(
         args_of_local_vars.as_mut_slice().as_mut_ptr(),
     );
-    // println!("after:  farg[{:?}] local[{:?}]", args_of_arg_vars, args_of_local_vars);
 
     for (i, (id, ty)) in local_vars.iter().enumerate() {
         let name = const_table.string[*id].clone();
@@ -1651,10 +1774,13 @@ pub unsafe fn run_loop_llvm_func(
             match ty {
                 ValueType::Number => vm::Value::number(*(args_of_local_vars[i] as *mut f64)),
                 ValueType::Bool => vm::Value::bool(*(args_of_local_vars[i] as *mut bool)),
+                ValueType::Array => vm::Value::array(Rc::new(RefCell::new(
+                    (**(args_of_local_vars[i] as *mut *mut vm::ArrayValue)).clone(),
+                ))),
                 _ => unimplemented!(),
             },
         );
-        libc::free(args_of_local_vars[i]);
+        // libc::free(args_of_local_vars[i]);
     }
 
     Some(pc as isize)
@@ -1687,6 +1813,8 @@ const BUILTIN_PROCESS_STDOUT_WRITE: usize = 4;
 const BUILTIN_MATH_POW: usize = 5;
 const BUILTIN_MATH_FLOOR: usize = 6;
 const BUILTIN_MATH_RANDOM: usize = 7;
+const BUILTIN_ARRAY_GET_NUM_VAL_AT: usize = 8;
+const BUILTIN_ARRAY_SET_NUM_VAL_AT: usize = 9;
 
 #[no_mangle]
 pub extern "C" fn console_log_string(s: vm::RawStringPtr) {
@@ -1747,4 +1875,24 @@ pub extern "C" fn math_random() -> f64 {
 #[no_mangle]
 pub extern "C" fn math_pow(x: f64, y: f64) -> f64 {
     x.powf(y)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn array_get_num_val_at(ary: *mut vm::ArrayValue, idx: f64) -> f64 {
+    let idx = idx as usize;
+    if let vm::ValueBase::Number(f) = (*ary).elems[idx].val {
+        f
+    } else {
+        panic!("oh my");
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn array_set_num_val_at(ary: *mut vm::ArrayValue, idx: f64, val:f64)  {
+    let idx = idx as usize;
+    if let &mut vm::ValueBase::Number(ref mut f) = &mut (*ary).elems[idx].val {
+        *f = val;
+    } else {
+        panic!("oh my");
+    }
 }

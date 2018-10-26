@@ -96,23 +96,23 @@ fn main() {
 }
 
 fn run(file_name: &str) {
-    match fork() {
-        Ok(ForkResult::Parent { child, .. }) => {
-            match waitpid(child, None) {
-                Ok(ok) => match ok {
-                    WaitStatus::Exited(_, status) => if status != 0 {
-                        panic!("exited. status: {}", status)
-                    },
-                    WaitStatus::Signaled(pid, status, _) => {
-                        // We can do anything (like calling destructors) here.
-                        panic!("child: pid={:?}, status={:?}\nRapidus Internal Error: segmentation fault", pid, status);
-                    }
-                    e => panic!("Rapidus Internal Error: VM exited abnormally!: {:?}", e),
-                },
-                Err(e) => panic!("Rapidus Internal Error: waitpid failed: {:?}", e),
-            }
-        }
-        Ok(ForkResult::Child) => {
+    // match fork() {
+    //     Ok(ForkResult::Parent { child, .. }) => {
+    //         match waitpid(child, None) {
+    //             Ok(ok) => match ok {
+    //                 WaitStatus::Exited(_, status) => if status != 0 {
+    //                     panic!("exited. status: {}", status)
+    //                 },
+    //                 WaitStatus::Signaled(pid, status, _) => {
+    //                     // We can do anything (like calling destructors) here.
+    //                     panic!("child: pid={:?}, status={:?}\nRapidus Internal Error: segmentation fault", pid, status);
+    //                 }
+    //                 e => panic!("Rapidus Internal Error: VM exited abnormally!: {:?}", e),
+    //             },
+    //             Err(e) => panic!("Rapidus Internal Error: waitpid failed: {:?}", e),
+    //         }
+    //     }
+    //     Ok(ForkResult::Child) => {
             let mut file_body = String::new();
 
             match OpenOptions::new().read(true).open(file_name) {
@@ -165,7 +165,7 @@ fn run(file_name: &str) {
             let mut vm = vm::VM::new(vm_codegen.global_varmap);
             vm.const_table = vm_codegen.bytecode_gen.const_table;
             vm.run(iseq);
-        }
-        Err(e) => panic!("Rapidus Internal Error: fork failed: {:?}", e),
-    }
+        // }
+    //     Err(e) => panic!("Rapidus Internal Error: fork failed: {:?}", e),
+    // }
 }
