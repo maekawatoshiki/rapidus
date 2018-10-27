@@ -1420,10 +1420,7 @@ impl TracingJit {
                     match parent.val {
                         vm::ValueBase::Object(map) => stack.push((
                             ptr::null_mut(),
-                            Some(vm::obj_find_val(
-                                &*map,
-                                member.to_string().as_str(),
-                            )),
+                            Some(vm::obj_find_val(&*map, member.to_string().as_str())),
                         )),
                         _ => return Err(()),
                     }

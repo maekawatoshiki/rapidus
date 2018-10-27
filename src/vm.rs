@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::collections::{hash_map::Entry, HashMap};
 use std::ffi::CString;
 
@@ -82,10 +83,29 @@ pub struct VMState {
     pub history: Vec<(usize, isize)>, // sp, return_pc
 }
 
+pub enum GCState {
+    Marked,
+    UnMarked,
+}
+
+thread_local!(pub static GC_MEM: RefCell<HashMap<*mut libc::c_void, GCState>> = {
+    let m = HashMap::new();
+    RefCell::new(m)
+});
+
+pub fn gc_new<T>(data: T) -> *mut T {
+    let ptr = Box::into_raw(Box::new(data));
+    GC_MEM.with(|m| {
+        m.borrow_mut()
+            .insert(ptr as *mut libc::c_void, GCState::UnMarked)
+    });
+    ptr
+}
+
 impl CallObject {
     pub fn new(this: Value) -> CallObject {
         CallObject {
-            vals: Box::into_raw(Box::new(HashMap::new())), // XXX
+            vals: gc_new(HashMap::new()),
             params: vec![],
             arg_rest_vals: vec![],
             this: Box::new(this),
@@ -94,7 +114,7 @@ impl CallObject {
     }
 
     pub fn new_global() -> CallObjectRef {
-        let vals = Box::into_raw(Box::new(HashMap::new())); // XXX
+        let vals = gc_new(HashMap::new());
         let callobj = Box::into_raw(Box::new(CallObject {
             vals: vals.clone(),
             params: vec![],
@@ -190,7 +210,6 @@ impl ArrayValue {
                 hm.insert(
                     "__proto__".to_string(),
                     Value::new(ValueBase::Object(Box::into_raw(Box::new({
-                        // XXX
                         let mut hm = HashMap::new();
                         hm.insert(
                             "push".to_string(),
@@ -453,16 +472,14 @@ pub fn new_value_function(pos: usize, callobj: CallObject) -> Value {
     let mut val = Value::new(ValueBase::Function(
         pos,
         Box::into_raw(Box::new({
-            // XXX
             let mut hm = HashMap::new();
             hm.insert(
                 "prototype".to_string(),
-                Value::new(ValueBase::Object(Box::into_raw(Box::new(HashMap::new())))), // XXX
+                Value::new(ValueBase::Object(gc_new(HashMap::new()))),
             );
             hm.insert(
                 "__proto__".to_string(),
                 Value::new(ValueBase::Object(Box::into_raw(Box::new({
-                    // XXX
                     let mut hm = HashMap::new();
                     hm.insert(
                         "call".to_string(),
@@ -521,9 +538,11 @@ impl VM {
                         CallObject::new(Value::undefined()),
                     ),
                 );
-                Value::object(Box::into_raw(Box::new(map))) // XXX
+                Value::object(gc_new(map))
             });
+        }
 
+        unsafe {
             (*global_vals).set_value("process".to_string(), {
                 let mut map = HashMap::new();
                 map.insert("stdout".to_string(), {
@@ -535,85 +554,229 @@ impl VM {
                             CallObject::new(Value::undefined()),
                         ),
                     );
-                    Value::object(Box::into_raw(Box::new(map))) // XXX
+                    Value::object(gc_new(map))
                 });
-                Value::object(Box::into_raw(Box::new(map))) // XXX
+                Value::object(gc_new(map))
             });
+        }
 
-            #[rustfmt::skip]
-        (*global_vals).set_value("Math".to_string(), {
-            let mut map = HashMap::new();
-            map.insert("PI".to_string(), Value::number(::std::f64::consts::PI));
-            map.insert("floor".to_string(),
-                Value::builtin_function(builtin::MATH_FLOOR, CallObject::new(Value::undefined())));
-            map.insert("random".to_string(),
-                Value::builtin_function(builtin::MATH_RANDOM, CallObject::new(Value::undefined())));
-            map.insert("pow".to_string(),
-                Value::builtin_function(builtin::MATH_POW, CallObject::new(Value::undefined())));
-            map.insert("abs".to_string(),
-                Value::builtin_function(builtin::MATH_ABS, CallObject::new(Value::undefined())));
-            map.insert("acos".to_string(),
-                Value::builtin_function(builtin::MATH_ACOS, CallObject::new(Value::undefined())));
-            map.insert("acosh".to_string(),
-                Value::builtin_function(builtin::MATH_ACOSH, CallObject::new(Value::undefined())));
-            map.insert("asin".to_string(),
-                Value::builtin_function(builtin::MATH_ASIN, CallObject::new(Value::undefined())));
-            map.insert("asinh".to_string(),
-                Value::builtin_function(builtin::MATH_ASINH, CallObject::new(Value::undefined())));
-            map.insert("atan".to_string(),
-                Value::builtin_function(builtin::MATH_ATAN, CallObject::new(Value::undefined())));
-            map.insert("atanh".to_string(),
-                Value::builtin_function(builtin::MATH_ATANH, CallObject::new(Value::undefined())));
-            map.insert("atan2".to_string(),
-                Value::builtin_function(builtin::MATH_ATAN2, CallObject::new(Value::undefined())));
-            map.insert("cbrt".to_string(),
-                Value::builtin_function(builtin::MATH_CBRT, CallObject::new(Value::undefined())));
-            map.insert("ceil".to_string(),
-                Value::builtin_function(builtin::MATH_CEIL, CallObject::new(Value::undefined())));
-            map.insert("clz32".to_string(),
-                Value::builtin_function(builtin::MATH_CLZ32, CallObject::new(Value::undefined())));
-            map.insert("cos".to_string(),
-                Value::builtin_function(builtin::MATH_COS, CallObject::new(Value::undefined())));
-            map.insert("cosh".to_string(),
-                Value::builtin_function(builtin::MATH_COSH, CallObject::new(Value::undefined())));
-            map.insert("exp".to_string(),
-                Value::builtin_function(builtin::MATH_EXP, CallObject::new(Value::undefined())));
-            map.insert("expm1".to_string(),
-                Value::builtin_function(builtin::MATH_EXPM1, CallObject::new(Value::undefined())));
-            map.insert("fround".to_string(),
-                Value::builtin_function(builtin::MATH_FROUND, CallObject::new(Value::undefined())));
-            map.insert("hypot".to_string(),
-                Value::builtin_function(builtin::MATH_HYPOT, CallObject::new(Value::undefined())));
-            map.insert("log".to_string(),
-                Value::builtin_function(builtin::MATH_LOG, CallObject::new(Value::undefined())));
-            map.insert("log1p".to_string(),
-                Value::builtin_function(builtin::MATH_LOG1P, CallObject::new(Value::undefined())));
-            map.insert("log10".to_string(),
-                Value::builtin_function(builtin::MATH_LOG10, CallObject::new(Value::undefined())));
-            map.insert("log2".to_string(),
-                Value::builtin_function(builtin::MATH_LOG2, CallObject::new(Value::undefined())));
-            map.insert("max".to_string(),
-                Value::builtin_function(builtin::MATH_MAX, CallObject::new(Value::undefined())));
-            map.insert("min".to_string(),
-                Value::builtin_function(builtin::MATH_MIN, CallObject::new(Value::undefined())));
-            map.insert("round".to_string(),
-                Value::builtin_function(builtin::MATH_ROUND, CallObject::new(Value::undefined())));
-            map.insert("sign".to_string(),
-                Value::builtin_function(builtin::MATH_SIGN, CallObject::new(Value::undefined())));
-            map.insert("sin".to_string(),
-                Value::builtin_function(builtin::MATH_SIN, CallObject::new(Value::undefined())));
-            map.insert("sinh".to_string(),
-                Value::builtin_function(builtin::MATH_SINH, CallObject::new(Value::undefined())));
-            map.insert("sqrt".to_string(),
-                Value::builtin_function(builtin::MATH_SQRT, CallObject::new(Value::undefined())));
-            map.insert("tan".to_string(),
-                Value::builtin_function(builtin::MATH_TAN, CallObject::new(Value::undefined())));
-            map.insert("tanh".to_string(),
-                Value::builtin_function(builtin::MATH_TANH, CallObject::new(Value::undefined())));
-            map.insert("trunc".to_string(),
-                Value::builtin_function(builtin::MATH_TRUNC, CallObject::new(Value::undefined())));
-            Value::object(Box::into_raw(Box::new(map))) // XXX
-        });
+        unsafe {
+            (*global_vals).set_value("Math".to_string(), {
+                let mut map = HashMap::new();
+                map.insert("PI".to_string(), Value::number(::std::f64::consts::PI));
+                map.insert(
+                    "floor".to_string(),
+                    Value::builtin_function(
+                        builtin::MATH_FLOOR,
+                        CallObject::new(Value::undefined()),
+                    ),
+                );
+                map.insert(
+                    "random".to_string(),
+                    Value::builtin_function(
+                        builtin::MATH_RANDOM,
+                        CallObject::new(Value::undefined()),
+                    ),
+                );
+                map.insert(
+                    "pow".to_string(),
+                    Value::builtin_function(builtin::MATH_POW, CallObject::new(Value::undefined())),
+                );
+                map.insert(
+                    "abs".to_string(),
+                    Value::builtin_function(builtin::MATH_ABS, CallObject::new(Value::undefined())),
+                );
+                map.insert(
+                    "acos".to_string(),
+                    Value::builtin_function(
+                        builtin::MATH_ACOS,
+                        CallObject::new(Value::undefined()),
+                    ),
+                );
+                map.insert(
+                    "acosh".to_string(),
+                    Value::builtin_function(
+                        builtin::MATH_ACOSH,
+                        CallObject::new(Value::undefined()),
+                    ),
+                );
+                map.insert(
+                    "asin".to_string(),
+                    Value::builtin_function(
+                        builtin::MATH_ASIN,
+                        CallObject::new(Value::undefined()),
+                    ),
+                );
+                map.insert(
+                    "asinh".to_string(),
+                    Value::builtin_function(
+                        builtin::MATH_ASINH,
+                        CallObject::new(Value::undefined()),
+                    ),
+                );
+                map.insert(
+                    "atan".to_string(),
+                    Value::builtin_function(
+                        builtin::MATH_ATAN,
+                        CallObject::new(Value::undefined()),
+                    ),
+                );
+                map.insert(
+                    "atanh".to_string(),
+                    Value::builtin_function(
+                        builtin::MATH_ATANH,
+                        CallObject::new(Value::undefined()),
+                    ),
+                );
+                map.insert(
+                    "atan2".to_string(),
+                    Value::builtin_function(
+                        builtin::MATH_ATAN2,
+                        CallObject::new(Value::undefined()),
+                    ),
+                );
+                map.insert(
+                    "cbrt".to_string(),
+                    Value::builtin_function(
+                        builtin::MATH_CBRT,
+                        CallObject::new(Value::undefined()),
+                    ),
+                );
+                map.insert(
+                    "ceil".to_string(),
+                    Value::builtin_function(
+                        builtin::MATH_CEIL,
+                        CallObject::new(Value::undefined()),
+                    ),
+                );
+                map.insert(
+                    "clz32".to_string(),
+                    Value::builtin_function(
+                        builtin::MATH_CLZ32,
+                        CallObject::new(Value::undefined()),
+                    ),
+                );
+                map.insert(
+                    "cos".to_string(),
+                    Value::builtin_function(builtin::MATH_COS, CallObject::new(Value::undefined())),
+                );
+                map.insert(
+                    "cosh".to_string(),
+                    Value::builtin_function(
+                        builtin::MATH_COSH,
+                        CallObject::new(Value::undefined()),
+                    ),
+                );
+                map.insert(
+                    "exp".to_string(),
+                    Value::builtin_function(builtin::MATH_EXP, CallObject::new(Value::undefined())),
+                );
+                map.insert(
+                    "expm1".to_string(),
+                    Value::builtin_function(
+                        builtin::MATH_EXPM1,
+                        CallObject::new(Value::undefined()),
+                    ),
+                );
+                map.insert(
+                    "fround".to_string(),
+                    Value::builtin_function(
+                        builtin::MATH_FROUND,
+                        CallObject::new(Value::undefined()),
+                    ),
+                );
+                map.insert(
+                    "hypot".to_string(),
+                    Value::builtin_function(
+                        builtin::MATH_HYPOT,
+                        CallObject::new(Value::undefined()),
+                    ),
+                );
+                map.insert(
+                    "log".to_string(),
+                    Value::builtin_function(builtin::MATH_LOG, CallObject::new(Value::undefined())),
+                );
+                map.insert(
+                    "log1p".to_string(),
+                    Value::builtin_function(
+                        builtin::MATH_LOG1P,
+                        CallObject::new(Value::undefined()),
+                    ),
+                );
+                map.insert(
+                    "log10".to_string(),
+                    Value::builtin_function(
+                        builtin::MATH_LOG10,
+                        CallObject::new(Value::undefined()),
+                    ),
+                );
+                map.insert(
+                    "log2".to_string(),
+                    Value::builtin_function(
+                        builtin::MATH_LOG2,
+                        CallObject::new(Value::undefined()),
+                    ),
+                );
+                map.insert(
+                    "max".to_string(),
+                    Value::builtin_function(builtin::MATH_MAX, CallObject::new(Value::undefined())),
+                );
+                map.insert(
+                    "min".to_string(),
+                    Value::builtin_function(builtin::MATH_MIN, CallObject::new(Value::undefined())),
+                );
+                map.insert(
+                    "round".to_string(),
+                    Value::builtin_function(
+                        builtin::MATH_ROUND,
+                        CallObject::new(Value::undefined()),
+                    ),
+                );
+                map.insert(
+                    "sign".to_string(),
+                    Value::builtin_function(
+                        builtin::MATH_SIGN,
+                        CallObject::new(Value::undefined()),
+                    ),
+                );
+                map.insert(
+                    "sin".to_string(),
+                    Value::builtin_function(builtin::MATH_SIN, CallObject::new(Value::undefined())),
+                );
+                map.insert(
+                    "sinh".to_string(),
+                    Value::builtin_function(
+                        builtin::MATH_SINH,
+                        CallObject::new(Value::undefined()),
+                    ),
+                );
+                map.insert(
+                    "sqrt".to_string(),
+                    Value::builtin_function(
+                        builtin::MATH_SQRT,
+                        CallObject::new(Value::undefined()),
+                    ),
+                );
+                map.insert(
+                    "tan".to_string(),
+                    Value::builtin_function(builtin::MATH_TAN, CallObject::new(Value::undefined())),
+                );
+                map.insert(
+                    "tanh".to_string(),
+                    Value::builtin_function(
+                        builtin::MATH_TANH,
+                        CallObject::new(Value::undefined()),
+                    ),
+                );
+                map.insert(
+                    "trunc".to_string(),
+                    Value::builtin_function(
+                        builtin::MATH_TRUNC,
+                        CallObject::new(Value::undefined()),
+                    ),
+                );
+                Value::object(gc_new(map))
+            });
         }
 
         VM {
@@ -802,10 +965,10 @@ fn construct(self_: &mut VM) {
                         .unwrap_or(&Value::undefined())
                         .clone()
                 });
-                Box::into_raw(Box::new(map)) // XXX
+                gc_new(map)
             };
 
-            callobj.vals = Box::into_raw(Box::new(HashMap::new())); // XXX
+            callobj.vals = gc_new(HashMap::new());
 
             // similar code is used some times. should make it a function.
             let mut args = vec![];
@@ -830,7 +993,7 @@ fn construct(self_: &mut VM) {
             if let Some(rest_param_name) = rest_param_name {
                 callobj.set_value(
                     rest_param_name,
-                    Value::array(Box::into_raw(Box::new(ArrayValue::new(rest_args)))), // XXX
+                    Value::array(gc_new(ArrayValue::new(rest_args))),
                 );
             } else {
                 for arg in rest_args {
@@ -839,7 +1002,7 @@ fn construct(self_: &mut VM) {
             }
 
             *callobj.this = Value::object(new_this);
-            self_.state.scope.push(Box::into_raw(Box::new(callobj))); // XXX
+            self_.state.scope.push(gc_new(callobj));
             self_
                 .state
                 .history
@@ -890,10 +1053,7 @@ fn create_object(self_: &mut VM) {
         let val = self_.state.stack.pop().unwrap();
         map.insert(name, val.clone());
     }
-    self_
-        .state
-        .stack
-        .push(Value::object(Box::into_raw(Box::new(map)))); // XXX
+    self_.state.stack.push(Value::object(gc_new(map)));
 }
 
 fn create_array(self_: &mut VM) {
@@ -909,7 +1069,7 @@ fn create_array(self_: &mut VM) {
     self_
         .state
         .stack
-        .push(Value::array(Box::into_raw(Box::new(ArrayValue::new(arr))))); // XXX
+        .push(Value::array(gc_new(ArrayValue::new(arr))));
 }
 
 fn push_int8(self_: &mut VM) {
@@ -1198,7 +1358,7 @@ pub fn call_function(self_: &mut VM, dst: usize, args: Vec<Value>, mut callobj: 
     if let Some(rest_param_name) = rest_param_name {
         callobj.set_value(
             rest_param_name,
-            Value::array(Box::into_raw(Box::new(ArrayValue::new(rest_args)))), // XXX
+            Value::array(gc_new(ArrayValue::new(rest_args))),
         );
     } else {
         for arg in rest_args {
@@ -1206,7 +1366,7 @@ pub fn call_function(self_: &mut VM, dst: usize, args: Vec<Value>, mut callobj: 
         }
     }
 
-    self_.state.scope.push(Box::into_raw(Box::new(callobj))); // XXX
+    self_.state.scope.push(gc_new(callobj));
 
     if args_all_numbers {
         let scope = (*self_.state.scope.last().unwrap()).clone();
@@ -1254,7 +1414,7 @@ fn call(self_: &mut VM) {
             unsafe { self_.builtin_functions[x](callobj, args, self_) };
         }
         ValueBase::Function(dst, _, mut callobj) => {
-            callobj.vals = Box::into_raw(Box::new(HashMap::new())); // XXX
+            callobj.vals = gc_new(HashMap::new());
 
             let mut args = vec![];
             for _ in 0..argc {
