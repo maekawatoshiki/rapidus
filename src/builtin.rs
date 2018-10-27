@@ -3,10 +3,8 @@ use vm::{call_function, CallObject, RawStringPtr, Value, ValueBase, VM};
 use libc;
 use rand::random;
 
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::CString;
-use std::rc::Rc;
 
 pub const CONSOLE_LOG: usize = 0;
 pub const PROCESS_STDOUT_WRITE: usize = 1;
@@ -99,7 +97,7 @@ pub unsafe fn debug_print(val: &Value, nest: bool) {
         ValueBase::Object(ref values) => {
             libc::printf("{ \0".as_ptr() as RawStringPtr);
 
-            let key_val = (*values).borrow();
+            let key_val = &**values;
             let mut sorted_key_val = key_val.iter().collect::<Vec<(&String, &Value)>>();
             sorted_key_val.sort_by(|(key1, _), (key2, _)| key1.as_str().cmp(key2.as_str()));
 
@@ -120,7 +118,7 @@ pub unsafe fn debug_print(val: &Value, nest: bool) {
         }
         ValueBase::Array(ref values) => {
             libc::printf("[ \0".as_ptr() as RawStringPtr);
-            let arr = &*(*values).borrow();
+            let arr = &*(*values);
             let elems = &arr.elems;
             for i in 0..arr.length {
                 debug_print(&elems[i], true);
@@ -142,7 +140,7 @@ pub unsafe fn debug_print(val: &Value, nest: bool) {
 // BuiltinFunction(2)
 pub unsafe fn array_push(callobj: CallObject, args: Vec<Value>, _: &mut VM) {
     if let ValueBase::Array(ref map) = callobj.this.val {
-        let mut map = map.borrow_mut();
+        let mut map = &mut **map;
         // let mut elems = &mut map.elems;
         for val in &args {
             map.elems.push(val.clone());
@@ -313,7 +311,7 @@ pub unsafe fn function_prototype_call(callobj: CallObject, args: Vec<Value>, sel
     match callee.val {
         ValueBase::Function(dst, _obj, mut callobj) => {
             *callobj.this = arg_this;
-            callobj.vals = Rc::new(RefCell::new(HashMap::new()));
+            callobj.vals = Box::into_raw(Box::new(HashMap::new())); // XXX
             call_function(self_, dst, args[1..].to_vec(), callobj);
         }
         _ => {}

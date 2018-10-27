@@ -152,7 +152,7 @@ impl VMCodeGen {
             let pos = iseq.len();
             let val = new_value_function(pos, {
                 let mut callobj =
-                    CallObject::new(Value::object(self.global_varmap.borrow().vals.clone()));
+                    CallObject::new(unsafe { Value::object((*self.global_varmap).vals.clone()) });
                 callobj.params = params
                     .clone()
                     .iter()
@@ -167,9 +167,9 @@ impl VMCodeGen {
                 callobj.parent = Some(self.global_varmap.clone());
                 callobj
             });
-            self.global_varmap
-                .borrow_mut()
-                .set_value(name.clone(), val.clone());
+            unsafe {
+                (*self.global_varmap).set_value(name.clone(), val.clone());
+            }
             iseq.append(&mut func_iseq.clone());
         }
 

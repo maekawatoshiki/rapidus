@@ -687,7 +687,7 @@ impl TracingJit {
         let mut compilation_failed = false;
         if let Err(_) = self.gen_body(
             iseq,
-            &vm_state.scope.last().unwrap().borrow(),
+            &**vm_state.scope.last().unwrap(),
             const_table,
             bgn,
             bgn,
@@ -769,7 +769,7 @@ impl TracingJit {
         end: usize,
     ) -> Result<Vec<(usize, ValueType)>, ()> {
         let mut local_vars = HashSet::new();
-        let local_scope = &vm_state.scope.last().unwrap().borrow();
+        let local_scope = &**vm_state.scope.last().unwrap();
 
         while pc < end {
             let inst_size = try_opt!(VMInst::get_inst_size(iseq[pc]));
@@ -778,7 +778,7 @@ impl TracingJit {
                     pc += 1;
                     get_int32!(iseq, pc, id, usize);
                     let name = &const_table.string[id];
-                    if let Some(val) = local_scope.vals.borrow().get(name) {
+                    if let Some(val) = (*local_scope.vals).get(name) {
                         let ty = if let Some(ty) = get_value_type(val) {
                             ty
                         } else {
@@ -1421,7 +1421,7 @@ impl TracingJit {
                         vm::ValueBase::Object(map) => stack.push((
                             ptr::null_mut(),
                             Some(vm::obj_find_val(
-                                &*map.borrow(),
+                                &*map,
                                 member.to_string().as_str(),
                             )),
                         )),
@@ -1618,12 +1618,12 @@ pub unsafe fn run_loop_llvm_func(
     const_table: &vm::ConstantTable,
     local_vars: Vec<(usize, ValueType)>,
 ) -> Option<isize> {
-    let mut scope = vm_state.scope.last().unwrap().borrow_mut();
+    let scope = *vm_state.scope.last().unwrap();
     let mut args_of_local_vars = vec![];
 
     for (id, _) in &local_vars {
         let name = &const_table.string[*id];
-        args_of_local_vars.push(match scope.get_value(name).val {
+        args_of_local_vars.push(match (*scope).get_value(name).val {
             vm::ValueBase::Number(f) => {
                 let p = libc::calloc(1, ::std::mem::size_of::<f64>()) as *mut f64;
                 *p = f;
@@ -1646,7 +1646,7 @@ pub unsafe fn run_loop_llvm_func(
 
     for (i, (id, ty)) in local_vars.iter().enumerate() {
         let name = const_table.string[*id].clone();
-        scope.set_value_if_exist(
+        (*scope).set_value_if_exist(
             name,
             match ty {
                 ValueType::Number => vm::Value::number(*(args_of_local_vars[i] as *mut f64)),

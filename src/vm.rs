@@ -1,7 +1,5 @@
-use std::cell::RefCell;
 use std::collections::{hash_map::Entry, HashMap};
 use std::ffi::CString;
-use std::rc::Rc;
 
 use libc;
 // use cpuprofiler::PROFILER;
@@ -13,11 +11,11 @@ use node::BinOp;
 
 pub type RawStringPtr = *mut libc::c_char;
 
-pub type CallObjectRef = Rc<RefCell<CallObject>>;
+pub type CallObjectRef = *mut CallObject;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct CallObject {
-    pub vals: Rc<RefCell<HashMap<String, Value>>>,
+    pub vals: *mut HashMap<String, Value>,
     pub params: Vec<(String, bool)>, // (name, rest param?)
     pub arg_rest_vals: Vec<Value>,
     pub this: Box<Value>,
@@ -30,7 +28,6 @@ pub struct ArrayValue {
     pub length: usize,
     pub obj: HashMap<String, Value>,
 }
-
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Value {
@@ -46,10 +43,10 @@ pub enum ValueBase {
     Bool(bool),
     Number(f64),
     String(CString),
-    Function(usize, Rc<RefCell<HashMap<String, Value>>>, CallObject),
-    BuiltinFunction(usize, CallObject),          // id(==0:unknown)
-    Object(Rc<RefCell<HashMap<String, Value>>>), // Object(HashMap<String, Value>),
-    Array(Rc<RefCell<ArrayValue>>),
+    Function(usize, *mut HashMap<String, Value>, CallObject),
+    BuiltinFunction(usize, CallObject),  // id(==0:unknown)
+    Object(*mut HashMap<String, Value>), // Object(HashMap<String, Value>),
+    Array(*mut ArrayValue),
     Arguments,
 }
 
@@ -88,7 +85,7 @@ pub struct VMState {
 impl CallObject {
     pub fn new(this: Value) -> CallObject {
         CallObject {
-            vals: Rc::new(RefCell::new(HashMap::new())),
+            vals: Box::into_raw(Box::new(HashMap::new())), // XXX
             params: vec![],
             arg_rest_vals: vec![],
             this: Box::new(this),
@@ -97,41 +94,49 @@ impl CallObject {
     }
 
     pub fn new_global() -> CallObjectRef {
-        let vals = Rc::new(RefCell::new(HashMap::new()));
-        let callobj = Rc::new(RefCell::new(CallObject {
+        let vals = Box::into_raw(Box::new(HashMap::new())); // XXX
+        let callobj = Box::into_raw(Box::new(CallObject {
             vals: vals.clone(),
             params: vec![],
             arg_rest_vals: vec![],
             this: Box::new(Value::new(ValueBase::Undefined)),
             parent: None,
         }));
-        *callobj.borrow_mut().this = Value::new(ValueBase::Object(vals));
+        unsafe {
+            *(*callobj).this = Value::new(ValueBase::Object(vals));
+        }
         callobj
     }
 
     pub fn set_value(&mut self, name: String, val: Value) {
-        self.vals.borrow_mut().insert(name, val);
+        unsafe {
+            (*self.vals).insert(name, val);
+        }
     }
 
     pub fn set_value_if_exist(&mut self, name: String, val: Value) {
-        match self.vals.borrow_mut().entry(name.clone()) {
-            Entry::Occupied(ref mut v) => *v.get_mut() = val,
-            Entry::Vacant(v) => {
-                match self.parent {
-                    Some(ref parent) => return parent.borrow_mut().set_value_if_exist(name, val),
-                    None => v.insert(val),
-                };
+        unsafe {
+            match (*self.vals).entry(name.clone()) {
+                Entry::Occupied(ref mut v) => *v.get_mut() = val,
+                Entry::Vacant(v) => {
+                    match self.parent {
+                        Some(ref parent) => return (**parent).set_value_if_exist(name, val),
+                        None => v.insert(val),
+                    };
+                }
             }
         }
     }
 
     pub fn get_value(&self, name: &String) -> Value {
-        if let Some(val) = self.vals.borrow().get(name) {
-            return val.clone();
-        }
-        match self.parent {
-            Some(ref parent) => return parent.borrow().get_value(name),
-            None => panic!("variable not found '{}'", name),
+        unsafe {
+            if let Some(val) = (*self.vals).get(name) {
+                return val.clone();
+            }
+            match self.parent {
+                Some(ref parent) => return (**parent).get_value(name),
+                None => panic!("variable not found '{}'", name),
+            }
         }
     }
 
@@ -184,7 +189,8 @@ impl ArrayValue {
                 let mut hm = HashMap::new();
                 hm.insert(
                     "__proto__".to_string(),
-                    Value::new(ValueBase::Object(Rc::new(RefCell::new({
+                    Value::new(ValueBase::Object(Box::into_raw(Box::new({
+                        // XXX
                         let mut hm = HashMap::new();
                         hm.insert(
                             "push".to_string(),
@@ -242,11 +248,7 @@ impl Value {
         Value::new(ValueBase::String(s))
     }
 
-    pub fn function(
-        pc: usize,
-        obj: Rc<RefCell<HashMap<String, Value>>>,
-        callobj: CallObject,
-    ) -> Value {
+    pub fn function(pc: usize, obj: *mut HashMap<String, Value>, callobj: CallObject) -> Value {
         Value::new(ValueBase::Function(pc, obj, callobj))
     }
 
@@ -254,11 +256,11 @@ impl Value {
         Value::new(ValueBase::BuiltinFunction(pc, callobj))
     }
 
-    pub fn object(obj: Rc<RefCell<HashMap<String, Value>>>) -> Value {
+    pub fn object(obj: *mut HashMap<String, Value>) -> Value {
         Value::new(ValueBase::Object(obj))
     }
 
-    pub fn array(ary: Rc<RefCell<ArrayValue>>) -> Value {
+    pub fn array(ary: *mut ArrayValue) -> Value {
         Value::new(ValueBase::Array(ary))
     }
 
@@ -268,7 +270,7 @@ impl Value {
 
     pub fn get_property(&self, property: ValueBase, callobjref: &CallObjectRef) -> Value {
         let property_of_simple = |obj: &HashMap<String, Value>| -> Value {
-            match obj_find_val(&obj, property.to_string().as_str()).val {
+            match obj_find_val(obj, property.to_string().as_str()).val {
                 ValueBase::Function(pos, map2, mut callobj) => Value::function(pos, map2, {
                     *callobj.this = self.clone();
                     callobj
@@ -306,11 +308,9 @@ impl Value {
                 _ => Value::undefined(),
             }
         };
-        let property_of_object = |properties: &Rc<RefCell<HashMap<String, Value>>>| -> Value {
-            property_of_simple(&properties.borrow().clone())
-        };
-        let property_of_array = |ary: &Rc<RefCell<ArrayValue>>| -> Value {
-            let ary = ary.borrow_mut();
+        let property_of_object =
+            |properties: &HashMap<String, Value>| -> Value { property_of_simple(properties) };
+        let property_of_array = |ary: &ArrayValue| -> Value {
             match property {
                 // Index
                 ValueBase::Number(n) if is_integer(n) => {
@@ -328,28 +328,32 @@ impl Value {
             }
         };
         let property_of_arguments = || -> Value {
-            match property {
-                // Index
-                ValueBase::Number(n) if is_integer(n) => {
-                    callobjref.borrow().get_arguments_nth_value(n as usize)
+            unsafe {
+                match property {
+                    // Index
+                    ValueBase::Number(n) if is_integer(n) => {
+                        (**callobjref).get_arguments_nth_value(n as usize)
+                    }
+                    ValueBase::String(ref s) if s.to_str().unwrap() == "length" => {
+                        let length = (**callobjref).get_arguments_length();
+                        Value::number(length as f64)
+                    }
+                    _ => Value::undefined(),
                 }
-                ValueBase::String(ref s) if s.to_str().unwrap() == "length" => {
-                    let length = callobjref.borrow().get_arguments_length();
-                    Value::number(length as f64)
-                }
-                _ => Value::undefined(),
             }
         };
 
-        match self.val {
-            ValueBase::String(ref s) => property_of_string(s),
-            ValueBase::Function(_, ref obj, _) | ValueBase::Object(ref obj) => {
-                property_of_object(obj)
+        unsafe {
+            match self.val {
+                ValueBase::String(ref s) => property_of_string(s),
+                ValueBase::Function(_, ref obj, _) | ValueBase::Object(ref obj) => {
+                    property_of_object(&**obj)
+                }
+                ValueBase::Array(ref ary) => property_of_array(&**ary),
+                ValueBase::Arguments => property_of_arguments(),
+                // TODO: Implement
+                _ => Value::undefined(),
             }
-            ValueBase::Array(ref ary) => property_of_array(ary),
-            ValueBase::Arguments => property_of_arguments(),
-            // TODO: Implement
-            _ => Value::undefined(),
         }
     }
 }
@@ -383,7 +387,7 @@ impl ValueBase {
                 format!("{}", *n)
             }
             ValueBase::String(s) => s.clone().into_string().unwrap(),
-            ValueBase::Array(ary_val) => ary_val.borrow().to_string(),
+            ValueBase::Array(ary_val) => unsafe { (**ary_val).to_string() },
             ValueBase::Object(_) => "[object Object]".to_string(),
             e => unimplemented!("{:?}", e),
         }
@@ -416,14 +420,16 @@ impl ValueBase {
             }
         }
 
-        match self {
-            ValueBase::Undefined => ::std::f64::NAN,
-            ValueBase::Bool(false) => 0.0,
-            ValueBase::Bool(true) => 1.0,
-            ValueBase::Number(n) => *n,
-            ValueBase::String(s) => str_to_num(s.to_str().unwrap()),
-            ValueBase::Array(ary) => ary_to_num(&*ary.borrow()),
-            _ => ::std::f64::NAN,
+        unsafe {
+            match self {
+                ValueBase::Undefined => ::std::f64::NAN,
+                ValueBase::Bool(false) => 0.0,
+                ValueBase::Bool(true) => 1.0,
+                ValueBase::Number(n) => *n,
+                ValueBase::String(s) => str_to_num(s.to_str().unwrap()),
+                ValueBase::Array(ary) => ary_to_num(&**ary),
+                _ => ::std::f64::NAN,
+            }
         }
     }
 
@@ -446,15 +452,17 @@ impl ValueBase {
 pub fn new_value_function(pos: usize, callobj: CallObject) -> Value {
     let mut val = Value::new(ValueBase::Function(
         pos,
-        Rc::new(RefCell::new({
+        Box::into_raw(Box::new({
+            // XXX
             let mut hm = HashMap::new();
             hm.insert(
                 "prototype".to_string(),
-                Value::new(ValueBase::Object(Rc::new(RefCell::new(HashMap::new())))),
+                Value::new(ValueBase::Object(Box::into_raw(Box::new(HashMap::new())))), // XXX
             );
             hm.insert(
                 "__proto__".to_string(),
-                Value::new(ValueBase::Object(Rc::new(RefCell::new({
+                Value::new(ValueBase::Object(Box::into_raw(Box::new({
+                    // XXX
                     let mut hm = HashMap::new();
                     hm.insert(
                         "call".to_string(),
@@ -474,10 +482,10 @@ pub fn new_value_function(pos: usize, callobj: CallObject) -> Value {
     let v2 = val.clone();
     if let ValueBase::Function(_, ref mut obj, _) = &mut val.val {
         // TODO: Add constructor of this function itself (==Function). (not prototype.constructor)
-        if let ValueBase::Object(ref mut obj) =
-            (*obj.borrow_mut()).get_mut("prototype").unwrap().val
-        {
-            obj.borrow_mut().insert("constructor".to_string(), v2);
+        unsafe {
+            if let ValueBase::Object(ref mut obj) = (**obj).get_mut("prototype").unwrap().val {
+                (**obj).insert("constructor".to_string(), v2);
+            }
         }
     }
     val
@@ -490,7 +498,7 @@ pub fn obj_find_val(obj: &HashMap<String, Value>, key: &str) -> Value {
             Some(Value {
                 val: ValueBase::Object(obj),
                 ..
-            }) => obj_find_val(&*(*obj).borrow(), key),
+            }) => unsafe { obj_find_val(&**obj, key) },
             _ => Value::undefined(),
         },
     }
@@ -503,33 +511,37 @@ fn is_integer(f: f64) -> bool {
 
 impl VM {
     pub fn new(global_vals: CallObjectRef) -> VM {
-        global_vals.borrow_mut().set_value("console".to_string(), {
-            let mut map = HashMap::new();
-            map.insert(
-                "log".to_string(),
-                Value::builtin_function(builtin::CONSOLE_LOG, CallObject::new(Value::undefined())),
-            );
-            Value::object(Rc::new(RefCell::new(map)))
-        });
-
-        global_vals.borrow_mut().set_value("process".to_string(), {
-            let mut map = HashMap::new();
-            map.insert("stdout".to_string(), {
+        unsafe {
+            (*global_vals).set_value("console".to_string(), {
                 let mut map = HashMap::new();
                 map.insert(
-                    "write".to_string(),
+                    "log".to_string(),
                     Value::builtin_function(
-                        builtin::PROCESS_STDOUT_WRITE,
+                        builtin::CONSOLE_LOG,
                         CallObject::new(Value::undefined()),
                     ),
                 );
-                Value::object(Rc::new(RefCell::new(map)))
+                Value::object(Box::into_raw(Box::new(map))) // XXX
             });
-            Value::object(Rc::new(RefCell::new(map)))
-        });
 
-        #[rustfmt::skip]
-        global_vals.borrow_mut().set_value("Math".to_string(), {
+            (*global_vals).set_value("process".to_string(), {
+                let mut map = HashMap::new();
+                map.insert("stdout".to_string(), {
+                    let mut map = HashMap::new();
+                    map.insert(
+                        "write".to_string(),
+                        Value::builtin_function(
+                            builtin::PROCESS_STDOUT_WRITE,
+                            CallObject::new(Value::undefined()),
+                        ),
+                    );
+                    Value::object(Box::into_raw(Box::new(map))) // XXX
+                });
+                Value::object(Box::into_raw(Box::new(map))) // XXX
+            });
+
+            #[rustfmt::skip]
+        (*global_vals).set_value("Math".to_string(), {
             let mut map = HashMap::new();
             map.insert("PI".to_string(), Value::number(::std::f64::consts::PI));
             map.insert("floor".to_string(),
@@ -600,8 +612,9 @@ impl VM {
                 Value::builtin_function(builtin::MATH_TANH, CallObject::new(Value::undefined())));
             map.insert("trunc".to_string(),
                 Value::builtin_function(builtin::MATH_TRUNC, CallObject::new(Value::undefined())));
-            Value::object(Rc::new(RefCell::new(map)))
+            Value::object(Box::into_raw(Box::new(map))) // XXX
         });
+        }
 
         VM {
             jit: unsafe { TracingJit::new() },
@@ -783,18 +796,16 @@ fn construct(self_: &mut VM) {
             // insert new 'this'
             let new_this = {
                 let mut map = HashMap::new();
-                map.insert(
-                    "__proto__".to_string(),
+                map.insert("__proto__".to_string(), unsafe {
                     (*obj)
-                        .borrow()
                         .get("prototype")
                         .unwrap_or(&Value::undefined())
-                        .clone(),
-                );
-                Rc::new(RefCell::new(map))
+                        .clone()
+                });
+                Box::into_raw(Box::new(map)) // XXX
             };
 
-            callobj.vals = Rc::new(RefCell::new(HashMap::new()));
+            callobj.vals = Box::into_raw(Box::new(HashMap::new())); // XXX
 
             // similar code is used some times. should make it a function.
             let mut args = vec![];
@@ -819,7 +830,7 @@ fn construct(self_: &mut VM) {
             if let Some(rest_param_name) = rest_param_name {
                 callobj.set_value(
                     rest_param_name,
-                    Value::array(Rc::new(RefCell::new(ArrayValue::new(rest_args)))),
+                    Value::array(Box::into_raw(Box::new(ArrayValue::new(rest_args)))), // XXX
                 );
             } else {
                 for arg in rest_args {
@@ -827,8 +838,8 @@ fn construct(self_: &mut VM) {
                 }
             }
 
-            *callobj.this = Value::object(new_this.clone());
-            self_.state.scope.push(Rc::new(RefCell::new(callobj)));
+            *callobj.this = Value::object(new_this);
+            self_.state.scope.push(Box::into_raw(Box::new(callobj))); // XXX
             self_
                 .state
                 .history
@@ -882,7 +893,7 @@ fn create_object(self_: &mut VM) {
     self_
         .state
         .stack
-        .push(Value::object(Rc::new(RefCell::new(map))));
+        .push(Value::object(Box::into_raw(Box::new(map)))); // XXX
 }
 
 fn create_array(self_: &mut VM) {
@@ -898,7 +909,7 @@ fn create_array(self_: &mut VM) {
     self_
         .state
         .stack
-        .push(Value::array(Rc::new(RefCell::new(ArrayValue::new(arr)))));
+        .push(Value::array(Box::into_raw(Box::new(ArrayValue::new(arr))))); // XXX
 }
 
 fn push_int8(self_: &mut VM) {
@@ -931,7 +942,7 @@ fn push_const(self_: &mut VM) {
 
 fn push_this(self_: &mut VM) {
     self_.state.pc += 1; // push_this
-    let this = *self_.state.scope.last().unwrap().borrow().this.clone();
+    let this = unsafe { *(**self_.state.scope.last().unwrap()).this.clone() };
     self_.state.stack.push(this);
 }
 
@@ -1100,21 +1111,19 @@ fn set_member(self_: &mut VM) {
     let parent = self_.state.stack.pop().unwrap();
     let val = self_.state.stack.pop().unwrap();
     match parent.val {
-        ValueBase::Object(map) | ValueBase::Function(_, map, _) => {
-            *map.borrow_mut()
+        ValueBase::Object(map) | ValueBase::Function(_, map, _) => unsafe {
+            *(*map)
                 .entry(member.to_string())
                 .or_insert_with(|| Value::undefined()) = val;
-        }
-        ValueBase::Array(map) => {
-            let mut map = map.borrow_mut();
+        },
+        ValueBase::Array(map) => unsafe {
+            let mut map = &mut *map;
             match member.val {
                 // Index
                 ValueBase::Number(n) if n - n.floor() == 0.0 => {
                     if n as usize >= map.length as usize {
                         map.length = n as usize;
-                        unsafe {
-                            map.elems.set_len(n as usize);
-                        };
+                        map.elems.set_len(n as usize);
                     }
                     map.elems[n as usize] = val;
                 }
@@ -1128,19 +1137,13 @@ fn set_member(self_: &mut VM) {
                         .or_insert_with(|| Value::undefined()) = val
                 }
             }
-        }
+        },
         ValueBase::Arguments => {
             match member.val {
                 // Index
-                ValueBase::Number(n) if n - n.floor() == 0.0 => {
-                    self_
-                        .state
-                        .scope
-                        .last()
-                        .unwrap()
-                        .borrow_mut()
-                        .set_arguments_nth_value(n as usize, val);
-                }
+                ValueBase::Number(n) if n - n.floor() == 0.0 => unsafe {
+                    (**self_.state.scope.last().unwrap()).set_arguments_nth_value(n as usize, val);
+                },
                 // TODO: 'length'
                 _ => {}
             }
@@ -1195,7 +1198,7 @@ pub fn call_function(self_: &mut VM, dst: usize, args: Vec<Value>, mut callobj: 
     if let Some(rest_param_name) = rest_param_name {
         callobj.set_value(
             rest_param_name,
-            Value::array(Rc::new(RefCell::new(ArrayValue::new(rest_args)))),
+            Value::array(Box::into_raw(Box::new(ArrayValue::new(rest_args)))), // XXX
         );
     } else {
         for arg in rest_args {
@@ -1203,14 +1206,14 @@ pub fn call_function(self_: &mut VM, dst: usize, args: Vec<Value>, mut callobj: 
         }
     }
 
-    self_.state.scope.push(Rc::new(RefCell::new(callobj)));
+    self_.state.scope.push(Box::into_raw(Box::new(callobj))); // XXX
 
     if args_all_numbers {
-        let scope = self_.state.scope.last().unwrap().borrow().clone();
+        let scope = (*self_.state.scope.last().unwrap()).clone();
         if let Some(f) = unsafe {
             self_
                 .jit
-                .can_jit(&self_.iseq, &scope, &self_.const_table, dst, argc)
+                .can_jit(&self_.iseq, &*scope, &self_.const_table, dst, argc)
         } {
             self_
                 .state
@@ -1251,7 +1254,7 @@ fn call(self_: &mut VM) {
             unsafe { self_.builtin_functions[x](callobj, args, self_) };
         }
         ValueBase::Function(dst, _, mut callobj) => {
-            callobj.vals = Rc::new(RefCell::new(HashMap::new()));
+            callobj.vals = Box::into_raw(Box::new(HashMap::new())); // XXX
 
             let mut args = vec![];
             for _ in 0..argc {
@@ -1312,7 +1315,7 @@ fn get_name(self_: &mut VM) {
     self_.state.pc += 1;
     get_int32!(self_, name_id, usize);
     let name = &self_.const_table.string[name_id];
-    let val = self_.state.scope.last().unwrap().borrow().get_value(name);
+    let val = unsafe { (**self_.state.scope.last().unwrap()).get_value(name) };
     self_.state.stack.push(val);
 }
 
@@ -1321,13 +1324,7 @@ fn set_name(self_: &mut VM) {
     get_int32!(self_, name_id, usize);
     let name = self_.const_table.string[name_id].clone();
     let val = self_.state.stack.pop().unwrap();
-    self_
-        .state
-        .scope
-        .last()
-        .unwrap()
-        .borrow_mut()
-        .set_value_if_exist(name, val);
+    unsafe { (**self_.state.scope.last().unwrap()).set_value_if_exist(name, val) };
 }
 
 fn decl_var(self_: &mut VM) {
@@ -1335,13 +1332,9 @@ fn decl_var(self_: &mut VM) {
     get_int32!(self_, name_id, usize);
     let name = self_.const_table.string[name_id].clone();
     let val = self_.state.stack.pop().unwrap();
-    self_
-        .state
-        .scope
-        .last()
-        .unwrap()
-        .borrow_mut()
-        .set_value(name, val);
+    unsafe {
+        (**self_.state.scope.last().unwrap()).set_value(name, val);
+    }
 }
 
 // #[rustfmt::skip]
