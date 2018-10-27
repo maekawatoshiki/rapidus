@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::{hash_map::Entry, HashMap};
+use std::collections::{hash_map::Entry, HashMap, HashSet};
 use std::ffi::CString;
 
 use libc;
@@ -83,23 +83,56 @@ pub struct VMState {
     pub history: Vec<(usize, isize)>, // sp, return_pc
 }
 
-pub enum GCState {
-    Marked,
-    UnMarked,
-}
-
-thread_local!(pub static GC_MEM: RefCell<HashMap<*mut libc::c_void, GCState>> = {
-    let m = HashMap::new();
-    RefCell::new(m)
+thread_local!(pub static GC_MEM: RefCell<HashSet<*mut libc::c_void>> = {
+    RefCell::new(HashSet::new())
 });
 
 pub fn gc_new<T>(data: T) -> *mut T {
     let ptr = Box::into_raw(Box::new(data));
-    GC_MEM.with(|m| {
-        m.borrow_mut()
-            .insert(ptr as *mut libc::c_void, GCState::UnMarked)
-    });
+    GC_MEM.with(|m| m.borrow_mut().insert(ptr as *mut libc::c_void));
     ptr
+}
+fn gc_free(hs: &mut HashSet<*mut libc::c_void>) {
+    GC_MEM.with(|all| {
+        let mut all = all.borrow_mut();
+        let and = &*all & hs;
+        for val in and {
+            // free
+            unsafe {
+                let _ = Box::from_raw(val);
+            }
+        }
+        *all = &*all - hs;
+    });
+}
+fn gc_trace(vm_state: &VMState, hs: &mut HashSet<*mut libc::c_void>) {
+    for val in &vm_state.stack {
+        gc_trace_value(val, hs);
+    }
+}
+fn gc_trace_value(val: &Value, hs: &mut HashSet<*mut libc::c_void>) {
+    match val.val {
+        ValueBase::Undefined => {}
+        ValueBase::Bool(_) => {}
+        ValueBase::Number(_) => {}
+        ValueBase::String(_) => {}
+        ValueBase::Function(_, ref obj, ref _c) => {
+            gc_trace_hm(*obj, hs);
+        }
+        ValueBase::BuiltinFunction(_, ref _c) => {}
+        ValueBase::Object(ref obj) => {
+            gc_trace_hm(*obj, hs);
+        }
+        ValueBase::Array(ref _a) => unimplemented!(),
+        ValueBase::Arguments => {}
+    }
+}
+fn gc_trace_hm(hm: *mut HashMap<String, Value>, hs: &mut HashSet<*mut libc::c_void>) {
+    unsafe {
+        for (_, val) in &*hm {
+            gc_trace_value(val, hs);
+        }
+    }
 }
 
 impl CallObject {
@@ -1054,6 +1087,9 @@ fn create_object(self_: &mut VM) {
         map.insert(name, val.clone());
     }
     self_.state.stack.push(Value::object(gc_new(map)));
+    let mut a = HashSet::new();
+    gc_trace(&self_.state, &mut a);
+    gc_free(&mut a);
 }
 
 fn create_array(self_: &mut VM) {
