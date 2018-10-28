@@ -1,4 +1,4 @@
-use std::collections::{hash_map::Entry, HashMap, HashSet};
+use std::collections::{hash_map::Entry, HashMap};
 use std::ffi::CString;
 
 use libc;
@@ -6,7 +6,7 @@ use libc;
 
 use builtin;
 use bytecode_gen::{ByteCode, VMInst};
-use gc::*;
+use gc;
 use jit::TracingJit;
 use node::BinOp;
 
@@ -86,7 +86,7 @@ pub struct VMState {
 impl CallObject {
     pub fn new(this: Value) -> CallObject {
         CallObject {
-            vals: gc_new(HashMap::new()),
+            vals: gc::new(HashMap::new()),
             params: vec![],
             arg_rest_vals: vec![],
             this: Box::new(this),
@@ -95,7 +95,7 @@ impl CallObject {
     }
 
     pub fn new_global() -> CallObjectRef {
-        let vals = gc_new(HashMap::new());
+        let vals = gc::new(HashMap::new());
         let callobj = Box::into_raw(Box::new(CallObject {
             vals: vals.clone(),
             params: vec![],
@@ -190,7 +190,7 @@ impl ArrayValue {
                 let mut hm = HashMap::new();
                 hm.insert(
                     "__proto__".to_string(),
-                    Value::new(ValueBase::Object(gc_new({
+                    Value::new(ValueBase::Object(gc::new({
                         let mut hm = HashMap::new();
                         hm.insert(
                             "push".to_string(),
@@ -456,7 +456,7 @@ pub fn new_value_function(pos: usize, callobj: CallObject) -> Value {
             let mut hm = HashMap::new();
             hm.insert(
                 "prototype".to_string(),
-                Value::new(ValueBase::Object(gc_new(HashMap::new()))),
+                Value::new(ValueBase::Object(gc::new(HashMap::new()))),
             );
             hm.insert(
                 "__proto__".to_string(),
@@ -519,7 +519,7 @@ impl VM {
                         CallObject::new(Value::undefined()),
                     ),
                 );
-                Value::object(gc_new(map))
+                Value::object(gc::new(map))
             });
         }
 
@@ -535,9 +535,9 @@ impl VM {
                             CallObject::new(Value::undefined()),
                         ),
                     );
-                    Value::object(gc_new(map))
+                    Value::object(gc::new(map))
                 });
-                Value::object(gc_new(map))
+                Value::object(gc::new(map))
             });
         }
 
@@ -756,7 +756,7 @@ impl VM {
                         CallObject::new(Value::undefined()),
                     ),
                 );
-                Value::object(gc_new(map))
+                Value::object(gc::new(map))
             });
         }
 
@@ -946,10 +946,10 @@ fn construct(self_: &mut VM) {
                         .unwrap_or(&Value::undefined())
                         .clone()
                 });
-                gc_new(map)
+                gc::new(map)
             };
 
-            callobj.vals = gc_new(HashMap::new());
+            callobj.vals = gc::new(HashMap::new());
 
             // similar code is used some times. should make it a function.
             let mut args = vec![];
@@ -974,7 +974,7 @@ fn construct(self_: &mut VM) {
             if let Some(rest_param_name) = rest_param_name {
                 callobj.set_value(
                     rest_param_name,
-                    Value::array(gc_new(ArrayValue::new(rest_args))),
+                    Value::array(gc::new(ArrayValue::new(rest_args))),
                 );
             } else {
                 for arg in rest_args {
@@ -983,7 +983,7 @@ fn construct(self_: &mut VM) {
             }
 
             *callobj.this = Value::object(new_this);
-            self_.state.scope.push(gc_new(callobj));
+            self_.state.scope.push(gc::new(callobj));
             self_
                 .state
                 .history
@@ -1034,12 +1034,10 @@ fn create_object(self_: &mut VM) {
         let val = self_.state.stack.pop().unwrap();
         map.insert(name, val.clone());
     }
-    self_.state.stack.push(Value::object(gc_new(map)));
 
-    // TODO: Refine code
-    let mut marked = HashSet::new();
-    gc_trace(&self_.state, &mut marked);
-    gc_free(&marked);
+    self_.state.stack.push(Value::object(gc::new(map)));
+
+    gc::mark_and_sweep(&self_.state);
 }
 
 fn create_array(self_: &mut VM) {
@@ -1055,12 +1053,9 @@ fn create_array(self_: &mut VM) {
     self_
         .state
         .stack
-        .push(Value::array(gc_new(ArrayValue::new(arr))));
+        .push(Value::array(gc::new(ArrayValue::new(arr))));
 
-    // TODO: Refine code
-    let mut marked = HashSet::new();
-    gc_trace(&self_.state, &mut marked);
-    gc_free(&marked);
+    gc::mark_and_sweep(&self_.state);
 }
 
 fn push_int8(self_: &mut VM) {
@@ -1349,7 +1344,7 @@ pub fn call_function(self_: &mut VM, dst: usize, args: Vec<Value>, mut callobj: 
     if let Some(rest_param_name) = rest_param_name {
         callobj.set_value(
             rest_param_name,
-            Value::array(gc_new(ArrayValue::new(rest_args))),
+            Value::array(gc::new(ArrayValue::new(rest_args))),
         );
     } else {
         for arg in rest_args {
@@ -1357,7 +1352,7 @@ pub fn call_function(self_: &mut VM, dst: usize, args: Vec<Value>, mut callobj: 
         }
     }
 
-    self_.state.scope.push(gc_new(callobj));
+    self_.state.scope.push(gc::new(callobj));
 
     if args_all_numbers {
         let scope = (*self_.state.scope.last().unwrap()).clone();
@@ -1405,7 +1400,7 @@ fn call(self_: &mut VM) {
             unsafe { self_.builtin_functions[x](callobj, args, self_) };
         }
         ValueBase::Function(dst, _, mut callobj) => {
-            callobj.vals = gc_new(HashMap::new());
+            callobj.vals = gc::new(HashMap::new());
 
             let mut args = vec![];
             for _ in 0..argc {
