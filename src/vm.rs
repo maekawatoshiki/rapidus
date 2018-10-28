@@ -179,9 +179,8 @@ fn gc_trace_value(val: &Value, marked: &mut HashSet<*mut Gc>) {
             }
         }
         ValueBase::Array(ref a) => {
-            if marked.insert(*a) {
-                gc_trace_aryval(*a, marked)
-            }
+            marked.insert(*a);
+            gc_trace_aryval(*a, marked)
         }
         ValueBase::Arguments => {}
     }
@@ -312,7 +311,7 @@ impl ArrayValue {
                 let mut hm = HashMap::new();
                 hm.insert(
                     "__proto__".to_string(),
-                    Value::new(ValueBase::Object(Box::into_raw(Box::new({
+                    Value::new(ValueBase::Object(gc_new({
                         let mut hm = HashMap::new();
                         hm.insert(
                             "push".to_string(),
@@ -322,7 +321,7 @@ impl ArrayValue {
                             )),
                         );
                         hm
-                    })))),
+                    }))),
                 );
                 hm
             },
