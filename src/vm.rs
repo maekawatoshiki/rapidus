@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::collections::{hash_map::Entry, HashMap, HashSet};
 use std::ffi::CString;
 
@@ -7,6 +6,7 @@ use libc;
 
 use builtin;
 use bytecode_gen::{ByteCode, VMInst};
+use gc::*;
 use jit::TracingJit;
 use node::BinOp;
 
@@ -81,127 +81,6 @@ pub struct VMState {
     pub scope: Vec<CallObjectRef>,
     pub pc: isize,
     pub history: Vec<(usize, isize)>, // sp, return_pc
-}
-
-pub trait Gc {
-    fn free(&self);
-}
-
-impl Gc for HashMap<String, Value> {
-    fn free(&self) {
-        ::std::mem::drop(self);
-    }
-}
-impl Gc for CallObject {
-    fn free(&self) {
-        ::std::mem::drop(self);
-    }
-}
-impl Gc for ArrayValue {
-    fn free(&self) {
-        ::std::mem::drop(self);
-    }
-}
-
-thread_local!(pub static GC_MEM: RefCell<HashSet<*mut Gc>> = {
-    RefCell::new(HashSet::new())
-});
-
-pub fn gc_new<X: Gc + 'static>(data: X) -> *mut X {
-    let ptr = Box::into_raw(Box::new(data));
-    GC_MEM.with(|m| m.borrow_mut().insert(ptr));
-    ptr
-}
-pub fn gc_free(marked: &HashSet<*mut Gc>) {
-    GC_MEM.with(|mem| {
-        mem.borrow_mut().retain(|p| {
-            let mut is_marked = false;
-            for marked in marked {
-                if *marked as *mut libc::c_void == *p as *mut libc::c_void {
-                    is_marked = true;
-                    break;
-                }
-            }
-            if !is_marked {
-                unsafe {
-                    (**p).free();
-                    Box::from_raw(*p);
-                }
-            }
-            is_marked
-        });
-    });
-}
-fn gc_trace(vm_state: &VMState, marked: &mut HashSet<*mut Gc>) {
-    // println!("{} {}", vm_state.stack.len(), vm_state.scope.len());
-    for val in &vm_state.stack {
-        gc_trace_value(val, marked);
-    }
-    for scope in &vm_state.scope {
-        unsafe {
-            marked.insert(*scope);
-            gc_trace_callobj(&**scope, marked);
-        }
-    }
-}
-fn gc_trace_callobj(callobj: &CallObject, marked: &mut HashSet<*mut Gc>) {
-    unsafe {
-        if marked.insert((*callobj).vals) {
-            gc_trace_hm((*callobj).vals, marked);
-        }
-        for val in &(*callobj).arg_rest_vals {
-            gc_trace_value(val, marked);
-        }
-        if let Some(parent) = (*callobj).parent {
-            if marked.insert(parent) {
-                gc_trace_callobj(&*parent, marked);
-            }
-        }
-        gc_trace_value(&*(*callobj).this, marked);
-    }
-}
-fn gc_trace_value(val: &Value, marked: &mut HashSet<*mut Gc>) {
-    match val.val {
-        ValueBase::Undefined => {}
-        ValueBase::Bool(_) => {}
-        ValueBase::Number(_) => {}
-        ValueBase::String(_) => {}
-        ValueBase::Function(_, ref obj, ref c) => {
-            if marked.insert(*obj) {
-                gc_trace_hm(*obj, marked);
-            }
-            gc_trace_callobj(c, marked);
-        }
-        ValueBase::BuiltinFunction(_, ref c) => gc_trace_callobj(c, marked),
-        ValueBase::Object(ref obj) => {
-            if marked.insert(*obj) {
-                gc_trace_hm(*obj, marked);
-            }
-        }
-        ValueBase::Array(ref a) => {
-            marked.insert(*a);
-            gc_trace_aryval(*a, marked)
-        }
-        ValueBase::Arguments => {}
-    }
-}
-fn gc_trace_hm(hm: *mut HashMap<String, Value>, marked: &mut HashSet<*mut Gc>) {
-    unsafe {
-        for (_, val) in &*hm {
-            gc_trace_value(val, marked);
-        }
-    }
-}
-fn gc_trace_aryval(aryval: *mut ArrayValue, marked: &mut HashSet<*mut Gc>) {
-    unsafe {
-        let aryval = &*aryval;
-        for val in &aryval.elems {
-            gc_trace_value(val, marked)
-        }
-        for (_, val) in &aryval.obj {
-            gc_trace_value(val, marked)
-        }
-    }
 }
 
 impl CallObject {

@@ -1,4 +1,5 @@
-use vm::{call_function, gc_new, CallObject, RawStringPtr, Value, ValueBase, VM};
+use gc::gc_new;
+use vm::{call_function, CallObject, RawStringPtr, Value, ValueBase, VM};
 
 use libc;
 use rand::random;
@@ -311,7 +312,7 @@ pub unsafe fn function_prototype_call(callobj: CallObject, args: Vec<Value>, sel
     match callee.val {
         ValueBase::Function(dst, _obj, mut callobj) => {
             *callobj.this = arg_this;
-            callobj.vals = gc_new(HashMap::new()); 
+            callobj.vals = gc_new(HashMap::new());
             call_function(self_, dst, args[1..].to_vec(), callobj);
         }
         _ => {}

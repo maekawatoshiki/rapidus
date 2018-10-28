@@ -1,8 +1,10 @@
 #![feature(box_patterns)]
 #![feature(repeat_generic_slice)]
 
+pub mod builtin;
 pub mod bytecode_gen;
 pub mod extract_anony_func;
+pub mod gc;
 pub mod id;
 pub mod jit;
 pub mod lexer;
@@ -11,7 +13,6 @@ pub mod parser;
 pub mod token;
 pub mod vm;
 pub mod vm_codegen;
-pub mod builtin;
 
 extern crate ansi_term;
 extern crate encoding;
