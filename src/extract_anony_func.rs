@@ -191,7 +191,11 @@ impl AnonymousFunctionExtractor {
                     }
                 }
             }
-
+            NodeBase::Array(ref mut elems) => {
+                for elem in elems {
+                    self.run(elem);
+                }
+            }
             _ => {}
         }
     }
