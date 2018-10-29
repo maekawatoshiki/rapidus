@@ -1202,35 +1202,43 @@ fn binary(self_: &mut VM, op: &BinOp) {
     }) };
     fn lt(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
         (ValueBase::Number(l), ValueBase::Number(r)) => Value::bool(l < r),
+        (ValueBase::String(l), ValueBase::String(r)) => Value::bool(l < r),
         _ => unimplemented!(),
     }) };
     fn gt(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
         (ValueBase::Number(l), ValueBase::Number(r)) => Value::bool(l > r),
+        (ValueBase::String(l), ValueBase::String(r)) => Value::bool(l > r),
         _ => unimplemented!(),
     }) };
     fn le(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
         (ValueBase::Number(l), ValueBase::Number(r)) => Value::bool(l <= r),
+        (ValueBase::String(l), ValueBase::String(r)) => Value::bool(l <= r),
         _ => unimplemented!(),
     }) };
     fn ge(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
         (ValueBase::Number(l), ValueBase::Number(r)) => Value::bool(l >= r),
+        (ValueBase::String(l), ValueBase::String(r)) => Value::bool(l >= r),
         _ => unimplemented!(),
     }) };
     // TODO: Need more precise implementation 
     fn eq(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
         (ValueBase::Number(l), ValueBase::Number(r)) => Value::bool(l == r),
+        (ValueBase::String(l), ValueBase::String(r)) => Value::bool(l == r),
         _ => unimplemented!(),
     }) };
     fn ne(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
         (ValueBase::Number(l), ValueBase::Number(r)) => Value::bool(l != r),
+        (ValueBase::String(l), ValueBase::String(r)) => Value::bool(l != r),
         _ => unimplemented!(),
     }) };
     fn seq(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
         (ValueBase::Number(l), ValueBase::Number(r)) => Value::bool(l == r),
+        (ValueBase::String(l), ValueBase::String(r)) => Value::bool(l == r),
         _ => unimplemented!(),
     }) };
     fn sne(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
         (ValueBase::Number(l), ValueBase::Number(r)) => Value::bool(l != r),
+        (ValueBase::String(l), ValueBase::String(r)) => Value::bool(l != r),
         _ => unimplemented!(),
     }) };
     fn and(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
