@@ -72,7 +72,7 @@ pub struct VM {
     pub const_table: ConstantTable,
     pub iseq: ByteCode,
     pub loop_bgn_end: HashMap<isize, isize>,
-    pub op_table: [fn(&mut VM); 44],
+    pub op_table: [fn(&mut VM); 45],
     pub builtin_functions: Vec<unsafe fn(CallObject, Vec<Value>, &mut VM)>,
 }
 
@@ -820,6 +820,7 @@ impl VM {
                 get_name,
                 set_name,
                 decl_var,
+                cond_op,
             ],
             builtin_functions: vec![
                 builtin::console_log,
@@ -1489,6 +1490,11 @@ fn decl_var(self_: &mut VM) {
     unsafe {
         (**self_.state.scope.last().unwrap()).set_value(name, val);
     }
+}
+
+// 'cond_op' is for JIT compiler. Nope for VM.
+fn cond_op(self_: &mut VM) {
+    self_.state.pc += 1;
 }
 
 // #[rustfmt::skip]

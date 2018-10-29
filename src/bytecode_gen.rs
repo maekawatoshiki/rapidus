@@ -48,6 +48,7 @@ pub mod VMInst {
     pub const GET_NAME: u8 = 0x29;
     pub const SET_NAME: u8 = 0x2a;
     pub const DECL_VAR: u8 = 0x2b;
+    pub const COND_OP: u8 = 0x2c;
 
     pub fn get_inst_size(inst: u8) -> Option<usize> {
         match inst {
@@ -57,7 +58,8 @@ pub mod VMInst {
             PUSH_INT8 => Some(2),
             PUSH_FALSE | END | PUSH_TRUE | PUSH_THIS | ADD | SUB | MUL | DIV | REM | LT
             | PUSH_ARGUMENTS | NEG | POSI | GT | LE | GE | EQ | NE | GET_MEMBER | RETURN | SNE
-            | POP | DOUBLE | AND | OR | SEQ | SET_MEMBER | SET_CUR_CALLOBJ | LAND | LOR => Some(1),
+            | POP | DOUBLE | AND | COND_OP | OR | SEQ | SET_MEMBER | SET_CUR_CALLOBJ | LAND
+            | LOR => Some(1),
             _ => None,
         }
     }
@@ -282,6 +284,10 @@ impl ByteCodeGen {
         })();
         iseq.push(VMInst::DECL_VAR);
         self.gen_int32(id as i32, iseq);
+    }
+
+    pub fn gen_cond_op(&mut self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::COND_OP);
     }
 
     // Utils

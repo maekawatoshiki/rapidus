@@ -913,6 +913,35 @@ impl TracingJit {
                         LLVMBuildBr(self.builder, bb);
                     }
                 }
+                VMInst::COND_OP => {
+                    pc += 1;
+                    let else_val = try_stack!(stack.pop());
+                    let then_val = try_stack!(stack.pop());
+                    let phi = LLVMBuildPhi(
+                        self.builder,
+                        LLVMTypeOf(then_val),
+                        CString::new("condop").unwrap().as_ptr(),
+                    );
+                    LLVMAddIncoming(
+                        phi,
+                        vec![then_val].as_mut_slice().as_mut_ptr(),
+                        vec![logcom.pop().unwrap()].as_mut_slice().as_mut_ptr(),
+                        1,
+                    );
+                    LLVMAddIncoming(
+                        phi,
+                        vec![else_val].as_mut_slice().as_mut_ptr(),
+                        vec![logor.pop().unwrap()].as_mut_slice().as_mut_ptr(),
+                        1,
+                    );
+
+                    logand.pop();
+                    if let Some(x) = logor.last_mut() {
+                        *x = LLVMGetInsertBlock(self.builder);
+                    }
+
+                    stack.push((phi, None));
+                }
                 VMInst::LAND => {
                     pc += 1;
                     let phi = LLVMBuildPhi(

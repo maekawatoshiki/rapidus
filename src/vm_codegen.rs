@@ -234,6 +234,9 @@ impl VMCodeGen {
             &NodeBase::BinaryOp(ref lhs, ref rhs, ref op) => {
                 self.run_binary_op(&*lhs, &*rhs, op, iseq)
             }
+            &NodeBase::TernaryOp(ref cond, ref then, ref else_) => {
+                self.run_ternary_op(&*cond, &*then, &*else_, iseq)
+            }
             &NodeBase::Call(ref callee, ref args) => self.run_call(&*callee, args, iseq),
             &NodeBase::Member(ref parent, ref member) => self.run_member(&*parent, member, iseq),
             &NodeBase::Index(ref parent, ref idx) => self.run_index(&*parent, &*idx, iseq),
@@ -584,6 +587,34 @@ impl VMCodeGen {
             &BinOp::Ge => self.bytecode_gen.gen_ge(iseq),
             _ => {}
         }
+    }
+
+    pub fn run_ternary_op(&mut self, cond: &Node, then: &Node, else_: &Node, iseq: &mut ByteCode) {
+        self.run(cond, iseq);
+
+        let cond_pos = iseq.len() as isize;
+        self.bytecode_gen.gen_jmp_if_false(0, iseq);
+
+        self.run(then, iseq);
+
+        let then_end_pos = iseq.len() as isize;
+        self.bytecode_gen.gen_jmp(0, iseq);
+
+        let pos = iseq.len() as isize;
+        self.bytecode_gen.replace_int32(
+            (pos - cond_pos) as i32 - 5,
+            &mut iseq[cond_pos as usize + 1..cond_pos as usize + 5],
+        );
+
+        self.run(else_, iseq);
+
+        let pos = iseq.len() as isize;
+        self.bytecode_gen.replace_int32(
+            (pos - then_end_pos) as i32 - 5,
+            &mut iseq[then_end_pos as usize + 1..then_end_pos as usize + 5],
+        );
+
+        self.bytecode_gen.gen_cond_op(iseq);
     }
 
     pub fn run_assign(&mut self, dst: &Node, src: &Node, iseq: &mut ByteCode) {
