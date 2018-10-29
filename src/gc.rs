@@ -2,7 +2,10 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::mem;
+use std::sync::atomic::{self, AtomicUsize};
 use vm::{ArrayValue, CallObject, VMState, Value, ValueBase};
+
+static ALLOCATED_MEM_SIZE_BYTE: AtomicUsize = AtomicUsize::new(0);
 
 thread_local!(pub static GC_MEM: RefCell<HashSet<GcPtr>> = {
     RefCell::new(HashSet::new())
@@ -116,7 +119,9 @@ impl Gc for ArrayValue {
 }
 
 pub fn new<X: Gc + 'static>(data: X) -> *mut X {
+    let data_size = mem::size_of_val(&data);
     let ptr = Box::into_raw(Box::new(data));
+    ALLOCATED_MEM_SIZE_BYTE.fetch_add(data_size, atomic::Ordering::SeqCst);
     GC_MEM.with(|m| m.borrow_mut().insert(GcPtr(ptr)));
     ptr
 }
@@ -132,9 +137,15 @@ pub fn new<X: Gc + 'static>(data: X) -> *mut X {
 // }
 
 pub fn mark_and_sweep(vm_state: &VMState) {
-    let mut marked = HashSet::new();
-    trace(&vm_state, &mut marked);
-    free(&marked);
+    fn over16kb_allocated() -> bool {
+        ALLOCATED_MEM_SIZE_BYTE.load(atomic::Ordering::SeqCst) > 16 * 1024
+    }
+
+    if over16kb_allocated() {
+        let mut marked = HashSet::new();
+        trace(&vm_state, &mut marked);
+        free(&marked);
+    }
 }
 
 fn trace(vm_state: &VMState, marked: &mut HashSet<GcPtr>) {
@@ -155,7 +166,8 @@ fn free(marked: &HashSet<GcPtr>) {
             if !is_marked {
                 unsafe {
                     (*p.0).free();
-                    Box::from_raw(p.0);
+                    let released_size = mem::size_of_val(&*Box::from_raw(p.0));
+                    ALLOCATED_MEM_SIZE_BYTE.fetch_sub(released_size, atomic::Ordering::SeqCst);
                 }
             }
             is_marked
