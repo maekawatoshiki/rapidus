@@ -12,6 +12,7 @@ llvm-sys = "60.0.0"
 ansi_term = "0.9.0"
 nix = "*"
 encoding = "*"
+rustc-hash = "*"
 
 [profile.dev]
 codegen-units = 16

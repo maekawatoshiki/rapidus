@@ -1,4 +1,5 @@
-use std::collections::{hash_map::Entry, HashMap};
+use rustc_hash::FxHashMap;
+use std::collections::hash_map::Entry;
 use std::ffi::CString;
 
 use libc;
@@ -16,7 +17,7 @@ pub type CallObjectRef = *mut CallObject;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct CallObject {
-    pub vals: *mut HashMap<String, Value>,
+    pub vals: *mut FxHashMap<String, Value>,
     pub params: Vec<(String, bool)>, // (name, rest param?)
     pub arg_rest_vals: Vec<Value>,
     pub this: Box<Value>,
@@ -27,7 +28,7 @@ pub struct CallObject {
 pub struct ArrayValue {
     pub elems: Vec<Value>,
     pub length: usize,
-    pub obj: HashMap<String, Value>,
+    pub obj: FxHashMap<String, Value>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -44,9 +45,9 @@ pub enum ValueBase {
     Bool(bool),
     Number(f64),
     String(CString),
-    Function(usize, *mut HashMap<String, Value>, CallObject),
+    Function(usize, *mut FxHashMap<String, Value>, CallObject),
     BuiltinFunction(usize, CallObject),  // id(==0:unknown)
-    Object(*mut HashMap<String, Value>), // Object(HashMap<String, Value>),
+    Object(*mut FxHashMap<String, Value>), // Object(FxHashMap<String, Value>),
     Array(*mut ArrayValue),
     Arguments,
 }
@@ -71,7 +72,7 @@ pub struct VM {
     pub state: VMState,
     pub const_table: ConstantTable,
     pub iseq: ByteCode,
-    pub loop_bgn_end: HashMap<isize, isize>,
+    pub loop_bgn_end: FxHashMap<isize, isize>,
     pub op_table: [fn(&mut VM); 45],
     pub builtin_functions: Vec<unsafe fn(CallObject, Vec<Value>, &mut VM)>,
 }
@@ -86,7 +87,7 @@ pub struct VMState {
 impl CallObject {
     pub fn new(this: Value) -> CallObject {
         CallObject {
-            vals: gc::new(HashMap::new()),
+            vals: gc::new(FxHashMap::default()),
             params: vec![],
             arg_rest_vals: vec![],
             this: Box::new(this),
@@ -95,7 +96,7 @@ impl CallObject {
     }
 
     pub fn new_global() -> CallObjectRef {
-        let vals = gc::new(HashMap::new());
+        let vals = gc::new(FxHashMap::default());
         let callobj = Box::into_raw(Box::new(CallObject {
             vals: vals.clone(),
             params: vec![],
@@ -187,11 +188,11 @@ impl ArrayValue {
             elems: arr,
             length: len,
             obj: {
-                let mut hm = HashMap::new();
+                let mut hm = FxHashMap::default();
                 hm.insert(
                     "__proto__".to_string(),
                     Value::new(ValueBase::Object(gc::new({
-                        let mut hm = HashMap::new();
+                        let mut hm = FxHashMap::default();
                         hm.insert(
                             "push".to_string(),
                             Value::new(ValueBase::BuiltinFunction(
@@ -248,7 +249,7 @@ impl Value {
         Value::new(ValueBase::String(s))
     }
 
-    pub fn function(pc: usize, obj: *mut HashMap<String, Value>, callobj: CallObject) -> Value {
+    pub fn function(pc: usize, obj: *mut FxHashMap<String, Value>, callobj: CallObject) -> Value {
         Value::new(ValueBase::Function(pc, obj, callobj))
     }
 
@@ -256,7 +257,7 @@ impl Value {
         Value::new(ValueBase::BuiltinFunction(pc, callobj))
     }
 
-    pub fn object(obj: *mut HashMap<String, Value>) -> Value {
+    pub fn object(obj: *mut FxHashMap<String, Value>) -> Value {
         Value::new(ValueBase::Object(obj))
     }
 
@@ -269,7 +270,7 @@ impl Value {
     }
 
     pub fn get_property(&self, property: ValueBase, callobjref: &CallObjectRef) -> Value {
-        let property_of_simple = |obj: &HashMap<String, Value>| -> Value {
+        let property_of_simple = |obj: &FxHashMap<String, Value>| -> Value {
             match obj_find_val(obj, property.to_string().as_str()).val {
                 ValueBase::Function(pos, map2, mut callobj) => Value::function(pos, map2, {
                     *callobj.this = self.clone();
@@ -309,7 +310,7 @@ impl Value {
             }
         };
         let property_of_object =
-            |properties: &HashMap<String, Value>| -> Value { property_of_simple(properties) };
+            |properties: &FxHashMap<String, Value>| -> Value { property_of_simple(properties) };
         let property_of_array = |ary: &ArrayValue| -> Value {
             match property {
                 // Index
@@ -453,15 +454,15 @@ pub fn new_value_function(pos: usize, callobj: CallObject) -> Value {
     let mut val = Value::new(ValueBase::Function(
         pos,
         Box::into_raw(Box::new({
-            let mut hm = HashMap::new();
+            let mut hm = FxHashMap::default();
             hm.insert(
                 "prototype".to_string(),
-                Value::new(ValueBase::Object(gc::new(HashMap::new()))),
+                Value::new(ValueBase::Object(gc::new(FxHashMap::default()))),
             );
             hm.insert(
                 "__proto__".to_string(),
                 Value::new(ValueBase::Object(Box::into_raw(Box::new({
-                    let mut hm = HashMap::new();
+                    let mut hm = FxHashMap::default();
                     hm.insert(
                         "call".to_string(),
                         Value::builtin_function(
@@ -489,7 +490,7 @@ pub fn new_value_function(pos: usize, callobj: CallObject) -> Value {
     val
 }
 
-pub fn obj_find_val(obj: &HashMap<String, Value>, key: &str) -> Value {
+pub fn obj_find_val(obj: &FxHashMap<String, Value>, key: &str) -> Value {
     match obj.get(key) {
         Some(addr) => addr.clone(),
         None => match obj.get("__proto__") {
@@ -511,7 +512,7 @@ impl VM {
     pub fn new(global_vals: CallObjectRef) -> VM {
         unsafe {
             (*global_vals).set_value("console".to_string(), {
-                let mut map = HashMap::new();
+                let mut map = FxHashMap::default();
                 map.insert(
                     "log".to_string(),
                     Value::builtin_function(
@@ -525,9 +526,9 @@ impl VM {
 
         unsafe {
             (*global_vals).set_value("process".to_string(), {
-                let mut map = HashMap::new();
+                let mut map = FxHashMap::default();
                 map.insert("stdout".to_string(), {
-                    let mut map = HashMap::new();
+                    let mut map = FxHashMap::default();
                     map.insert(
                         "write".to_string(),
                         Value::builtin_function(
@@ -543,7 +544,7 @@ impl VM {
 
         unsafe {
             (*global_vals).set_value("Math".to_string(), {
-                let mut map = HashMap::new();
+                let mut map = FxHashMap::default();
                 map.insert("PI".to_string(), Value::number(::std::f64::consts::PI));
                 map.insert(
                     "floor".to_string(),
@@ -774,7 +775,7 @@ impl VM {
             },
             const_table: ConstantTable::new(),
             iseq: vec![],
-            loop_bgn_end: HashMap::new(),
+            loop_bgn_end: FxHashMap::default(),
             op_table: [
                 end,
                 create_context,
@@ -940,7 +941,7 @@ fn construct(self_: &mut VM) {
         ValueBase::Function(dst, obj, mut callobj) => {
             // insert new 'this'
             let new_this = {
-                let mut map = HashMap::new();
+                let mut map = FxHashMap::default();
                 map.insert("__proto__".to_string(), unsafe {
                     (*obj)
                         .get("prototype")
@@ -950,7 +951,7 @@ fn construct(self_: &mut VM) {
                 gc::new(map)
             };
 
-            callobj.vals = gc::new(HashMap::new());
+            callobj.vals = gc::new(FxHashMap::default());
 
             // similar code is used some times. should make it a function.
             let mut args = vec![];
@@ -1025,7 +1026,7 @@ fn create_object(self_: &mut VM) {
     self_.state.pc += 1; // create_object
     get_int32!(self_, len, usize);
 
-    let mut map = HashMap::new();
+    let mut map = FxHashMap::default();
     for _ in 0..len {
         let name = if let ValueBase::String(name) = self_.state.stack.pop().unwrap().val {
             name.into_string().unwrap()
@@ -1409,7 +1410,7 @@ fn call(self_: &mut VM) {
             unsafe { self_.builtin_functions[x](callobj, args, self_) };
         }
         ValueBase::Function(dst, _, mut callobj) => {
-            callobj.vals = gc::new(HashMap::new());
+            callobj.vals = gc::new(FxHashMap::default());
 
             let mut args = vec![];
             for _ in 0..argc {
@@ -1500,7 +1501,7 @@ fn cond_op(self_: &mut VM) {
 // #[rustfmt::skip]
 // pub fn vm2_test() {
 //     let mut vm2 = VM::new();
-//     vm2.const_table.value.push(Value::Function(41, Rc::new(RefCell::new(HashMap::new()))));
+//     vm2.const_table.value.push(Value::Function(41, Rc::new(RefCell::new(FxHashMap::default()))));
 //     vm2.const_table.value.push(Value::String("log".to_string()));
 //     vm2.const_table.string.push("console".to_string());
 //

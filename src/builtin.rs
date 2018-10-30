@@ -4,7 +4,7 @@ use vm::{call_function, CallObject, RawStringPtr, Value, ValueBase, VM};
 use libc;
 use rand::random;
 
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 use std::ffi::CString;
 
 pub const CONSOLE_LOG: usize = 0;
@@ -312,7 +312,7 @@ pub unsafe fn function_prototype_call(callobj: CallObject, args: Vec<Value>, sel
     match callee.val {
         ValueBase::Function(dst, _obj, mut callobj) => {
             *callobj.this = arg_this;
-            callobj.vals = gc::new(HashMap::new());
+            callobj.vals = gc::new(FxHashMap::default());
             call_function(self_, dst, args[1..].to_vec(), callobj);
         }
         _ => {}

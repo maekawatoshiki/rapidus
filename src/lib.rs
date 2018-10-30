@@ -20,4 +20,5 @@ extern crate libc;
 extern crate llvm_sys as llvm;
 extern crate nix;
 extern crate rand;
+extern crate rustc_hash;
 // extern crate cpuprofiler;

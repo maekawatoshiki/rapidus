@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::hash::{Hash, Hasher};
 use std::mem;
 use std::sync::atomic::{self, AtomicUsize};
@@ -7,8 +7,8 @@ use vm::{ArrayValue, CallObject, VMState, Value, ValueBase};
 
 static ALLOCATED_MEM_SIZE_BYTE: AtomicUsize = AtomicUsize::new(0);
 
-thread_local!(pub static GC_MEM: RefCell<HashSet<GcPtr>> = {
-    RefCell::new(HashSet::new())
+thread_local!(pub static GC_MEM: RefCell<FxHashSet<GcPtr>> = {
+    RefCell::new(FxHashSet::default())
 });
 
 #[derive(Clone, Debug, Eq)]
@@ -32,7 +32,7 @@ impl Hash for GcPtr {
 
 pub trait Gc {
     fn free(&self);
-    fn trace(&self, &mut HashSet<GcPtr>);
+    fn trace(&self, &mut FxHashSet<GcPtr>);
 }
 
 impl Gc for Value {
@@ -40,7 +40,7 @@ impl Gc for Value {
         mem::drop(self);
     }
 
-    fn trace(&self, marked: &mut HashSet<GcPtr>) {
+    fn trace(&self, marked: &mut FxHashSet<GcPtr>) {
         match self.val {
             ValueBase::Undefined => {}
             ValueBase::Bool(_) => {}
@@ -68,12 +68,12 @@ impl Gc for Value {
     }
 }
 
-impl Gc for HashMap<String, Value> {
+impl Gc for FxHashMap<String, Value> {
     fn free(&self) {
         mem::drop(self);
     }
 
-    fn trace(&self, marked: &mut HashSet<GcPtr>) {
+    fn trace(&self, marked: &mut FxHashSet<GcPtr>) {
         for (_, val) in self {
             val.trace(marked);
         }
@@ -85,7 +85,7 @@ impl Gc for CallObject {
         mem::drop(self);
     }
 
-    fn trace(&self, marked: &mut HashSet<GcPtr>) {
+    fn trace(&self, marked: &mut FxHashSet<GcPtr>) {
         unsafe {
             not_marked_then(self.vals, marked, |vals, marked| {
                 (*vals).trace(marked);
@@ -108,7 +108,7 @@ impl Gc for ArrayValue {
         mem::drop(self);
     }
 
-    fn trace(&self, marked: &mut HashSet<GcPtr>) {
+    fn trace(&self, marked: &mut FxHashSet<GcPtr>) {
         for val in &self.elems {
             val.trace(marked)
         }
@@ -127,7 +127,7 @@ pub fn new<X: Gc + 'static>(data: X) -> *mut X {
 }
 
 // pub fn gc_new_and_free<X: Gc + 'static>(data: X, vm_state: &VMState) -> *mut X {
-//     let mut marked = HashSet::new();
+//     let mut marked = FxHashSet::default();
 //     trace(&vm_state, &mut marked);
 //     free(&marked);
 //
@@ -142,13 +142,13 @@ pub fn mark_and_sweep(vm_state: &VMState) {
     }
 
     if over16kb_allocated() {
-        let mut marked = HashSet::new();
+        let mut marked = FxHashSet::default();
         trace(&vm_state, &mut marked);
         free(&marked);
     }
 }
 
-fn trace(vm_state: &VMState, marked: &mut HashSet<GcPtr>) {
+fn trace(vm_state: &VMState, marked: &mut FxHashSet<GcPtr>) {
     for val in &vm_state.stack {
         val.trace(marked);
     }
@@ -159,7 +159,7 @@ fn trace(vm_state: &VMState, marked: &mut HashSet<GcPtr>) {
     }
 }
 
-fn free(marked: &HashSet<GcPtr>) {
+fn free(marked: &FxHashSet<GcPtr>) {
     GC_MEM.with(|mem| {
         mem.borrow_mut().retain(|p| {
             let is_marked = marked.contains(p);
@@ -175,9 +175,9 @@ fn free(marked: &HashSet<GcPtr>) {
     });
 }
 
-fn not_marked_then<F>(p: *mut Gc, marked: &mut HashSet<GcPtr>, mut f: F)
+fn not_marked_then<F>(p: *mut Gc, marked: &mut FxHashSet<GcPtr>, mut f: F)
 where
-    F: FnMut(*mut Gc, &mut HashSet<GcPtr>),
+    F: FnMut(*mut Gc, &mut FxHashSet<GcPtr>),
 {
     if marked.insert(GcPtr(p)) {
         f(p, marked);
