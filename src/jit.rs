@@ -1650,16 +1650,8 @@ pub unsafe fn run_loop_llvm_func(
     for (id, _) in &local_vars {
         let name = &const_table.string[*id];
         args_of_local_vars.push(match (*scope).get_value(name).val {
-            vm::ValueBase::Number(f) => {
-                let p = libc::calloc(1, ::std::mem::size_of::<f64>()) as *mut f64;
-                *p = f;
-                p as *mut libc::c_void
-            }
-            vm::ValueBase::Bool(b) => {
-                let p = libc::calloc(1, ::std::mem::size_of::<bool>()) as *mut bool;
-                *p = b;
-                p as *mut libc::c_void
-            }
+            vm::ValueBase::Number(f) => Box::into_raw(Box::new(f)) as *mut libc::c_void,
+            vm::ValueBase::Bool(b) => Box::into_raw(Box::new(b)) as *mut libc::c_void,
             _ => return None,
         });
     }
@@ -1680,7 +1672,7 @@ pub unsafe fn run_loop_llvm_func(
                 _ => unimplemented!(),
             },
         );
-        libc::free(args_of_local_vars[i]);
+        Box::from_raw(args_of_local_vars[i]);
     }
 
     Some(pc as isize)
