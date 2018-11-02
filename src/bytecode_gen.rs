@@ -112,6 +112,22 @@ impl ByteCodeGen {
         self.gen_int32(n, iseq);
     }
 
+    pub fn gen_push_number(&mut self, n: f64, iseq: &mut ByteCode) {
+        // If 'n' is an integer:
+        if n - n.floor() == 0.0 {
+            // If 'n' is within 1 byte:
+            if (::std::i8::MIN as f64) < n && n < (::std::i8::MAX as f64) {
+                self.gen_push_int8(n as i8, iseq);
+                return;
+            } else if (::std::i32::MIN as f64) <= n && n <= (::std::i32::MAX as f64) {
+                self.gen_push_int32(n as i32, iseq);
+                return;
+            }
+        }
+
+        self.gen_push_const(Value::number(n), iseq)
+    }
+
     pub fn gen_push_bool(&self, b: bool, iseq: &mut ByteCode) {
         iseq.push(if b {
             VMInst::PUSH_TRUE

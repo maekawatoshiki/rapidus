@@ -219,17 +219,9 @@ impl VMCodeGen {
                 NodeBase::String(ref s) => self
                     .bytecode_gen
                     .gen_push_const(Value::string(CString::new(s.as_str()).unwrap()), iseq),
-                // When 'n' is an integer
-                NodeBase::Number(n) if n - n.floor() == 0.0 => {
-                    if -128.0 < n && n < 127.0 {
-                        self.bytecode_gen.gen_push_int8(n as i8, iseq)
-                    } else {
-                        self.bytecode_gen.gen_push_int32(n as i32, iseq)
-                    }
-                }
-                NodeBase::Number(n) => self.bytecode_gen.gen_push_const(Value::number(n), iseq),
+                NodeBase::Number(n) => self.bytecode_gen.gen_push_number(n, iseq),
                 NodeBase::Boolean(b) => self.bytecode_gen.gen_push_bool(b, iseq),
-                _ => unreachable!()
+                _ => unreachable!(),
             }
             return;
         }
@@ -272,15 +264,7 @@ impl VMCodeGen {
             &NodeBase::String(ref s) => self
                 .bytecode_gen
                 .gen_push_const(Value::string(CString::new(s.as_str()).unwrap()), iseq),
-            // When 'n' is an integer
-            &NodeBase::Number(n) if n - n.floor() == 0.0 => {
-                if -128.0 < n && n < 127.0 {
-                    self.bytecode_gen.gen_push_int8(n as i8, iseq)
-                } else {
-                    self.bytecode_gen.gen_push_int32(n as i32, iseq)
-                }
-            }
-            &NodeBase::Number(n) => self.bytecode_gen.gen_push_const(Value::number(n), iseq),
+            &NodeBase::Number(n) => self.bytecode_gen.gen_push_number(n, iseq),
             &NodeBase::Boolean(b) => self.bytecode_gen.gen_push_bool(b, iseq),
             &NodeBase::SetCurCallObj(ref name) => {
                 self.bytecode_gen.gen_get_name(name, iseq);
