@@ -214,6 +214,26 @@ impl VMCodeGen {
     }
 
     fn run(&mut self, node: &Node, iseq: &mut ByteCode) {
+        if let Some(constant) = node.base.fold_num_consts() {
+            match constant {
+                NodeBase::String(ref s) => self
+                    .bytecode_gen
+                    .gen_push_const(Value::string(CString::new(s.as_str()).unwrap()), iseq),
+                // When 'n' is an integer
+                NodeBase::Number(n) if n - n.floor() == 0.0 => {
+                    if -128.0 < n && n < 127.0 {
+                        self.bytecode_gen.gen_push_int8(n as i8, iseq)
+                    } else {
+                        self.bytecode_gen.gen_push_int32(n as i32, iseq)
+                    }
+                }
+                NodeBase::Number(n) => self.bytecode_gen.gen_push_const(Value::number(n), iseq),
+                NodeBase::Boolean(b) => self.bytecode_gen.gen_push_bool(b, iseq),
+                _ => unreachable!()
+            }
+            return;
+        }
+
         match &node.base {
             &NodeBase::StatementList(ref node_list) => self.run_statement_list(node_list, iseq),
             &NodeBase::FunctionDecl(ref name, ref params, ref body) => {
