@@ -261,6 +261,7 @@ impl VMCodeGen {
             &NodeBase::Identifier(ref name) => self.run_identifier(name, iseq),
             &NodeBase::This => self.bytecode_gen.gen_push_this(iseq),
             &NodeBase::Arguments => self.bytecode_gen.gen_push_arguments(iseq),
+            &NodeBase::Undefined => self.bytecode_gen.gen_push_undefined(iseq),
             &NodeBase::String(ref s) => self
                 .bytecode_gen
                 .gen_push_const(Value::string(CString::new(s.as_str()).unwrap()), iseq),

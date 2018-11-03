@@ -56,6 +56,7 @@ pub enum NodeBase {
     Identifier(String),
     This,
     Arguments,
+    Undefined,
     String(String),
     Boolean(bool),
     Number(f64),

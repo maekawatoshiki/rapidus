@@ -738,6 +738,9 @@ impl Parser {
             Kind::Identifier(ref i) if i == "false" => {
                 Ok(Node::new(NodeBase::Boolean(false), tok.pos))
             }
+            Kind::Identifier(ref i) if i == "undefined" => {
+                Ok(Node::new(NodeBase::Undefined, tok.pos))
+            }
             Kind::Identifier(ident) => Ok(Node::new(NodeBase::Identifier(ident), tok.pos)),
             Kind::String(s) => Ok(Node::new(NodeBase::String(s), tok.pos)),
             Kind::Number(num) => Ok(Node::new(NodeBase::Number(num), tok.pos)),

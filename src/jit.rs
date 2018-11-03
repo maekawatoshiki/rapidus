@@ -1442,7 +1442,7 @@ impl TracingJit {
                                 }
                                 _ => return Err(()),
                             },
-                            vm::ValueBase::BuiltinFunction(n, _) => {
+                            vm::ValueBase::BuiltinFunction(n, _, _) => {
                                 match self.builtin_funcs.get(&n) {
                                     Some(f) => stack.push((*f, None)),
                                     _ => return Err(()),
@@ -1483,7 +1483,7 @@ impl TracingJit {
                             args.push((arg.0, infer_ty(arg.0, &arg.1)?));
                         }
                         match callee.val {
-                            vm::ValueBase::BuiltinFunction(builtin::CONSOLE_LOG, _) => {
+                            vm::ValueBase::BuiltinFunction(builtin::CONSOLE_LOG, _, _) => {
                                 for (arg, ty) in args {
                                     LLVMBuildCall(
                                         self.builder,
@@ -1511,7 +1511,7 @@ impl TracingJit {
                                     CString::new("").unwrap().as_ptr(),
                                 );
                             }
-                            vm::ValueBase::BuiltinFunction(builtin::PROCESS_STDOUT_WRITE, _) => {
+                            vm::ValueBase::BuiltinFunction(builtin::PROCESS_STDOUT_WRITE, _, _) => {
                                 for (arg, ty) in args {
                                     match ty {
                                         ValueType::String => LLVMBuildCall(
@@ -1528,21 +1528,22 @@ impl TracingJit {
                                     };
                                 }
                             }
-                            vm::ValueBase::BuiltinFunction(builtin::MATH_FLOOR, _) => stack.push((
-                                LLVMBuildCall(
-                                    self.builder,
-                                    *self.builtin_funcs.get(&BUILTIN_MATH_FLOOR).unwrap(),
-                                    args.iter()
-                                        .map(|(x, _)| *x)
-                                        .collect::<Vec<LLVMValueRef>>()
-                                        .as_mut_ptr(),
-                                    1,
-                                    CString::new("").unwrap().as_ptr(),
-                                ),
-                                None,
-                            )),
-                            vm::ValueBase::BuiltinFunction(builtin::MATH_RANDOM, _) => {
-                                stack.push((
+                            vm::ValueBase::BuiltinFunction(builtin::MATH_FLOOR, _, _) => stack
+                                .push((
+                                    LLVMBuildCall(
+                                        self.builder,
+                                        *self.builtin_funcs.get(&BUILTIN_MATH_FLOOR).unwrap(),
+                                        args.iter()
+                                            .map(|(x, _)| *x)
+                                            .collect::<Vec<LLVMValueRef>>()
+                                            .as_mut_ptr(),
+                                        1,
+                                        CString::new("").unwrap().as_ptr(),
+                                    ),
+                                    None,
+                                )),
+                            vm::ValueBase::BuiltinFunction(builtin::MATH_RANDOM, _, _) => stack
+                                .push((
                                     LLVMBuildCall(
                                         self.builder,
                                         *self.builtin_funcs.get(&BUILTIN_MATH_RANDOM).unwrap(),
@@ -1554,21 +1555,22 @@ impl TracingJit {
                                         CString::new("").unwrap().as_ptr(),
                                     ),
                                     None,
+                                )),
+                            vm::ValueBase::BuiltinFunction(builtin::MATH_POW, _, _) => {
+                                stack.push((
+                                    LLVMBuildCall(
+                                        self.builder,
+                                        *self.builtin_funcs.get(&BUILTIN_MATH_POW).unwrap(),
+                                        args.iter()
+                                            .map(|(x, _)| *x)
+                                            .collect::<Vec<LLVMValueRef>>()
+                                            .as_mut_ptr(),
+                                        2,
+                                        CString::new("").unwrap().as_ptr(),
+                                    ),
+                                    None,
                                 ))
                             }
-                            vm::ValueBase::BuiltinFunction(builtin::MATH_POW, _) => stack.push((
-                                LLVMBuildCall(
-                                    self.builder,
-                                    *self.builtin_funcs.get(&BUILTIN_MATH_POW).unwrap(),
-                                    args.iter()
-                                        .map(|(x, _)| *x)
-                                        .collect::<Vec<LLVMValueRef>>()
-                                        .as_mut_ptr(),
-                                    2,
-                                    CString::new("").unwrap().as_ptr(),
-                                ),
-                                None,
-                            )),
                             _ => return Err(()),
                         }
                     } else {
@@ -1644,7 +1646,7 @@ impl TracingJit {
                         vm::ValueBase::Object(_) => {
                             stack.push((ptr::null_mut(), Some(const_table.value[n].clone())))
                         }
-                        vm::ValueBase::BuiltinFunction(n, _) => stack.push((
+                        vm::ValueBase::BuiltinFunction(n, _, _) => stack.push((
                             if let Some(f) = self.builtin_funcs.get(&n) {
                                 *f
                             } else {

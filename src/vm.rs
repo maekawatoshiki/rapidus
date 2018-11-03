@@ -47,7 +47,7 @@ pub enum ValueBase {
     Number(f64),
     String(CString),
     Function(usize, *mut FxHashMap<String, Value>, CallObject),
-    BuiltinFunction(usize, CallObject),    // id(==0:unknown)
+    BuiltinFunction(usize, *mut FxHashMap<String, Value>, CallObject), // id(==0:unknown)
     Object(*mut FxHashMap<String, Value>), // Object(FxHashMap<String, Value>),
     Array(*mut ArrayValue),
     Arguments,
@@ -74,7 +74,7 @@ pub struct VM {
     pub const_table: ConstantTable,
     pub iseq: ByteCode,
     pub loop_bgn_end: FxHashMap<isize, isize>,
-    pub op_table: [fn(&mut VM); 49],
+    pub op_table: [fn(&mut VM); 50],
     pub builtin_functions: Vec<unsafe fn(CallObject, Vec<Value>, &mut VM)>,
 }
 
@@ -198,10 +198,10 @@ impl ArrayValue {
                         let mut hm = FxHashMap::default();
                         hm.insert(
                             "push".to_string(),
-                            Value::new(ValueBase::BuiltinFunction(
+                            Value::builtin_function(
                                 builtin::ARRAY_PUSH,
                                 CallObject::new(Value::new(ValueBase::Undefined)),
-                            )),
+                            ),
                         );
                         hm
                     }))),
@@ -257,7 +257,42 @@ impl Value {
     }
 
     pub fn builtin_function(pc: usize, callobj: CallObject) -> Value {
-        Value::new(ValueBase::BuiltinFunction(pc, callobj))
+        let mut obj = {
+            let mut hm = FxHashMap::default();
+            hm.insert(
+                "prototype".to_string(),
+                Value::new(ValueBase::Object(gc::new(FxHashMap::default()))),
+            );
+            hm.insert(
+                "__proto__".to_string(),
+                Value::new(ValueBase::Object(Box::into_raw(Box::new({
+                    let mut hm = FxHashMap::default();
+                    hm.insert(
+                        "call".to_string(),
+                        Value::new(ValueBase::BuiltinFunction(
+                            pc,
+                            ::std::ptr::null_mut(),
+                            CallObject::new(Value::undefined()),
+                        )),
+                    );
+                    hm
+                })))),
+            );
+            hm
+        };
+
+        let obj_ = obj.clone();
+
+        if let ValueBase::Object(ref mut obj2) = obj.get_mut("__proto__").unwrap().val {
+            unsafe {
+                if let ValueBase::BuiltinFunction(_, ref mut obj3, _) = (**obj2).get_mut("call").unwrap().val
+                {
+                    *obj3 = Box::into_raw(Box::new(obj_));
+                }
+            }
+        }
+
+        Value::new(ValueBase::BuiltinFunction(pc, Box::into_raw(Box::new(obj)), callobj))
     }
 
     pub fn object(obj: *mut FxHashMap<String, Value>) -> Value {
@@ -279,7 +314,7 @@ impl Value {
                     *callobj.this = self.clone();
                     callobj
                 }),
-                ValueBase::BuiltinFunction(id, mut callobj) => Value::builtin_function(id, {
+                ValueBase::BuiltinFunction(id, _, mut callobj) => Value::builtin_function(id, {
                     *callobj.this = self.clone();
                     callobj
                 }),
@@ -350,9 +385,9 @@ impl Value {
         unsafe {
             match self.val {
                 ValueBase::String(ref s) => property_of_string(s),
-                ValueBase::Function(_, ref obj, _) | ValueBase::Object(ref obj) => {
-                    property_of_object(&**obj)
-                }
+                ValueBase::BuiltinFunction(_, ref obj, _)
+                | ValueBase::Function(_, ref obj, _)
+                | ValueBase::Object(ref obj) => property_of_object(&**obj),
                 ValueBase::Array(ref ary) => property_of_array(&**ary),
                 ValueBase::Arguments => property_of_arguments(),
                 // TODO: Implement
@@ -797,6 +832,7 @@ impl VM {
                 push_const,
                 push_this,
                 push_arguments,
+                push_undefined,
                 lnot,
                 posi,
                 neg,
@@ -1022,7 +1058,7 @@ fn construct(self_: &mut VM) {
                     ..
                 }
                 | &mut Value {
-                    val: ValueBase::BuiltinFunction(_, _),
+                    val: ValueBase::BuiltinFunction(_, _, _),
                     ..
                 } => {}
                 others => *others = Value::object(new_this),
@@ -1109,6 +1145,11 @@ fn push_this(self_: &mut VM) {
 fn push_arguments(self_: &mut VM) {
     self_.state.pc += 1; // push_arguments
     self_.state.stack.push(Value::arguments());
+}
+
+fn push_undefined(self_: &mut VM) {
+    self_.state.pc += 1; // push_defined
+    self_.state.stack.push(Value::undefined());
 }
 
 fn lnot(self_: &mut VM) {
@@ -1457,7 +1498,7 @@ fn call(self_: &mut VM) {
     let callee = self_.state.stack.pop().unwrap();
 
     match callee.val {
-        ValueBase::BuiltinFunction(x, callobj) => {
+        ValueBase::BuiltinFunction(x, _, callobj) => {
             let mut args = vec![];
             for _ in 0..argc {
                 args.push(self_.state.stack.pop().unwrap());

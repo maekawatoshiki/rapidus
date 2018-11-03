@@ -16,43 +16,44 @@ pub mod VMInst {
     pub const PUSH_CONST: u8 = 0x09;
     pub const PUSH_THIS: u8 = 0x0a;
     pub const PUSH_ARGUMENTS: u8 = 0x0b;
-    pub const LNOT: u8 = 0x0c;
-    pub const POSI: u8 = 0x0d;
-    pub const NEG: u8 = 0x0e;
-    pub const ADD: u8 = 0x0f;
-    pub const SUB: u8 = 0x10;
-    pub const MUL: u8 = 0x11;
-    pub const DIV: u8 = 0x12;
-    pub const REM: u8 = 0x13;
-    pub const LT: u8 = 0x14;
-    pub const GT: u8 = 0x15;
-    pub const LE: u8 = 0x16;
-    pub const GE: u8 = 0x17;
-    pub const EQ: u8 = 0x18;
-    pub const NE: u8 = 0x19;
-    pub const SEQ: u8 = 0x1a;
-    pub const SNE: u8 = 0x1b;
-    pub const AND: u8 = 0x1c;
-    pub const OR: u8 = 0x1d;
-    pub const XOR: u8 = 0x1e;
-    pub const SHL: u8 = 0x1f;
-    pub const SHR: u8 = 0x20;
-    pub const ZFSHR: u8 = 0x21;
-    pub const GET_MEMBER: u8 = 0x22;
-    pub const SET_MEMBER: u8 = 0x23;
-    pub const JMP_IF_FALSE: u8 = 0x24;
-    pub const JMP: u8 = 0x25;
-    pub const CALL: u8 = 0x26;
-    pub const RETURN: u8 = 0x27;
-    pub const DOUBLE: u8 = 0x28;
-    pub const POP: u8 = 0x29;
-    pub const LAND: u8 = 0x2a;
-    pub const LOR: u8 = 0x2b;
-    pub const SET_CUR_CALLOBJ: u8 = 0x2c;
-    pub const GET_NAME: u8 = 0x2d;
-    pub const SET_NAME: u8 = 0x2e;
-    pub const DECL_VAR: u8 = 0x2f;
-    pub const COND_OP: u8 = 0x30;
+    pub const PUSH_UNDEFINED: u8 = 0x0c;
+    pub const LNOT: u8 = 0x0d;
+    pub const POSI: u8 = 0x0e;
+    pub const NEG: u8 = 0x0f;
+    pub const ADD: u8 = 0x10;
+    pub const SUB: u8 = 0x11;
+    pub const MUL: u8 = 0x12;
+    pub const DIV: u8 = 0x13;
+    pub const REM: u8 = 0x14;
+    pub const LT: u8 = 0x15;
+    pub const GT: u8 = 0x16;
+    pub const LE: u8 = 0x17;
+    pub const GE: u8 = 0x18;
+    pub const EQ: u8 = 0x19;
+    pub const NE: u8 = 0x1a;
+    pub const SEQ: u8 = 0x1b;
+    pub const SNE: u8 = 0x1c;
+    pub const AND: u8 = 0x1d;
+    pub const OR: u8 = 0x1e;
+    pub const XOR: u8 = 0x1f;
+    pub const SHL: u8 = 0x20;
+    pub const SHR: u8 = 0x21;
+    pub const ZFSHR: u8 = 0x22;
+    pub const GET_MEMBER: u8 = 0x23;
+    pub const SET_MEMBER: u8 = 0x24;
+    pub const JMP_IF_FALSE: u8 = 0x25;
+    pub const JMP: u8 = 0x26;
+    pub const CALL: u8 = 0x27;
+    pub const RETURN: u8 = 0x28;
+    pub const DOUBLE: u8 = 0x29;
+    pub const POP: u8 = 0x2a;
+    pub const LAND: u8 = 0x2b;
+    pub const LOR: u8 = 0x2c;
+    pub const SET_CUR_CALLOBJ: u8 = 0x2d;
+    pub const GET_NAME: u8 = 0x2e;
+    pub const SET_NAME: u8 = 0x2f;
+    pub const DECL_VAR: u8 = 0x30;
+    pub const COND_OP: u8 = 0x31;
 
     pub fn get_inst_size(inst: u8) -> Option<usize> {
         match inst {
@@ -63,7 +64,7 @@ pub mod VMInst {
             PUSH_FALSE | END | PUSH_TRUE | PUSH_THIS | ADD | SUB | MUL | DIV | REM | LT
             | PUSH_ARGUMENTS | NEG | POSI | GT | LE | GE | EQ | NE | GET_MEMBER | RETURN | SNE
             | ZFSHR | POP | DOUBLE | AND | COND_OP | OR | SEQ | SET_MEMBER | SET_CUR_CALLOBJ
-            | LAND | SHR | SHL | XOR | LOR => Some(1),
+            | PUSH_UNDEFINED | LAND | SHR | SHL | XOR | LOR => Some(1),
             _ => None,
         }
     }
@@ -154,6 +155,14 @@ impl ByteCodeGen {
     pub fn gen_push_arguments(&self, iseq: &mut ByteCode) {
         iseq.push(VMInst::PUSH_ARGUMENTS);
     }
+
+    pub fn gen_push_undefined(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::PUSH_UNDEFINED);
+    }
+
+    // pub fn gen_push_null(&self, iseq: &mut ByteCode) {
+    //     iseq.push(VMInst::PUSH_ARGUMENTS);
+    // }
 
     pub fn gen_lnot(&self, iseq: &mut ByteCode) {
         iseq.push(VMInst::LNOT);
