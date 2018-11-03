@@ -270,7 +270,7 @@ impl Value {
                     hm.insert(
                         "call".to_string(),
                         Value::new(ValueBase::BuiltinFunction(
-                            pc,
+                            builtin::FUNCTION_PROTOTYPE_CALL,
                             ::std::ptr::null_mut(),
                             CallObject::new(Value::undefined()),
                         )),
@@ -285,14 +285,19 @@ impl Value {
 
         if let ValueBase::Object(ref mut obj2) = obj.get_mut("__proto__").unwrap().val {
             unsafe {
-                if let ValueBase::BuiltinFunction(_, ref mut obj3, _) = (**obj2).get_mut("call").unwrap().val
+                if let ValueBase::BuiltinFunction(_, ref mut obj3, _) =
+                    (**obj2).get_mut("call").unwrap().val
                 {
                     *obj3 = Box::into_raw(Box::new(obj_));
                 }
             }
         }
 
-        Value::new(ValueBase::BuiltinFunction(pc, Box::into_raw(Box::new(obj)), callobj))
+        Value::new(ValueBase::BuiltinFunction(
+            pc,
+            Box::into_raw(Box::new(obj)),
+            callobj,
+        ))
     }
 
     pub fn object(obj: *mut FxHashMap<String, Value>) -> Value {

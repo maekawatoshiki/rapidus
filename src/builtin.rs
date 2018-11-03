@@ -310,6 +310,11 @@ pub unsafe fn function_prototype_call(callobj: CallObject, args: Vec<Value>, sel
     let callee = *callobj.this;
     let arg_this = args[0].clone();
     match callee.val {
+        ValueBase::BuiltinFunction(id, _obj, mut callobj) => {
+            *callobj.this = arg_this;
+            callobj.vals = gc::new(FxHashMap::default());
+            self_.builtin_functions[id](callobj, args[1..].to_vec(), self_);
+        }
         ValueBase::Function(dst, _obj, mut callobj) => {
             *callobj.this = arg_this;
             callobj.vals = gc::new(FxHashMap::default());
