@@ -1182,6 +1182,7 @@ fn binary(self_: &mut VM, op: &BinOp) {
         _ => unimplemented!(),
     }
 
+    #[inline]
     fn add(self_: &mut VM, lhs: Value, rhs: Value) {
         self_.state.stack.push(match (lhs.val, rhs.val) {
             (ValueBase::Number(l), ValueBase::Number(r)) => Value::number(l + r),
@@ -1196,85 +1197,103 @@ fn binary(self_: &mut VM, op: &BinOp) {
             }
         })
     };
+    #[inline]
     fn sub(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
         (ValueBase::Number(l), ValueBase::Number(r)) => Value::number(l - r),
         _ => unimplemented!(),
     }) };
+    #[inline]
     fn mul(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
         (ValueBase::Number(l), ValueBase::Number(r)) => Value::number(l * r),
         (ValueBase::String(l), ValueBase::Number(r)) => 
             Value::string(CString::new(l.to_str().unwrap().repeat(r as usize)).unwrap()),
         _ => unimplemented!(),
     }) };
+    #[inline]
     fn div(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
         (ValueBase::Number(l), ValueBase::Number(r)) => Value::number(l / r),
         _ => unimplemented!(),
     }) };
+    #[inline]
     fn rem(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
         (ValueBase::Number(l), ValueBase::Number(r)) => Value::number((l as i64 % r as i64) as f64),
         _ => unimplemented!(),
     }) };
+    #[inline]
     fn lt(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
         (ValueBase::Number(l), ValueBase::Number(r)) => Value::bool(l < r),
         (ValueBase::String(l), ValueBase::String(r)) => Value::bool(l < r),
         _ => unimplemented!(),
     }) };
+    #[inline]
     fn gt(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
         (ValueBase::Number(l), ValueBase::Number(r)) => Value::bool(l > r),
         (ValueBase::String(l), ValueBase::String(r)) => Value::bool(l > r),
         _ => unimplemented!(),
     }) };
+    #[inline]
     fn le(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
         (ValueBase::Number(l), ValueBase::Number(r)) => Value::bool(l <= r),
         (ValueBase::String(l), ValueBase::String(r)) => Value::bool(l <= r),
         _ => unimplemented!(),
     }) };
+    #[inline]
     fn ge(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
         (ValueBase::Number(l), ValueBase::Number(r)) => Value::bool(l >= r),
         (ValueBase::String(l), ValueBase::String(r)) => Value::bool(l >= r),
         _ => unimplemented!(),
     }) };
+    #[inline]
     // TODO: Need more precise implementation 
     fn eq(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
         (ValueBase::Number(l), ValueBase::Number(r)) => Value::bool(l == r),
         (ValueBase::String(l), ValueBase::String(r)) => Value::bool(l == r),
         _ => unimplemented!(),
     }) };
+    #[inline]
     fn ne(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
         (ValueBase::Number(l), ValueBase::Number(r)) => Value::bool(l != r),
         (ValueBase::String(l), ValueBase::String(r)) => Value::bool(l != r),
         _ => unimplemented!(),
     }) };
+    #[inline]
     fn seq(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
         (ValueBase::Number(l), ValueBase::Number(r)) => Value::bool(l == r),
         (ValueBase::String(l), ValueBase::String(r)) => Value::bool(l == r),
         _ => unimplemented!(),
     }) };
+    #[inline]
     fn sne(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
         (ValueBase::Number(l), ValueBase::Number(r)) => Value::bool(l != r),
         (ValueBase::String(l), ValueBase::String(r)) => Value::bool(l != r),
         _ => unimplemented!(),
     }) };
+    #[inline]
     fn and(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
         (ValueBase::Number(l), ValueBase::Number(r)) => Value::number(((l as i64 as i32) & (r as i64 as i32)) as f64),
         _ => unimplemented!(),
     }) };
+    #[inline]
     fn or(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
         (ValueBase::Number(l), ValueBase::Number(r)) => Value::number(((l as i64 as i32) | (r as i64 as i32)) as f64),
         _ => unimplemented!(),
     }) };
+    #[inline]
     fn xor(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
         (ValueBase::Number(l), ValueBase::Number(r)) => Value::number(((l as i64 as i32) ^ (r as i64 as i32)) as f64),
         _ => unimplemented!(),
     }) };
+    #[inline]
     fn shl(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
         (ValueBase::Number(l), ValueBase::Number(r)) => Value::number(((l as i64 as i32) << (r as i64 as i32)) as f64),
         _ => unimplemented!(),
     }) };
+    #[inline]
     fn shr(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
         (ValueBase::Number(l), ValueBase::Number(r)) => Value::number(((l as i64 as i32) >> (r as i64 as i32)) as f64),
         _ => unimplemented!(),
     }) };
+    #[inline]
     fn zfshr(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
         (ValueBase::Number(l), ValueBase::Number(r)) => Value::number(((l as u64 as u32) >> (r as u64 as u32)) as f64),
         _ => unimplemented!(),

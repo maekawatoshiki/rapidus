@@ -1225,13 +1225,13 @@ impl TracingJit {
                                 LLVMBuildFPToSI(
                                     self.builder,
                                     lhs,
-                                    LLVMInt64TypeInContext(self.context),
+                                    LLVMInt32TypeInContext(self.context),
                                     CString::new("").unwrap().as_ptr(),
                                 ),
                                 LLVMBuildFPToSI(
                                     self.builder,
                                     rhs,
-                                    LLVMInt64TypeInContext(self.context),
+                                    LLVMInt32TypeInContext(self.context),
                                     CString::new("").unwrap().as_ptr(),
                                 ),
                                 CString::new("and").unwrap().as_ptr(),
@@ -1254,13 +1254,159 @@ impl TracingJit {
                                 LLVMBuildFPToSI(
                                     self.builder,
                                     lhs,
-                                    LLVMInt64TypeInContext(self.context),
+                                    LLVMInt32TypeInContext(self.context),
                                     CString::new("").unwrap().as_ptr(),
                                 ),
                                 LLVMBuildFPToSI(
                                     self.builder,
                                     rhs,
-                                    LLVMInt64TypeInContext(self.context),
+                                    LLVMInt32TypeInContext(self.context),
+                                    CString::new("").unwrap().as_ptr(),
+                                ),
+                                CString::new("or").unwrap().as_ptr(),
+                            ),
+                            LLVMDoubleTypeInContext(self.context),
+                            CString::new("").unwrap().as_ptr(),
+                        ),
+                        None,
+                    ));
+                }
+                VMInst::XOR => {
+                    pc += 1;
+                    let rhs = try_stack!(stack.pop());
+                    let lhs = try_stack!(stack.pop());
+                    stack.push((
+                        LLVMBuildSIToFP(
+                            self.builder,
+                            LLVMBuildXor(
+                                self.builder,
+                                LLVMBuildFPToSI(
+                                    self.builder,
+                                    lhs,
+                                    LLVMInt32TypeInContext(self.context),
+                                    CString::new("").unwrap().as_ptr(),
+                                ),
+                                LLVMBuildFPToSI(
+                                    self.builder,
+                                    rhs,
+                                    LLVMInt32TypeInContext(self.context),
+                                    CString::new("").unwrap().as_ptr(),
+                                ),
+                                CString::new("or").unwrap().as_ptr(),
+                            ),
+                            LLVMDoubleTypeInContext(self.context),
+                            CString::new("").unwrap().as_ptr(),
+                        ),
+                        None,
+                    ));
+                }
+                VMInst::SHL => {
+                    pc += 1;
+                    let rhs = try_stack!(stack.pop());
+                    let lhs = try_stack!(stack.pop());
+                    stack.push((
+                        LLVMBuildSIToFP(
+                            self.builder,
+                            LLVMBuildShl(
+                                self.builder,
+                                LLVMBuildTruncOrBitCast(
+                                    self.builder,
+                                    LLVMBuildFPToSI(
+                                        self.builder,
+                                        lhs,
+                                        LLVMInt64TypeInContext(self.context),
+                                        CString::new("").unwrap().as_ptr(),
+                                    ),
+                                    LLVMInt32TypeInContext(self.context),
+                                    CString::new("").unwrap().as_ptr(),
+                                ),
+                                LLVMBuildTruncOrBitCast(
+                                    self.builder,
+                                    LLVMBuildFPToSI(
+                                        self.builder,
+                                        rhs,
+                                        LLVMInt64TypeInContext(self.context),
+                                        CString::new("").unwrap().as_ptr(),
+                                    ),
+                                    LLVMInt32TypeInContext(self.context),
+                                    CString::new("").unwrap().as_ptr(),
+                                ),
+                                CString::new("or").unwrap().as_ptr(),
+                            ),
+                            LLVMDoubleTypeInContext(self.context),
+                            CString::new("").unwrap().as_ptr(),
+                        ),
+                        None,
+                    ));
+                }
+                VMInst::SHR => {
+                    pc += 1;
+                    let rhs = try_stack!(stack.pop());
+                    let lhs = try_stack!(stack.pop());
+                    stack.push((
+                        LLVMBuildSIToFP(
+                            self.builder,
+                            LLVMBuildAShr(
+                                self.builder,
+                                LLVMBuildTruncOrBitCast(
+                                    self.builder,
+                                    LLVMBuildFPToSI(
+                                        self.builder,
+                                        lhs,
+                                        LLVMInt64TypeInContext(self.context),
+                                        CString::new("").unwrap().as_ptr(),
+                                    ),
+                                    LLVMInt32TypeInContext(self.context),
+                                    CString::new("").unwrap().as_ptr(),
+                                ),
+                                LLVMBuildTruncOrBitCast(
+                                    self.builder,
+                                    LLVMBuildFPToSI(
+                                        self.builder,
+                                        rhs,
+                                        LLVMInt64TypeInContext(self.context),
+                                        CString::new("").unwrap().as_ptr(),
+                                    ),
+                                    LLVMInt32TypeInContext(self.context),
+                                    CString::new("").unwrap().as_ptr(),
+                                ),
+                                CString::new("or").unwrap().as_ptr(),
+                            ),
+                            LLVMDoubleTypeInContext(self.context),
+                            CString::new("").unwrap().as_ptr(),
+                        ),
+                        None,
+                    ));
+                }
+                VMInst::ZFSHR => {
+                    pc += 1;
+                    let rhs = try_stack!(stack.pop());
+                    let lhs = try_stack!(stack.pop());
+                    stack.push((
+                        LLVMBuildSIToFP(
+                            self.builder,
+                            LLVMBuildLShr(
+                                self.builder,
+                                LLVMBuildTruncOrBitCast(
+                                    self.builder,
+                                    LLVMBuildFPToSI(
+                                        self.builder,
+                                        lhs,
+                                        LLVMInt64TypeInContext(self.context),
+                                        CString::new("").unwrap().as_ptr(),
+                                    ),
+                                    LLVMInt32TypeInContext(self.context),
+                                    CString::new("").unwrap().as_ptr(),
+                                ),
+                                LLVMBuildTruncOrBitCast(
+                                    self.builder,
+                                    LLVMBuildFPToSI(
+                                        self.builder,
+                                        rhs,
+                                        LLVMInt64TypeInContext(self.context),
+                                        CString::new("").unwrap().as_ptr(),
+                                    ),
+                                    LLVMInt32TypeInContext(self.context),
                                     CString::new("").unwrap().as_ptr(),
                                 ),
                                 CString::new("or").unwrap().as_ptr(),
