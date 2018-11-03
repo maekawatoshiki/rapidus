@@ -268,6 +268,14 @@ impl Value {
                 Value::new(ValueBase::Object(Box::into_raw(Box::new({
                     let mut hm = FxHashMap::default();
                     hm.insert(
+                        "apply".to_string(),
+                        Value::new(ValueBase::BuiltinFunction(
+                            builtin::FUNCTION_PROTOTYPE_APPLY,
+                            ::std::ptr::null_mut(),
+                            CallObject::new(Value::undefined()),
+                        )),
+                    );
+                    hm.insert(
                         "call".to_string(),
                         Value::new(ValueBase::BuiltinFunction(
                             builtin::FUNCTION_PROTOTYPE_CALL,
@@ -285,10 +293,12 @@ impl Value {
 
         if let ValueBase::Object(ref mut obj2) = obj.get_mut("__proto__").unwrap().val {
             unsafe {
-                if let ValueBase::BuiltinFunction(_, ref mut obj3, _) =
-                    (**obj2).get_mut("call").unwrap().val
-                {
-                    *obj3 = Box::into_raw(Box::new(obj_));
+                for name in ["apply", "call"].iter() {
+                    if let ValueBase::BuiltinFunction(_, ref mut obj3, _) =
+                        (**obj2).get_mut(*name).unwrap().val
+                    {
+                        *obj3 = Box::into_raw(Box::new(obj_.clone()));
+                    }
                 }
             }
         }
@@ -506,6 +516,13 @@ pub fn new_value_function(pos: usize, callobj: CallObject) -> Value {
                 "__proto__".to_string(),
                 Value::new(ValueBase::Object(Box::into_raw(Box::new({
                     let mut hm = FxHashMap::default();
+                    hm.insert(
+                        "apply".to_string(),
+                        Value::builtin_function(
+                            builtin::FUNCTION_PROTOTYPE_APPLY,
+                            CallObject::new(Value::undefined()),
+                        ),
+                    );
                     hm.insert(
                         "call".to_string(),
                         Value::builtin_function(
@@ -914,6 +931,7 @@ impl VM {
                 builtin::math_tan,
                 builtin::math_tanh,
                 builtin::math_trunc,
+                builtin::function_prototype_apply,
                 builtin::function_prototype_call,
             ],
         }

@@ -44,7 +44,8 @@ pub const MATH_SQRT: usize = 33;
 pub const MATH_TAN: usize = 34;
 pub const MATH_TANH: usize = 35;
 pub const MATH_TRUNC: usize = 36;
-pub const FUNCTION_PROTOTYPE_CALL: usize = 37;
+pub const FUNCTION_PROTOTYPE_APPLY: usize = 37;
+pub const FUNCTION_PROTOTYPE_CALL: usize = 38;
 
 // BuiltinFunction(0)
 pub unsafe fn console_log(_: CallObject, args: Vec<Value>, _: &mut VM) {
@@ -306,6 +307,46 @@ pub unsafe fn math_pow(_: CallObject, args: Vec<Value>, self_: &mut VM) {
 }
 
 // BuiltinFunction(37)
+pub unsafe fn function_prototype_apply(callobj: CallObject, args: Vec<Value>, self_: &mut VM) {
+    let arg_this = args[0].clone();
+    let arg = match args[1].val {
+        ValueBase::Array(aryval) => {
+            let aryval = &*aryval;
+            let mut elems = vec![];
+            for i in 0..aryval.length {
+                elems.push(aryval.elems[i].clone());
+            }
+            elems
+        }
+        ValueBase::Arguments => {
+            let mut elems = vec![];
+            let callobj = &**self_.state.scope.last().unwrap();
+            let length = callobj.get_arguments_length();
+            for i in 0..length {
+                elems.push(callobj.get_arguments_nth_value(i));
+            }
+            elems
+        }
+        _ => vec![],
+    };
+    let callee = *callobj.this;
+
+    match callee.val {
+        ValueBase::BuiltinFunction(id, _obj, mut callobj) => {
+            *callobj.this = arg_this;
+            callobj.vals = gc::new(FxHashMap::default());
+            self_.builtin_functions[id](callobj, arg, self_);
+        }
+        ValueBase::Function(dst, _obj, mut callobj) => {
+            *callobj.this = arg_this;
+            callobj.vals = gc::new(FxHashMap::default());
+            call_function(self_, dst, arg, callobj);
+        }
+        _ => {}
+    }
+}
+
+// BuiltinFunction(38)
 pub unsafe fn function_prototype_call(callobj: CallObject, args: Vec<Value>, self_: &mut VM) {
     let callee = *callobj.this;
     let arg_this = args[0].clone();
