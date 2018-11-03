@@ -114,9 +114,15 @@ impl NodeBase {
                         BinOp::Gt => Some(NodeBase::Boolean(l > r)),
                         BinOp::Le => Some(NodeBase::Boolean(l <= r)),
                         BinOp::Ge => Some(NodeBase::Boolean(l >= r)),
-                        BinOp::Shl => Some(NodeBase::Number(((l as u64) << r as u64) as f64)),
-                        BinOp::Shr => Some(NodeBase::Number(((l as u64) >> r as u64) as f64)),
-                        BinOp::ZFShr => Some(NodeBase::Number(((l as u64) << (r as u64)) as f64)),
+                        BinOp::Shl => Some(NodeBase::Number(
+                            ((l as i64 as i32) << r as i64 as i32) as f64,
+                        )),
+                        BinOp::Shr => Some(NodeBase::Number(
+                            ((l as i64 as i32) >> (r as i64 as i32)) as f64,
+                        )),
+                        BinOp::ZFShr => Some(NodeBase::Number(
+                            ((l as u64 as u32) >> (r as u64 as u32)) as f64,
+                        )),
                         _ => None,
                     },
                     (NodeBase::String(l), NodeBase::String(r)) => match op {

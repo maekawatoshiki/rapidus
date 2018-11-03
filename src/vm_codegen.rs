@@ -589,6 +589,9 @@ impl VMCodeGen {
             &BinOp::Gt => self.bytecode_gen.gen_gt(iseq),
             &BinOp::Le => self.bytecode_gen.gen_le(iseq),
             &BinOp::Ge => self.bytecode_gen.gen_ge(iseq),
+            &BinOp::Shl => self.bytecode_gen.gen_shl(iseq),
+            &BinOp::Shr => self.bytecode_gen.gen_shr(iseq),
+            &BinOp::ZFShr => self.bytecode_gen.gen_zfshr(iseq),
             _ => {}
         }
     }

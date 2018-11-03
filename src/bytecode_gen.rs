@@ -34,21 +34,25 @@ pub mod VMInst {
     pub const SNE: u8 = 0x1b;
     pub const AND: u8 = 0x1c;
     pub const OR: u8 = 0x1d;
-    pub const GET_MEMBER: u8 = 0x1e;
-    pub const SET_MEMBER: u8 = 0x1f;
-    pub const JMP_IF_FALSE: u8 = 0x20;
-    pub const JMP: u8 = 0x21;
-    pub const CALL: u8 = 0x22;
-    pub const RETURN: u8 = 0x23;
-    pub const DOUBLE: u8 = 0x24;
-    pub const POP: u8 = 0x25;
-    pub const LAND: u8 = 0x26;
-    pub const LOR: u8 = 0x27;
-    pub const SET_CUR_CALLOBJ: u8 = 0x28;
-    pub const GET_NAME: u8 = 0x29;
-    pub const SET_NAME: u8 = 0x2a;
-    pub const DECL_VAR: u8 = 0x2b;
-    pub const COND_OP: u8 = 0x2c;
+    pub const XOR: u8 = 0x1e;
+    pub const SHL: u8 = 0x1f;
+    pub const SHR: u8 = 0x20;
+    pub const ZFSHR: u8 = 0x21;
+    pub const GET_MEMBER: u8 = 0x22;
+    pub const SET_MEMBER: u8 = 0x23;
+    pub const JMP_IF_FALSE: u8 = 0x24;
+    pub const JMP: u8 = 0x25;
+    pub const CALL: u8 = 0x26;
+    pub const RETURN: u8 = 0x27;
+    pub const DOUBLE: u8 = 0x28;
+    pub const POP: u8 = 0x29;
+    pub const LAND: u8 = 0x2a;
+    pub const LOR: u8 = 0x2b;
+    pub const SET_CUR_CALLOBJ: u8 = 0x2c;
+    pub const GET_NAME: u8 = 0x2d;
+    pub const SET_NAME: u8 = 0x2e;
+    pub const DECL_VAR: u8 = 0x2f;
+    pub const COND_OP: u8 = 0x30;
 
     pub fn get_inst_size(inst: u8) -> Option<usize> {
         match inst {
@@ -58,8 +62,8 @@ pub mod VMInst {
             PUSH_INT8 => Some(2),
             PUSH_FALSE | END | PUSH_TRUE | PUSH_THIS | ADD | SUB | MUL | DIV | REM | LT
             | PUSH_ARGUMENTS | NEG | POSI | GT | LE | GE | EQ | NE | GET_MEMBER | RETURN | SNE
-            | POP | DOUBLE | AND | COND_OP | OR | SEQ | SET_MEMBER | SET_CUR_CALLOBJ | LAND
-            | LOR => Some(1),
+            | ZFSHR | POP | DOUBLE | AND | COND_OP | OR | SEQ | SET_MEMBER | SET_CUR_CALLOBJ
+            | LAND | SHR | SHL | XOR | LOR => Some(1),
             _ => None,
         }
     }
@@ -207,6 +211,18 @@ impl ByteCodeGen {
     }
     pub fn gen_or(&self, iseq: &mut ByteCode) {
         iseq.push(VMInst::OR);
+    }
+    pub fn gen_xor(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::XOR);
+    }
+    pub fn gen_shl(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::SHL);
+    }
+    pub fn gen_shr(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::SHR);
+    }
+    pub fn gen_zfshr(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::ZFSHR);
     }
 
     pub fn gen_land(&self, iseq: &mut ByteCode) {

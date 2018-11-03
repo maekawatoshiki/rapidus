@@ -46,7 +46,7 @@ pub enum ValueBase {
     Number(f64),
     String(CString),
     Function(usize, *mut FxHashMap<String, Value>, CallObject),
-    BuiltinFunction(usize, CallObject),  // id(==0:unknown)
+    BuiltinFunction(usize, CallObject),    // id(==0:unknown)
     Object(*mut FxHashMap<String, Value>), // Object(FxHashMap<String, Value>),
     Array(*mut ArrayValue),
     Arguments,
@@ -73,7 +73,7 @@ pub struct VM {
     pub const_table: ConstantTable,
     pub iseq: ByteCode,
     pub loop_bgn_end: FxHashMap<isize, isize>,
-    pub op_table: [fn(&mut VM); 45],
+    pub op_table: [fn(&mut VM); 49],
     pub builtin_functions: Vec<unsafe fn(CallObject, Vec<Value>, &mut VM)>,
 }
 
@@ -807,6 +807,10 @@ impl VM {
                 sne,
                 and,
                 or,
+                xor,
+                shl,
+                shr,
+                zfshr,
                 get_member,
                 set_member,
                 jmp_if_false,
@@ -1062,7 +1066,7 @@ fn create_array(self_: &mut VM) {
 
 fn push_int8(self_: &mut VM) {
     self_.state.pc += 1; // push_int
-    get_int8!(self_, n, i32);
+    get_int8!(self_, n, i8);
     self_.state.stack.push(Value::number(n as f64));
 }
 
@@ -1144,6 +1148,10 @@ bin_op!(seq, SEq);
 bin_op!(sne, SNe);
 bin_op!(and, And);
 bin_op!(or, Or);
+bin_op!(xor, Xor);
+bin_op!(shl, Shl);
+bin_op!(shr, Shr);
+bin_op!(zfshr, ZFShr);
 
 #[rustfmt::skip]
 #[inline]
@@ -1167,6 +1175,10 @@ fn binary(self_: &mut VM, op: &BinOp) {
         &BinOp::SNe => sne (self_, lhs, rhs),
         &BinOp::And => and (self_, lhs, rhs),
         &BinOp::Or  => or  (self_, lhs, rhs),
+        &BinOp::Xor => xor (self_, lhs, rhs),
+        &BinOp::Shl => shl (self_, lhs, rhs),
+        &BinOp::Shr => shr (self_, lhs, rhs),
+        &BinOp::ZFShr => zfshr (self_, lhs, rhs),
         _ => unimplemented!(),
     }
 
@@ -1244,11 +1256,27 @@ fn binary(self_: &mut VM, op: &BinOp) {
         _ => unimplemented!(),
     }) };
     fn and(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
-        (ValueBase::Number(l), ValueBase::Number(r)) => Value::number(((l as i64) & (r as i64)) as f64),
+        (ValueBase::Number(l), ValueBase::Number(r)) => Value::number(((l as i64 as i32) & (r as i64 as i32)) as f64),
         _ => unimplemented!(),
     }) };
     fn or(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
-        (ValueBase::Number(l), ValueBase::Number(r)) => Value::number(((l as i64) | (r as i64)) as f64),
+        (ValueBase::Number(l), ValueBase::Number(r)) => Value::number(((l as i64 as i32) | (r as i64 as i32)) as f64),
+        _ => unimplemented!(),
+    }) };
+    fn xor(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
+        (ValueBase::Number(l), ValueBase::Number(r)) => Value::number(((l as i64 as i32) ^ (r as i64 as i32)) as f64),
+        _ => unimplemented!(),
+    }) };
+    fn shl(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
+        (ValueBase::Number(l), ValueBase::Number(r)) => Value::number(((l as i64 as i32) << (r as i64 as i32)) as f64),
+        _ => unimplemented!(),
+    }) };
+    fn shr(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
+        (ValueBase::Number(l), ValueBase::Number(r)) => Value::number(((l as i64 as i32) >> (r as i64 as i32)) as f64),
+        _ => unimplemented!(),
+    }) };
+    fn zfshr(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
+        (ValueBase::Number(l), ValueBase::Number(r)) => Value::number(((l as u64 as u32) >> (r as u64 as u32)) as f64),
         _ => unimplemented!(),
     }) };
 }
