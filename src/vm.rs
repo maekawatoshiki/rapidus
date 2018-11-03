@@ -2,6 +2,7 @@ use rustc_hash::FxHashMap;
 use std::collections::hash_map::Entry;
 use std::ffi::CString;
 
+use ansi_term::Colour;
 use libc;
 // use cpuprofiler::PROFILER;
 
@@ -137,7 +138,9 @@ impl CallObject {
             }
             match self.parent {
                 Some(ref parent) => return (**parent).get_value(name),
-                None => panic!("variable not found '{}'", name),
+                None => {
+                    runtime_error(format!("reference error: '{}' is not defined", name).as_str())
+                }
             }
         }
     }
@@ -506,6 +509,11 @@ pub fn obj_find_val(obj: &FxHashMap<String, Value>, key: &str) -> Value {
 #[inline]
 fn is_integer(f: f64) -> bool {
     f - f.floor() == 0.0
+}
+
+fn runtime_error(msg: &str) -> ! {
+    eprintln!("{}: {}", Colour::Red.bold().paint("runtime error"), msg,);
+    panic!()
 }
 
 impl VM {
@@ -1035,7 +1043,7 @@ fn create_object(self_: &mut VM) {
         let name = if let ValueBase::String(name) = self_.state.stack.pop().unwrap().val {
             name.into_string().unwrap()
         } else {
-            panic!()
+            unreachable!()
         };
         let val = self_.state.stack.pop().unwrap();
         map.insert(name, val.clone());
