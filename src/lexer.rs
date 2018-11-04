@@ -136,16 +136,12 @@ impl Lexer {
         let pos = self.pos;
         self.pos_line_list.push((pos, self.line));
         let mut is_float = false;
-        let mut last = self.next_char()?;
+        let mut last = ' ';
         let num = self.skip_while(|c| {
-            is_float = is_float || c == '.';
-            let is_f = "eEpP".contains(last) && "+-".contains(c);
+            let is_f = "eE".contains(last) && "+-0123456789".contains(c);
             let is_end_of_num = !c.is_alphanumeric() && c != '.' && !is_f;
-            if is_end_of_num {
-                is_float = is_float || is_f;
-            } else {
-                last = c;
-            }
+            is_float = is_float || is_f || c == '.';
+            last = c;
             !is_end_of_num
         })?;
 
@@ -155,7 +151,10 @@ impl Lexer {
             self.read_hex_num(&num[2..]) as f64
         } else if num.len() > 2 && num.chars().nth(1).unwrap() == 'b' {
             self.read_bin_num(&num[2..]) as f64
-        } else if num.chars().nth(0).unwrap() == '0' {
+        } else if num.chars().nth(0).unwrap() == '0' && num.chars().all(|c| match c {
+            '0'...'7' => true,
+            _ => false,
+        }) {
             self.read_oct_num(&num[1..]) as f64
         } else {
             self.read_dec_num(num.as_str()) as f64
