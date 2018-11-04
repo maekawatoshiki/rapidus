@@ -1,5 +1,5 @@
-use std::cell::RefCell;
 use rustc_hash::{FxHashMap, FxHashSet};
+use std::cell::RefCell;
 use std::hash::{Hash, Hasher};
 use std::mem;
 use std::sync::atomic::{self, AtomicUsize};

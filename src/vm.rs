@@ -587,12 +587,10 @@ impl VM {
                 "require".to_string(),
                 Value::builtin_function(builtin::REQUIRE, CallObject::new(Value::undefined())),
             );
-            unsafe {
-                (*global_vals).set_value(
-                    "exports".to_string(),
-                    Value::object(gc::new(FxHashMap::default())),
-                );
-            }
+            (*global_vals).set_value(
+                "exports".to_string(),
+                Value::object(gc::new(FxHashMap::default())),
+            );
         }
 
         unsafe {
@@ -976,19 +974,19 @@ impl VM {
 
     pub fn do_run(&mut self, iseq: &ByteCode) {
         loop {
-            if let Some(end) = self.loop_bgn_end.get(&self.state.pc) {
-                unsafe {
-                    if let Some(pc) = self.jit.can_loop_jit(
-                        &iseq,
-                        &self.const_table,
-                        &mut self.state,
-                        *end as usize,
-                    ) {
-                        self.state.pc = pc;
-                        continue;
-                    }
-                }
-            }
+            // if let Some(end) = self.loop_bgn_end.get(&self.state.pc) {
+            //     unsafe {
+            //         if let Some(pc) = self.jit.can_loop_jit(
+            //             &iseq,
+            //             &self.const_table,
+            //             &mut self.state,
+            //             *end as usize,
+            //         ) {
+            //             self.state.pc = pc;
+            //             continue;
+            //         }
+            //     }
+            // }
             let code = iseq[self.state.pc as usize];
             self.op_table[code as usize](self, iseq);
             if code == VMInst::RETURN || code == VMInst::END {
@@ -1018,7 +1016,7 @@ macro_rules! get_int32 {
 
 fn end(_self: &mut VM, _iseq: &ByteCode) {}
 
-fn create_context(self_: &mut VM, iseq: &ByteCode) {
+fn create_context(self_: &mut VM, _iseq: &ByteCode) {
     self_.state.pc += 1; // create_context
 }
 
@@ -1163,12 +1161,12 @@ fn push_int32(self_: &mut VM, iseq: &ByteCode) {
     self_.state.stack.push(Value::number(n as f64));
 }
 
-fn push_false(self_: &mut VM, iseq: &ByteCode) {
+fn push_false(self_: &mut VM, _iseq: &ByteCode) {
     self_.state.pc += 1; // push_false
     self_.state.stack.push(Value::bool(false));
 }
 
-fn push_true(self_: &mut VM, iseq: &ByteCode) {
+fn push_true(self_: &mut VM, _iseq: &ByteCode) {
     self_.state.pc += 1; // push_true
     self_.state.stack.push(Value::bool(true));
 }
@@ -1179,35 +1177,35 @@ fn push_const(self_: &mut VM, iseq: &ByteCode) {
     self_.state.stack.push(self_.const_table.value[n].clone());
 }
 
-fn push_this(self_: &mut VM, iseq: &ByteCode) {
+fn push_this(self_: &mut VM, _iseq: &ByteCode) {
     self_.state.pc += 1; // push_this
     let this = unsafe { *(**self_.state.scope.last().unwrap()).this.clone() };
     self_.state.stack.push(this);
 }
 
-fn push_arguments(self_: &mut VM, iseq: &ByteCode) {
+fn push_arguments(self_: &mut VM, _iseq: &ByteCode) {
     self_.state.pc += 1; // push_arguments
     self_.state.stack.push(Value::arguments());
 }
 
-fn push_undefined(self_: &mut VM, iseq: &ByteCode) {
+fn push_undefined(self_: &mut VM, _iseq: &ByteCode) {
     self_.state.pc += 1; // push_defined
     self_.state.stack.push(Value::undefined());
 }
 
-fn lnot(self_: &mut VM, iseq: &ByteCode) {
+fn lnot(self_: &mut VM, _iseq: &ByteCode) {
     self_.state.pc += 1; // lnot
     let expr = self_.state.stack.last_mut().unwrap();
     expr.val = ValueBase::Bool(!expr.val.to_boolean());
 }
 
-fn posi(self_: &mut VM, iseq: &ByteCode) {
+fn posi(self_: &mut VM, _iseq: &ByteCode) {
     self_.state.pc += 1; // posi
     let expr = self_.state.stack.last_mut().unwrap();
     expr.val = ValueBase::Number(expr.val.to_number());
 }
 
-fn neg(self_: &mut VM, iseq: &ByteCode) {
+fn neg(self_: &mut VM, _iseq: &ByteCode) {
     self_.state.pc += 1; // neg
     let expr = self_.state.stack.last_mut().unwrap();
     match &mut expr.val {
@@ -1392,7 +1390,7 @@ fn binary(self_: &mut VM, op: &BinOp) {
     }) };
 }
 
-fn get_member(self_: &mut VM, iseq: &ByteCode) {
+fn get_member(self_: &mut VM, _iseq: &ByteCode) {
     self_.state.pc += 1; // get_global
     let member = self_.state.stack.pop().unwrap();
     let parent = self_.state.stack.pop().unwrap();
@@ -1400,11 +1398,12 @@ fn get_member(self_: &mut VM, iseq: &ByteCode) {
     self_.state.stack.push(val);
 }
 
-fn set_member(self_: &mut VM, iseq: &ByteCode) {
+fn set_member(self_: &mut VM, _iseq: &ByteCode) {
     self_.state.pc += 1; // get_global
     let member = self_.state.stack.pop().unwrap();
     let parent = self_.state.stack.pop().unwrap();
     let val = self_.state.stack.pop().unwrap();
+    // TODO: The following code should be a function (like Value::set_property).
     match parent.val {
         ValueBase::Object(map) | ValueBase::Function(_, _, map, _) => unsafe {
             *(*map)
@@ -1509,21 +1508,21 @@ pub fn call_function(
 
     self_.state.scope.push(gc::new(callobj));
 
-    if args_all_numbers {
-        let scope = (*self_.state.scope.last().unwrap()).clone();
-        if let Some(f) = unsafe {
-            self_
-                .jit
-                .can_jit(id, iseq, &*scope, &self_.const_table, argc)
-        } {
-            self_
-                .state
-                .stack
-                .push(unsafe { self_.jit.run_llvm_func(id, f, args) });
-            self_.state.scope.pop();
-            return;
-        }
-    }
+    // if args_all_numbers {
+    //     let scope = (*self_.state.scope.last().unwrap()).clone();
+    //     if let Some(f) = unsafe {
+    //         self_
+    //             .jit
+    //             .can_jit(id, iseq, &*scope, &self_.const_table, argc)
+    //     } {
+    //         self_
+    //             .state
+    //             .stack
+    //             .push(unsafe { self_.jit.run_llvm_func(id, f, args) });
+    //         self_.state.scope.pop();
+    //         return;
+    //     }
+    // }
 
     self_
         .state
@@ -1535,9 +1534,9 @@ pub fn call_function(
 
     self_.state.scope.pop();
 
-    self_
-        .jit
-        .record_function_return_type(id, self_.state.stack.last().unwrap());
+    // self_
+    //     .jit
+    //     .record_function_return_type(id, self_.state.stack.last().unwrap());
 }
 
 fn call(self_: &mut VM, iseq: &ByteCode) {
@@ -1570,7 +1569,7 @@ fn call(self_: &mut VM, iseq: &ByteCode) {
     }
 }
 
-fn return_(self_: &mut VM, iseq: &ByteCode) {
+fn return_(self_: &mut VM, _iseq: &ByteCode) {
     let len = self_.state.stack.len();
     if let Some((previous_sp, return_pc)) = self_.state.history.pop() {
         self_.state.stack.drain(previous_sp..len - 1);
@@ -1580,28 +1579,28 @@ fn return_(self_: &mut VM, iseq: &ByteCode) {
     }
 }
 
-fn double(self_: &mut VM, iseq: &ByteCode) {
+fn double(self_: &mut VM, _iseq: &ByteCode) {
     self_.state.pc += 1; // double
     let stack_top_val = self_.state.stack.last().unwrap().clone();
     self_.state.stack.push(stack_top_val);
 }
 
-fn pop(self_: &mut VM, iseq: &ByteCode) {
+fn pop(self_: &mut VM, _iseq: &ByteCode) {
     self_.state.pc += 1; // double
     self_.state.stack.pop();
 }
 
 // 'land' and 'lor' are for JIT compiler. Nope for VM.
 
-fn land(self_: &mut VM, iseq: &ByteCode) {
+fn land(self_: &mut VM, _iseq: &ByteCode) {
     self_.state.pc += 1; // land
 }
 
-fn lor(self_: &mut VM, iseq: &ByteCode) {
+fn lor(self_: &mut VM, _iseq: &ByteCode) {
     self_.state.pc += 1; // lor
 }
 
-fn set_cur_callobj(self_: &mut VM, iseq: &ByteCode) {
+fn set_cur_callobj(self_: &mut VM, _iseq: &ByteCode) {
     self_.state.pc += 1;
     if let Some(Value {
         val: ValueBase::Function(_, _, _, ref mut callobj),
@@ -1639,7 +1638,7 @@ fn decl_var(self_: &mut VM, iseq: &ByteCode) {
 }
 
 // 'cond_op' is for JIT compiler. Nope for VM.
-fn cond_op(self_: &mut VM, iseq: &ByteCode) {
+fn cond_op(self_: &mut VM, _iseq: &ByteCode) {
     self_.state.pc += 1;
 }
 

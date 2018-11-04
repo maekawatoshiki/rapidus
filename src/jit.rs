@@ -410,7 +410,7 @@ impl TracingJit {
         iseq: &ByteCode,
         scope: &CallObject,
         const_table: &vm::ConstantTable,
-        mut func_id: usize,
+        func_id: usize,
         argc: usize,
     ) -> Result<LLVMValueRef, ()> {
         if argc > MAX_FUNCTION_PARAMS {

@@ -367,7 +367,7 @@ pub unsafe fn function_prototype_call(callobj: CallObject, args: Vec<Value>, sel
 }
 
 // BuiltinFunction(39)
-pub unsafe fn require(callobj: CallObject, args: Vec<Value>, self_: &mut VM) {
+pub unsafe fn require(_callobj: CallObject, args: Vec<Value>, self_: &mut VM) {
     // TODO: REFINE CODE!!!!
     use ansi_term::Colour;
     use extract_anony_func;

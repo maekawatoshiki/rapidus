@@ -150,7 +150,6 @@ impl VMCodeGen {
             },
         ) in &self.functions
         {
-            let pos = iseq.len();
             let val = new_value_function(id::get_unique_id(), func_iseq.clone(), {
                 let mut callobj =
                     CallObject::new(unsafe { Value::object((*self.global_varmap).vals.clone()) });
