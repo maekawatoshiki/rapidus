@@ -83,7 +83,7 @@ impl Lexer {
         }
 
         match self.next_char()? {
-            'a'...'z' | 'A'...'Z' | '_' => self.read_identifier(),
+            'a'...'z' | 'A'...'Z' | '_' | '$' => self.read_identifier(),
             '0'...'9' => self.read_number(),
             '\'' | '\"' => self.read_string_literal(),
             '\n' => self.read_line_terminator(),
@@ -122,7 +122,7 @@ impl Lexer {
     fn read_identifier(&mut self) -> Result<Token, Error> {
         let pos = self.pos;
         self.pos_line_list.push((pos, self.line));
-        let ident = self.skip_while(|c| c.is_alphanumeric() || c == '_')?;
+        let ident = self.skip_while(|c| c.is_alphanumeric() || c == '_' || c == '$')?;
         if let Some(keyword) = convert_reserved_keyword(ident.as_str()) {
             Ok(Token::new_keyword(keyword, pos))
         } else {
