@@ -1,4 +1,5 @@
 use bytecode_gen::{ByteCode, ByteCodeGen, VMInst};
+use id;
 use node::{BinOp, FormalParameter, FormalParameters, Node, NodeBase, PropertyDefinition, UnaryOp};
 use vm::{new_value_function, CallObject, CallObjectRef, Value};
 
@@ -150,7 +151,7 @@ impl VMCodeGen {
         ) in &self.functions
         {
             let pos = iseq.len();
-            let val = new_value_function(pos, {
+            let val = new_value_function(id::get_unique_id(), func_iseq.clone(), {
                 let mut callobj =
                     CallObject::new(unsafe { Value::object((*self.global_varmap).vals.clone()) });
                 callobj.params = params
@@ -170,7 +171,6 @@ impl VMCodeGen {
             unsafe {
                 (*self.global_varmap).set_value(name.clone(), val.clone());
             }
-            iseq.append(&mut func_iseq.clone());
         }
 
         // let mut i = 0;

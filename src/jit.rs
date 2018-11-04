@@ -1,5 +1,5 @@
 use builtin;
-use bytecode_gen::VMInst;
+use bytecode_gen::{ByteCode, VMInst};
 use vm;
 use vm::CallObject;
 
@@ -291,14 +291,14 @@ unsafe fn cur_bb_has_no_terminator(builder: LLVMBuilderRef) -> bool {
 impl TracingJit {
     pub unsafe fn can_jit(
         &mut self,
-        iseq: &Vec<u8>,
+        id: usize,
+        iseq: &ByteCode,
         scope: &CallObject,
         const_table: &vm::ConstantTable,
-        pc: usize,
         argc: usize,
     ) -> Option<fn()> {
-        if !self.func_is_called_enough_times(pc) {
-            self.inc_count(pc);
+        if !self.func_is_called_enough_times(id) {
+            self.inc_count(id);
             return None;
         }
 
@@ -307,7 +307,7 @@ impl TracingJit {
                 func_addr,
                 jit_info: JITInfo { cannot_jit },
                 ..
-            } = self.func_info.entry(pc).or_insert(FuncInfo::new());
+            } = self.func_info.entry(id).or_insert(FuncInfo::new());
             if *cannot_jit {
                 return None;
             }
@@ -322,10 +322,10 @@ impl TracingJit {
         // compiled. (cannot_jit = true)
         // llvm::execution_engine::LLVMAddModule(self.exec_engine, self.module);
         let llvm_func =
-            match self.gen_code_for_func(name.clone(), iseq, scope, const_table, pc, argc) {
+            match self.gen_code_for_func(name.clone(), iseq, scope, const_table, id, argc) {
                 Ok(llvm_func) => llvm_func,
                 Err(()) => {
-                    self.func_info.get_mut(&pc).unwrap().jit_info.cannot_jit = true;
+                    self.func_info.get_mut(&id).unwrap().jit_info.cannot_jit = true;
                     return None;
                 }
             };
@@ -397,7 +397,7 @@ impl TracingJit {
         );
         let f = ::std::mem::transmute::<u64, fn()>(f_raw);
 
-        let info = self.func_info.get_mut(&pc).unwrap();
+        let info = self.func_info.get_mut(&id).unwrap();
         info.func_addr = Some(f);
         info.llvm_func = Some(llvm_func);
 
@@ -407,17 +407,17 @@ impl TracingJit {
     unsafe fn gen_code_for_func(
         &mut self,
         name: String,
-        iseq: &Vec<u8>,
+        iseq: &ByteCode,
         scope: &CallObject,
         const_table: &vm::ConstantTable,
-        mut pc: usize,
+        mut func_id: usize,
         argc: usize,
     ) -> Result<LLVMValueRef, ()> {
         if argc > MAX_FUNCTION_PARAMS {
             return Err(());
         }
 
-        let func_ret_ty = if let Some(ty) = self.function_return_types.get(&pc) {
+        let func_ret_ty = if let Some(ty) = self.function_return_types.get(&func_id) {
             ty.to_llvmty(self.context)
         } else {
             LLVMDoubleTypeInContext(self.context) // Assume as double
@@ -454,16 +454,13 @@ impl TracingJit {
             );
         }
 
-        let func_pos = pc;
-        pc += 1; // CreateContext
-
         let mut compilation_failed = false;
         if let Err(_) = self.gen_body(
             iseq,
             scope,
             const_table,
-            func_pos,
-            pc,
+            func_id,
+            1, // 0 + 1(CreateContext)
             iseq.len(),
             true,
             &mut env,
@@ -504,7 +501,7 @@ impl TracingJit {
 
     pub unsafe fn can_loop_jit(
         &mut self,
-        iseq: &Vec<u8>,
+        iseq: &ByteCode,
         const_table: &vm::ConstantTable,
         vm_state: &mut vm::VMState,
         end: usize,
@@ -623,7 +620,7 @@ impl TracingJit {
         &mut self,
         name: String,
         vm_state: &mut vm::VMState,
-        iseq: &Vec<u8>,
+        iseq: &ByteCode,
         const_table: &vm::ConstantTable,
         bgn: usize,
         end: usize,
@@ -763,7 +760,7 @@ impl TracingJit {
     unsafe fn collect_local_variables(
         &mut self,
         vm_state: &mut vm::VMState,
-        iseq: &Vec<u8>,
+        iseq: &ByteCode,
         const_table: &vm::ConstantTable,
         mut pc: usize,
         end: usize,
@@ -796,10 +793,10 @@ impl TracingJit {
 
     unsafe fn gen_body(
         &mut self,
-        iseq: &Vec<u8>,
+        iseq: &ByteCode,
         scope: &CallObject,
         const_table: &vm::ConstantTable,
-        func_pos: usize,
+        func_id: usize,
         bgn: usize,
         end: usize,
         is_func_jit: bool,
@@ -1433,10 +1430,10 @@ impl TracingJit {
                             ));
                         }
                         None => match scope.get_value(name).val {
-                            vm::ValueBase::Function(pos, _, _) if pos == func_pos => {
+                            vm::ValueBase::Function(id, _, _, _) if id == func_id => {
                                 stack.push((func, None));
                             }
-                            vm::ValueBase::Function(pos, _, _) => match self.func_info.get(&pos) {
+                            vm::ValueBase::Function(id, _, _, _) => match self.func_info.get(&id) {
                                 Some(FuncInfo { llvm_func, .. }) if llvm_func.is_some() => {
                                     stack.push((llvm_func.unwrap(), None));
                                 }
@@ -1618,11 +1615,11 @@ impl TracingJit {
                             LLVMConstReal(LLVMDoubleTypeInContext(self.context), n as f64),
                             None,
                         )),
-                        vm::ValueBase::Function(pos, _, _) if is_func_jit && pos == func_pos => {
+                        vm::ValueBase::Function(id, _, _, _) if is_func_jit && id == func_id => {
                             stack.push((func, None))
                         }
-                        vm::ValueBase::Function(pos, _, _) => stack.push((
-                            match self.func_info.get(&pos) {
+                        vm::ValueBase::Function(id, _, _, _) => stack.push((
+                            match self.func_info.get(&id) {
                                 Some(FuncInfo { llvm_func, .. }) if llvm_func.is_some() => {
                                     llvm_func.unwrap()
                                 }
@@ -1729,9 +1726,9 @@ impl TracingJit {
         Ok(())
     }
 
-    pub fn record_function_return_type(&mut self, func_pos: usize, val: &vm::Value) {
+    pub fn record_function_return_type(&mut self, func_id: usize, val: &vm::Value) {
         if let Some(ty) = get_value_type(val) {
-            self.function_return_types.insert(func_pos, ty);
+            self.function_return_types.insert(func_id, ty);
         }
     }
 

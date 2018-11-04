@@ -46,7 +46,7 @@ impl Gc for Value {
             ValueBase::Bool(_) => {}
             ValueBase::Number(_) => {}
             ValueBase::String(_) => {}
-            ValueBase::Function(_, ref obj, ref c) => {
+            ValueBase::Function(_, _, ref obj, ref c) => {
                 not_marked_then(*obj, marked, |obj, marked| unsafe {
                     (*obj).trace(marked);
                 });

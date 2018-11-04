@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+
 pub type Id = usize;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -27,6 +29,14 @@ impl IdGen {
     pub fn restore(&mut self) {
         self.id.pop();
     }
+}
+
+thread_local!(pub static ID_GEN: RefCell<IdGen> = {
+    RefCell::new(IdGen::new())
+});
+
+pub fn get_unique_id() -> usize {
+    ID_GEN.with(|idgen| idgen.borrow_mut().gen_id())
 }
 
 #[test]
