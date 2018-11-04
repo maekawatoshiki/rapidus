@@ -145,17 +145,33 @@ impl Lexer {
             !is_end_of_num
         })?;
 
+        macro_rules! verify {
+            ( $( $valid_chars:pat ),* ) => {
+                num.chars().all(|c| match c.to_ascii_lowercase() {
+                    $( $valid_chars )|* => true,
+                    _ => false,
+                })
+            }
+        }
+
         let num: f64 = if is_float {
             num.parse().unwrap()
-        } else if num.len() > 2 && num.chars().nth(1).unwrap() == 'x' {
+        } else if num.len() > 2
+            && num.chars().nth(1).unwrap().to_ascii_lowercase() == 'x'
+            && verify!('0'...'9', 'a'...'f', 'x')
+        {
             self.read_hex_num(&num[2..]) as f64
-        } else if num.len() > 2 && num.chars().nth(1).unwrap() == 'b' {
+        } else if num.len() > 2
+            && num.chars().nth(1).unwrap().to_ascii_lowercase() == 'b'
+            && verify!('0'...'1', 'b')
+        {
             self.read_bin_num(&num[2..]) as f64
-        } else if num.chars().nth(0).unwrap() == '0' && num.chars().all(|c| match c {
-            '0'...'7' => true,
-            _ => false,
-        }) {
+        } else if num.chars().nth(0).unwrap() == '0' && verify!('0'...'7') {
             self.read_oct_num(&num[1..]) as f64
+        } else if (num.len() > 2 && num.chars().nth(1).unwrap().to_ascii_lowercase() == 'o')
+            && verify!('0'...'7', 'o')
+        {
+            self.read_oct_num(&num[2..]) as f64
         } else {
             self.read_dec_num(num.as_str()) as f64
         };
@@ -164,30 +180,38 @@ impl Lexer {
     }
 
     fn read_hex_num(&mut self, num_literal: &str) -> i64 {
-        num_literal.chars().fold(0, |n, c| match c {
-            '0'...'9' | 'A'...'F' | 'a'...'f' => n * 16 + c.to_digit(16).unwrap() as i64,
-            _ => n,
-        })
+        num_literal
+            .chars()
+            .fold(0, |n, c| match c.to_ascii_lowercase() {
+                '0'...'9' | 'A'...'F' | 'a'...'f' => n * 16 + c.to_digit(16).unwrap() as i64,
+                _ => n,
+            })
     }
 
     fn read_dec_num(&mut self, num_literal: &str) -> i64 {
-        num_literal.chars().fold(0, |n, c| match c {
-            '0'...'9' => n * 10 + c.to_digit(10).unwrap() as i64,
-            _ => n,
-        })
+        num_literal
+            .chars()
+            .fold(0, |n, c| match c.to_ascii_lowercase() {
+                '0'...'9' => n * 10 + c.to_digit(10).unwrap() as i64,
+                _ => n,
+            })
     }
 
     fn read_oct_num(&mut self, num_literal: &str) -> i64 {
-        num_literal.chars().fold(0, |n, c| match c {
-            '0'...'7' => n * 8 + c.to_digit(8).unwrap() as i64,
-            _ => n,
-        })
+        num_literal
+            .chars()
+            .fold(0, |n, c| match c.to_ascii_lowercase() {
+                '0'...'7' => n * 8 + c.to_digit(8).unwrap() as i64,
+                _ => n,
+            })
     }
     fn read_bin_num(&mut self, num_literal: &str) -> i64 {
-        num_literal.chars().fold(0, |n, c| match c {
-            '0' | '1' => n * 2 + c.to_digit(2).unwrap() as i64,
-            _ => n,
-        })
+        num_literal
+            .chars()
+            .fold(0, |n, c| match c.to_ascii_lowercase() {
+                '0' | '1' => n * 2 + c.to_digit(2).unwrap() as i64,
+                _ => n,
+            })
     }
 }
 
@@ -544,13 +568,18 @@ impl Lexer {
 
 #[test]
 fn number() {
-    let mut lexer = Lexer::new("1 2 0x34 056 7.89 0b10".to_string());
+    let mut lexer = Lexer::new("1 2 0x34 056 7.89 0b10 5e3 5e+3 5e-3 0999 0O123".to_string());
     assert_eq!(lexer.next().unwrap().kind, Kind::Number(1.0));
     assert_eq!(lexer.next().unwrap().kind, Kind::Number(2.0));
     assert_eq!(lexer.next().unwrap().kind, Kind::Number(52.0));
     assert_eq!(lexer.next().unwrap().kind, Kind::Number(46.0));
     assert_eq!(lexer.next().unwrap().kind, Kind::Number(7.89));
     assert_eq!(lexer.next().unwrap().kind, Kind::Number(2.0));
+    assert_eq!(lexer.next().unwrap().kind, Kind::Number(5e3));
+    assert_eq!(lexer.next().unwrap().kind, Kind::Number(5e+3));
+    assert_eq!(lexer.next().unwrap().kind, Kind::Number(5e-3));
+    assert_eq!(lexer.next().unwrap().kind, Kind::Number(999.0));
+    assert_eq!(lexer.next().unwrap().kind, Kind::Number(0o123 as f64));
 }
 
 #[test]
