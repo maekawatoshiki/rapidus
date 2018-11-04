@@ -141,7 +141,7 @@ pub unsafe fn debug_print(val: &Value, nest: bool) {
 }
 
 // BuiltinFunction(2)
-pub unsafe fn array_push(callobj: CallObject, args: Vec<Value>, _: &mut VM) {
+pub unsafe fn array_push(callobj: CallObject, args: Vec<Value>, _self: &mut VM) {
     if let ValueBase::Array(ref map) = callobj.this.val {
         let mut map = &mut **map;
         // let mut elems = &mut map.elems;

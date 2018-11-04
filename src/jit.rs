@@ -1,11 +1,12 @@
 use builtin;
 use bytecode_gen::{ByteCode, VMInst};
+use id::Id;
 use vm;
-use vm::CallObject;
+use vm::{CallObject, FuncId};
 
 use rand::{random, thread_rng, RngCore};
 
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use libc;
 use llvm;
@@ -124,14 +125,29 @@ impl FuncInfo {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct UniquePosition {
+    func_id: Id,
+    pos: usize, // position in iseq
+}
+
+impl UniquePosition {
+    pub fn new(func_id: Id, pos: usize) -> Self {
+        UniquePosition {
+            func_id: func_id,
+            pos: pos,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct TracingJit {
-    loop_info: HashMap<usize, LoopInfo>, // <pos in bytecode, loop info>
-    func_info: HashMap<usize, FuncInfo>, // <pos in bytecode, func info>
-    function_return_types: HashMap<usize, ValueType>,
-    count: HashMap<usize, usize>,
+    loop_info: FxHashMap<UniquePosition, LoopInfo>,
+    func_info: FxHashMap<FuncId, FuncInfo>,
+    function_return_types: FxHashMap<usize, ValueType>,
+    count: FxHashMap<UniquePosition, usize>,
     cur_func: Option<LLVMValueRef>,
-    builtin_funcs: HashMap<usize, LLVMValueRef>,
+    builtin_funcs: FxHashMap<usize, LLVMValueRef>,
     context: LLVMContextRef,
     module: LLVMModuleRef,
     builder: LLVMBuilderRef,
@@ -161,17 +177,17 @@ impl TracingJit {
         llvm::transforms::scalar::LLVMAddJumpThreadingPass(pm);
 
         TracingJit {
-            loop_info: HashMap::new(),
-            func_info: HashMap::new(),
-            function_return_types: HashMap::new(),
-            count: HashMap::new(),
+            loop_info: FxHashMap::default(),
+            func_info: FxHashMap::default(),
+            function_return_types: FxHashMap::default(),
+            count: FxHashMap::default(),
             context: context,
             module: module,
             builder: LLVMCreateBuilderInContext(context),
             pass_manager: pm,
             cur_func: None,
             builtin_funcs: {
-                let mut hmap = HashMap::new();
+                let mut hmap = FxHashMap::default();
 
                 let f_console_log_string = LLVMAddFunction(
                     module,
@@ -291,14 +307,14 @@ unsafe fn cur_bb_has_no_terminator(builder: LLVMBuilderRef) -> bool {
 impl TracingJit {
     pub unsafe fn can_jit(
         &mut self,
-        id: usize,
+        id: FuncId,
         iseq: &ByteCode,
         scope: &CallObject,
         const_table: &vm::ConstantTable,
         argc: usize,
     ) -> Option<fn()> {
-        if !self.func_is_called_enough_times(id) {
-            self.inc_count(id);
+        if !self.func_is_called_enough_times(id, 0) {
+            self.inc_count(id, 0);
             return None;
         }
 
@@ -410,7 +426,7 @@ impl TracingJit {
         iseq: &ByteCode,
         scope: &CallObject,
         const_table: &vm::ConstantTable,
-        func_id: usize,
+        func_id: FuncId,
         argc: usize,
     ) -> Result<LLVMValueRef, ()> {
         if argc > MAX_FUNCTION_PARAMS {
@@ -443,7 +459,7 @@ impl TracingJit {
         );
         LLVMPositionBuilderAtEnd(self.builder, bb_entry);
 
-        let mut env = HashMap::new();
+        let mut env = FxHashMap::default();
         self.cur_func = Some(func);
 
         for i in 0..argc {
@@ -501,6 +517,7 @@ impl TracingJit {
 
     pub unsafe fn can_loop_jit(
         &mut self,
+        func_id: FuncId,
         iseq: &ByteCode,
         const_table: &vm::ConstantTable,
         vm_state: &mut vm::VMState,
@@ -508,8 +525,8 @@ impl TracingJit {
     ) -> Option<isize> {
         let bgn = vm_state.pc as usize;
 
-        if !self.loop_is_called_enough_times(bgn) {
-            self.inc_count(bgn);
+        if !self.loop_is_called_enough_times(func_id, bgn) {
+            self.inc_count(func_id, bgn);
             return None;
         }
 
@@ -519,7 +536,10 @@ impl TracingJit {
                 local_vars_id,
                 jit_info: JITInfo { cannot_jit },
                 ..
-            } = self.loop_info.entry(bgn).or_insert(LoopInfo::new());
+            } = self
+                .loop_info
+                .entry(UniquePosition::new(func_id, bgn))
+                .or_insert(LoopInfo::new());
             if *cannot_jit {
                 return None;
             }
@@ -536,7 +556,11 @@ impl TracingJit {
             match self.gen_code_for_loop(name.clone(), vm_state, iseq, const_table, bgn, end) {
                 Ok(info) => info,
                 Err(()) => {
-                    self.loop_info.get_mut(&bgn).unwrap().jit_info.cannot_jit = true;
+                    self.loop_info
+                        .get_mut(&UniquePosition::new(func_id, bgn))
+                        .unwrap()
+                        .jit_info
+                        .cannot_jit = true;
                     return None;
                 }
             };
@@ -608,7 +632,10 @@ impl TracingJit {
         );
         let f = ::std::mem::transmute::<u64, fn(*mut f64) -> i32>(f_raw);
 
-        let info = self.loop_info.get_mut(&bgn).unwrap();
+        let info = self
+            .loop_info
+            .get_mut(&UniquePosition::new(func_id, bgn))
+            .unwrap();
         info.func_addr = Some(f);
         info.llvm_func = Some(llvm_func);
         info.local_vars_id = local_vars.clone();
@@ -650,7 +677,7 @@ impl TracingJit {
         );
         LLVMPositionBuilderAtEnd(self.builder, bb_entry);
 
-        let mut env = HashMap::new();
+        let mut env = FxHashMap::default();
         self.cur_func = Some(func);
 
         let arg_0 = LLVMGetParam(func, 0);
@@ -732,7 +759,7 @@ impl TracingJit {
     unsafe fn declare_local_var(
         &mut self,
         name: String,
-        env: &mut HashMap<String, LLVMValueRef>,
+        env: &mut FxHashMap<String, LLVMValueRef>,
     ) -> LLVMValueRef {
         if let Some(v) = env.get(&name) {
             return *v;
@@ -765,7 +792,7 @@ impl TracingJit {
         mut pc: usize,
         end: usize,
     ) -> Result<Vec<(usize, ValueType)>, ()> {
-        let mut local_vars = HashSet::new();
+        let mut local_vars = FxHashSet::default();
         let local_scope = &**vm_state.scope.last().unwrap();
 
         while pc < end {
@@ -796,11 +823,11 @@ impl TracingJit {
         iseq: &ByteCode,
         scope: &CallObject,
         const_table: &vm::ConstantTable,
-        func_id: usize,
+        func_id: FuncId,
         bgn: usize,
         end: usize,
         is_func_jit: bool,
-        env: &mut HashMap<String, LLVMValueRef>,
+        env: &mut FxHashMap<String, LLVMValueRef>,
     ) -> Result<(), ()> {
         enum LabelKind {
             NotPositioned(LLVMBasicBlockRef),
@@ -837,7 +864,7 @@ impl TracingJit {
         let func = self.cur_func.unwrap();
         let mut stack: Vec<(LLVMValueRef, Option<vm::Value>)> = vec![];
 
-        let mut labels: HashMap<usize, LabelKind> = HashMap::new();
+        let mut labels: FxHashMap<usize, LabelKind> = FxHashMap::default();
 
         // First of all, find JMP-related ops and record its destination.
         {
@@ -1726,7 +1753,7 @@ impl TracingJit {
         Ok(())
     }
 
-    pub fn record_function_return_type(&mut self, func_id: usize, val: &vm::Value) {
+    pub fn record_function_return_type(&mut self, func_id: FuncId, val: &vm::Value) {
         if let Some(ty) = get_value_type(val) {
             self.function_return_types.insert(func_id, ty);
         }
@@ -1825,18 +1852,18 @@ pub unsafe fn run_loop_llvm_func(
 
 impl TracingJit {
     #[inline]
-    fn func_is_called_enough_times(&mut self, pc: usize) -> bool {
-        *self.count.entry(pc).or_insert(0) >= 5
+    fn func_is_called_enough_times(&mut self, id: FuncId, pc: usize) -> bool {
+        *self.count.entry(UniquePosition::new(id, pc)).or_insert(0) >= 5
     }
 
     #[inline]
-    fn loop_is_called_enough_times(&mut self, pc: usize) -> bool {
-        *self.count.entry(pc).or_insert(0) >= 7
+    fn loop_is_called_enough_times(&mut self, id: FuncId, pc: usize) -> bool {
+        *self.count.entry(UniquePosition::new(id, pc)).or_insert(0) >= 7
     }
 
     #[inline]
-    fn inc_count(&mut self, pc: usize) {
-        *self.count.entry(pc).or_insert(0) += 1;
+    fn inc_count(&mut self, id: FuncId, pc: usize) {
+        *self.count.entry(UniquePosition::new(id, pc)).or_insert(0) += 1;
     }
 }
 

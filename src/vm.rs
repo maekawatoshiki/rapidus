@@ -9,12 +9,15 @@ use libc;
 use builtin;
 use bytecode_gen::{ByteCode, VMInst};
 use gc;
-use jit::TracingJit;
+use id::Id;
+use jit::{TracingJit, UniquePosition};
 use node::BinOp;
 
 pub type RawStringPtr = *mut libc::c_char;
 
 pub type CallObjectRef = *mut CallObject;
+
+pub type FuncId = Id;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct CallObject {
@@ -46,7 +49,7 @@ pub enum ValueBase {
     Bool(bool),
     Number(f64),
     String(CString),
-    Function(usize, ByteCode, *mut FxHashMap<String, Value>, CallObject),
+    Function(FuncId, ByteCode, *mut FxHashMap<String, Value>, CallObject),
     BuiltinFunction(usize, *mut FxHashMap<String, Value>, CallObject), // id(==0:unknown)
     Object(*mut FxHashMap<String, Value>), // Object(FxHashMap<String, Value>),
     Array(*mut ArrayValue),
@@ -72,7 +75,8 @@ pub struct VM {
     pub jit: TracingJit,
     pub state: VMState,
     pub const_table: ConstantTable,
-    pub loop_bgn_end: FxHashMap<isize, isize>,
+    pub loop_bgn_end: FxHashMap<UniquePosition, isize>,
+    pub cur_func_id: FuncId, // id == 0: main
     pub op_table: [fn(&mut VM, &ByteCode); 50],
     pub builtin_functions: Vec<unsafe fn(CallObject, Vec<Value>, &mut VM)>,
 }
@@ -97,13 +101,13 @@ impl CallObject {
 
     pub fn new_global() -> CallObjectRef {
         let vals = gc::new(FxHashMap::default());
-        let callobj = Box::into_raw(Box::new(CallObject {
+        let callobj = gc::new(CallObject {
             vals: vals.clone(),
             params: vec![],
             arg_rest_vals: vec![],
             this: Box::new(Value::new(ValueBase::Undefined)),
             parent: None,
-        }));
+        });
         unsafe {
             *(*callobj).this = Value::new(ValueBase::Object(vals));
         }
@@ -252,7 +256,7 @@ impl Value {
     }
 
     pub fn function(
-        id: usize,
+        id: FuncId,
         iseq: ByteCode,
         obj: *mut FxHashMap<String, Value>,
         callobj: CallObject,
@@ -269,7 +273,7 @@ impl Value {
             );
             hm.insert(
                 "__proto__".to_string(),
-                Value::new(ValueBase::Object(Box::into_raw(Box::new({
+                Value::new(ValueBase::Object(gc::new({
                     let mut hm = FxHashMap::default();
                     hm.insert(
                         "apply".to_string(),
@@ -288,7 +292,7 @@ impl Value {
                         )),
                     );
                     hm
-                })))),
+                }))),
             );
             hm
         };
@@ -301,17 +305,13 @@ impl Value {
                     if let ValueBase::BuiltinFunction(_, ref mut obj3, _) =
                         (**obj2).get_mut(*name).unwrap().val
                     {
-                        *obj3 = Box::into_raw(Box::new(obj_.clone()));
+                        *obj3 = gc::new(obj_.clone());
                     }
                 }
             }
         }
 
-        Value::new(ValueBase::BuiltinFunction(
-            pc,
-            Box::into_raw(Box::new(obj)),
-            callobj,
-        ))
+        Value::new(ValueBase::BuiltinFunction(pc, gc::new(obj), callobj))
     }
 
     pub fn object(obj: *mut FxHashMap<String, Value>) -> Value {
@@ -330,15 +330,17 @@ impl Value {
         let property_of_simple = |obj: &FxHashMap<String, Value>| -> Value {
             match obj_find_val(obj, property.to_string().as_str()).val {
                 ValueBase::Function(id, iseq, map2, mut callobj) => {
-                    Value::function(id, iseq, map2, {
+                    Value::new(ValueBase::Function(id, iseq, map2, {
                         *callobj.this = self.clone();
                         callobj
-                    })
+                    }))
                 }
-                ValueBase::BuiltinFunction(id, _, mut callobj) => Value::builtin_function(id, {
-                    *callobj.this = self.clone();
-                    callobj
-                }),
+                ValueBase::BuiltinFunction(id, obj, mut callobj) => {
+                    Value::new(ValueBase::BuiltinFunction(id, obj, {
+                        *callobj.this = self.clone();
+                        callobj
+                    }))
+                }
                 val => Value::new(val),
             }
         };
@@ -509,11 +511,11 @@ impl ValueBase {
     }
 }
 
-pub fn new_value_function(id: usize, iseq: ByteCode, callobj: CallObject) -> Value {
+pub fn new_value_function(id: FuncId, iseq: ByteCode, callobj: CallObject) -> Value {
     let mut val = Value::new(ValueBase::Function(
         id,
         iseq,
-        Box::into_raw(Box::new({
+        gc::new({
             let mut hm = FxHashMap::default();
             hm.insert(
                 "prototype".to_string(),
@@ -521,7 +523,7 @@ pub fn new_value_function(id: usize, iseq: ByteCode, callobj: CallObject) -> Val
             );
             hm.insert(
                 "__proto__".to_string(),
-                Value::new(ValueBase::Object(Box::into_raw(Box::new({
+                Value::new(ValueBase::Object(gc::new({
                     let mut hm = FxHashMap::default();
                     hm.insert(
                         "apply".to_string(),
@@ -538,10 +540,10 @@ pub fn new_value_function(id: usize, iseq: ByteCode, callobj: CallObject) -> Val
                         ),
                     );
                     hm
-                })))),
+                }))),
             );
             hm
-        })),
+        }),
         callobj,
     ));
 
@@ -858,6 +860,7 @@ impl VM {
             },
             const_table: ConstantTable::new(),
             loop_bgn_end: FxHashMap::default(),
+            cur_func_id: 0, // 0 is main
             op_table: [
                 end,
                 create_context,
@@ -973,20 +976,25 @@ impl VM {
     }
 
     pub fn do_run(&mut self, iseq: &ByteCode) {
+        let id = self.cur_func_id;
         loop {
-            // if let Some(end) = self.loop_bgn_end.get(&self.state.pc) {
-            //     unsafe {
-            //         if let Some(pc) = self.jit.can_loop_jit(
-            //             &iseq,
-            //             &self.const_table,
-            //             &mut self.state,
-            //             *end as usize,
-            //         ) {
-            //             self.state.pc = pc;
-            //             continue;
-            //         }
-            //     }
-            // }
+            if let Some(end) = self
+                .loop_bgn_end
+                .get(&UniquePosition::new(id, self.state.pc as usize))
+            {
+                unsafe {
+                    if let Some(pc) = self.jit.can_loop_jit(
+                        id,
+                        &iseq,
+                        &self.const_table,
+                        &mut self.state,
+                        *end as usize,
+                    ) {
+                        self.state.pc = pc;
+                        continue;
+                    }
+                }
+            }
             let code = iseq[self.state.pc as usize];
             self.op_table[code as usize](self, iseq);
             if code == VMInst::RETURN || code == VMInst::END {
@@ -1027,7 +1035,7 @@ fn construct(self_: &mut VM, iseq: &ByteCode) {
     let callee = self_.state.stack.pop().unwrap();
 
     match callee.val {
-        ValueBase::Function(_, iseq, obj, mut callobj) => {
+        ValueBase::Function(id, iseq, obj, mut callobj) => {
             // insert new 'this'
             let new_this = {
                 let mut map = FxHashMap::default();
@@ -1080,9 +1088,12 @@ fn construct(self_: &mut VM, iseq: &ByteCode) {
                 .history
                 .push((self_.state.stack.len(), self_.state.pc));
             self_.state.pc = 0;
+            let save_id = self_.cur_func_id;
+            self_.cur_func_id = id;
 
             self_.do_run(&iseq);
 
+            self_.cur_func_id = save_id;
             self_.state.scope.pop();
 
             match self_.state.stack.last_mut().unwrap() {
@@ -1450,9 +1461,10 @@ fn jmp(self_: &mut VM, iseq: &ByteCode) {
     self_.state.pc += 1; // jmp
     get_int32!(self_, iseq, dst, i32);
     if dst < 0 {
-        self_
-            .loop_bgn_end
-            .insert(self_.state.pc + dst as isize, self_.state.pc);
+        self_.loop_bgn_end.insert(
+            UniquePosition::new(self_.cur_func_id, (self_.state.pc + dst as isize) as usize),
+            self_.state.pc,
+        );
     }
     self_.state.pc += dst as isize;
 }
@@ -1468,7 +1480,7 @@ fn jmp_if_false(self_: &mut VM, iseq: &ByteCode) {
 
 pub fn call_function(
     self_: &mut VM,
-    id: usize,
+    id: FuncId,
     iseq: &ByteCode,
     args: Vec<Value>,
     mut callobj: CallObject,
@@ -1508,21 +1520,21 @@ pub fn call_function(
 
     self_.state.scope.push(gc::new(callobj));
 
-    // if args_all_numbers {
-    //     let scope = (*self_.state.scope.last().unwrap()).clone();
-    //     if let Some(f) = unsafe {
-    //         self_
-    //             .jit
-    //             .can_jit(id, iseq, &*scope, &self_.const_table, argc)
-    //     } {
-    //         self_
-    //             .state
-    //             .stack
-    //             .push(unsafe { self_.jit.run_llvm_func(id, f, args) });
-    //         self_.state.scope.pop();
-    //         return;
-    //     }
-    // }
+    if args_all_numbers {
+        let scope = (*self_.state.scope.last().unwrap()).clone();
+        if let Some(f) = unsafe {
+            self_
+                .jit
+                .can_jit(id, iseq, &*scope, &self_.const_table, argc)
+        } {
+            self_
+                .state
+                .stack
+                .push(unsafe { self_.jit.run_llvm_func(id, f, args) });
+            self_.state.scope.pop();
+            return;
+        }
+    }
 
     self_
         .state
@@ -1530,13 +1542,17 @@ pub fn call_function(
         .push((self_.state.stack.len(), self_.state.pc));
     self_.state.pc = 0;
 
+    let save_id = self_.cur_func_id;
+    self_.cur_func_id = id;
+
     self_.do_run(iseq);
 
+    self_.cur_func_id = save_id;
     self_.state.scope.pop();
 
-    // self_
-    //     .jit
-    //     .record_function_return_type(id, self_.state.stack.last().unwrap());
+    self_
+        .jit
+        .record_function_return_type(id, self_.state.stack.last().unwrap());
 }
 
 fn call(self_: &mut VM, iseq: &ByteCode) {
