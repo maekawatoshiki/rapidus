@@ -98,13 +98,13 @@ impl CallObject {
 
     pub fn new_global() -> CallObjectRef {
         let vals = gc::new(FxHashMap::default());
-        let callobj = Box::into_raw(Box::new(CallObject {
+        let callobj = gc::new(CallObject {
             vals: vals.clone(),
             params: vec![],
             arg_rest_vals: vec![],
             this: Box::new(Value::new(ValueBase::Undefined)),
             parent: None,
-        }));
+        });
         unsafe {
             *(*callobj).this = Value::new(ValueBase::Object(vals));
         }
@@ -265,7 +265,7 @@ impl Value {
             );
             hm.insert(
                 "__proto__".to_string(),
-                Value::new(ValueBase::Object(Box::into_raw(Box::new({
+                Value::new(ValueBase::Object(gc::new({
                     let mut hm = FxHashMap::default();
                     hm.insert(
                         "apply".to_string(),
@@ -284,7 +284,7 @@ impl Value {
                         )),
                     );
                     hm
-                })))),
+                }))),
             );
             hm
         };
@@ -297,17 +297,13 @@ impl Value {
                     if let ValueBase::BuiltinFunction(_, ref mut obj3, _) =
                         (**obj2).get_mut(*name).unwrap().val
                     {
-                        *obj3 = Box::into_raw(Box::new(obj_.clone()));
+                        *obj3 = gc::new(obj_.clone());
                     }
                 }
             }
         }
 
-        Value::new(ValueBase::BuiltinFunction(
-            pc,
-            Box::into_raw(Box::new(obj)),
-            callobj,
-        ))
+        Value::new(ValueBase::BuiltinFunction(pc, gc::new(obj), callobj))
     }
 
     pub fn object(obj: *mut FxHashMap<String, Value>) -> Value {
@@ -506,7 +502,7 @@ impl ValueBase {
 pub fn new_value_function(pos: usize, callobj: CallObject) -> Value {
     let mut val = Value::new(ValueBase::Function(
         pos,
-        Box::into_raw(Box::new({
+        gc::new({
             let mut hm = FxHashMap::default();
             hm.insert(
                 "prototype".to_string(),
@@ -514,7 +510,7 @@ pub fn new_value_function(pos: usize, callobj: CallObject) -> Value {
             );
             hm.insert(
                 "__proto__".to_string(),
-                Value::new(ValueBase::Object(Box::into_raw(Box::new({
+                Value::new(ValueBase::Object(gc::new({
                     let mut hm = FxHashMap::default();
                     hm.insert(
                         "apply".to_string(),
@@ -531,10 +527,10 @@ pub fn new_value_function(pos: usize, callobj: CallObject) -> Value {
                         ),
                     );
                     hm
-                })))),
+                }))),
             );
             hm
-        })),
+        }),
         callobj,
     ));
 

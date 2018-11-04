@@ -1,5 +1,5 @@
-use std::cell::RefCell;
 use rustc_hash::{FxHashMap, FxHashSet};
+use std::cell::RefCell;
 use std::hash::{Hash, Hasher};
 use std::mem;
 use std::sync::atomic::{self, AtomicUsize};
@@ -53,7 +53,7 @@ impl Gc for Value {
                 c.trace(marked);
             }
             // Never trace _xxx
-            ValueBase::BuiltinFunction(_, _xxx, ref c) => c.trace(marked),
+            ValueBase::BuiltinFunction(_, _x, ref c) => c.trace(marked),
             ValueBase::Object(ref obj) => {
                 not_marked_then(*obj, marked, |obj, marked| unsafe {
                     (*obj).trace(marked);
