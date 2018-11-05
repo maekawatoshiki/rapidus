@@ -376,6 +376,7 @@ pub unsafe fn require(_callobj: CallObject, args: Vec<Value>, self_: &mut VM) {
     use ansi_term::Colour;
     use extract_anony_func;
     use parser;
+    use std::ffi::CString;
     use std::fs::OpenOptions;
     use std::io::prelude::*;
     use vm;
@@ -435,6 +436,8 @@ pub unsafe fn require(_callobj: CallObject, args: Vec<Value>, self_: &mut VM) {
     vm.const_table = vm_codegen.bytecode_gen.const_table;
     vm.run(iseq);
 
-    let exports = (**vm.state.scope.last().unwrap()).get_value(&"exports".to_string());
-    self_.state.stack.push(exports);
+    let module_exports = (**vm.state.scope.last().unwrap())
+        .get_value(&"module".to_string())
+        .get_property(Value::string(CString::new("exports").unwrap()).val, None);
+    self_.state.stack.push(module_exports);
 }

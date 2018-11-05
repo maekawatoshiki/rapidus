@@ -330,7 +330,7 @@ impl Value {
         Value::new(ValueBase::Arguments)
     }
 
-    pub fn get_property(&self, property: ValueBase, callobjref: &CallObjectRef) -> Value {
+    pub fn get_property(&self, property: ValueBase, callobjref: Option<&CallObjectRef>) -> Value {
         let property_of_simple = |obj: &FxHashMap<String, Value>| -> Value {
             match obj_find_val(obj, property.to_string().as_str()).val {
                 ValueBase::Function(box (id, iseq, map2, mut callobj)) => {
@@ -397,11 +397,13 @@ impl Value {
             unsafe {
                 match property {
                     // Index
-                    ValueBase::Number(n) if is_integer(n) => {
-                        (**callobjref).get_arguments_nth_value(n as usize)
-                    }
+                    ValueBase::Number(n) if is_integer(n) => callobjref
+                        .and_then(|co| Some((**co).get_arguments_nth_value(n as usize)))
+                        .unwrap_or_else(|| Value::undefined()),
                     ValueBase::String(ref s) if s.to_str().unwrap() == "length" => {
-                        let length = (**callobjref).get_arguments_length();
+                        let length = callobjref
+                            .and_then(|co| Some((**co).get_arguments_length()))
+                            .unwrap_or(0);
                         Value::number(length as f64)
                     }
                     _ => Value::undefined(),
@@ -588,15 +590,20 @@ fn runtime_error(msg: &str) -> ! {
 
 impl VM {
     pub fn new(global_vals: CallObjectRef) -> VM {
+        // TODO: Support for 'require' is not enough.
         unsafe {
             (*global_vals).set_value(
                 "require".to_string(),
                 Value::builtin_function(builtin::REQUIRE, CallObject::new(Value::undefined())),
             );
-            (*global_vals).set_value(
-                "exports".to_string(),
-                Value::object(gc::new(FxHashMap::default())),
-            );
+
+            let module_exports = Value::object(gc::new(FxHashMap::default()));
+            (*global_vals).set_value("module".to_string(), {
+                let mut map = FxHashMap::default();
+                map.insert("exports".to_string(), module_exports.clone());
+                Value::object(gc::new(map))
+            });
+            (*global_vals).set_value("exports".to_string(), module_exports);
         }
 
         unsafe {
@@ -1409,7 +1416,7 @@ fn get_member(self_: &mut VM, _iseq: &ByteCode) {
     self_.state.pc += 1; // get_global
     let member = self_.state.stack.pop().unwrap();
     let parent = self_.state.stack.pop().unwrap();
-    let val = parent.get_property(member.val, self_.state.scope.last().unwrap());
+    let val = parent.get_property(member.val, Some(self_.state.scope.last().unwrap()));
     self_.state.stack.push(val);
 }
 
@@ -1585,7 +1592,12 @@ fn call(self_: &mut VM, iseq: &ByteCode) {
             call_function(self_, id, iseq, args, callobj);
         }
         c => {
-            println!("Call: err: {:?}, pc = {}", c, self_.state.pc);
+            runtime_error(
+                format!(
+                    "type error(pc:{}): '{:?}' is not a function but called",
+                    self_.state.pc, c
+                ).as_str(),
+            );
         }
     }
 }
