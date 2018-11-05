@@ -95,52 +95,6 @@ impl VMCodeGen {
 
         self.bytecode_gen.gen_end(iseq);
 
-        // let mut function_value_list = HashMap::new();
-        //
-        // {
-        //     function_value_list.insert("console".to_string(), {
-        //         let mut map = HashMap::new();
-        //         map.insert(
-        //             "log".to_string(),
-        //             Value::BuiltinFunction(builtin::CONSOLE_LOG, CallObject::new(Value::Undefined)),
-        //         );
-        //         Value::Object(Rc::new(RefCell::new(map)))
-        //     });
-        //
-        //     function_value_list.insert("process".to_string(), {
-        //         let mut map = HashMap::new();
-        //         map.insert("stdout".to_string(), {
-        //             let mut map = HashMap::new();
-        //             map.insert(
-        //                 "write".to_string(),
-        //                 Value::BuiltinFunction(
-        //                     builtin::PROCESS_STDOUT_WRITE,
-        //                     CallObject::new(Value::Undefined),
-        //                 ),
-        //             );
-        //             Value::Object(Rc::new(RefCell::new(map)))
-        //         });
-        //         Value::Object(Rc::new(RefCell::new(map)))
-        //     });
-        //
-        //     function_value_list.insert("Math".to_string(), {
-        //         let mut map = HashMap::new();
-        //         map.insert(
-        //             "floor".to_string(),
-        //             Value::BuiltinFunction(builtin::MATH_FLOOR, CallObject::new(Value::Undefined)),
-        //         );
-        //         map.insert(
-        //             "random".to_string(),
-        //             Value::BuiltinFunction(builtin::MATH_RANDOM, CallObject::new(Value::Undefined)),
-        //         );
-        //         map.insert(
-        //             "pow".to_string(),
-        //             Value::BuiltinFunction(builtin::MATH_POW, CallObject::new(Value::Undefined)),
-        //         );
-        //         Value::Object(Rc::new(RefCell::new(map)))
-        //     });
-        // }
-
         for (
             _,
             FunctionInfo {

@@ -133,7 +133,7 @@ pub unsafe fn debug_print(val: &Value, nest: bool) {
             }
             libc::printf("]\0".as_ptr() as RawStringPtr);
         }
-        ValueBase::Function(_, _, _, _) => {
+        ValueBase::Function(_) => {
             libc::printf("[Function]\0".as_ptr() as RawStringPtr);
         }
         _ => {}
@@ -333,17 +333,19 @@ pub unsafe fn function_prototype_apply(callobj: CallObject, args: Vec<Value>, se
     let callee = *callobj.this;
 
     match callee.val {
-        ValueBase::BuiltinFunction(id, _obj, mut callobj) => {
+        ValueBase::BuiltinFunction(box (id, _, callobj)) => {
+            let mut callobj = callobj.clone();
             *callobj.this = arg_this;
             callobj.vals = gc::new(FxHashMap::default());
             self_.builtin_functions[id](callobj, arg, self_);
         }
-        ValueBase::Function(id, iseq, _obj, mut callobj) => {
+        ValueBase::Function(box (id, ref iseq, _, ref callobj)) => {
+            let mut callobj = callobj.clone();
             *callobj.this = arg_this;
             callobj.vals = gc::new(FxHashMap::default());
-            call_function(self_, id, &iseq, arg, callobj);
+            call_function(self_, id, iseq, arg, callobj);
         }
-        _ => {}
+        _ => self_.state.stack.push(Value::undefined()),
     }
 }
 
@@ -352,17 +354,19 @@ pub unsafe fn function_prototype_call(callobj: CallObject, args: Vec<Value>, sel
     let callee = *callobj.this;
     let arg_this = args[0].clone();
     match callee.val {
-        ValueBase::BuiltinFunction(id, _obj, mut callobj) => {
+        ValueBase::BuiltinFunction(box (id, _, ref callobj)) => {
+            let mut callobj = callobj.clone();
             *callobj.this = arg_this;
             callobj.vals = gc::new(FxHashMap::default());
             self_.builtin_functions[id](callobj, args[1..].to_vec(), self_);
         }
-        ValueBase::Function(id, iseq, _obj, mut callobj) => {
+        ValueBase::Function(box (id, ref iseq, _, ref callobj)) => {
+            let mut callobj = callobj.clone();
             *callobj.this = arg_this;
             callobj.vals = gc::new(FxHashMap::default());
-            call_function(self_, id, &iseq, args[1..].to_vec(), callobj);
+            call_function(self_, id, iseq, args[1..].to_vec(), callobj);
         }
-        _ => {}
+        _ => self_.state.stack.push(Value::undefined()),
     }
 }
 

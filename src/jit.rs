@@ -1457,16 +1457,18 @@ impl TracingJit {
                             ));
                         }
                         None => match scope.get_value(name).val {
-                            vm::ValueBase::Function(id, _, _, _) if id == func_id => {
+                            vm::ValueBase::Function(box (id, _, _, _)) if id == func_id => {
                                 stack.push((func, None));
                             }
-                            vm::ValueBase::Function(id, _, _, _) => match self.func_info.get(&id) {
-                                Some(FuncInfo { llvm_func, .. }) if llvm_func.is_some() => {
-                                    stack.push((llvm_func.unwrap(), None));
+                            vm::ValueBase::Function(box (id, _, _, _)) => {
+                                match self.func_info.get(&id) {
+                                    Some(FuncInfo { llvm_func, .. }) if llvm_func.is_some() => {
+                                        stack.push((llvm_func.unwrap(), None));
+                                    }
+                                    _ => return Err(()),
                                 }
-                                _ => return Err(()),
-                            },
-                            vm::ValueBase::BuiltinFunction(n, _, _) => {
+                            }
+                            vm::ValueBase::BuiltinFunction(box (n, _, _)) => {
                                 match self.builtin_funcs.get(&n) {
                                     Some(f) => stack.push((*f, None)),
                                     _ => return Err(()),
@@ -1507,7 +1509,7 @@ impl TracingJit {
                             args.push((arg.0, infer_ty(arg.0, &arg.1)?));
                         }
                         match callee.val {
-                            vm::ValueBase::BuiltinFunction(builtin::CONSOLE_LOG, _, _) => {
+                            vm::ValueBase::BuiltinFunction(box (builtin::CONSOLE_LOG, _, _)) => {
                                 for (arg, ty) in args {
                                     LLVMBuildCall(
                                         self.builder,
@@ -1535,7 +1537,11 @@ impl TracingJit {
                                     CString::new("").unwrap().as_ptr(),
                                 );
                             }
-                            vm::ValueBase::BuiltinFunction(builtin::PROCESS_STDOUT_WRITE, _, _) => {
+                            vm::ValueBase::BuiltinFunction(box (
+                                builtin::PROCESS_STDOUT_WRITE,
+                                _,
+                                _,
+                            )) => {
                                 for (arg, ty) in args {
                                     match ty {
                                         ValueType::String => LLVMBuildCall(
@@ -1552,8 +1558,8 @@ impl TracingJit {
                                     };
                                 }
                             }
-                            vm::ValueBase::BuiltinFunction(builtin::MATH_FLOOR, _, _) => stack
-                                .push((
+                            vm::ValueBase::BuiltinFunction(box (builtin::MATH_FLOOR, _, _)) => {
+                                stack.push((
                                     LLVMBuildCall(
                                         self.builder,
                                         *self.builtin_funcs.get(&BUILTIN_MATH_FLOOR).unwrap(),
@@ -1565,9 +1571,10 @@ impl TracingJit {
                                         CString::new("").unwrap().as_ptr(),
                                     ),
                                     None,
-                                )),
-                            vm::ValueBase::BuiltinFunction(builtin::MATH_RANDOM, _, _) => stack
-                                .push((
+                                ))
+                            }
+                            vm::ValueBase::BuiltinFunction(box (builtin::MATH_RANDOM, _, _)) => {
+                                stack.push((
                                     LLVMBuildCall(
                                         self.builder,
                                         *self.builtin_funcs.get(&BUILTIN_MATH_RANDOM).unwrap(),
@@ -1579,9 +1586,10 @@ impl TracingJit {
                                         CString::new("").unwrap().as_ptr(),
                                     ),
                                     None,
-                                )),
-                            vm::ValueBase::BuiltinFunction(builtin::MATH_POW, _, _) => {
-                                stack.push((
+                                ))
+                            }
+                            vm::ValueBase::BuiltinFunction(box (builtin::MATH_POW, _, _)) => stack
+                                .push((
                                     LLVMBuildCall(
                                         self.builder,
                                         *self.builtin_funcs.get(&BUILTIN_MATH_POW).unwrap(),
@@ -1593,8 +1601,7 @@ impl TracingJit {
                                         CString::new("").unwrap().as_ptr(),
                                     ),
                                     None,
-                                ))
-                            }
+                                )),
                             _ => return Err(()),
                         }
                     } else {
@@ -1642,10 +1649,12 @@ impl TracingJit {
                             LLVMConstReal(LLVMDoubleTypeInContext(self.context), n as f64),
                             None,
                         )),
-                        vm::ValueBase::Function(id, _, _, _) if is_func_jit && id == func_id => {
+                        vm::ValueBase::Function(box (id, _, _, _))
+                            if is_func_jit && id == func_id =>
+                        {
                             stack.push((func, None))
                         }
-                        vm::ValueBase::Function(id, _, _, _) => stack.push((
+                        vm::ValueBase::Function(box (id, _, _, _)) => stack.push((
                             match self.func_info.get(&id) {
                                 Some(FuncInfo { llvm_func, .. }) if llvm_func.is_some() => {
                                     llvm_func.unwrap()
@@ -1670,7 +1679,7 @@ impl TracingJit {
                         vm::ValueBase::Object(_) => {
                             stack.push((ptr::null_mut(), Some(const_table.value[n].clone())))
                         }
-                        vm::ValueBase::BuiltinFunction(n, _, _) => stack.push((
+                        vm::ValueBase::BuiltinFunction(box (n, _, _)) => stack.push((
                             if let Some(f) = self.builtin_funcs.get(&n) {
                                 *f
                             } else {

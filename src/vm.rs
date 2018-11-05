@@ -49,8 +49,8 @@ pub enum ValueBase {
     Bool(bool),
     Number(f64),
     String(CString),
-    Function(FuncId, ByteCode, *mut FxHashMap<String, Value>, CallObject),
-    BuiltinFunction(usize, *mut FxHashMap<String, Value>, CallObject), // id(==0:unknown)
+    Function(Box<(FuncId, ByteCode, *mut FxHashMap<String, Value>, CallObject)>),
+    BuiltinFunction(Box<(usize, *mut FxHashMap<String, Value>, CallObject)>), // id(==0:unknown)
     Object(*mut FxHashMap<String, Value>), // Object(FxHashMap<String, Value>),
     Array(*mut ArrayValue),
     Arguments,
@@ -261,7 +261,7 @@ impl Value {
         obj: *mut FxHashMap<String, Value>,
         callobj: CallObject,
     ) -> Value {
-        Value::new(ValueBase::Function(id, iseq, obj, callobj))
+        Value::new(ValueBase::Function(Box::new((id, iseq, obj, callobj))))
     }
 
     pub fn builtin_function(pc: usize, callobj: CallObject) -> Value {
@@ -277,19 +277,19 @@ impl Value {
                     let mut hm = FxHashMap::default();
                     hm.insert(
                         "apply".to_string(),
-                        Value::new(ValueBase::BuiltinFunction(
+                        Value::new(ValueBase::BuiltinFunction(Box::new((
                             builtin::FUNCTION_PROTOTYPE_APPLY,
                             ::std::ptr::null_mut(),
                             CallObject::new(Value::undefined()),
-                        )),
+                        )))),
                     );
                     hm.insert(
                         "call".to_string(),
-                        Value::new(ValueBase::BuiltinFunction(
+                        Value::new(ValueBase::BuiltinFunction(Box::new((
                             builtin::FUNCTION_PROTOTYPE_CALL,
                             ::std::ptr::null_mut(),
                             CallObject::new(Value::undefined()),
-                        )),
+                        )))),
                     );
                     hm
                 }))),
@@ -302,7 +302,7 @@ impl Value {
         if let ValueBase::Object(ref mut obj2) = obj.get_mut("__proto__").unwrap().val {
             unsafe {
                 for name in ["apply", "call"].iter() {
-                    if let ValueBase::BuiltinFunction(_, ref mut obj3, _) =
+                    if let ValueBase::BuiltinFunction(box (_, ref mut obj3, _)) =
                         (**obj2).get_mut(*name).unwrap().val
                     {
                         *obj3 = gc::new(obj_.clone());
@@ -311,7 +311,11 @@ impl Value {
             }
         }
 
-        Value::new(ValueBase::BuiltinFunction(pc, gc::new(obj), callobj))
+        Value::new(ValueBase::BuiltinFunction(Box::new((
+            pc,
+            gc::new(obj),
+            callobj,
+        ))))
     }
 
     pub fn object(obj: *mut FxHashMap<String, Value>) -> Value {
@@ -329,17 +333,17 @@ impl Value {
     pub fn get_property(&self, property: ValueBase, callobjref: &CallObjectRef) -> Value {
         let property_of_simple = |obj: &FxHashMap<String, Value>| -> Value {
             match obj_find_val(obj, property.to_string().as_str()).val {
-                ValueBase::Function(id, iseq, map2, mut callobj) => {
-                    Value::new(ValueBase::Function(id, iseq, map2, {
+                ValueBase::Function(box (id, iseq, map2, mut callobj)) => {
+                    Value::new(ValueBase::Function(Box::new((id, iseq, map2, {
                         *callobj.this = self.clone();
                         callobj
-                    }))
+                    }))))
                 }
-                ValueBase::BuiltinFunction(id, obj, mut callobj) => {
-                    Value::new(ValueBase::BuiltinFunction(id, obj, {
+                ValueBase::BuiltinFunction(box (id, obj, mut callobj)) => {
+                    Value::new(ValueBase::BuiltinFunction(Box::new((id, obj, {
                         *callobj.this = self.clone();
                         callobj
-                    }))
+                    }))))
                 }
                 val => Value::new(val),
             }
@@ -408,8 +412,8 @@ impl Value {
         unsafe {
             match self.val {
                 ValueBase::String(ref s) => property_of_string(s),
-                ValueBase::BuiltinFunction(_, ref obj, _)
-                | ValueBase::Function(_, _, ref obj, _)
+                ValueBase::BuiltinFunction(box (_, ref obj, _))
+                | ValueBase::Function(box (_, _, ref obj, _))
                 | ValueBase::Object(ref obj) => property_of_object(&**obj),
                 ValueBase::Array(ref ary) => property_of_array(&**ary),
                 ValueBase::Arguments => property_of_arguments(),
@@ -512,7 +516,7 @@ impl ValueBase {
 }
 
 pub fn new_value_function(id: FuncId, iseq: ByteCode, callobj: CallObject) -> Value {
-    let mut val = Value::new(ValueBase::Function(
+    let mut val = Value::new(ValueBase::Function(Box::new((
         id,
         iseq,
         gc::new({
@@ -545,10 +549,10 @@ pub fn new_value_function(id: FuncId, iseq: ByteCode, callobj: CallObject) -> Va
             hm
         }),
         callobj,
-    ));
+    ))));
 
     let v2 = val.clone();
-    if let ValueBase::Function(_, _, ref mut obj, _) = &mut val.val {
+    if let ValueBase::Function(box (_, _, ref mut obj, _)) = &mut val.val {
         // TODO: Add constructor of this function itself (==Function). (not prototype.constructor)
         unsafe {
             if let ValueBase::Object(ref mut obj) = (**obj).get_mut("prototype").unwrap().val {
@@ -1034,8 +1038,8 @@ fn construct(self_: &mut VM, iseq: &ByteCode) {
 
     let callee = self_.state.stack.pop().unwrap();
 
-    match callee.val {
-        ValueBase::Function(id, iseq, obj, mut callobj) => {
+    match callee.val.clone() {
+        ValueBase::Function(box (id, iseq, obj, mut callobj)) => {
             // insert new 'this'
             let new_this = {
                 let mut map = FxHashMap::default();
@@ -1106,11 +1110,11 @@ fn construct(self_: &mut VM, iseq: &ByteCode) {
                     ..
                 }
                 | &mut Value {
-                    val: ValueBase::Function(_, _, _, _),
+                    val: ValueBase::Function(box (_, _, _, _)),
                     ..
                 }
                 | &mut Value {
-                    val: ValueBase::BuiltinFunction(_, _, _),
+                    val: ValueBase::BuiltinFunction(box (_, _, _)),
                     ..
                 } => {}
                 others => *others = Value::object(new_this),
@@ -1416,7 +1420,7 @@ fn set_member(self_: &mut VM, _iseq: &ByteCode) {
     let val = self_.state.stack.pop().unwrap();
     // TODO: The following code should be a function (like Value::set_property).
     match parent.val {
-        ValueBase::Object(map) | ValueBase::Function(_, _, map, _) => unsafe {
+        ValueBase::Object(map) | ValueBase::Function(box (_, _, map, _)) => unsafe {
             *(*map)
                 .entry(member.to_string())
                 .or_insert_with(|| Value::undefined()) = val;
@@ -1562,14 +1566,15 @@ fn call(self_: &mut VM, iseq: &ByteCode) {
     let callee = self_.state.stack.pop().unwrap();
 
     match callee.val {
-        ValueBase::BuiltinFunction(x, _, callobj) => {
+        ValueBase::BuiltinFunction(box (x, _, callobj)) => {
             let mut args = vec![];
             for _ in 0..argc {
                 args.push(self_.state.stack.pop().unwrap());
             }
             unsafe { self_.builtin_functions[x](callobj, args, self_) };
         }
-        ValueBase::Function(id, iseq, _, mut callobj) => {
+        ValueBase::Function(box (id, ref iseq, _, ref callobj)) => {
+            let mut callobj = callobj.clone();
             callobj.vals = gc::new(FxHashMap::default());
 
             let mut args = vec![];
@@ -1577,7 +1582,7 @@ fn call(self_: &mut VM, iseq: &ByteCode) {
                 args.push(self_.state.stack.pop().unwrap());
             }
 
-            call_function(self_, id, &iseq, args, callobj);
+            call_function(self_, id, iseq, args, callobj);
         }
         c => {
             println!("Call: err: {:?}, pc = {}", c, self_.state.pc);
@@ -1619,7 +1624,7 @@ fn lor(self_: &mut VM, _iseq: &ByteCode) {
 fn set_cur_callobj(self_: &mut VM, _iseq: &ByteCode) {
     self_.state.pc += 1;
     if let Some(Value {
-        val: ValueBase::Function(_, _, _, ref mut callobj),
+        val: ValueBase::Function(box (_, _, _, ref mut callobj)),
         ..
     }) = self_.state.stack.last_mut()
     {
