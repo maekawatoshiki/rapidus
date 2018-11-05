@@ -829,6 +829,10 @@ impl TracingJit {
         is_func_jit: bool,
         env: &mut FxHashMap<String, LLVMValueRef>,
     ) -> Result<(), ()> {
+        let func = self.cur_func.unwrap();
+        let mut stack: Vec<(LLVMValueRef, Option<vm::Value>)> = vec![];
+        let mut labels: FxHashMap<usize, LabelKind> = FxHashMap::default();
+
         enum LabelKind {
             NotPositioned(LLVMBasicBlockRef),
             Positioned(LLVMBasicBlockRef),
@@ -861,10 +865,103 @@ impl TracingJit {
             }
         }
 
-        let func = self.cur_func.unwrap();
-        let mut stack: Vec<(LLVMValueRef, Option<vm::Value>)> = vec![];
+        // TODO: Need a better way to deal with builtin functions available in JIT.
+        unsafe fn call_builtin_function(
+            self_: &TracingJit,
+            builtin_func_id: usize,
+            args: Vec<(LLVMValueRef, ValueType)>,
+            stack: &mut Vec<(LLVMValueRef, Option<vm::Value>)>,
+        ) -> Option<()> {
+            match builtin_func_id {
+                builtin::CONSOLE_LOG => {
+                    for (arg, ty) in args {
+                        LLVMBuildCall(
+                            self_.builder,
+                            *self_
+                                .builtin_funcs
+                                .get(&match ty {
+                                    ValueType::Number => BUILTIN_CONSOLE_LOG_F64,
+                                    ValueType::Bool => BUILTIN_CONSOLE_LOG_BOOL,
+                                    ValueType::String => BUILTIN_CONSOLE_LOG_STRING,
+                                })
+                                .unwrap(),
+                            vec![arg].as_mut_ptr(),
+                            1,
+                            CString::new("").unwrap().as_ptr(),
+                        );
+                    }
+                    LLVMBuildCall(
+                        self_.builder,
+                        *self_
+                            .builtin_funcs
+                            .get(&BUILTIN_CONSOLE_LOG_NEWLINE)
+                            .unwrap(),
+                        vec![].as_mut_ptr(),
+                        0,
+                        CString::new("").unwrap().as_ptr(),
+                    );
+                }
+                builtin::PROCESS_STDOUT_WRITE => {
+                    for (arg, ty) in args {
+                        match ty {
+                            ValueType::String => LLVMBuildCall(
+                                self_.builder,
+                                *self_
+                                    .builtin_funcs
+                                    .get(&BUILTIN_PROCESS_STDOUT_WRITE)
+                                    .unwrap(),
+                                vec![arg].as_mut_ptr(),
+                                1,
+                                CString::new("").unwrap().as_ptr(),
+                            ),
+                            _ => return None,
+                        };
+                    }
+                }
+                builtin::MATH_FLOOR => stack.push((
+                    LLVMBuildCall(
+                        self_.builder,
+                        *self_.builtin_funcs.get(&BUILTIN_MATH_FLOOR).unwrap(),
+                        args.iter()
+                            .map(|(x, _)| *x)
+                            .collect::<Vec<LLVMValueRef>>()
+                            .as_mut_ptr(),
+                        1,
+                        CString::new("").unwrap().as_ptr(),
+                    ),
+                    None,
+                )),
+                builtin::MATH_RANDOM => stack.push((
+                    LLVMBuildCall(
+                        self_.builder,
+                        *self_.builtin_funcs.get(&BUILTIN_MATH_RANDOM).unwrap(),
+                        args.iter()
+                            .map(|(x, _)| *x)
+                            .collect::<Vec<LLVMValueRef>>()
+                            .as_mut_ptr(),
+                        0,
+                        CString::new("").unwrap().as_ptr(),
+                    ),
+                    None,
+                )),
+                builtin::MATH_POW => stack.push((
+                    LLVMBuildCall(
+                        self_.builder,
+                        *self_.builtin_funcs.get(&BUILTIN_MATH_POW).unwrap(),
+                        args.iter()
+                            .map(|(x, _)| *x)
+                            .collect::<Vec<LLVMValueRef>>()
+                            .as_mut_ptr(),
+                        2,
+                        CString::new("").unwrap().as_ptr(),
+                    ),
+                    None,
+                )),
+                _ => return None,
+            };
 
-        let mut labels: FxHashMap<usize, LabelKind> = FxHashMap::default();
+            Some(())
+        }
 
         // First of all, find JMP-related ops and record its destination.
         {
@@ -1508,102 +1605,19 @@ impl TracingJit {
                             let arg = try_opt!(stack.pop());
                             args.push((arg.0, infer_ty(arg.0, &arg.1)?));
                         }
-                        match callee.val {
-                            vm::ValueBase::BuiltinFunction(box (builtin::CONSOLE_LOG, _, _)) => {
-                                for (arg, ty) in args {
-                                    LLVMBuildCall(
-                                        self.builder,
-                                        *self
-                                            .builtin_funcs
-                                            .get(&match ty {
-                                                ValueType::Number => BUILTIN_CONSOLE_LOG_F64,
-                                                ValueType::Bool => BUILTIN_CONSOLE_LOG_BOOL,
-                                                ValueType::String => BUILTIN_CONSOLE_LOG_STRING,
-                                            })
-                                            .unwrap(),
-                                        vec![arg].as_mut_ptr(),
-                                        1,
-                                        CString::new("").unwrap().as_ptr(),
-                                    );
-                                }
-                                LLVMBuildCall(
-                                    self.builder,
-                                    *self
-                                        .builtin_funcs
-                                        .get(&BUILTIN_CONSOLE_LOG_NEWLINE)
-                                        .unwrap(),
-                                    vec![].as_mut_ptr(),
-                                    0,
-                                    CString::new("").unwrap().as_ptr(),
-                                );
-                            }
-                            vm::ValueBase::BuiltinFunction(box (
-                                builtin::PROCESS_STDOUT_WRITE,
-                                _,
-                                _,
-                            )) => {
-                                for (arg, ty) in args {
-                                    match ty {
-                                        ValueType::String => LLVMBuildCall(
-                                            self.builder,
-                                            *self
-                                                .builtin_funcs
-                                                .get(&BUILTIN_PROCESS_STDOUT_WRITE)
-                                                .unwrap(),
-                                            vec![arg].as_mut_ptr(),
-                                            1,
-                                            CString::new("").unwrap().as_ptr(),
-                                        ),
-                                        _ => return Err(()),
-                                    };
-                                }
-                            }
-                            vm::ValueBase::BuiltinFunction(box (builtin::MATH_FLOOR, _, _)) => {
-                                stack.push((
-                                    LLVMBuildCall(
-                                        self.builder,
-                                        *self.builtin_funcs.get(&BUILTIN_MATH_FLOOR).unwrap(),
-                                        args.iter()
-                                            .map(|(x, _)| *x)
-                                            .collect::<Vec<LLVMValueRef>>()
-                                            .as_mut_ptr(),
-                                        1,
-                                        CString::new("").unwrap().as_ptr(),
-                                    ),
-                                    None,
-                                ))
-                            }
-                            vm::ValueBase::BuiltinFunction(box (builtin::MATH_RANDOM, _, _)) => {
-                                stack.push((
-                                    LLVMBuildCall(
-                                        self.builder,
-                                        *self.builtin_funcs.get(&BUILTIN_MATH_RANDOM).unwrap(),
-                                        args.iter()
-                                            .map(|(x, _)| *x)
-                                            .collect::<Vec<LLVMValueRef>>()
-                                            .as_mut_ptr(),
-                                        0,
-                                        CString::new("").unwrap().as_ptr(),
-                                    ),
-                                    None,
-                                ))
-                            }
-                            vm::ValueBase::BuiltinFunction(box (builtin::MATH_POW, _, _)) => stack
-                                .push((
-                                    LLVMBuildCall(
-                                        self.builder,
-                                        *self.builtin_funcs.get(&BUILTIN_MATH_POW).unwrap(),
-                                        args.iter()
-                                            .map(|(x, _)| *x)
-                                            .collect::<Vec<LLVMValueRef>>()
-                                            .as_mut_ptr(),
-                                        2,
-                                        CString::new("").unwrap().as_ptr(),
-                                    ),
-                                    None,
-                                )),
-                            _ => return Err(()),
-                        }
+
+                        try_opt!(call_builtin_function(
+                            self,
+                            if let vm::ValueBase::BuiltinFunction(box (builtin_func_id, _, _)) =
+                                callee.val
+                            {
+                                builtin_func_id
+                            } else {
+                                return Err(());
+                            },
+                            args,
+                            &mut stack,
+                        ));
                     } else {
                         let mut llvm_args = vec![];
                         for _ in 0..argc {
