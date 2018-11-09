@@ -46,6 +46,7 @@ pub const MATH_TANH: usize = 35;
 pub const MATH_TRUNC: usize = 36;
 pub const FUNCTION_PROTOTYPE_APPLY: usize = 37;
 pub const FUNCTION_PROTOTYPE_CALL: usize = 38;
+pub const REQUIRE: usize = 39;
 
 // BuiltinFunction(0)
 pub unsafe fn console_log(_: CallObject, args: Vec<Value>, _: &mut VM) {
@@ -132,7 +133,7 @@ pub unsafe fn debug_print(val: &Value, nest: bool) {
             }
             libc::printf("]\0".as_ptr() as RawStringPtr);
         }
-        ValueBase::Function(_, _, _) => {
+        ValueBase::Function(_) => {
             libc::printf("[Function]\0".as_ptr() as RawStringPtr);
         }
         _ => {}
@@ -140,7 +141,7 @@ pub unsafe fn debug_print(val: &Value, nest: bool) {
 }
 
 // BuiltinFunction(2)
-pub unsafe fn array_push(callobj: CallObject, args: Vec<Value>, _: &mut VM) {
+pub unsafe fn array_push(callobj: CallObject, args: Vec<Value>, _self: &mut VM) {
     if let ValueBase::Array(ref map) = callobj.this.val {
         let mut map = &mut **map;
         // let mut elems = &mut map.elems;
@@ -332,17 +333,19 @@ pub unsafe fn function_prototype_apply(callobj: CallObject, args: Vec<Value>, se
     let callee = *callobj.this;
 
     match callee.val {
-        ValueBase::BuiltinFunction(id, _obj, mut callobj) => {
+        ValueBase::BuiltinFunction(box (id, _, callobj)) => {
+            let mut callobj = callobj.clone();
             *callobj.this = arg_this;
             callobj.vals = gc::new(FxHashMap::default());
             self_.builtin_functions[id](callobj, arg, self_);
         }
-        ValueBase::Function(dst, _obj, mut callobj) => {
+        ValueBase::Function(box (id, ref iseq, _, ref callobj)) => {
+            let mut callobj = callobj.clone();
             *callobj.this = arg_this;
             callobj.vals = gc::new(FxHashMap::default());
-            call_function(self_, dst, arg, callobj);
+            call_function(self_, id, iseq, arg, callobj);
         }
-        _ => {}
+        _ => self_.state.stack.push(Value::undefined()),
     }
 }
 
@@ -351,16 +354,90 @@ pub unsafe fn function_prototype_call(callobj: CallObject, args: Vec<Value>, sel
     let callee = *callobj.this;
     let arg_this = args[0].clone();
     match callee.val {
-        ValueBase::BuiltinFunction(id, _obj, mut callobj) => {
+        ValueBase::BuiltinFunction(box (id, _, ref callobj)) => {
+            let mut callobj = callobj.clone();
             *callobj.this = arg_this;
             callobj.vals = gc::new(FxHashMap::default());
             self_.builtin_functions[id](callobj, args[1..].to_vec(), self_);
         }
-        ValueBase::Function(dst, _obj, mut callobj) => {
+        ValueBase::Function(box (id, ref iseq, _, ref callobj)) => {
+            let mut callobj = callobj.clone();
             *callobj.this = arg_this;
             callobj.vals = gc::new(FxHashMap::default());
-            call_function(self_, dst, args[1..].to_vec(), callobj);
+            call_function(self_, id, iseq, args[1..].to_vec(), callobj);
         }
-        _ => {}
+        _ => self_.state.stack.push(Value::undefined()),
     }
+}
+
+// BuiltinFunction(39)
+pub unsafe fn require(_callobj: CallObject, args: Vec<Value>, self_: &mut VM) {
+    // TODO: REFINE CODE!!!!
+    use ansi_term::Colour;
+    use extract_anony_func;
+    use parser;
+    use std::ffi::CString;
+    use std::fs::OpenOptions;
+    use std::io::prelude::*;
+    use vm;
+    use vm_codegen;
+
+    let file_name = match args[0].val {
+        ValueBase::String(ref s) => s.to_str().unwrap().clone(),
+        _ => panic!(),
+    };
+
+    let mut file_body = String::new();
+
+    match OpenOptions::new().read(true).open(file_name) {
+        Ok(mut ok) => match ok.read_to_string(&mut file_body).ok() {
+            Some(x) => x,
+            None => {
+                eprintln!(
+                    "{}: Couldn't read the file '{}'",
+                    Colour::Red.bold().paint("error"),
+                    file_name,
+                );
+                return;
+            }
+        },
+        Err(_e) => {
+            eprintln!(
+                "{}: No such file or directory '{}'",
+                Colour::Red.bold().paint("error"),
+                file_name,
+            );
+            return;
+        }
+    };
+
+    if file_body.len() == 0 {
+        return;
+    }
+
+    if file_body.as_bytes()[0] == b'#' {
+        let first_ln = file_body.find('\n').unwrap_or(file_body.len());
+        file_body.drain(..first_ln);
+    }
+
+    let mut parser = parser::Parser::new(file_body);
+
+    let mut node = parser.parse_all();
+
+    extract_anony_func::AnonymousFunctionExtractor::new().run_toplevel(&mut node);
+
+    let mut vm_codegen = vm_codegen::VMCodeGen::new();
+    let mut iseq = vec![];
+    vm_codegen.bytecode_gen.const_table = self_.const_table.clone();
+    vm_codegen.compile(&node, &mut iseq);
+    self_.const_table = vm_codegen.bytecode_gen.const_table.clone();
+
+    let mut vm = vm::VM::new(vm_codegen.global_varmap);
+    vm.const_table = vm_codegen.bytecode_gen.const_table;
+    vm.run(iseq);
+
+    let module_exports = (**vm.state.scope.last().unwrap())
+        .get_value(&"module".to_string())
+        .get_property(Value::string(CString::new("exports").unwrap()).val, None);
+    self_.state.stack.push(module_exports);
 }

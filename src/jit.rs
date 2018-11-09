@@ -1,11 +1,12 @@
 use builtin;
-use bytecode_gen::VMInst;
+use bytecode_gen::{ByteCode, VMInst};
+use id::Id;
 use vm;
-use vm::CallObject;
+use vm::{CallObject, FuncId};
 
 use rand::{random, thread_rng, RngCore};
 
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use libc;
 use llvm;
@@ -124,14 +125,29 @@ impl FuncInfo {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct UniquePosition {
+    func_id: Id,
+    pos: usize, // position in iseq
+}
+
+impl UniquePosition {
+    pub fn new(func_id: Id, pos: usize) -> Self {
+        UniquePosition {
+            func_id: func_id,
+            pos: pos,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct TracingJit {
-    loop_info: HashMap<usize, LoopInfo>, // <pos in bytecode, loop info>
-    func_info: HashMap<usize, FuncInfo>, // <pos in bytecode, func info>
-    function_return_types: HashMap<usize, ValueType>,
-    count: HashMap<usize, usize>,
+    loop_info: FxHashMap<UniquePosition, LoopInfo>,
+    func_info: FxHashMap<FuncId, FuncInfo>,
+    function_return_types: FxHashMap<usize, ValueType>,
+    count: FxHashMap<UniquePosition, usize>,
     cur_func: Option<LLVMValueRef>,
-    builtin_funcs: HashMap<usize, LLVMValueRef>,
+    builtin_funcs: FxHashMap<usize, LLVMValueRef>,
     context: LLVMContextRef,
     module: LLVMModuleRef,
     builder: LLVMBuilderRef,
@@ -161,17 +177,17 @@ impl TracingJit {
         llvm::transforms::scalar::LLVMAddJumpThreadingPass(pm);
 
         TracingJit {
-            loop_info: HashMap::new(),
-            func_info: HashMap::new(),
-            function_return_types: HashMap::new(),
-            count: HashMap::new(),
+            loop_info: FxHashMap::default(),
+            func_info: FxHashMap::default(),
+            function_return_types: FxHashMap::default(),
+            count: FxHashMap::default(),
             context: context,
             module: module,
             builder: LLVMCreateBuilderInContext(context),
             pass_manager: pm,
             cur_func: None,
             builtin_funcs: {
-                let mut hmap = HashMap::new();
+                let mut hmap = FxHashMap::default();
 
                 let f_console_log_string = LLVMAddFunction(
                     module,
@@ -291,14 +307,14 @@ unsafe fn cur_bb_has_no_terminator(builder: LLVMBuilderRef) -> bool {
 impl TracingJit {
     pub unsafe fn can_jit(
         &mut self,
-        iseq: &Vec<u8>,
+        id: FuncId,
+        iseq: &ByteCode,
         scope: &CallObject,
         const_table: &vm::ConstantTable,
-        pc: usize,
         argc: usize,
     ) -> Option<fn()> {
-        if !self.func_is_called_enough_times(pc) {
-            self.inc_count(pc);
+        if !self.func_is_called_enough_times(id, 0) {
+            self.inc_count(id, 0);
             return None;
         }
 
@@ -307,7 +323,7 @@ impl TracingJit {
                 func_addr,
                 jit_info: JITInfo { cannot_jit },
                 ..
-            } = self.func_info.entry(pc).or_insert(FuncInfo::new());
+            } = self.func_info.entry(id).or_insert(FuncInfo::new());
             if *cannot_jit {
                 return None;
             }
@@ -322,10 +338,10 @@ impl TracingJit {
         // compiled. (cannot_jit = true)
         // llvm::execution_engine::LLVMAddModule(self.exec_engine, self.module);
         let llvm_func =
-            match self.gen_code_for_func(name.clone(), iseq, scope, const_table, pc, argc) {
+            match self.gen_code_for_func(name.clone(), iseq, scope, const_table, id, argc) {
                 Ok(llvm_func) => llvm_func,
                 Err(()) => {
-                    self.func_info.get_mut(&pc).unwrap().jit_info.cannot_jit = true;
+                    self.func_info.get_mut(&id).unwrap().jit_info.cannot_jit = true;
                     return None;
                 }
             };
@@ -397,7 +413,7 @@ impl TracingJit {
         );
         let f = ::std::mem::transmute::<u64, fn()>(f_raw);
 
-        let info = self.func_info.get_mut(&pc).unwrap();
+        let info = self.func_info.get_mut(&id).unwrap();
         info.func_addr = Some(f);
         info.llvm_func = Some(llvm_func);
 
@@ -407,17 +423,17 @@ impl TracingJit {
     unsafe fn gen_code_for_func(
         &mut self,
         name: String,
-        iseq: &Vec<u8>,
+        iseq: &ByteCode,
         scope: &CallObject,
         const_table: &vm::ConstantTable,
-        mut pc: usize,
+        func_id: FuncId,
         argc: usize,
     ) -> Result<LLVMValueRef, ()> {
         if argc > MAX_FUNCTION_PARAMS {
             return Err(());
         }
 
-        let func_ret_ty = if let Some(ty) = self.function_return_types.get(&pc) {
+        let func_ret_ty = if let Some(ty) = self.function_return_types.get(&func_id) {
             ty.to_llvmty(self.context)
         } else {
             LLVMDoubleTypeInContext(self.context) // Assume as double
@@ -443,7 +459,7 @@ impl TracingJit {
         );
         LLVMPositionBuilderAtEnd(self.builder, bb_entry);
 
-        let mut env = HashMap::new();
+        let mut env = FxHashMap::default();
         self.cur_func = Some(func);
 
         for i in 0..argc {
@@ -454,16 +470,13 @@ impl TracingJit {
             );
         }
 
-        let func_pos = pc;
-        pc += 1; // CreateContext
-
         let mut compilation_failed = false;
         if let Err(_) = self.gen_body(
             iseq,
             scope,
             const_table,
-            func_pos,
-            pc,
+            func_id,
+            1, // 0 + 1(CreateContext)
             iseq.len(),
             true,
             &mut env,
@@ -504,15 +517,16 @@ impl TracingJit {
 
     pub unsafe fn can_loop_jit(
         &mut self,
-        iseq: &Vec<u8>,
+        func_id: FuncId,
+        iseq: &ByteCode,
         const_table: &vm::ConstantTable,
         vm_state: &mut vm::VMState,
         end: usize,
     ) -> Option<isize> {
         let bgn = vm_state.pc as usize;
 
-        if !self.loop_is_called_enough_times(bgn) {
-            self.inc_count(bgn);
+        if !self.loop_is_called_enough_times(func_id, bgn) {
+            self.inc_count(func_id, bgn);
             return None;
         }
 
@@ -522,7 +536,10 @@ impl TracingJit {
                 local_vars_id,
                 jit_info: JITInfo { cannot_jit },
                 ..
-            } = self.loop_info.entry(bgn).or_insert(LoopInfo::new());
+            } = self
+                .loop_info
+                .entry(UniquePosition::new(func_id, bgn))
+                .or_insert(LoopInfo::new());
             if *cannot_jit {
                 return None;
             }
@@ -539,7 +556,11 @@ impl TracingJit {
             match self.gen_code_for_loop(name.clone(), vm_state, iseq, const_table, bgn, end) {
                 Ok(info) => info,
                 Err(()) => {
-                    self.loop_info.get_mut(&bgn).unwrap().jit_info.cannot_jit = true;
+                    self.loop_info
+                        .get_mut(&UniquePosition::new(func_id, bgn))
+                        .unwrap()
+                        .jit_info
+                        .cannot_jit = true;
                     return None;
                 }
             };
@@ -611,7 +632,10 @@ impl TracingJit {
         );
         let f = ::std::mem::transmute::<u64, fn(*mut f64) -> i32>(f_raw);
 
-        let info = self.loop_info.get_mut(&bgn).unwrap();
+        let info = self
+            .loop_info
+            .get_mut(&UniquePosition::new(func_id, bgn))
+            .unwrap();
         info.func_addr = Some(f);
         info.llvm_func = Some(llvm_func);
         info.local_vars_id = local_vars.clone();
@@ -623,7 +647,7 @@ impl TracingJit {
         &mut self,
         name: String,
         vm_state: &mut vm::VMState,
-        iseq: &Vec<u8>,
+        iseq: &ByteCode,
         const_table: &vm::ConstantTable,
         bgn: usize,
         end: usize,
@@ -653,7 +677,7 @@ impl TracingJit {
         );
         LLVMPositionBuilderAtEnd(self.builder, bb_entry);
 
-        let mut env = HashMap::new();
+        let mut env = FxHashMap::default();
         self.cur_func = Some(func);
 
         let arg_0 = LLVMGetParam(func, 0);
@@ -735,7 +759,7 @@ impl TracingJit {
     unsafe fn declare_local_var(
         &mut self,
         name: String,
-        env: &mut HashMap<String, LLVMValueRef>,
+        env: &mut FxHashMap<String, LLVMValueRef>,
     ) -> LLVMValueRef {
         if let Some(v) = env.get(&name) {
             return *v;
@@ -763,12 +787,12 @@ impl TracingJit {
     unsafe fn collect_local_variables(
         &mut self,
         vm_state: &mut vm::VMState,
-        iseq: &Vec<u8>,
+        iseq: &ByteCode,
         const_table: &vm::ConstantTable,
         mut pc: usize,
         end: usize,
     ) -> Result<Vec<(usize, ValueType)>, ()> {
-        let mut local_vars = HashSet::new();
+        let mut local_vars = FxHashSet::default();
         let local_scope = &**vm_state.scope.last().unwrap();
 
         while pc < end {
@@ -796,15 +820,19 @@ impl TracingJit {
 
     unsafe fn gen_body(
         &mut self,
-        iseq: &Vec<u8>,
+        iseq: &ByteCode,
         scope: &CallObject,
         const_table: &vm::ConstantTable,
-        func_pos: usize,
+        func_id: FuncId,
         bgn: usize,
         end: usize,
         is_func_jit: bool,
-        env: &mut HashMap<String, LLVMValueRef>,
+        env: &mut FxHashMap<String, LLVMValueRef>,
     ) -> Result<(), ()> {
+        let func = self.cur_func.unwrap();
+        let mut stack: Vec<(LLVMValueRef, Option<vm::Value>)> = vec![];
+        let mut labels: FxHashMap<usize, LabelKind> = FxHashMap::default();
+
         enum LabelKind {
             NotPositioned(LLVMBasicBlockRef),
             Positioned(LLVMBasicBlockRef),
@@ -837,10 +865,103 @@ impl TracingJit {
             }
         }
 
-        let func = self.cur_func.unwrap();
-        let mut stack: Vec<(LLVMValueRef, Option<vm::Value>)> = vec![];
+        // TODO: Need a better way to deal with builtin functions available in JIT.
+        unsafe fn call_builtin_function(
+            self_: &TracingJit,
+            builtin_func_id: usize,
+            args: Vec<(LLVMValueRef, ValueType)>,
+            stack: &mut Vec<(LLVMValueRef, Option<vm::Value>)>,
+        ) -> Option<()> {
+            match builtin_func_id {
+                builtin::CONSOLE_LOG => {
+                    for (arg, ty) in args {
+                        LLVMBuildCall(
+                            self_.builder,
+                            *self_
+                                .builtin_funcs
+                                .get(&match ty {
+                                    ValueType::Number => BUILTIN_CONSOLE_LOG_F64,
+                                    ValueType::Bool => BUILTIN_CONSOLE_LOG_BOOL,
+                                    ValueType::String => BUILTIN_CONSOLE_LOG_STRING,
+                                })
+                                .unwrap(),
+                            vec![arg].as_mut_ptr(),
+                            1,
+                            CString::new("").unwrap().as_ptr(),
+                        );
+                    }
+                    LLVMBuildCall(
+                        self_.builder,
+                        *self_
+                            .builtin_funcs
+                            .get(&BUILTIN_CONSOLE_LOG_NEWLINE)
+                            .unwrap(),
+                        vec![].as_mut_ptr(),
+                        0,
+                        CString::new("").unwrap().as_ptr(),
+                    );
+                }
+                builtin::PROCESS_STDOUT_WRITE => {
+                    for (arg, ty) in args {
+                        match ty {
+                            ValueType::String => LLVMBuildCall(
+                                self_.builder,
+                                *self_
+                                    .builtin_funcs
+                                    .get(&BUILTIN_PROCESS_STDOUT_WRITE)
+                                    .unwrap(),
+                                vec![arg].as_mut_ptr(),
+                                1,
+                                CString::new("").unwrap().as_ptr(),
+                            ),
+                            _ => return None,
+                        };
+                    }
+                }
+                builtin::MATH_FLOOR => stack.push((
+                    LLVMBuildCall(
+                        self_.builder,
+                        *self_.builtin_funcs.get(&BUILTIN_MATH_FLOOR).unwrap(),
+                        args.iter()
+                            .map(|(x, _)| *x)
+                            .collect::<Vec<LLVMValueRef>>()
+                            .as_mut_ptr(),
+                        1,
+                        CString::new("").unwrap().as_ptr(),
+                    ),
+                    None,
+                )),
+                builtin::MATH_RANDOM => stack.push((
+                    LLVMBuildCall(
+                        self_.builder,
+                        *self_.builtin_funcs.get(&BUILTIN_MATH_RANDOM).unwrap(),
+                        args.iter()
+                            .map(|(x, _)| *x)
+                            .collect::<Vec<LLVMValueRef>>()
+                            .as_mut_ptr(),
+                        0,
+                        CString::new("").unwrap().as_ptr(),
+                    ),
+                    None,
+                )),
+                builtin::MATH_POW => stack.push((
+                    LLVMBuildCall(
+                        self_.builder,
+                        *self_.builtin_funcs.get(&BUILTIN_MATH_POW).unwrap(),
+                        args.iter()
+                            .map(|(x, _)| *x)
+                            .collect::<Vec<LLVMValueRef>>()
+                            .as_mut_ptr(),
+                        2,
+                        CString::new("").unwrap().as_ptr(),
+                    ),
+                    None,
+                )),
+                _ => return None,
+            };
 
-        let mut labels: HashMap<usize, LabelKind> = HashMap::new();
+            Some(())
+        }
 
         // First of all, find JMP-related ops and record its destination.
         {
@@ -1433,16 +1554,18 @@ impl TracingJit {
                             ));
                         }
                         None => match scope.get_value(name).val {
-                            vm::ValueBase::Function(pos, _, _) if pos == func_pos => {
+                            vm::ValueBase::Function(box (id, _, _, _)) if id == func_id => {
                                 stack.push((func, None));
                             }
-                            vm::ValueBase::Function(pos, _, _) => match self.func_info.get(&pos) {
-                                Some(FuncInfo { llvm_func, .. }) if llvm_func.is_some() => {
-                                    stack.push((llvm_func.unwrap(), None));
+                            vm::ValueBase::Function(box (id, _, _, _)) => {
+                                match self.func_info.get(&id) {
+                                    Some(FuncInfo { llvm_func, .. }) if llvm_func.is_some() => {
+                                        stack.push((llvm_func.unwrap(), None));
+                                    }
+                                    _ => return Err(()),
                                 }
-                                _ => return Err(()),
-                            },
-                            vm::ValueBase::BuiltinFunction(n, _, _) => {
+                            }
+                            vm::ValueBase::BuiltinFunction(box (n, _, _)) => {
                                 match self.builtin_funcs.get(&n) {
                                     Some(f) => stack.push((*f, None)),
                                     _ => return Err(()),
@@ -1482,97 +1605,19 @@ impl TracingJit {
                             let arg = try_opt!(stack.pop());
                             args.push((arg.0, infer_ty(arg.0, &arg.1)?));
                         }
-                        match callee.val {
-                            vm::ValueBase::BuiltinFunction(builtin::CONSOLE_LOG, _, _) => {
-                                for (arg, ty) in args {
-                                    LLVMBuildCall(
-                                        self.builder,
-                                        *self
-                                            .builtin_funcs
-                                            .get(&match ty {
-                                                ValueType::Number => BUILTIN_CONSOLE_LOG_F64,
-                                                ValueType::Bool => BUILTIN_CONSOLE_LOG_BOOL,
-                                                ValueType::String => BUILTIN_CONSOLE_LOG_STRING,
-                                            })
-                                            .unwrap(),
-                                        vec![arg].as_mut_ptr(),
-                                        1,
-                                        CString::new("").unwrap().as_ptr(),
-                                    );
-                                }
-                                LLVMBuildCall(
-                                    self.builder,
-                                    *self
-                                        .builtin_funcs
-                                        .get(&BUILTIN_CONSOLE_LOG_NEWLINE)
-                                        .unwrap(),
-                                    vec![].as_mut_ptr(),
-                                    0,
-                                    CString::new("").unwrap().as_ptr(),
-                                );
-                            }
-                            vm::ValueBase::BuiltinFunction(builtin::PROCESS_STDOUT_WRITE, _, _) => {
-                                for (arg, ty) in args {
-                                    match ty {
-                                        ValueType::String => LLVMBuildCall(
-                                            self.builder,
-                                            *self
-                                                .builtin_funcs
-                                                .get(&BUILTIN_PROCESS_STDOUT_WRITE)
-                                                .unwrap(),
-                                            vec![arg].as_mut_ptr(),
-                                            1,
-                                            CString::new("").unwrap().as_ptr(),
-                                        ),
-                                        _ => return Err(()),
-                                    };
-                                }
-                            }
-                            vm::ValueBase::BuiltinFunction(builtin::MATH_FLOOR, _, _) => stack
-                                .push((
-                                    LLVMBuildCall(
-                                        self.builder,
-                                        *self.builtin_funcs.get(&BUILTIN_MATH_FLOOR).unwrap(),
-                                        args.iter()
-                                            .map(|(x, _)| *x)
-                                            .collect::<Vec<LLVMValueRef>>()
-                                            .as_mut_ptr(),
-                                        1,
-                                        CString::new("").unwrap().as_ptr(),
-                                    ),
-                                    None,
-                                )),
-                            vm::ValueBase::BuiltinFunction(builtin::MATH_RANDOM, _, _) => stack
-                                .push((
-                                    LLVMBuildCall(
-                                        self.builder,
-                                        *self.builtin_funcs.get(&BUILTIN_MATH_RANDOM).unwrap(),
-                                        args.iter()
-                                            .map(|(x, _)| *x)
-                                            .collect::<Vec<LLVMValueRef>>()
-                                            .as_mut_ptr(),
-                                        0,
-                                        CString::new("").unwrap().as_ptr(),
-                                    ),
-                                    None,
-                                )),
-                            vm::ValueBase::BuiltinFunction(builtin::MATH_POW, _, _) => {
-                                stack.push((
-                                    LLVMBuildCall(
-                                        self.builder,
-                                        *self.builtin_funcs.get(&BUILTIN_MATH_POW).unwrap(),
-                                        args.iter()
-                                            .map(|(x, _)| *x)
-                                            .collect::<Vec<LLVMValueRef>>()
-                                            .as_mut_ptr(),
-                                        2,
-                                        CString::new("").unwrap().as_ptr(),
-                                    ),
-                                    None,
-                                ))
-                            }
-                            _ => return Err(()),
-                        }
+
+                        try_opt!(call_builtin_function(
+                            self,
+                            if let vm::ValueBase::BuiltinFunction(box (builtin_func_id, _, _)) =
+                                callee.val
+                            {
+                                builtin_func_id
+                            } else {
+                                return Err(());
+                            },
+                            args,
+                            &mut stack,
+                        ));
                     } else {
                         let mut llvm_args = vec![];
                         for _ in 0..argc {
@@ -1618,11 +1663,13 @@ impl TracingJit {
                             LLVMConstReal(LLVMDoubleTypeInContext(self.context), n as f64),
                             None,
                         )),
-                        vm::ValueBase::Function(pos, _, _) if is_func_jit && pos == func_pos => {
+                        vm::ValueBase::Function(box (id, _, _, _))
+                            if is_func_jit && id == func_id =>
+                        {
                             stack.push((func, None))
                         }
-                        vm::ValueBase::Function(pos, _, _) => stack.push((
-                            match self.func_info.get(&pos) {
+                        vm::ValueBase::Function(box (id, _, _, _)) => stack.push((
+                            match self.func_info.get(&id) {
                                 Some(FuncInfo { llvm_func, .. }) if llvm_func.is_some() => {
                                     llvm_func.unwrap()
                                 }
@@ -1646,7 +1693,7 @@ impl TracingJit {
                         vm::ValueBase::Object(_) => {
                             stack.push((ptr::null_mut(), Some(const_table.value[n].clone())))
                         }
-                        vm::ValueBase::BuiltinFunction(n, _, _) => stack.push((
+                        vm::ValueBase::BuiltinFunction(box (n, _, _)) => stack.push((
                             if let Some(f) = self.builtin_funcs.get(&n) {
                                 *f
                             } else {
@@ -1729,9 +1776,9 @@ impl TracingJit {
         Ok(())
     }
 
-    pub fn record_function_return_type(&mut self, func_pos: usize, val: &vm::Value) {
+    pub fn record_function_return_type(&mut self, func_id: FuncId, val: &vm::Value) {
         if let Some(ty) = get_value_type(val) {
-            self.function_return_types.insert(func_pos, ty);
+            self.function_return_types.insert(func_id, ty);
         }
     }
 
@@ -1828,18 +1875,18 @@ pub unsafe fn run_loop_llvm_func(
 
 impl TracingJit {
     #[inline]
-    fn func_is_called_enough_times(&mut self, pc: usize) -> bool {
-        *self.count.entry(pc).or_insert(0) >= 5
+    fn func_is_called_enough_times(&mut self, id: FuncId, pc: usize) -> bool {
+        *self.count.entry(UniquePosition::new(id, pc)).or_insert(0) >= 5
     }
 
     #[inline]
-    fn loop_is_called_enough_times(&mut self, pc: usize) -> bool {
-        *self.count.entry(pc).or_insert(0) >= 7
+    fn loop_is_called_enough_times(&mut self, id: FuncId, pc: usize) -> bool {
+        *self.count.entry(UniquePosition::new(id, pc)).or_insert(0) >= 7
     }
 
     #[inline]
-    fn inc_count(&mut self, pc: usize) {
-        *self.count.entry(pc).or_insert(0) += 1;
+    fn inc_count(&mut self, id: FuncId, pc: usize) {
+        *self.count.entry(UniquePosition::new(id, pc)).or_insert(0) += 1;
     }
 }
 
