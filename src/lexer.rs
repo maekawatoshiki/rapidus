@@ -489,7 +489,7 @@ impl Lexer {
     fn skip_char(&mut self) -> Result<char, Error> {
         let mut iter = self.code[self.pos..].char_indices();
         let (_, cur_char) = iter.next().ok_or(Error::NormalEOF)?;
-        let (next_pos, _) = iter.next().unwrap_or((1, ' '));
+        let (next_pos, _) = iter.next().unwrap_or((cur_char.len_utf8(), ' '));
         self.pos += next_pos;
         Ok(cur_char)
     }
