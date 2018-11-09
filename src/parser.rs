@@ -492,19 +492,18 @@ impl Parser {
         }
         token_start_pos!(pos, self.lexer);
         let lhs = self.read_update_expression()?;
-        while let Ok(tok) = self.lexer.next() {
+        if let Ok(tok) = self.lexer.next() {
             if let Kind::Symbol(Symbol::Exp) = tok.kind {
                 return Ok(Node::new(
                     NodeBase::BinaryOp(
                         Box::new(lhs),
-                        Box::new(self.read_update_expression()?),
+                        Box::new(self.read_exponentiation_expression()?),
                         BinOp::Exp,
                     ),
                     pos,
                 ));
             } else {
                 self.lexer.unget(&tok);
-                break;
             }
         }
         Ok(lhs)
@@ -1330,7 +1329,7 @@ fn simple_expr_shift() {
 
 #[test]
 fn simple_expr_exp() {
-    for (input, op) in [("2**5", BinOp::Exp)].iter() {
+    for input in ["2**5**7"].iter() {
         let mut parser = Parser::new(input.to_string());
         assert_eq!(
             parser.parse_all(),
@@ -1338,8 +1337,15 @@ fn simple_expr_exp() {
                 NodeBase::StatementList(vec![Node::new(
                     NodeBase::BinaryOp(
                         Box::new(Node::new(NodeBase::Number(2.0), 0)),
-                        Box::new(Node::new(NodeBase::Number(5.0), 3)),
-                        op.clone(),
+                        Box::new(Node::new(
+                            NodeBase::BinaryOp(
+                                Box::new(Node::new(NodeBase::Number(5.0), 3)),
+                                Box::new(Node::new(NodeBase::Number(7.0), 6)),
+                                BinOp::Exp,
+                            ),
+                            4,
+                        )),
+                        BinOp::Exp,
                     ),
                     1,
                 )]),
