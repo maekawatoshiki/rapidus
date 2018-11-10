@@ -153,7 +153,7 @@ impl Parser {
 
     fn read_statement(&mut self) -> Result<Node, Error> {
         let tok = self.lexer.next_except_lineterminator()?;
-        match tok.kind {
+        let stmt = match tok.kind {
             Kind::Keyword(Keyword::If) => self.read_if_statement(),
             Kind::Keyword(Keyword::Var) => self.read_variable_statement(),
             Kind::Keyword(Keyword::While) => self.read_while_statement(),
@@ -166,7 +166,10 @@ impl Parser {
                 self.lexer.unget(&tok);
                 self.read_expression_statement()
             }
-        }
+        };
+        self.lexer
+            .skip_except_lineterminator(Kind::Symbol(Symbol::Semicolon));
+        stmt
     }
 }
 
@@ -225,19 +228,19 @@ impl Parser {
 impl Parser {
     fn read_if_statement(&mut self) -> Result<Node, Error> {
         token_start_pos!(pos, self.lexer);
-        let oparen = self.lexer.next()?;
+        let oparen = self.lexer.next_except_lineterminator()?;
         if oparen.kind != Kind::Symbol(Symbol::OpeningParen) {
             self.show_error_at(oparen.pos, ErrorMsgKind::LastToken, "expect '('");
         }
         let cond = self.read_expression()?;
-        let cparen = self.lexer.next()?;
+        let cparen = self.lexer.next_except_lineterminator()?;
         if cparen.kind != Kind::Symbol(Symbol::ClosingParen) {
             self.show_error_at(cparen.pos, ErrorMsgKind::LastToken, "expect ')'");
         }
 
         let then_ = self.read_statement()?;
 
-        if let Ok(expect_else_tok) = self.lexer.next() {
+        if let Ok(expect_else_tok) = self.lexer.next_except_lineterminator() {
             if expect_else_tok.kind == Kind::Keyword(Keyword::Else) {
                 let else_ = self.read_statement()?;
                 return Ok(Node::new(
@@ -676,7 +679,6 @@ impl Parser {
                 _ => {
                     if lineterminator {
                         self.lexer.unget(&Token::new_line_terminator(0));
-                        lineterminator = false;
                     }
                     self.lexer.unget(&tok);
                     break;
@@ -730,7 +732,7 @@ impl Parser {
             Kind::Keyword(Keyword::This) => Ok(Node::new(NodeBase::This, tok.pos)),
             Kind::Keyword(Keyword::Arguments) => Ok(Node::new(NodeBase::Arguments, tok.pos)),
             Kind::Keyword(Keyword::Function) => self.read_function_expression(),
-            Kind::Symbol(Symbol::Semicolon) => Ok(Node::new(NodeBase::Nope, tok.pos)),
+            // Kind::Symbol(Symbol::Semicolon) => Ok(Node::new(NodeBase::Nope, tok.pos)),
             // Kind::Symbol(Symbol::ClosingParen) => {
             //     self.lexer.unget(&tok);
             //     Ok(Node::new(NodeBase::Nope, tok.pos))
