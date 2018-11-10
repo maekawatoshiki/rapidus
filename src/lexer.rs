@@ -29,8 +29,12 @@ impl Lexer {
 
 impl Lexer {
     pub fn next(&mut self) -> Result<Token, Error> {
+        self.read_token()
+    }
+
+    pub fn next_except_lineterminator(&mut self) -> Result<Token, Error> {
         match self.read_token() {
-            Ok(ref tok) if tok.kind == Kind::LineTerminator => self.next(),
+            Ok(ref tok) if tok.kind == Kind::LineTerminator => self.next_except_lineterminator(),
             otherwise => otherwise,
         }
     }
@@ -54,8 +58,8 @@ impl Lexer {
         }
     }
 
-    pub fn skip_with_lineterminator(&mut self, kind: Kind) -> bool {
-        match self.read_token() {
+    pub fn skip_except_lineterminator(&mut self, kind: Kind) -> bool {
+        match self.next_except_lineterminator() {
             Ok(tok) => {
                 let success = tok.kind == kind;
                 if !success {
@@ -777,12 +781,15 @@ fn comment() {
             .to_string(),
     );
     assert_eq!(
-        lexer.next().unwrap().kind,
+        lexer.next_except_lineterminator().unwrap().kind,
         Kind::Identifier("x".to_string())
     );
-    assert_eq!(lexer.next().unwrap().kind, Kind::Symbol(Symbol::Semicolon));
     assert_eq!(
-        lexer.next().unwrap().kind,
+        lexer.next_except_lineterminator().unwrap().kind,
+        Kind::Symbol(Symbol::Semicolon)
+    );
+    assert_eq!(
+        lexer.next_except_lineterminator().unwrap().kind,
         Kind::Identifier("y".to_string())
     );
 }
