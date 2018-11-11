@@ -1812,3 +1812,68 @@ fn function_decl() {
         );
     }
 }
+
+#[test]
+fn asi1() {
+    let mut parser = Parser::new(
+        "function f() 
+         {
+             return 
+             {};
+         }"
+            .to_string(),
+    );
+    assert_eq!(
+        parser.parse_all(),
+        Node::new(
+            NodeBase::StatementList(vec![Node::new(
+                NodeBase::FunctionDecl(
+                    "f".to_string(),
+                    vec![],
+                    Box::new(Node::new(
+                        NodeBase::StatementList(vec![
+                            Node::new(NodeBase::Return(None), 44),
+                            Node::new(NodeBase::StatementList(vec![]), 60),
+                        ]),
+                        24,
+                    )),
+                ),
+                8,
+            )]),
+            0
+        )
+    )
+}
+
+#[test]
+fn asi2() {
+    let mut parser = Parser::new(
+        "
+        b = a
+        ++b
+        "
+            .to_string(),
+    );
+    assert_eq!(
+        parser.parse_all(),
+        Node::new(
+            NodeBase::StatementList(vec![
+                Node::new(
+                    NodeBase::Assign(
+                        Box::new(Node::new(NodeBase::Identifier("b".to_string()), 9)),
+                        Box::new(Node::new(NodeBase::Identifier("a".to_string()), 13)),
+                    ),
+                    10,
+                ),
+                Node::new(
+                    NodeBase::UnaryOp(
+                        Box::new(Node::new(NodeBase::Identifier("b".to_string()), 25)),
+                        UnaryOp::PrInc,
+                    ),
+                    25,
+                ),
+            ]),
+            0
+        )
+    )
+}
