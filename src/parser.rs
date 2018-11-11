@@ -410,9 +410,9 @@ impl Parser {
         let lhs = self.read_logical_or_expression()?;
         if let Ok(tok) = self.lexer.next() {
             if let Kind::Symbol(Symbol::Question) = tok.kind {
-                let then_ = self.read_conditional_expression()?;
+                let then_ = self.read_assignment_expression()?;
                 assert_eq!(self.lexer.next()?.kind, Kind::Symbol(Symbol::Colon));
-                let else_ = self.read_conditional_expression()?;
+                let else_ = self.read_assignment_expression()?;
                 return Ok(Node::new(
                     NodeBase::TernaryOp(Box::new(lhs), Box::new(then_), Box::new(else_)),
                     pos,
