@@ -91,7 +91,7 @@ impl VMCodeGen {
     pub fn compile(&mut self, node: &Node, iseq: &mut ByteCode) {
         self.bytecode_gen.gen_create_context(iseq);
 
-        self.run(node, iseq);
+        self.run(node, iseq, false);
 
         self.bytecode_gen.gen_end(iseq);
 
@@ -166,7 +166,7 @@ impl VMCodeGen {
         // }
     }
 
-    fn run(&mut self, node: &Node, iseq: &mut ByteCode) {
+    fn run(&mut self, node: &Node, iseq: &mut ByteCode, use_value: bool) {
         if let Some(constant) = node.base.fold_num_consts() {
             match constant {
                 NodeBase::String(ref s) => self
@@ -194,7 +194,7 @@ impl VMCodeGen {
             &NodeBase::For(ref init, ref cond, ref step, ref body) => {
                 self.run_for(&*init, &*cond, &*step, &*body, iseq)
             }
-            &NodeBase::Assign(ref dst, ref src) => self.run_assign(&*dst, &*src, iseq),
+            &NodeBase::Assign(ref dst, ref src) => self.run_assign(&*dst, &*src, iseq, use_value),
             &NodeBase::UnaryOp(ref expr, ref op) => self.run_unary_op(&*expr, op, iseq),
             &NodeBase::BinaryOp(ref lhs, ref rhs, ref op) => {
                 self.run_binary_op(&*lhs, &*rhs, op, iseq)
@@ -232,7 +232,7 @@ impl VMCodeGen {
 impl VMCodeGen {
     pub fn run_statement_list(&mut self, node_list: &Vec<Node>, iseq: &mut ByteCode) {
         for node in node_list {
-            self.run(node, iseq)
+            self.run(node, iseq, false)
         }
     }
 }
@@ -245,7 +245,7 @@ impl VMCodeGen {
 
         // TODO: Implement Rest Parameter ASAP
 
-        self.run(body, &mut func_iseq);
+        self.run(body, &mut func_iseq, false);
 
         match func_iseq.last() {
             Some(&VMInst::RETURN) => {}
@@ -264,7 +264,7 @@ impl VMCodeGen {
 
     pub fn run_return(&mut self, val: &Option<Box<Node>>, iseq: &mut ByteCode) {
         if let &Some(ref val) = val {
-            self.run(&*val, iseq)
+            self.run(&*val, iseq, true)
         } else {
             self.bytecode_gen.gen_push_const(Value::undefined(), iseq);
         }
@@ -296,7 +296,7 @@ impl VMCodeGen {
 
 impl VMCodeGen {
     pub fn run_new_expr(&mut self, expr: &Node, iseq: &mut ByteCode) {
-        self.run(expr, iseq);
+        self.run(expr, iseq, true);
         let len = iseq.len();
         if iseq[len - 1 - 4] == VMInst::CALL {
             iseq[len - 1 - 4] = VMInst::CONSTRUCT;
@@ -309,7 +309,7 @@ impl VMCodeGen {
 impl VMCodeGen {
     pub fn run_var_decl(&mut self, name: &String, init: &Option<Box<Node>>, iseq: &mut ByteCode) {
         if let &Some(ref init) = init {
-            self.run(&*init, iseq);
+            self.run(&*init, iseq, true);
         } else {
             self.bytecode_gen.gen_push_const(Value::undefined(), iseq);
         }
@@ -319,12 +319,12 @@ impl VMCodeGen {
 
 impl VMCodeGen {
     pub fn run_if(&mut self, cond: &Node, then_: &Node, else_: &Node, iseq: &mut ByteCode) {
-        self.run(cond, iseq);
+        self.run(cond, iseq, true);
 
         let cond_pos = iseq.len() as isize;
         self.bytecode_gen.gen_jmp_if_false(0, iseq);
 
-        self.run(then_, iseq);
+        self.run(then_, iseq, false);
 
         if else_.base == NodeBase::Nope {
             let pos = iseq.len() as isize;
@@ -342,7 +342,7 @@ impl VMCodeGen {
                 &mut iseq[cond_pos as usize + 1..cond_pos as usize + 5],
             );
 
-            self.run(else_, iseq);
+            self.run(else_, iseq, false);
 
             let pos = iseq.len() as isize;
             self.bytecode_gen.replace_int32(
@@ -356,12 +356,12 @@ impl VMCodeGen {
         let pos1 = iseq.len() as isize;
         self.labels.push(Labels::new());
 
-        self.run(cond, iseq);
+        self.run(cond, iseq, true);
 
         let cond_pos = iseq.len() as isize;
         self.bytecode_gen.gen_jmp_if_false(0, iseq);
 
-        self.run(body, iseq);
+        self.run(body, iseq, false);
 
         let loop_pos = iseq.len() as isize;
         self.bytecode_gen
@@ -394,17 +394,17 @@ impl VMCodeGen {
         body: &Node,
         iseq: &mut ByteCode,
     ) {
-        self.run(init, iseq);
+        self.run(init, iseq, false);
 
         let pos = iseq.len() as isize;
         self.labels.push(Labels::new());
 
-        self.run(cond, iseq);
+        self.run(cond, iseq, true);
 
         let cond_pos = iseq.len() as isize;
         self.bytecode_gen.gen_jmp_if_false(0, iseq);
 
-        self.run(body, iseq);
+        self.run(body, iseq, false);
 
         let continue_label_pos = iseq.len() as isize;
         self.labels.last_mut().unwrap().replace_continue_jmps(
@@ -412,7 +412,7 @@ impl VMCodeGen {
             iseq,
             continue_label_pos,
         );
-        self.run(step, iseq);
+        self.run(step, iseq, false);
 
         let loop_pos = iseq.len() as isize;
         self.bytecode_gen.gen_jmp((pos - loop_pos) as i32 - 5, iseq);
@@ -435,7 +435,7 @@ impl VMCodeGen {
 
 impl VMCodeGen {
     pub fn run_unary_op(&mut self, expr: &Node, op: &UnaryOp, iseq: &mut ByteCode) {
-        self.run(expr, iseq);
+        self.run(expr, iseq, true);
         match op {
             &UnaryOp::Plus => self.bytecode_gen.gen_posi(iseq),
             &UnaryOp::Minus => self.bytecode_gen.gen_neg(iseq),
@@ -472,7 +472,7 @@ impl VMCodeGen {
         // Following code has influence on JIT(src/jit.rs) code.
         match op {
             &BinOp::LAnd => {
-                self.run(lhs, iseq);
+                self.run(lhs, iseq, true);
 
                 self.bytecode_gen.gen_double(iseq);
 
@@ -481,7 +481,7 @@ impl VMCodeGen {
 
                 self.bytecode_gen.gen_pop(iseq);
 
-                self.run(rhs, iseq);
+                self.run(rhs, iseq, true);
 
                 let pos = iseq.len() as isize;
                 self.bytecode_gen.replace_int32(
@@ -493,7 +493,7 @@ impl VMCodeGen {
                 return;
             }
             &BinOp::LOr => {
-                self.run(lhs, iseq);
+                self.run(lhs, iseq, true);
 
                 self.bytecode_gen.gen_double(iseq);
 
@@ -511,7 +511,7 @@ impl VMCodeGen {
 
                 self.bytecode_gen.gen_pop(iseq);
 
-                self.run(rhs, iseq);
+                self.run(rhs, iseq, true);
 
                 let pos = iseq.len() as isize;
                 self.bytecode_gen.replace_int32(
@@ -525,8 +525,8 @@ impl VMCodeGen {
             _ => {}
         };
 
-        self.run(lhs, iseq);
-        self.run(rhs, iseq);
+        self.run(lhs, iseq, true);
+        self.run(rhs, iseq, true);
         match op {
             &BinOp::Add => self.bytecode_gen.gen_add(iseq),
             &BinOp::Sub => self.bytecode_gen.gen_sub(iseq),
@@ -551,12 +551,12 @@ impl VMCodeGen {
     }
 
     pub fn run_ternary_op(&mut self, cond: &Node, then: &Node, else_: &Node, iseq: &mut ByteCode) {
-        self.run(cond, iseq);
+        self.run(cond, iseq, true);
 
         let cond_pos = iseq.len() as isize;
         self.bytecode_gen.gen_jmp_if_false(0, iseq);
 
-        self.run(then, iseq);
+        self.run(then, iseq,true);
 
         let then_end_pos = iseq.len() as isize;
         self.bytecode_gen.gen_jmp(0, iseq);
@@ -567,7 +567,7 @@ impl VMCodeGen {
             &mut iseq[cond_pos as usize + 1..cond_pos as usize + 5],
         );
 
-        self.run(else_, iseq);
+        self.run(else_, iseq, true);
 
         let pos = iseq.len() as isize;
         self.bytecode_gen.replace_int32(
@@ -578,8 +578,13 @@ impl VMCodeGen {
         self.bytecode_gen.gen_cond_op(iseq);
     }
 
-    pub fn run_assign(&mut self, dst: &Node, src: &Node, iseq: &mut ByteCode) {
-        self.run(src, iseq);
+    pub fn run_assign(&mut self, dst: &Node, src: &Node, iseq: &mut ByteCode, use_value: bool) {
+        self.run(src, iseq, true);
+
+        if use_value {
+            self.bytecode_gen.gen_double(iseq);
+        }
+
         self.assign_stack_top(dst, iseq);
     }
 
@@ -589,14 +594,14 @@ impl VMCodeGen {
                 self.bytecode_gen.gen_set_name(name, iseq);
             }
             NodeBase::Member(ref parent, ref member) => {
-                self.run(&*parent, iseq);
+                self.run(&*parent, iseq, true);
                 self.bytecode_gen
                     .gen_push_const(Value::string(CString::new(member.as_str()).unwrap()), iseq);
                 self.bytecode_gen.gen_set_member(iseq);
             }
             NodeBase::Index(ref parent, ref idx) => {
-                self.run(&*parent, iseq);
-                self.run(&*idx, iseq);
+                self.run(&*parent, iseq, true);
+                self.run(&*idx, iseq, true);
                 self.bytecode_gen.gen_set_member(iseq);
             }
             _ => unimplemented!(),
@@ -607,10 +612,10 @@ impl VMCodeGen {
 impl VMCodeGen {
     pub fn run_call(&mut self, callee: &Node, args: &Vec<Node>, iseq: &mut ByteCode) {
         for arg in args.iter().rev() {
-            self.run(arg, iseq);
+            self.run(arg, iseq, true);
         }
 
-        self.run(callee, iseq);
+        self.run(callee, iseq, true);
 
         self.bytecode_gen.gen_call(args.len() as u32, iseq);
     }
@@ -622,7 +627,7 @@ impl VMCodeGen {
             match property {
                 PropertyDefinition::IdentifierReference(_) => unimplemented!(),
                 PropertyDefinition::Property(name, node) => {
-                    self.run(&node, iseq);
+                    self.run(&node, iseq, true);
                     self.bytecode_gen
                         .gen_push_const(Value::string(CString::new(name.as_str()).unwrap()), iseq);
                 }
@@ -635,7 +640,7 @@ impl VMCodeGen {
 
     fn run_array_literal(&mut self, elems: &Vec<Node>, iseq: &mut ByteCode) {
         for elem in elems.iter().rev() {
-            self.run(elem, iseq);
+            self.run(elem, iseq, true);
         }
 
         self.bytecode_gen
@@ -645,7 +650,7 @@ impl VMCodeGen {
 
 impl VMCodeGen {
     fn run_member(&mut self, parent: &Node, member: &String, iseq: &mut ByteCode) {
-        self.run(parent, iseq);
+        self.run(parent, iseq, true);
 
         self.bytecode_gen
             .gen_push_const(Value::string(CString::new(member.as_str()).unwrap()), iseq);
@@ -653,9 +658,9 @@ impl VMCodeGen {
     }
 
     fn run_index(&mut self, parent: &Node, idx: &Node, iseq: &mut ByteCode) {
-        self.run(parent, iseq);
+        self.run(parent, iseq, true);
 
-        self.run(idx, iseq);
+        self.run(idx, iseq, true);
         self.bytecode_gen.gen_get_member(iseq);
     }
 
