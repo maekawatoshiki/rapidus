@@ -4,8 +4,8 @@ function NumMaker(init_val) {
   return 123
 }
 
-console.log("NumMaker(1) =", NumMaker(1))
+console.log("NumMaker(10) =", NumMaker(10))
 var nm = new NumMaker(10)
-console.log(nm.value)
+console.log("nm = new NumMaker(10)\nnm.value =", nm.value)
 nm.increment()
-console.log(nm.value)
+console.log("nm.increment()\nnm.value =", nm.value)
