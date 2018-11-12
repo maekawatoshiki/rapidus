@@ -376,7 +376,7 @@ pub unsafe fn require(_callobj: CallObject, args: Vec<Value>, self_: &mut VM) {
     use ansi_term::Colour;
     use extract_anony_func;
     use parser;
-    use parser::Error;
+    use parser::Error::*;
     use std::ffi::CString;
     use std::fs::OpenOptions;
     use std::io::prelude::*;

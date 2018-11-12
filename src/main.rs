@@ -22,7 +22,7 @@ use std::io::prelude::*;
 const VERSION_STR: &'static str = env!("CARGO_PKG_VERSION");
 
 fn main() {
-    use parser::Error;
+    use parser::Error::*;
 
     let app = App::new("Rapidus")
         .version(VERSION_STR)
@@ -117,7 +117,7 @@ fn repl() {
     // TODO: REFINE CODE!!!!
     use extract_anony_func;
     use parser;
-    use parser::Error;
+    use parser::Error::*;
     // use std::ffi::CString;
     use std::io;
     use vm;
@@ -167,7 +167,7 @@ fn repl() {
 }
 
 fn run(file_name: &str) {
-    use parser::Error;
+    use parser::Error::*;
 
     match fork() {
         Ok(ForkResult::Parent { child, .. }) => {

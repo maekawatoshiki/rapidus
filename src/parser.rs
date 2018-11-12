@@ -1071,7 +1071,7 @@ impl Parser {
 fn number() {
     let mut parser = Parser::new("12345".to_string());
     assert_eq!(
-        parser.parse_all(),
+        parser.parse_all().unwrap(),
         Node::new(
             NodeBase::StatementList(vec![Node::new(NodeBase::Number(12345.0), 0)]),
             0
@@ -1083,7 +1083,7 @@ fn number() {
 fn string() {
     let mut parser = Parser::new("\"aaa\"".to_string());
     assert_eq!(
-        parser.parse_all(),
+        parser.parse_all().unwrap(),
         Node::new(
             NodeBase::StatementList(vec![Node::new(NodeBase::String("aaa".to_string()), 0)]),
             0
@@ -1095,7 +1095,7 @@ fn string() {
 fn boolean() {
     let mut parser = Parser::new("true".to_string());
     assert_eq!(
-        parser.parse_all(),
+        parser.parse_all().unwrap(),
         Node::new(
             NodeBase::StatementList(vec![Node::new(NodeBase::Boolean(true), 0)]),
             0
@@ -1107,7 +1107,7 @@ fn boolean() {
 fn identifier() {
     let mut parser = Parser::new("variable".to_string());
     assert_eq!(
-        parser.parse_all(),
+        parser.parse_all().unwrap(),
         Node::new(
             NodeBase::StatementList(vec![Node::new(
                 NodeBase::Identifier("variable".to_string()),
@@ -1122,7 +1122,7 @@ fn identifier() {
 fn array1() {
     let mut parser = Parser::new("[1, 2]".to_string());
     assert_eq!(
-        parser.parse_all(),
+        parser.parse_all().unwrap(),
         Node::new(
             NodeBase::StatementList(vec![Node::new(
                 NodeBase::Array(vec![
@@ -1140,7 +1140,7 @@ fn array1() {
 fn array2() {
     let mut parser = Parser::new("[]".to_string());
     assert_eq!(
-        parser.parse_all(),
+        parser.parse_all().unwrap(),
         Node::new(
             NodeBase::StatementList(vec![Node::new(NodeBase::Array(vec![]), 1)]),
             0
@@ -1152,7 +1152,7 @@ fn array2() {
 fn array3() {
     let mut parser = Parser::new("[,,]".to_string());
     assert_eq!(
-        parser.parse_all(),
+        parser.parse_all().unwrap(),
         Node::new(
             NodeBase::StatementList(vec![Node::new(
                 NodeBase::Array(vec![
@@ -1170,7 +1170,7 @@ fn array3() {
 fn object() {
     let mut parser = Parser::new("a = {x: 123, 1.2: 456}".to_string());
     assert_eq!(
-        parser.parse_all(),
+        parser.parse_all().unwrap(),
         Node::new(
             NodeBase::StatementList(vec![Node::new(
                 NodeBase::Assign(
@@ -1202,7 +1202,7 @@ fn simple_expr_5arith() {
 
     let mut parser = Parser::new("31 + 26 / 3 - 1 * 20 % 3".to_string());
     assert_eq!(
-        parser.parse_all(),
+        parser.parse_all().unwrap(),
         Node::new(
             NodeBase::StatementList(vec![Node::new(
                 NodeBase::BinaryOp(
@@ -1274,7 +1274,7 @@ fn simple_expr_eq() {
                 )]),
                 0
             ),
-            parser.parse_all()
+            parser.parse_all().unwrap()
         );
     }
 }
@@ -1309,7 +1309,7 @@ fn simple_expr_rel() {
                 )]),
                 0
             ),
-            parser.parse_all(),
+            parser.parse_all().unwrap(),
         );
     }
 }
@@ -1320,7 +1320,7 @@ fn simple_expr_cond() {
 
     let mut parser = Parser::new("n == 1 ? 2 : max".to_string());
     assert_eq!(
-        parser.parse_all(),
+        parser.parse_all().unwrap(),
         Node::new(
             NodeBase::StatementList(vec![Node::new(
                 NodeBase::TernaryOp(
@@ -1349,7 +1349,7 @@ fn simple_expr_logical_or() {
     for (input, op) in [("1 || 0", BinOp::LOr), ("1 && 0", BinOp::LAnd)].iter() {
         let mut parser = Parser::new(input.to_string());
         assert_eq!(
-            parser.parse_all(),
+            parser.parse_all().unwrap(),
             Node::new(
                 NodeBase::StatementList(vec![Node::new(
                     NodeBase::BinaryOp(
@@ -1388,7 +1388,7 @@ fn simple_expr_bitwise_and() {
                 )]),
                 0
             ),
-            parser.parse_all(),
+            parser.parse_all().unwrap(),
         );
     }
 }
@@ -1419,7 +1419,7 @@ fn simple_expr_shift() {
                 )]),
                 0
             ),
-            parser.parse_all(),
+            parser.parse_all().unwrap(),
         );
     }
 }
@@ -1429,7 +1429,7 @@ fn simple_expr_exp() {
     for input in ["2**5**7"].iter() {
         let mut parser = Parser::new(input.to_string());
         assert_eq!(
-            parser.parse_all(),
+            parser.parse_all().unwrap(),
             Node::new(
                 NodeBase::StatementList(vec![Node::new(
                     NodeBase::BinaryOp(
@@ -1480,7 +1480,7 @@ fn simple_expr_unary() {
                 )]),
                 0
             ),
-            parser.parse_all()
+            parser.parse_all().unwrap()
         );
     }
 }
@@ -1494,7 +1494,7 @@ fn simple_expr_assign() {
             Node::new(NodeBase::StatementList(vec![Node::new(NodeBase::Assign(
                 Box::new(Node::new(NodeBase::Identifier("v".to_string()), 0)), Box::new($expr)
             ), 1)]), 0),
-            parser.parse_all()
+            parser.parse_all().unwrap()
         );
     } }
     f!(Node::new(NodeBase::Number(1.0), 4));
@@ -1532,7 +1532,7 @@ fn simple_expr_new() {
             )]),
             0
         ),
-        parser.parse_all(),
+        parser.parse_all().unwrap(),
     );
 }
 
@@ -1540,7 +1540,7 @@ fn simple_expr_new() {
 fn simple_expr_parentheses() {
     let mut parser = Parser::new("2 * (1 + 3)".to_string());
     assert_eq!(
-        parser.parse_all(),
+        parser.parse_all().unwrap(),
         Node::new(
             NodeBase::StatementList(vec![Node::new(
                 NodeBase::BinaryOp(
@@ -1572,7 +1572,7 @@ fn call() {
     {
         let mut parser = Parser::new(input.to_string());
         assert_eq!(
-            parser.parse_all(),
+            parser.parse_all().unwrap(),
             Node::new(
                 NodeBase::StatementList(vec![Node::new(
                     NodeBase::Call(
@@ -1622,7 +1622,7 @@ fn member() {
     {
         let mut parser = Parser::new(input.to_string());
         assert_eq!(
-            parser.parse_all(),
+            parser.parse_all().unwrap(),
             Node::new(NodeBase::StatementList(vec![node.clone()]), 0)
         );
     }
@@ -1632,7 +1632,7 @@ fn member() {
 fn var_decl() {
     let mut parser = Parser::new("var a, b = 21".to_string());
     assert_eq!(
-        parser.parse_all(),
+        parser.parse_all().unwrap(),
         Node::new(
             NodeBase::StatementList(vec![Node::new(
                 NodeBase::StatementList(vec![
@@ -1656,7 +1656,7 @@ fn var_decl() {
 fn block() {
     let mut parser = Parser::new("{ a=1 }".to_string());
     assert_eq!(
-        parser.parse_all(),
+        parser.parse_all().unwrap(),
         Node::new(
             NodeBase::StatementList(vec![Node::new(
                 NodeBase::StatementList(vec![Node::new(
@@ -1677,7 +1677,7 @@ fn block() {
 fn break_() {
     let mut parser = Parser::new("while(1){break}".to_string());
     assert_eq!(
-        parser.parse_all(),
+        parser.parse_all().unwrap(),
         Node::new(
             NodeBase::StatementList(vec![Node::new(
                 NodeBase::While(
@@ -1698,7 +1698,7 @@ fn break_() {
 fn continue_() {
     let mut parser = Parser::new("while(1){continue}".to_string());
     assert_eq!(
-        parser.parse_all(),
+        parser.parse_all().unwrap(),
         Node::new(
             NodeBase::StatementList(vec![Node::new(
                 NodeBase::While(
@@ -1730,7 +1730,7 @@ fn return_() {
     {
         let mut parser = Parser::new(input.to_string());
         assert_eq!(
-            parser.parse_all(),
+            parser.parse_all().unwrap(),
             Node::new(NodeBase::StatementList(vec![node.clone()]), 0)
         );
     }
@@ -1748,7 +1748,7 @@ fn if_() {
             .to_string(),
     );
     assert_eq!(
-        parser.parse_all(),
+        parser.parse_all().unwrap(),
         Node::new(
             NodeBase::StatementList(vec![Node::new(
                 NodeBase::If(
@@ -1771,7 +1771,7 @@ fn if_() {
 
     parser = Parser::new("if (x <= 2) then_stmt ".to_string());
     assert_eq!(
-        parser.parse_all(),
+        parser.parse_all().unwrap(),
         Node::new(
             NodeBase::StatementList(vec![Node::new(
                 NodeBase::If(
@@ -1797,7 +1797,7 @@ fn if_() {
 fn while_() {
     let mut parser = Parser::new("while (true) { }".to_string());
     assert_eq!(
-        parser.parse_all(),
+        parser.parse_all().unwrap(),
         Node::new(
             NodeBase::StatementList(vec![Node::new(
                 NodeBase::While(
@@ -1815,7 +1815,7 @@ fn while_() {
 fn for_() {
     let mut parser = Parser::new("for (;;) { }".to_string());
     assert_eq!(
-        parser.parse_all(),
+        parser.parse_all().unwrap(),
         Node::new(
             NodeBase::StatementList(vec![Node::new(
                 NodeBase::For(
@@ -1876,7 +1876,7 @@ fn function_decl() {
     {
         let mut parser = Parser::new(input.to_string());
         assert_eq!(
-            parser.parse_all(),
+            parser.parse_all().unwrap(),
             Node::new(NodeBase::StatementList(vec![node.clone()]), 0)
         );
     }
@@ -1893,7 +1893,7 @@ fn asi1() {
             .to_string(),
     );
     assert_eq!(
-        parser.parse_all(),
+        parser.parse_all().unwrap(),
         Node::new(
             NodeBase::StatementList(vec![Node::new(
                 NodeBase::FunctionDecl(
@@ -1924,7 +1924,7 @@ fn asi2() {
             .to_string(),
     );
     assert_eq!(
-        parser.parse_all(),
+        parser.parse_all().unwrap(),
         Node::new(
             NodeBase::StatementList(vec![
                 Node::new(
