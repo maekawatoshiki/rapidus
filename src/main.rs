@@ -22,6 +22,8 @@ use std::io::prelude::*;
 const VERSION_STR: &'static str = env!("CARGO_PKG_VERSION");
 
 fn main() {
+    use parser::Error;
+
     let app = App::new("Rapidus")
         .version(VERSION_STR)
         .author("uint256_t")
@@ -73,7 +75,20 @@ fn main() {
     let mut parser = parser::Parser::new(file_body);
 
     println!("Parser:");
-    let mut node = parser.parse_all();
+    let mut node = match parser.parse_all() {
+        Ok(ok) => ok,
+        Err(NormalEOF) => unreachable!(),
+        Err(Expect(pos, kind, msg))
+        | Err(UnexpectedEOF(pos, kind, msg))
+        | Err(UnexpectedToken(pos, kind, msg)) => {
+            parser.show_error_at(pos, kind, msg.as_str());
+            return;
+        }
+        Err(UnsupportedFeature(pos)) => {
+            parser.enhanced_show_error_at(pos, "unsupported feature");
+            return;
+        }
+    };
     println!("{:?}", node);
 
     extract_anony_func::AnonymousFunctionExtractor::new().run_toplevel(&mut node);
@@ -102,6 +117,7 @@ fn repl() {
     // TODO: REFINE CODE!!!!
     use extract_anony_func;
     use parser;
+    use parser::Error;
     // use std::ffi::CString;
     use std::io;
     use vm;
@@ -123,7 +139,20 @@ fn repl() {
 
         let mut parser = parser::Parser::new(line.clone());
 
-        let mut node = parser.parse_all();
+        let mut node = match parser.parse_all() {
+            Ok(ok) => ok,
+            Err(NormalEOF) => unreachable!(),
+            Err(Expect(pos, kind, msg))
+            | Err(UnexpectedEOF(pos, kind, msg))
+            | Err(UnexpectedToken(pos, kind, msg)) => {
+                parser.show_error_at(pos, kind, msg.as_str());
+                continue;
+            }
+            Err(UnsupportedFeature(pos)) => {
+                parser.enhanced_show_error_at(pos, "unsupported feature");
+                continue;
+            }
+        };
 
         extract_anony_func::AnonymousFunctionExtractor::new().run_toplevel(&mut node);
 
@@ -138,6 +167,8 @@ fn repl() {
 }
 
 fn run(file_name: &str) {
+    use parser::Error;
+
     match fork() {
         Ok(ForkResult::Parent { child, .. }) => {
             match waitpid(child, None) {
@@ -190,19 +221,26 @@ fn run(file_name: &str) {
 
             let mut parser = parser::Parser::new(file_body);
 
-            let mut node = parser.parse_all();
+            let mut node = match parser.parse_all() {
+                Ok(ok) => ok,
+                Err(NormalEOF) => unreachable!(),
+                Err(Expect(pos, kind, msg))
+                | Err(UnexpectedEOF(pos, kind, msg))
+                | Err(UnexpectedToken(pos, kind, msg)) => {
+                    parser.show_error_at(pos, kind, msg.as_str());
+                    return;
+                }
+                Err(UnsupportedFeature(pos)) => {
+                    parser.enhanced_show_error_at(pos, "unsupported feature");
+                    return;
+                }
+            };
 
             extract_anony_func::AnonymousFunctionExtractor::new().run_toplevel(&mut node);
-            // fv_finder::FreeVariableFinder::new().run_toplevel(&mut node);
-            // fv_solver::FreeVariableSolver::new().run_toplevel(&mut node);
 
             let mut vm_codegen = vm_codegen::VMCodeGen::new();
             let mut iseq = vec![];
             vm_codegen.compile(&node, &mut iseq);
-
-            // bytecode_gen::show(&iseq);
-
-            // println!("{:?}", iseq);
 
             let mut vm = vm::VM::new(vm_codegen.global_varmap);
             vm.const_table = vm_codegen.bytecode_gen.const_table;

@@ -376,6 +376,7 @@ pub unsafe fn require(_callobj: CallObject, args: Vec<Value>, self_: &mut VM) {
     use ansi_term::Colour;
     use extract_anony_func;
     use parser;
+    use parser::Error;
     use std::ffi::CString;
     use std::fs::OpenOptions;
     use std::io::prelude::*;
@@ -422,7 +423,22 @@ pub unsafe fn require(_callobj: CallObject, args: Vec<Value>, self_: &mut VM) {
 
     let mut parser = parser::Parser::new(file_body);
 
-    let mut node = parser.parse_all();
+    let mut node = match parser.parse_all() {
+        Ok(ok) => ok,
+        Err(NormalEOF) => unreachable!(),
+        Err(Expect(pos, kind, msg))
+        | Err(UnexpectedEOF(pos, kind, msg))
+        | Err(UnexpectedToken(pos, kind, msg)) => {
+            parser.show_error_at(pos, kind, msg.as_str());
+            self_.state.stack.push(Value::undefined());
+            return;
+        }
+        Err(UnsupportedFeature(pos)) => {
+            parser.enhanced_show_error_at(pos, "unsupported feature");
+            self_.state.stack.push(Value::undefined());
+            return;
+        }
+    };
 
     extract_anony_func::AnonymousFunctionExtractor::new().run_toplevel(&mut node);
 

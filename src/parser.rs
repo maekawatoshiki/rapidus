@@ -14,9 +14,10 @@ macro_rules! token_start_pos {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Error {
     NormalEOF,
-    UnexpectedEOF,
-    UnexpectedToken(usize),    // position in source code
-    UnsupportedFeature(usize), // position in source code
+    UnexpectedEOF(usize, ErrorMsgKind, String), // position, error msg kind, error msg
+    UnexpectedToken(usize, ErrorMsgKind, String), // position
+    UnsupportedFeature(usize),                  // position
+    Expect(usize, ErrorMsgKind, String),        // position, error msg kind, error msg
 }
 
 #[derive(Clone, Debug)]
@@ -31,7 +32,7 @@ impl Parser {
         }
     }
 
-    fn show_error_at(&self, pos: usize, kind: ErrorMsgKind, msg: &str) -> ! {
+    pub fn show_error_at(&self, pos: usize, kind: ErrorMsgKind, msg: &str) {
         let (source_at_err_point, pos) = self.lexer.get_code_around_err_point(pos, kind);
         eprintln!(
             "{}({}): {}\n{}",
@@ -45,10 +46,9 @@ impl Parser {
             msg,
             source_at_err_point,
         );
-        panic!()
     }
 
-    fn enhanced_show_error_at(&self, tok_pos: usize, msg: &str) -> ! {
+    pub fn enhanced_show_error_at(&self, tok_pos: usize, msg: &str) {
         self.show_error_at(
             tok_pos,
             // If tok_pos's line is different from the previous token's line,
@@ -85,17 +85,17 @@ impl Parser {
 }
 
 impl Parser {
-    pub fn parse_all(&mut self) -> Node {
-        match self.read_script() {
-            Ok(ok) => ok,
-            Err(Error::NormalEOF) => unreachable!(),
-            // TODO: Show an appropriate error message depending on the kind of _e.
-            Err(_e) => self.show_error_at(
-                self.lexer.pos_line_list.last().unwrap().0,
-                ErrorMsgKind::Normal,
-                "reach unexpected EOF",
-            ),
-        }
+    pub fn parse_all(&mut self) -> Result<Node, Error> {
+        self.read_script()
+        //     Ok(ok) => Ok(ok),
+        //     Err(Error::NormalEOF) => unreachable!(),
+        //     // TODO: Show an appropriate error message depending on the kind of _e.
+        //     Err(_e) => self.show_error_at(
+        //         self.lexer.pos_line_list.last().unwrap().0,
+        //         ErrorMsgKind::Normal,
+        //         "reach unexpected EOF",
+        //     ),
+        // }
     }
 }
 
@@ -122,7 +122,11 @@ impl Parser {
 
             if self.lexer.buf.is_empty() && self.lexer.eof() {
                 if break_when_closingbrase {
-                    return Err(Error::UnexpectedEOF);
+                    return Err(Error::UnexpectedEOF(
+                        self.lexer.pos_line_list.last().unwrap().0,
+                        ErrorMsgKind::LastToken,
+                        "reach unexpected EOF".to_string(),
+                    ));
                 } else {
                     break;
                 }
@@ -130,7 +134,13 @@ impl Parser {
 
             match self.read_statement_list_item() {
                 Ok(ok) => items.push(ok),
-                Err(Error::NormalEOF) => return Err(Error::UnexpectedEOF),
+                Err(Error::NormalEOF) => {
+                    return Err(Error::UnexpectedEOF(
+                        self.lexer.pos_line_list.last().unwrap().0,
+                        ErrorMsgKind::LastToken,
+                        "reach unexpected EOF".to_string(),
+                    ))
+                }
                 Err(e) => return Err(e),
             }
 
@@ -230,12 +240,20 @@ impl Parser {
         token_start_pos!(pos, self.lexer);
         let oparen = self.lexer.next_except_lineterminator()?;
         if oparen.kind != Kind::Symbol(Symbol::OpeningParen) {
-            self.show_error_at(oparen.pos, ErrorMsgKind::LastToken, "expect '('");
+            return Err(Error::Expect(
+                oparen.pos,
+                ErrorMsgKind::LastToken,
+                "expect '('".to_string(),
+            ));
         }
         let cond = self.read_expression()?;
         let cparen = self.lexer.next_except_lineterminator()?;
         if cparen.kind != Kind::Symbol(Symbol::ClosingParen) {
-            self.show_error_at(cparen.pos, ErrorMsgKind::LastToken, "expect ')'");
+            return Err(Error::Expect(
+                cparen.pos,
+                ErrorMsgKind::LastToken,
+                "expect ')'".to_string(),
+            ));
         }
 
         let then_ = self.read_statement()?;
@@ -665,13 +683,23 @@ impl Parser {
                         Kind::Identifier(name) => {
                             lhs = Node::new(NodeBase::Member(Box::new(lhs), name), pos)
                         }
-                        _ => self.show_error_at(pos_, ErrorMsgKind::Normal, "expect identifier"),
+                        _ => {
+                            return Err(Error::Expect(
+                                pos_,
+                                ErrorMsgKind::Normal,
+                                "expect identifier".to_string(),
+                            ));
+                        }
                     }
                 }
                 Kind::Symbol(Symbol::OpeningBoxBracket) => {
                     let idx = self.read_expression()?;
                     if !self.lexer.skip(Kind::Symbol(Symbol::ClosingBoxBracket)) {
-                        self.show_error_at(self.lexer.pos, ErrorMsgKind::Normal, "expect ']'");
+                        return Err(Error::Expect(
+                            self.lexer.pos,
+                            ErrorMsgKind::Normal,
+                            "expect ']'".to_string(),
+                        ));
                     }
                     lhs = Node::new(NodeBase::Index(Box::new(lhs), Box::new(idx)), pos);
                 }
@@ -707,7 +735,13 @@ impl Parser {
                     pos = tok.pos;
                     self.lexer.unget(&tok)
                 }
-                Err(_) => self.show_error_at(pos, ErrorMsgKind::LastToken, "reach unexpected EOF"),
+                Err(_) => {
+                    return Err(Error::UnexpectedEOF(
+                        pos,
+                        ErrorMsgKind::LastToken,
+                        "reach unexpected EOF".to_string(),
+                    ))
+                }
             }
 
             args.push(self.read_assignment_expression()?);
@@ -718,7 +752,13 @@ impl Parser {
                     pos = tok.pos;
                     self.lexer.unget(&tok)
                 }
-                Err(_) => self.show_error_at(pos, ErrorMsgKind::LastToken, "reach unexpected EOF"),
+                Err(_) => {
+                    return Err(Error::UnexpectedEOF(
+                        pos,
+                        ErrorMsgKind::LastToken,
+                        "reach unexpected EOF".to_string(),
+                    ))
+                }
             }
         }
 
@@ -728,6 +768,21 @@ impl Parser {
     /// https://tc39.github.io/ecma262/#prod-PrimaryExpression
     fn read_primary_expression(&mut self) -> Result<Node, Error> {
         let tok = self.lexer.next()?;
+        fn proper_error_msg_kind(self_: &Parser, tok_pos: usize) -> ErrorMsgKind {
+            let mut last_line = 0;
+            for (pos, line) in &self_.lexer.pos_line_list {
+                if tok_pos == *pos {
+                    if last_line != *line {
+                        return ErrorMsgKind::LastToken;
+                    } else {
+                        break;
+                    }
+                }
+                last_line = *line;
+            }
+            ErrorMsgKind::Normal
+        }
+
         match tok.kind {
             Kind::Keyword(Keyword::This) => Ok(Node::new(NodeBase::This, tok.pos)),
             Kind::Keyword(Keyword::Arguments) => Ok(Node::new(NodeBase::Arguments, tok.pos)),
@@ -741,7 +796,11 @@ impl Parser {
                 let x = self.read_expression();
                 if !self.lexer.skip(Kind::Symbol(Symbol::ClosingParen)) {
                     let tok_pos = self.lexer.pos_line_list.last().unwrap().0;
-                    self.enhanced_show_error_at(tok_pos, "expect ')'");
+                    return Err(Error::Expect(
+                        tok_pos,
+                        proper_error_msg_kind(self, tok_pos),
+                        "expect ')'".to_string(),
+                    ));
                 }
                 x
             }
@@ -760,7 +819,13 @@ impl Parser {
             Kind::String(s) => Ok(Node::new(NodeBase::String(s), tok.pos)),
             Kind::Number(num) => Ok(Node::new(NodeBase::Number(num), tok.pos)),
             Kind::LineTerminator => self.read_primary_expression(),
-            _ => self.enhanced_show_error_at(tok.pos, "unexpected token"),
+            _ => {
+                return Err(Error::UnexpectedToken(
+                    tok.pos,
+                    proper_error_msg_kind(self, tok.pos),
+                    "unexpected token".to_string(),
+                ))
+            }
         }
     }
 
@@ -902,7 +967,11 @@ impl Parser {
         let name = if let Kind::Identifier(name) = self.lexer.next()?.kind {
             name
         } else {
-            self.show_error_at(pos, ErrorMsgKind::Normal, "expect function name")
+            return Err(Error::Expect(
+                pos,
+                ErrorMsgKind::Normal,
+                "expect function name".to_string(),
+            ));
         };
 
         assert!(
@@ -953,11 +1022,11 @@ impl Parser {
         let name = if let Kind::Identifier(name) = self.lexer.next()?.kind {
             name
         } else {
-            self.show_error_at(
+            return Err(Error::Expect(
                 pos,
                 ErrorMsgKind::Normal,
-                "expect identifier (unsupported feature)",
-            );
+                "expect identifier (unsupported feature)".to_string(),
+            ));
         };
         // TODO: Implement initializer.
         Ok(FormalParameter::new(name, None, false))
@@ -969,11 +1038,11 @@ impl Parser {
             if let Kind::Identifier(name) = self.lexer.next()?.kind {
                 name
             } else {
-                self.show_error_at(
+                return Err(Error::Expect(
                     pos,
                     ErrorMsgKind::Normal,
-                    "expect identifier (unsupported feature)",
-                );
+                    "expect identifier (unsupported feature)".to_string(),
+                ));
             },
             None,
             true,

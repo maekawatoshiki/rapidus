@@ -442,7 +442,11 @@ impl Lexer {
                         Symbol::Rest
                     } else {
                         // TODO: better error handler needed
-                        return Err(Error::UnexpectedToken(pos));
+                        return Err(Error::UnexpectedToken(
+                            pos,
+                            ErrorMsgKind::Normal,
+                            "expected '...'".to_string(),
+                        ));
                     }
                 } else {
                     symbol = Symbol::Point
@@ -519,6 +523,7 @@ impl Lexer {
     }
 }
 
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub enum ErrorMsgKind {
     Normal,
     LastToken,
