@@ -36,7 +36,10 @@ fn main() {
 
     let file_name = match app_matches.value_of("file") {
         Some(file_name) => file_name,
-        None => return,
+        None => {
+            repl();
+            return;
+        }
     };
 
     // Normally run the given code
@@ -93,6 +96,45 @@ fn main() {
 
     // println!("VM CodeGen Test:");
     // vm_codegen::test();
+}
+
+fn repl() {
+    // TODO: REFINE CODE!!!!
+    use extract_anony_func;
+    use parser;
+    // use std::ffi::CString;
+    use std::io;
+    use vm;
+    use vm_codegen;
+
+    let mut line = "".to_string();
+    let stdin = io::stdin();
+
+    // let mut global = vm::CallObject::new_global();
+    let mut vm_codegen = vm_codegen::VMCodeGen::new();
+    let mut vm = vm::VM::new(vm_codegen.global_varmap);
+
+    loop {
+        print!("> ");
+        io::stdout().flush().unwrap();
+        line.clear();
+        stdin.read_line(&mut line).unwrap();
+        line.pop();
+
+        let mut parser = parser::Parser::new(line.clone());
+
+        let mut node = parser.parse_all();
+
+        extract_anony_func::AnonymousFunctionExtractor::new().run_toplevel(&mut node);
+
+        let mut iseq = vec![];
+        vm_codegen.compile(&node, &mut iseq);
+
+        vm.const_table = vm_codegen.bytecode_gen.const_table.clone();
+        vm.state.pc = 0;
+        vm.run(iseq);
+        vm_codegen.bytecode_gen.const_table = vm.const_table.clone();
+    }
 }
 
 fn run(file_name: &str) {
