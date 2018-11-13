@@ -6,6 +6,9 @@ use rapidus::parser;
 use rapidus::vm;
 use rapidus::vm_codegen;
 
+use parser::Error::*;
+use vm::RuntimeError;
+
 extern crate clap;
 use clap::{App, Arg};
 
@@ -161,14 +164,20 @@ fn repl() {
 
         vm.const_table = vm_codegen.bytecode_gen.const_table.clone();
         vm.state.pc = 0;
-        vm.run(iseq);
+
+        match vm.run(iseq) {
+            Ok(()) => {}
+            Err(RuntimeError::Unknown) => vm::runtime_error("unknown error occurred"),
+            Err(RuntimeError::Reference(msg)) | Err(RuntimeError::Type(msg)) => {
+                vm::runtime_error(msg.as_str())
+            }
+        }
+
         vm_codegen.bytecode_gen.const_table = vm.const_table.clone();
     }
 }
 
 fn run(file_name: &str) {
-    use parser::Error::*;
-
     match fork() {
         Ok(ForkResult::Parent { child, .. }) => {
             match waitpid(child, None) {
@@ -244,7 +253,14 @@ fn run(file_name: &str) {
 
             let mut vm = vm::VM::new(vm_codegen.global_varmap);
             vm.const_table = vm_codegen.bytecode_gen.const_table;
-            vm.run(iseq);
+
+            match vm.run(iseq) {
+                Ok(()) => {}
+                Err(RuntimeError::Unknown) => vm::runtime_error("unknown error occurred"),
+                Err(RuntimeError::Reference(msg)) | Err(RuntimeError::Type(msg)) => {
+                    vm::runtime_error(msg.as_str())
+                }
+            }
         }
         Err(e) => panic!("Rapidus Internal Error: fork failed: {:?}", e),
     }

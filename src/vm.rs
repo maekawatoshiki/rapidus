@@ -141,21 +141,22 @@ impl CallObject {
         }
     }
 
-    pub fn get_value(&self, name: &String) -> Value {
+    pub fn get_value(&self, name: &String) -> Result<Value, RuntimeError> {
         unsafe {
             if let Some(val) = (*self.vals).get(name) {
-                return val.clone();
+                return Ok(val.clone());
             }
             match self.parent {
-                Some(ref parent) => return (**parent).get_value(name),
-                None => {
-                    runtime_error(format!("reference error: '{}' is not defined", name).as_str())
-                }
+                Some(ref parent) => (**parent).get_value(name),
+                None => Err(RuntimeError::Reference(format!(
+                    "reference error: '{}' is not defined",
+                    name
+                ))),
             }
         }
     }
 
-    pub fn get_arguments_nth_value(&self, n: usize) -> Value {
+    pub fn get_arguments_nth_value(&self, n: usize) -> Result<Value, RuntimeError> {
         if n < self.params.len() {
             let param_name = &self.params[n].0;
             return self.get_value(param_name);
@@ -163,9 +164,9 @@ impl CallObject {
 
         let n = n - self.params.len();
         if n >= self.arg_rest_vals.len() {
-            return Value::new(ValueBase::Undefined);
+            return Ok(Value::new(ValueBase::Undefined));
         }
-        self.arg_rest_vals[n].clone()
+        Ok(self.arg_rest_vals[n].clone())
     }
 
     pub fn set_arguments_nth_value(&mut self, n: usize, val: Value) {
@@ -405,7 +406,7 @@ impl Value {
                 match property {
                     // Index
                     ValueBase::Number(n) if is_integer(n) => callobjref
-                        .and_then(|co| Some((**co).get_arguments_nth_value(n as usize)))
+                        .and_then(|co| Some((**co).get_arguments_nth_value(n as usize).unwrap()))
                         .unwrap_or_else(|| Value::undefined()),
                     ValueBase::String(ref s) if s.to_str().unwrap() == "length" => {
                         let length = callobjref
@@ -590,9 +591,8 @@ fn is_integer(f: f64) -> bool {
     f - f.floor() == 0.0
 }
 
-fn runtime_error(msg: &str) -> ! {
+pub fn runtime_error(msg: &str) {
     eprintln!("{}: {}", Colour::Red.bold().paint("runtime error"), msg,);
-    panic!()
 }
 
 impl VM {
@@ -1631,7 +1631,7 @@ fn call(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
             call_function(self_, id, iseq, args, callobj)?;
         }
         c => {
-            return Err(RuntimeError::Reference(format!(
+            return Err(RuntimeError::Type(format!(
                 "type error(pc:{}): '{:?}' is not a function but called",
                 self_.state.pc, c
             )));
@@ -1693,7 +1693,7 @@ fn get_name(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
     self_.state.pc += 1;
     get_int32!(self_, iseq, name_id, usize);
     let name = &self_.const_table.string[name_id];
-    let val = unsafe { (**self_.state.scope.last().unwrap()).get_value(name) };
+    let val = unsafe { (**self_.state.scope.last().unwrap()).get_value(name)? };
     self_.state.stack.push(val);
     Ok(())
 }

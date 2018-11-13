@@ -324,7 +324,7 @@ pub unsafe fn function_prototype_apply(callobj: CallObject, args: Vec<Value>, se
             let callobj = &**self_.state.scope.last().unwrap();
             let length = callobj.get_arguments_length();
             for i in 0..length {
-                elems.push(callobj.get_arguments_nth_value(i));
+                elems.push(callobj.get_arguments_nth_value(i).unwrap());
             }
             elems
         }
@@ -455,6 +455,7 @@ pub unsafe fn require(_callobj: CallObject, args: Vec<Value>, self_: &mut VM) {
 
     let module_exports = (**vm.state.scope.last().unwrap())
         .get_value(&"module".to_string())
+        .unwrap()
         .get_property(Value::string(CString::new("exports").unwrap()).val, None);
     self_.state.stack.push(module_exports);
 }

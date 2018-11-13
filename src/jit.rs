@@ -1553,7 +1553,7 @@ impl TracingJit {
                                 None,
                             ));
                         }
-                        None => match scope.get_value(name).val {
+                        None => match scope.get_value(name).unwrap().val {
                             vm::ValueBase::Function(box (id, _, _, _)) if id == func_id => {
                                 stack.push((func, None));
                             }
@@ -1844,7 +1844,7 @@ pub unsafe fn run_loop_llvm_func(
 
     for (id, _) in &local_vars {
         let name = &const_table.string[*id];
-        args_of_local_vars.push(match (*scope).get_value(name).val {
+        args_of_local_vars.push(match (*scope).get_value(name).unwrap().val {
             vm::ValueBase::Number(f) => Box::into_raw(Box::new(f)) as *mut libc::c_void,
             vm::ValueBase::Bool(b) => Box::into_raw(Box::new(b)) as *mut libc::c_void,
             _ => return None,
