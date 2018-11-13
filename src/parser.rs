@@ -20,6 +20,21 @@ pub enum Error {
     Expect(usize, ErrorMsgKind, String),        // position, error msg kind, error msg
 }
 
+fn proper_error_msg_kind(self_: &Parser, tok_pos: usize) -> ErrorMsgKind {
+    let mut last_line = 0;
+    for (pos, line) in &self_.lexer.pos_line_list {
+        if tok_pos == *pos {
+            if last_line != *line {
+                return ErrorMsgKind::LastToken;
+            } else {
+                break;
+            }
+        }
+        last_line = *line;
+    }
+    ErrorMsgKind::Normal
+}
+
 #[derive(Clone, Debug)]
 pub struct Parser {
     pub lexer: lexer::Lexer,
@@ -297,6 +312,7 @@ impl Parser {
     }
 
     fn read_for_statement(&mut self) -> Result<Node, Error> {
+        // TODO: Correct error handler needed
         token_start_pos!(pos, self.lexer);
         assert_eq!(self.lexer.next()?.kind, Kind::Symbol(Symbol::OpeningParen));
         let init = if self.lexer.skip(Kind::Keyword(Keyword::Var)) {
@@ -306,7 +322,16 @@ impl Parser {
         } else if self.lexer.skip(Kind::Symbol(Symbol::Semicolon)) {
             Node::new(NodeBase::Nope, 0)
         } else {
-            self.read_expression()?
+            let expr = self.read_expression()?;
+            if !self.lexer.skip(Kind::Symbol(Symbol::Semicolon)) {
+                let cur_tok_pos = self.lexer.pos_line_list.last().unwrap().0;
+                return Err(Error::UnexpectedToken(
+                    cur_tok_pos,
+                    proper_error_msg_kind(self, cur_tok_pos),
+                    "expected ';'".to_string(),
+                ));
+            }
+            expr
         };
         let cond = if self.lexer.skip(Kind::Symbol(Symbol::Semicolon)) {
             Node::new(NodeBase::Boolean(true), 0)
@@ -768,20 +793,6 @@ impl Parser {
     /// https://tc39.github.io/ecma262/#prod-PrimaryExpression
     fn read_primary_expression(&mut self) -> Result<Node, Error> {
         let tok = self.lexer.next()?;
-        fn proper_error_msg_kind(self_: &Parser, tok_pos: usize) -> ErrorMsgKind {
-            let mut last_line = 0;
-            for (pos, line) in &self_.lexer.pos_line_list {
-                if tok_pos == *pos {
-                    if last_line != *line {
-                        return ErrorMsgKind::LastToken;
-                    } else {
-                        break;
-                    }
-                }
-                last_line = *line;
-            }
-            ErrorMsgKind::Normal
-        }
 
         match tok.kind {
             Kind::Keyword(Keyword::This) => Ok(Node::new(NodeBase::This, tok.pos)),
