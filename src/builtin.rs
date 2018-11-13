@@ -343,7 +343,7 @@ pub unsafe fn function_prototype_apply(callobj: CallObject, args: Vec<Value>, se
             let mut callobj = callobj.clone();
             *callobj.this = arg_this;
             callobj.vals = gc::new(FxHashMap::default());
-            call_function(self_, id, iseq, arg, callobj);
+            call_function(self_, id, iseq, arg, callobj).unwrap();
         }
         _ => self_.state.stack.push(Value::undefined()),
     }
@@ -364,7 +364,7 @@ pub unsafe fn function_prototype_call(callobj: CallObject, args: Vec<Value>, sel
             let mut callobj = callobj.clone();
             *callobj.this = arg_this;
             callobj.vals = gc::new(FxHashMap::default());
-            call_function(self_, id, iseq, args[1..].to_vec(), callobj);
+            call_function(self_, id, iseq, args[1..].to_vec(), callobj).unwrap();
         }
         _ => self_.state.stack.push(Value::undefined()),
     }
@@ -450,7 +450,8 @@ pub unsafe fn require(_callobj: CallObject, args: Vec<Value>, self_: &mut VM) {
 
     let mut vm = vm::VM::new(vm_codegen.global_varmap);
     vm.const_table = vm_codegen.bytecode_gen.const_table;
-    vm.run(iseq);
+    // TODO: Do not unwrap
+    vm.run(iseq).unwrap();
 
     let module_exports = (**vm.state.scope.last().unwrap())
         .get_value(&"module".to_string())

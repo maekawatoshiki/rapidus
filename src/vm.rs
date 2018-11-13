@@ -56,6 +56,13 @@ pub enum ValueBase {
     Arguments,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum RuntimeError {
+    Unknown,
+    Type(String),
+    Reference(String),
+}
+
 #[derive(Debug, Clone)]
 pub struct ConstantTable {
     pub value: Vec<Value>,
@@ -77,7 +84,7 @@ pub struct VM {
     pub const_table: ConstantTable,
     pub loop_bgn_end: FxHashMap<UniquePosition, isize>,
     pub cur_func_id: FuncId, // id == 0: main
-    pub op_table: [fn(&mut VM, &ByteCode); 50],
+    pub op_table: [fn(&mut VM, &ByteCode) -> Result<(), RuntimeError>; 50],
     pub builtin_functions: Vec<unsafe fn(CallObject, Vec<Value>, &mut VM)>,
 }
 
@@ -971,7 +978,7 @@ impl VM {
 }
 
 impl VM {
-    pub fn run(&mut self, iseq: ByteCode) {
+    pub fn run(&mut self, iseq: ByteCode) -> Result<(), RuntimeError> {
         // self.iseq = iseq;
         // Unlock the mutex and start the profiler
         // PROFILER
@@ -980,13 +987,13 @@ impl VM {
         //     .start("./my-prof.profile")
         //     .expect("Couldn't start");
 
-        self.do_run(&iseq);
+        self.do_run(&iseq)
 
         // Unwrap the mutex and stop the profiler
         // PROFILER.lock().unwrap().stop().expect("Couldn't stop");
     }
 
-    pub fn do_run(&mut self, iseq: &ByteCode) {
+    pub fn do_run(&mut self, iseq: &ByteCode) -> Result<(), RuntimeError> {
         let id = self.cur_func_id;
         loop {
             if let Some(end) = self
@@ -1007,12 +1014,14 @@ impl VM {
                 }
             }
             let code = iseq[self.state.pc as usize];
-            self.op_table[code as usize](self, iseq);
+            self.op_table[code as usize](self, iseq)?;
             if code == VMInst::RETURN || code == VMInst::END {
                 break;
             }
             // println!("stack trace: {:?} - {}", self.stack, *pc);
         }
+
+        Ok(())
     }
 }
 
@@ -1033,13 +1042,16 @@ macro_rules! get_int32 {
     };
 }
 
-fn end(_self: &mut VM, _iseq: &ByteCode) {}
-
-fn create_context(self_: &mut VM, _iseq: &ByteCode) {
-    self_.state.pc += 1; // create_context
+fn end(_self: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+    Ok(())
 }
 
-fn construct(self_: &mut VM, iseq: &ByteCode) {
+fn create_context(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+    self_.state.pc += 1; // create_context
+    Ok(())
+}
+
+fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
     self_.state.pc += 1; // construct
     get_int32!(self_, iseq, argc, usize);
 
@@ -1102,7 +1114,7 @@ fn construct(self_: &mut VM, iseq: &ByteCode) {
             let save_id = self_.cur_func_id;
             self_.cur_func_id = id;
 
-            self_.do_run(&iseq);
+            self_.do_run(&iseq)?;
 
             self_.cur_func_id = save_id;
             self_.state.scope.pop();
@@ -1130,10 +1142,12 @@ fn construct(self_: &mut VM, iseq: &ByteCode) {
         c => {
             println!("Constract: err: {:?}, pc = {}", c, self_.state.pc);
         }
-    }
+    };
+
+    Ok(())
 }
 
-fn create_object(self_: &mut VM, iseq: &ByteCode) {
+fn create_object(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
     self_.state.pc += 1; // create_object
     get_int32!(self_, iseq, len, usize);
 
@@ -1151,9 +1165,11 @@ fn create_object(self_: &mut VM, iseq: &ByteCode) {
     self_.state.stack.push(Value::object(gc::new(map)));
 
     gc::mark_and_sweep(&self_.state);
+
+    Ok(())
 }
 
-fn create_array(self_: &mut VM, iseq: &ByteCode) {
+fn create_array(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
     self_.state.pc += 1; // create_array
     get_int32!(self_, iseq, len, usize);
 
@@ -1169,78 +1185,92 @@ fn create_array(self_: &mut VM, iseq: &ByteCode) {
         .push(Value::array(gc::new(ArrayValue::new(arr))));
 
     gc::mark_and_sweep(&self_.state);
+
+    Ok(())
 }
 
-fn push_int8(self_: &mut VM, iseq: &ByteCode) {
+fn push_int8(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
     self_.state.pc += 1; // push_int
     get_int8!(self_, iseq, n, i8);
     self_.state.stack.push(Value::number(n as f64));
+    Ok(())
 }
 
-fn push_int32(self_: &mut VM, iseq: &ByteCode) {
+fn push_int32(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
     self_.state.pc += 1; // push_int
     get_int32!(self_, iseq, n, i32);
     self_.state.stack.push(Value::number(n as f64));
+    Ok(())
 }
 
-fn push_false(self_: &mut VM, _iseq: &ByteCode) {
+fn push_false(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
     self_.state.pc += 1; // push_false
     self_.state.stack.push(Value::bool(false));
+    Ok(())
 }
 
-fn push_true(self_: &mut VM, _iseq: &ByteCode) {
+fn push_true(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
     self_.state.pc += 1; // push_true
     self_.state.stack.push(Value::bool(true));
+    Ok(())
 }
 
-fn push_const(self_: &mut VM, iseq: &ByteCode) {
+fn push_const(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
     self_.state.pc += 1; // push_const
     get_int32!(self_, iseq, n, usize);
     self_.state.stack.push(self_.const_table.value[n].clone());
+    Ok(())
 }
 
-fn push_this(self_: &mut VM, _iseq: &ByteCode) {
+fn push_this(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
     self_.state.pc += 1; // push_this
     let this = unsafe { *(**self_.state.scope.last().unwrap()).this.clone() };
     self_.state.stack.push(this);
+    Ok(())
 }
 
-fn push_arguments(self_: &mut VM, _iseq: &ByteCode) {
+fn push_arguments(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
     self_.state.pc += 1; // push_arguments
     self_.state.stack.push(Value::arguments());
+    Ok(())
 }
 
-fn push_undefined(self_: &mut VM, _iseq: &ByteCode) {
+fn push_undefined(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
     self_.state.pc += 1; // push_defined
     self_.state.stack.push(Value::undefined());
+    Ok(())
 }
 
-fn lnot(self_: &mut VM, _iseq: &ByteCode) {
+fn lnot(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
     self_.state.pc += 1; // lnot
     let expr = self_.state.stack.last_mut().unwrap();
     expr.val = ValueBase::Bool(!expr.val.to_boolean());
+    Ok(())
 }
 
-fn posi(self_: &mut VM, _iseq: &ByteCode) {
+fn posi(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
     self_.state.pc += 1; // posi
     let expr = self_.state.stack.last_mut().unwrap();
     expr.val = ValueBase::Number(expr.val.to_number());
+    Ok(())
 }
 
-fn neg(self_: &mut VM, _iseq: &ByteCode) {
+fn neg(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
     self_.state.pc += 1; // neg
     let expr = self_.state.stack.last_mut().unwrap();
     match &mut expr.val {
         &mut ValueBase::Number(ref mut n) => *n = -*n,
         _ => unimplemented!(),
-    }
+    };
+    Ok(())
 }
 
 macro_rules! bin_op {
     ($name:ident, $binop:ident) => {
-        fn $name(self_: &mut VM, _iseq: &ByteCode) {
+        fn $name(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
             self_.state.pc += 1; // $name
-            binary(self_, &BinOp::$binop);
+            binary(self_, &BinOp::$binop)?;
+            Ok(())
         }
     };
 }
@@ -1267,7 +1297,7 @@ bin_op!(zfshr, ZFShr);
 
 #[rustfmt::skip]
 #[inline]
-fn binary(self_: &mut VM, op: &BinOp) {
+fn binary(self_: &mut VM, op: &BinOp) -> Result<(), RuntimeError> {
     let rhs = self_.state.stack.pop().unwrap();
     let lhs = self_.state.stack.pop().unwrap();
 
@@ -1292,7 +1322,7 @@ fn binary(self_: &mut VM, op: &BinOp) {
         &BinOp::Shr => shr (self_, lhs, rhs),
         &BinOp::ZFShr => zfshr (self_, lhs, rhs),
         _ => unimplemented!(),
-    }
+    };
 
     #[inline]
     fn add(self_: &mut VM, lhs: Value, rhs: Value) {
@@ -1410,17 +1440,20 @@ fn binary(self_: &mut VM, op: &BinOp) {
         (ValueBase::Number(l), ValueBase::Number(r)) => Value::number(((l as u64 as u32) >> (r as u64 as u32)) as f64),
         _ => unimplemented!(),
     }) };
+
+    Ok(())
 }
 
-fn get_member(self_: &mut VM, _iseq: &ByteCode) {
+fn get_member(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
     self_.state.pc += 1; // get_global
     let member = self_.state.stack.pop().unwrap();
     let parent = self_.state.stack.pop().unwrap();
     let val = parent.get_property(member.val, Some(self_.state.scope.last().unwrap()));
     self_.state.stack.push(val);
+    Ok(())
 }
 
-fn set_member(self_: &mut VM, _iseq: &ByteCode) {
+fn set_member(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
     self_.state.pc += 1; // get_global
     let member = self_.state.stack.pop().unwrap();
     let parent = self_.state.stack.pop().unwrap();
@@ -1465,10 +1498,12 @@ fn set_member(self_: &mut VM, _iseq: &ByteCode) {
             }
         }
         e => unreachable!("{:?}", e),
-    }
+    };
+
+    Ok(())
 }
 
-fn jmp(self_: &mut VM, iseq: &ByteCode) {
+fn jmp(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
     self_.state.pc += 1; // jmp
     get_int32!(self_, iseq, dst, i32);
     if dst < 0 {
@@ -1478,15 +1513,17 @@ fn jmp(self_: &mut VM, iseq: &ByteCode) {
         );
     }
     self_.state.pc += dst as isize;
+    Ok(())
 }
 
-fn jmp_if_false(self_: &mut VM, iseq: &ByteCode) {
+fn jmp_if_false(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
     self_.state.pc += 1; // jmp_if_false
     get_int32!(self_, iseq, dst, i32);
     let cond = self_.state.stack.pop().unwrap();
     if let ValueBase::Bool(false) = cond.val {
         self_.state.pc += dst as isize
     }
+    Ok(())
 }
 
 pub fn call_function(
@@ -1495,7 +1532,7 @@ pub fn call_function(
     iseq: &ByteCode,
     args: Vec<Value>,
     mut callobj: CallObject,
-) {
+) -> Result<(), RuntimeError> {
     let argc = args.len();
     let mut args_all_numbers = true;
     let mut rest_args = vec![];
@@ -1543,7 +1580,7 @@ pub fn call_function(
                 .stack
                 .push(unsafe { self_.jit.run_llvm_func(id, f, args) });
             self_.state.scope.pop();
-            return;
+            return Ok(());
         }
     }
 
@@ -1556,7 +1593,7 @@ pub fn call_function(
     let save_id = self_.cur_func_id;
     self_.cur_func_id = id;
 
-    self_.do_run(iseq);
+    self_.do_run(iseq)?;
 
     self_.cur_func_id = save_id;
     self_.state.scope.pop();
@@ -1564,9 +1601,11 @@ pub fn call_function(
     self_
         .jit
         .record_function_return_type(id, self_.state.stack.last().unwrap());
+
+    Ok(())
 }
 
-fn call(self_: &mut VM, iseq: &ByteCode) {
+fn call(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
     self_.state.pc += 1; // Call
     get_int32!(self_, iseq, argc, usize);
 
@@ -1589,20 +1628,20 @@ fn call(self_: &mut VM, iseq: &ByteCode) {
                 args.push(self_.state.stack.pop().unwrap());
             }
 
-            call_function(self_, id, iseq, args, callobj);
+            call_function(self_, id, iseq, args, callobj)?;
         }
         c => {
-            runtime_error(
-                format!(
-                    "type error(pc:{}): '{:?}' is not a function but called",
-                    self_.state.pc, c
-                ).as_str(),
-            );
+            return Err(RuntimeError::Reference(format!(
+                "type error(pc:{}): '{:?}' is not a function but called",
+                self_.state.pc, c
+            )));
         }
-    }
+    };
+
+    Ok(())
 }
 
-fn return_(self_: &mut VM, _iseq: &ByteCode) {
+fn return_(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
     let len = self_.state.stack.len();
     if let Some((previous_sp, return_pc)) = self_.state.history.pop() {
         self_.state.stack.drain(previous_sp..len - 1);
@@ -1610,30 +1649,35 @@ fn return_(self_: &mut VM, _iseq: &ByteCode) {
     } else {
         unreachable!()
     }
+    Ok(())
 }
 
-fn double(self_: &mut VM, _iseq: &ByteCode) {
+fn double(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
     self_.state.pc += 1; // double
     let stack_top_val = self_.state.stack.last().unwrap().clone();
     self_.state.stack.push(stack_top_val);
+    Ok(())
 }
 
-fn pop(self_: &mut VM, _iseq: &ByteCode) {
+fn pop(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
     self_.state.pc += 1; // double
     self_.state.stack.pop();
+    Ok(())
 }
 
 // 'land' and 'lor' are for JIT compiler. Nope for VM.
 
-fn land(self_: &mut VM, _iseq: &ByteCode) {
+fn land(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
     self_.state.pc += 1; // land
+    Ok(())
 }
 
-fn lor(self_: &mut VM, _iseq: &ByteCode) {
+fn lor(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
     self_.state.pc += 1; // lor
+    Ok(())
 }
 
-fn set_cur_callobj(self_: &mut VM, _iseq: &ByteCode) {
+fn set_cur_callobj(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
     self_.state.pc += 1;
     if let Some(Value {
         val: ValueBase::Function(box (_, _, _, ref mut callobj)),
@@ -1642,25 +1686,28 @@ fn set_cur_callobj(self_: &mut VM, _iseq: &ByteCode) {
     {
         callobj.parent = Some(self_.state.scope.last().unwrap().clone());
     }
+    Ok(())
 }
 
-fn get_name(self_: &mut VM, iseq: &ByteCode) {
+fn get_name(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
     self_.state.pc += 1;
     get_int32!(self_, iseq, name_id, usize);
     let name = &self_.const_table.string[name_id];
     let val = unsafe { (**self_.state.scope.last().unwrap()).get_value(name) };
     self_.state.stack.push(val);
+    Ok(())
 }
 
-fn set_name(self_: &mut VM, iseq: &ByteCode) {
+fn set_name(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
     self_.state.pc += 1;
     get_int32!(self_, iseq, name_id, usize);
     let name = self_.const_table.string[name_id].clone();
     let val = self_.state.stack.pop().unwrap();
     unsafe { (**self_.state.scope.last().unwrap()).set_value_if_exist(name, val) };
+    Ok(())
 }
 
-fn decl_var(self_: &mut VM, iseq: &ByteCode) {
+fn decl_var(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
     self_.state.pc += 1;
     get_int32!(self_, iseq, name_id, usize);
     let name = self_.const_table.string[name_id].clone();
@@ -1668,11 +1715,13 @@ fn decl_var(self_: &mut VM, iseq: &ByteCode) {
     unsafe {
         (**self_.state.scope.last().unwrap()).set_value(name, val);
     }
+    Ok(())
 }
 
 // 'cond_op' is for JIT compiler. Nope for VM.
-fn cond_op(self_: &mut VM, _iseq: &ByteCode) {
+fn cond_op(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
     self_.state.pc += 1;
+    Ok(())
 }
 
 // #[rustfmt::skip]
