@@ -1,4 +1,5 @@
 extern crate rapidus;
+use rapidus::builtin;
 use rapidus::bytecode_gen;
 use rapidus::extract_anony_func;
 use rapidus::lexer;
@@ -103,7 +104,7 @@ fn main() {
 
     let mut vm_codegen = vm_codegen::VMCodeGen::new();
     let mut iseq = vec![];
-    vm_codegen.compile(&node, &mut iseq);
+    vm_codegen.compile(&node, &mut iseq, false);
 
     bytecode_gen::show(&iseq);
 
@@ -118,6 +119,7 @@ fn main() {
 
 fn repl() {
     // TODO: REFINE CODE!!!!
+    extern crate libc;
     use extract_anony_func;
     use parser;
     use parser::Error::*;
@@ -160,20 +162,32 @@ fn repl() {
         extract_anony_func::AnonymousFunctionExtractor::new().run_toplevel(&mut node);
 
         let mut iseq = vec![];
-        vm_codegen.compile(&node, &mut iseq);
+        vm_codegen.compile(&node, &mut iseq, true);
 
         vm.const_table = vm_codegen.bytecode_gen.const_table.clone();
         vm.state.pc = 0;
 
         match vm.run(iseq) {
             Ok(()) => {}
-            Err(RuntimeError::Unknown) => vm::runtime_error("unknown error occurred"),
+            Err(RuntimeError::Unknown) => {
+                vm::runtime_error("unknown error occurred");
+                continue;
+            }
             Err(RuntimeError::Reference(msg)) | Err(RuntimeError::Type(msg)) => {
-                vm::runtime_error(msg.as_str())
+                vm::runtime_error(msg.as_str());
+                continue;
+            }
+        }
+
+        if let Some(value) = vm.state.stack.pop() {
+            unsafe {
+                builtin::debug_print(&value, false);
+                libc::puts(b"\0".as_ptr() as *const i8);
             }
         }
 
         vm_codegen.bytecode_gen.const_table = vm.const_table.clone();
+        vm.state.stack.clear();
     }
 }
 
@@ -249,7 +263,7 @@ fn run(file_name: &str) {
 
             let mut vm_codegen = vm_codegen::VMCodeGen::new();
             let mut iseq = vec![];
-            vm_codegen.compile(&node, &mut iseq);
+            vm_codegen.compile(&node, &mut iseq, false);
 
             let mut vm = vm::VM::new(vm_codegen.global_varmap);
             vm.const_table = vm_codegen.bytecode_gen.const_table;

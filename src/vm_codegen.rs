@@ -88,10 +88,10 @@ impl VMCodeGen {
 }
 
 impl VMCodeGen {
-    pub fn compile(&mut self, node: &Node, iseq: &mut ByteCode) {
+    pub fn compile(&mut self, node: &Node, iseq: &mut ByteCode, use_value: bool) {
         self.bytecode_gen.gen_create_context(iseq);
 
-        self.run(node, iseq, false);
+        self.run(node, iseq, use_value);
 
         self.bytecode_gen.gen_end(iseq);
 
@@ -195,14 +195,14 @@ impl VMCodeGen {
                 self.run_for(&*init, &*cond, &*step, &*body, iseq)
             }
             &NodeBase::Assign(ref dst, ref src) => self.run_assign(&*dst, &*src, iseq, use_value),
-            &NodeBase::UnaryOp(ref expr, ref op) => self.run_unary_op(&*expr, op, iseq),
+            &NodeBase::UnaryOp(ref expr, ref op) => self.run_unary_op(&*expr, op, iseq, use_value),
             &NodeBase::BinaryOp(ref lhs, ref rhs, ref op) => {
                 self.run_binary_op(&*lhs, &*rhs, op, iseq)
             }
             &NodeBase::TernaryOp(ref cond, ref then, ref else_) => {
                 self.run_ternary_op(&*cond, &*then, &*else_, iseq)
             }
-            &NodeBase::Call(ref callee, ref args) => self.run_call(&*callee, args, iseq),
+            &NodeBase::Call(ref callee, ref args) => self.run_call(&*callee, args, iseq, use_value),
             &NodeBase::Member(ref parent, ref member) => self.run_member(&*parent, member, iseq),
             &NodeBase::Index(ref parent, ref idx) => self.run_index(&*parent, &*idx, iseq),
             &NodeBase::Return(ref val) => self.run_return(val, iseq),
@@ -434,7 +434,13 @@ impl VMCodeGen {
 }
 
 impl VMCodeGen {
-    pub fn run_unary_op(&mut self, expr: &Node, op: &UnaryOp, iseq: &mut ByteCode) {
+    pub fn run_unary_op(
+        &mut self,
+        expr: &Node,
+        op: &UnaryOp,
+        iseq: &mut ByteCode,
+        use_value: bool,
+    ) {
         self.run(expr, iseq, true);
         match op {
             &UnaryOp::Plus => self.bytecode_gen.gen_posi(iseq),
@@ -443,11 +449,15 @@ impl VMCodeGen {
             &UnaryOp::PrInc => {
                 self.bytecode_gen.gen_push_int8(1, iseq);
                 self.bytecode_gen.gen_add(iseq);
-                self.bytecode_gen.gen_double(iseq);
+                if use_value {
+                    self.bytecode_gen.gen_double(iseq);
+                }
                 self.assign_stack_top(expr, iseq)
             }
             &UnaryOp::PoInc => {
-                self.bytecode_gen.gen_double(iseq);
+                if use_value {
+                    self.bytecode_gen.gen_double(iseq);
+                }
                 self.bytecode_gen.gen_push_int8(1, iseq);
                 self.bytecode_gen.gen_add(iseq);
                 self.assign_stack_top(expr, iseq)
@@ -455,11 +465,15 @@ impl VMCodeGen {
             &UnaryOp::PrDec => {
                 self.bytecode_gen.gen_push_int8(1, iseq);
                 self.bytecode_gen.gen_sub(iseq);
-                self.bytecode_gen.gen_double(iseq);
+                if use_value {
+                    self.bytecode_gen.gen_double(iseq);
+                }
                 self.assign_stack_top(expr, iseq)
             }
             &UnaryOp::PoDec => {
-                self.bytecode_gen.gen_double(iseq);
+                if use_value {
+                    self.bytecode_gen.gen_double(iseq);
+                }
                 self.bytecode_gen.gen_push_int8(1, iseq);
                 self.bytecode_gen.gen_sub(iseq);
                 self.assign_stack_top(expr, iseq)
@@ -556,7 +570,7 @@ impl VMCodeGen {
         let cond_pos = iseq.len() as isize;
         self.bytecode_gen.gen_jmp_if_false(0, iseq);
 
-        self.run(then, iseq,true);
+        self.run(then, iseq, true);
 
         let then_end_pos = iseq.len() as isize;
         self.bytecode_gen.gen_jmp(0, iseq);
@@ -610,7 +624,13 @@ impl VMCodeGen {
 }
 
 impl VMCodeGen {
-    pub fn run_call(&mut self, callee: &Node, args: &Vec<Node>, iseq: &mut ByteCode) {
+    pub fn run_call(
+        &mut self,
+        callee: &Node,
+        args: &Vec<Node>,
+        iseq: &mut ByteCode,
+        use_value: bool,
+    ) {
         for arg in args.iter().rev() {
             self.run(arg, iseq, true);
         }
@@ -618,6 +638,10 @@ impl VMCodeGen {
         self.run(callee, iseq, true);
 
         self.bytecode_gen.gen_call(args.len() as u32, iseq);
+
+        if !use_value {
+            self.bytecode_gen.gen_pop(iseq);
+        }
     }
 }
 

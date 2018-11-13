@@ -49,7 +49,7 @@ pub const FUNCTION_PROTOTYPE_CALL: usize = 38;
 pub const REQUIRE: usize = 39;
 
 // BuiltinFunction(0)
-pub unsafe fn console_log(_: CallObject, args: Vec<Value>, _: &mut VM) {
+pub unsafe fn console_log(_: CallObject, args: Vec<Value>, self_: &mut VM) {
     let args_len = args.len();
     for i in 0..args_len {
         debug_print(&args[i], false);
@@ -58,10 +58,11 @@ pub unsafe fn console_log(_: CallObject, args: Vec<Value>, _: &mut VM) {
         }
     }
     libc::puts(b"\0".as_ptr() as RawStringPtr);
+    self_.state.stack.push(Value::undefined())
 }
 
 // BuiltinFunction(1)
-pub unsafe fn process_stdout_write(_: CallObject, args: Vec<Value>, _: &mut VM) {
+pub unsafe fn process_stdout_write(_: CallObject, args: Vec<Value>, self_: &mut VM) {
     let args_len = args.len();
     for i in 0..args_len {
         debug_print(&args[i], false);
@@ -69,6 +70,7 @@ pub unsafe fn process_stdout_write(_: CallObject, args: Vec<Value>, _: &mut VM) 
             libc::printf(b" \0".as_ptr() as RawStringPtr);
         }
     }
+    self_.state.stack.push(Value::undefined())
 }
 
 pub unsafe fn debug_print(val: &Value, nest: bool) {
@@ -141,7 +143,7 @@ pub unsafe fn debug_print(val: &Value, nest: bool) {
 }
 
 // BuiltinFunction(2)
-pub unsafe fn array_push(callobj: CallObject, args: Vec<Value>, _self: &mut VM) {
+pub unsafe fn array_push(callobj: CallObject, args: Vec<Value>, self_: &mut VM) {
     if let ValueBase::Array(ref map) = callobj.this.val {
         let mut map = &mut **map;
         // let mut elems = &mut map.elems;
@@ -149,6 +151,7 @@ pub unsafe fn array_push(callobj: CallObject, args: Vec<Value>, _self: &mut VM) 
             map.elems.push(val.clone());
         }
         map.length += args.len();
+        self_.state.stack.push(Value::number(map.length as f64))
     } else {
         unreachable!()
     };
@@ -158,8 +161,9 @@ macro_rules! simple_math {
     ($name:ident, $f:ident) => {
         pub unsafe fn $name(_: CallObject, args: Vec<Value>, self_: &mut VM) {
             if let ValueBase::Number(n) = args[0].val {
-                self_.state.stack.push(Value::number(n.$f()))
+                return self_.state.stack.push(Value::number(n.$f()));
             }
+            self_.state.stack.push(Value::undefined())
         }
     };
 }
@@ -177,8 +181,9 @@ simple_math!(math_atanh, atanh); // builtinfunction(12)
 pub unsafe fn math_atan2(_: CallObject, args: Vec<Value>, self_: &mut VM) {
     if let ValueBase::Number(n1) = args[0].val {
         if let ValueBase::Number(n2) = args[1].val {
-            self_.state.stack.push(Value::number(n1.atan2(n2)))
+            return self_.state.stack.push(Value::number(n1.atan2(n2)));
         }
+        self_.state.stack.push(Value::undefined())
     }
 }
 simple_math!(math_cbrt, cbrt); // builtinfunction(14)
@@ -187,15 +192,16 @@ simple_math!(math_ceil, ceil); // builtinfunction(15)
 // builtinfunction(16)
 pub unsafe fn math_clz32(_: CallObject, args: Vec<Value>, self_: &mut VM) {
     if let ValueBase::Number(n) = args[0].val {
-        self_.state.stack.push(Value::number(if n == 0.0 {
+        return self_.state.stack.push(Value::number(if n == 0.0 {
             32.0
         } else {
             // TODO: >> ? >>> ?
             31.0 - ((n as i32 >> 0) as f64 * ::std::f64::consts::LOG2_E)
                 .log(::std::f64::consts::E)
                 .floor()
-        }))
+        }));
     }
+    self_.state.stack.push(Value::undefined())
 }
 simple_math!(math_cos, cos); // builtinfunction(17)
 simple_math!(math_cosh, cosh); // builtinfunction(18)
@@ -217,21 +223,23 @@ pub unsafe fn math_hypot(_: CallObject, args: Vec<Value>, self_: &mut VM) {
 // builtinfunction(23)
 pub unsafe fn math_log(_: CallObject, args: Vec<Value>, self_: &mut VM) {
     if let ValueBase::Number(n1) = args[0].val {
-        self_
+        return self_
             .state
             .stack
             .push(Value::number(n1.log(::std::f64::consts::E)));
     }
+    self_.state.stack.push(Value::undefined())
 }
 
 // builtinfunction(24)
 pub unsafe fn math_log1p(_: CallObject, args: Vec<Value>, self_: &mut VM) {
     if let ValueBase::Number(n1) = args[0].val {
-        self_
+        return self_
             .state
             .stack
             .push(Value::number(n1.log(1.0 + ::std::f64::consts::E)));
     }
+    self_.state.stack.push(Value::undefined())
 }
 
 simple_math!(math_log10, log10); // builtinfunction(25)
@@ -276,7 +284,7 @@ simple_math!(math_round, round); // builtinfunction(29)
 // builtinfunction(30)
 pub unsafe fn math_sign(_: CallObject, args: Vec<Value>, self_: &mut VM) {
     if let ValueBase::Number(n) = args[0].val {
-        self_.state.stack.push(Value::number(if n == 0.0 {
+        return self_.state.stack.push(Value::number(if n == 0.0 {
             n
         } else if n > 0.0 {
             1.0
@@ -284,6 +292,7 @@ pub unsafe fn math_sign(_: CallObject, args: Vec<Value>, self_: &mut VM) {
             -1.0
         }));
     }
+    self_.state.stack.push(Value::undefined())
 }
 
 simple_math!(math_sin, sin); // builtinfunction(31)
@@ -302,9 +311,10 @@ pub unsafe fn math_random(_: CallObject, _args: Vec<Value>, self_: &mut VM) {
 pub unsafe fn math_pow(_: CallObject, args: Vec<Value>, self_: &mut VM) {
     if let ValueBase::Number(f1) = args[0].val {
         if let ValueBase::Number(f2) = args[1].val {
-            self_.state.stack.push(Value::number(f1.powf(f2)))
+            return self_.state.stack.push(Value::number(f1.powf(f2)));
         }
     }
+    self_.state.stack.push(Value::undefined())
 }
 
 // BuiltinFunction(37)
@@ -445,7 +455,7 @@ pub unsafe fn require(_callobj: CallObject, args: Vec<Value>, self_: &mut VM) {
     let mut vm_codegen = vm_codegen::VMCodeGen::new();
     let mut iseq = vec![];
     vm_codegen.bytecode_gen.const_table = self_.const_table.clone();
-    vm_codegen.compile(&node, &mut iseq);
+    vm_codegen.compile(&node, &mut iseq, false);
     self_.const_table = vm_codegen.bytecode_gen.const_table.clone();
 
     let mut vm = vm::VM::new(vm_codegen.global_varmap);
