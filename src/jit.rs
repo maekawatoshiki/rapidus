@@ -963,6 +963,27 @@ impl TracingJit {
             Some(())
         }
 
+        unsafe fn val_to_bool(self_: &TracingJit, val: LLVMValueRef) -> LLVMValueRef {
+            match LLVMGetTypeKind(LLVMTypeOf(val)) {
+                llvm::LLVMTypeKind::LLVMDoubleTypeKind | llvm::LLVMTypeKind::LLVMFloatTypeKind => {
+                    LLVMBuildFCmp(
+                        self_.builder,
+                        llvm::LLVMRealPredicate::LLVMRealONE,
+                        val,
+                        LLVMConstNull(LLVMTypeOf(val)),
+                        CString::new("to_bool").unwrap().as_ptr(),
+                    )
+                }
+                _ => LLVMBuildICmp(
+                    self_.builder,
+                    llvm::LLVMIntPredicate::LLVMIntNE,
+                    val,
+                    LLVMConstNull(LLVMTypeOf(val)),
+                    CString::new("to_bool").unwrap().as_ptr(),
+                ),
+            }
+        }
+
         // First of all, find JMP-related ops and record its destination.
         {
             let mut pc = bgn;
@@ -1022,7 +1043,7 @@ impl TracingJit {
                     logcom.push(bb_then);
                     logor.push(bb_else);
 
-                    let cond_val = try_stack!(stack.pop());
+                    let cond_val = val_to_bool(self, try_stack!(stack.pop()));
                     LLVMBuildCondBr(self.builder, cond_val, bb_then, bb_else);
                     LLVMPositionBuilderAtEnd(self.builder, bb_then);
                 }
