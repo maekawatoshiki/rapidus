@@ -11,6 +11,19 @@ macro_rules! token_start_pos {
     };
 }
 
+macro_rules! expect {
+    ($self:ident, $kind:expr, $msg:expr) => {{
+        let tok = $self.lexer.next_except_lineterminator()?;
+        if tok.kind != $kind {
+            return Err(Error::Expect(
+                tok.pos,
+                ErrorMsgKind::Normal,
+                $msg.to_string(),
+            ));
+        }
+    }};
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Error {
     NormalEOF,
@@ -231,7 +244,7 @@ impl Parser {
         token_start_pos!(pos, self.lexer);
         let name = match self.lexer.next()?.kind {
             Kind::Identifier(name) => name,
-            _ => unimplemented!(),
+            _ => return Err(Error::UnsupportedFeature(self.lexer.pos)),
         };
 
         if self.lexer.skip(Kind::Symbol(Symbol::Assign)) {
@@ -299,9 +312,12 @@ impl Parser {
 impl Parser {
     fn read_while_statement(&mut self) -> Result<Node, Error> {
         token_start_pos!(pos, self.lexer);
-        assert_eq!(self.lexer.next()?.kind, Kind::Symbol(Symbol::OpeningParen));
+
+        expect!(self, Kind::Symbol(Symbol::OpeningParen), "expect '('");
+
         let cond = self.read_expression()?;
-        assert_eq!(self.lexer.next()?.kind, Kind::Symbol(Symbol::ClosingParen));
+
+        expect!(self, Kind::Symbol(Symbol::ClosingParen), "expect ')'");
 
         let body = self.read_statement()?;
 
@@ -312,39 +328,35 @@ impl Parser {
     }
 
     fn read_for_statement(&mut self) -> Result<Node, Error> {
-        // TODO: Correct error handler needed
         token_start_pos!(pos, self.lexer);
-        assert_eq!(self.lexer.next()?.kind, Kind::Symbol(Symbol::OpeningParen));
+
+        expect!(self, Kind::Symbol(Symbol::OpeningParen), "expect '('");
+
         let init = if self.lexer.skip(Kind::Keyword(Keyword::Var)) {
             let init = self.read_variable_statement()?;
-            assert!(self.lexer.skip(Kind::Symbol(Symbol::Semicolon)));
+            expect!(self, Kind::Symbol(Symbol::Semicolon), "expect ';'");
             init
         } else if self.lexer.skip(Kind::Symbol(Symbol::Semicolon)) {
             Node::new(NodeBase::Nope, 0)
         } else {
             let expr = self.read_expression()?;
-            if !self.lexer.skip(Kind::Symbol(Symbol::Semicolon)) {
-                let cur_tok_pos = self.lexer.pos_line_list.last().unwrap().0;
-                return Err(Error::UnexpectedToken(
-                    cur_tok_pos,
-                    proper_error_msg_kind(self, cur_tok_pos),
-                    "expected ';'".to_string(),
-                ));
-            }
+            expect!(self, Kind::Symbol(Symbol::Semicolon), "expect ';'");
             expr
         };
+
         let cond = if self.lexer.skip(Kind::Symbol(Symbol::Semicolon)) {
             Node::new(NodeBase::Boolean(true), 0)
         } else {
             let step = self.read_expression()?;
-            assert_eq!(self.lexer.next()?.kind, Kind::Symbol(Symbol::Semicolon));
+            expect!(self, Kind::Symbol(Symbol::Semicolon), "expect ';'");
             step
         };
+
         let step = if self.lexer.skip(Kind::Symbol(Symbol::ClosingParen)) {
             Node::new(NodeBase::Nope, 0)
         } else {
             let step = self.read_expression()?;
-            assert_eq!(self.lexer.next()?.kind, Kind::Symbol(Symbol::ClosingParen));
+            expect!(self, Kind::Symbol(Symbol::ClosingParen), "expect ')'");
             step
         };
 
@@ -450,20 +462,24 @@ impl Parser {
     /// https://tc39.github.io/ecma262/#prod-ConditionalExpression
     fn read_conditional_expression(&mut self) -> Result<Node, Error> {
         token_start_pos!(pos, self.lexer);
+
         let lhs = self.read_logical_or_expression()?;
+
         if let Ok(tok) = self.lexer.next() {
-            if let Kind::Symbol(Symbol::Question) = tok.kind {
-                let then_ = self.read_assignment_expression()?;
-                assert_eq!(self.lexer.next()?.kind, Kind::Symbol(Symbol::Colon));
-                let else_ = self.read_assignment_expression()?;
-                return Ok(Node::new(
-                    NodeBase::TernaryOp(Box::new(lhs), Box::new(then_), Box::new(else_)),
-                    pos,
-                ));
-            } else {
-                self.lexer.unget(&tok);
+            match tok.kind {
+                Kind::Symbol(Symbol::Question) => {
+                    let then_ = self.read_assignment_expression()?;
+                    expect!(self, Kind::Symbol(Symbol::Colon), "expect ':'");
+                    let else_ = self.read_assignment_expression()?;
+                    return Ok(Node::new(
+                        NodeBase::TernaryOp(Box::new(lhs), Box::new(then_), Box::new(else_)),
+                        pos,
+                    ));
+                }
+                _ => self.lexer.unget(&tok),
             }
         }
+
         Ok(lhs)
     }
 
@@ -798,21 +814,9 @@ impl Parser {
             Kind::Keyword(Keyword::This) => Ok(Node::new(NodeBase::This, tok.pos)),
             Kind::Keyword(Keyword::Arguments) => Ok(Node::new(NodeBase::Arguments, tok.pos)),
             Kind::Keyword(Keyword::Function) => self.read_function_expression(),
-            // Kind::Symbol(Symbol::Semicolon) => Ok(Node::new(NodeBase::Nope, tok.pos)),
-            // Kind::Symbol(Symbol::ClosingParen) => {
-            //     self.lexer.unget(&tok);
-            //     Ok(Node::new(NodeBase::Nope, tok.pos))
-            // }
             Kind::Symbol(Symbol::OpeningParen) => {
                 let x = self.read_expression();
-                if !self.lexer.skip(Kind::Symbol(Symbol::ClosingParen)) {
-                    let tok_pos = self.lexer.pos_line_list.last().unwrap().0;
-                    return Err(Error::Expect(
-                        tok_pos,
-                        proper_error_msg_kind(self, tok_pos),
-                        "expect ')'".to_string(),
-                    ));
-                }
+                expect!(self, Kind::Symbol(Symbol::ClosingParen), "expect ')'");
                 x
             }
             Kind::Symbol(Symbol::OpeningBoxBracket) => self.read_array_literal(),
@@ -850,16 +854,12 @@ impl Parser {
             None
         };
 
-        assert!(
-            self.lexer
-                .skip_except_lineterminator(Kind::Symbol(Symbol::OpeningParen))
-        );
+        expect!(self, Kind::Symbol(Symbol::OpeningParen), "expect '('");
+
         let params = self.read_formal_parameters()?;
 
-        assert!(
-            self.lexer
-                .skip_except_lineterminator(Kind::Symbol(Symbol::OpeningBrace))
-        );
+        expect!(self, Kind::Symbol(Symbol::OpeningBrace), "expect '{'");
+
         let body = self.read_statement_list(true)?;
 
         Ok(Node::new(
@@ -985,16 +985,12 @@ impl Parser {
             ));
         };
 
-        assert!(
-            self.lexer
-                .skip_except_lineterminator(Kind::Symbol(Symbol::OpeningParen))
-        );
+        expect!(self, Kind::Symbol(Symbol::OpeningParen), "expect '('");
+
         let params = self.read_formal_parameters()?;
 
-        assert!(
-            self.lexer
-                .skip_except_lineterminator(Kind::Symbol(Symbol::OpeningBrace))
-        );
+        expect!(self, Kind::Symbol(Symbol::OpeningBrace), "expect '{'");
+
         let body = self.read_statement_list(true)?;
 
         Ok(Node::new(
@@ -1021,7 +1017,7 @@ impl Parser {
                 break;
             }
 
-            assert!(self.lexer.skip(Kind::Symbol(Symbol::Comma)))
+            expect!(self, Kind::Symbol(Symbol::Comma), "expect ','");
         }
 
         Ok(params)
