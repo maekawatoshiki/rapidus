@@ -1471,8 +1471,10 @@ fn set_member(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
                 // Index
                 ValueBase::Number(n) if n - n.floor() == 0.0 => {
                     if n as usize >= map.length as usize {
-                        map.length = n as usize;
-                        map.elems.set_len(n as usize);
+                        map.length = n as usize + 1;
+                        while map.elems.len() < n as usize + 1 {
+                            map.elems.push(Value::undefined());
+                        }
                     }
                     map.elems[n as usize] = val;
                 }
