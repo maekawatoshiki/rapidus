@@ -45,6 +45,8 @@ pub struct Value {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ValueBase {
+    Empty,
+    Null,
     Undefined,
     Bool(bool),
     Number(f64),
@@ -247,6 +249,14 @@ impl Value {
         self.val.to_string()
     }
 
+    pub fn empty() -> Value {
+        Value::new(ValueBase::Empty)
+    }
+
+    pub fn null() -> Value {
+        Value::new(ValueBase::Null)
+    }
+
     pub fn undefined() -> Value {
         Value::new(ValueBase::Undefined)
     }
@@ -389,10 +399,17 @@ impl Value {
                 // Index
                 ValueBase::Number(n) if is_integer(n) => {
                     let arr = &ary.elems;
+
                     if n as usize >= ary.length {
-                        Value::undefined()
-                    } else {
-                        arr[n as usize].clone()
+                        return Value::undefined();
+                    }
+
+                    match arr[n as usize] {
+                        Value {
+                            val: ValueBase::Empty,
+                            ..
+                        } => Value::undefined(),
+                        ref other => other.clone(),
                     }
                 }
                 ValueBase::String(ref s) if s.to_str().unwrap() == "length" => {
@@ -1473,13 +1490,18 @@ fn set_member(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
                     if n as usize >= map.length as usize {
                         map.length = n as usize + 1;
                         while map.elems.len() < n as usize + 1 {
-                            map.elems.push(Value::undefined());
+                            map.elems.push(Value::empty());
                         }
                     }
                     map.elems[n as usize] = val;
                 }
                 ValueBase::String(ref s) if s.to_str().unwrap() == "length" => match val.val {
-                    ValueBase::Number(n) if n - n.floor() == 0.0 => map.length = n as usize,
+                    ValueBase::Number(n) if n - n.floor() == 0.0 => {
+                        map.length = n as usize;
+                        while map.elems.len() < n as usize + 1 {
+                            map.elems.push(Value::empty());
+                        }
+                    }
                     _ => {}
                 },
                 _ => {

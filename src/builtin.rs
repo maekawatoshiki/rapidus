@@ -75,6 +75,9 @@ pub unsafe fn process_stdout_write(_: CallObject, args: Vec<Value>, self_: &mut 
 
 pub unsafe fn debug_print(val: &Value, nest: bool) {
     match val.val {
+        ValueBase::Null => {
+            libc::printf(b"null\0".as_ptr() as RawStringPtr);
+        }
         ValueBase::Undefined => {
             libc::printf(b"undefined\0".as_ptr() as RawStringPtr);
         }
@@ -125,14 +128,35 @@ pub unsafe fn debug_print(val: &Value, nest: bool) {
             libc::printf("[ \0".as_ptr() as RawStringPtr);
             let arr = &*(*values);
             let elems = &arr.elems;
-            for i in 0..arr.length {
+            let is_last_idx = |idx: usize| -> bool { idx == arr.length - 1 };
+            let mut i = 0;
+
+            while i < arr.length {
+                let mut empty_elems = 0;
+                while i < arr.length && ValueBase::Empty == elems[i].val {
+                    empty_elems += 1;
+                    i += 1;
+                }
+
+                if empty_elems > 0 {
+                    libc::printf(
+                        "<%u empty item%s>%s\0".as_ptr() as RawStringPtr,
+                        empty_elems,
+                        if empty_elems >= 2 { "s\0" } else { "\0" }.as_ptr() as RawStringPtr,
+                        if is_last_idx(i - 1) { " \0" } else { ", \0" }.as_ptr() as RawStringPtr,
+                    );
+
+                    if is_last_idx(i - 1) {
+                        break;
+                    }
+                }
+
                 debug_print(&elems[i], true);
-                libc::printf(if i != arr.length - 1 {
-                    ", \0".as_ptr() as RawStringPtr
-                } else {
-                    " \0".as_ptr() as RawStringPtr
-                });
+                libc::printf(if is_last_idx(i) { " \0" } else { ", \0" }.as_ptr() as RawStringPtr);
+
+                i += 1;
             }
+
             libc::printf("]\0".as_ptr() as RawStringPtr);
         }
         ValueBase::Function(_) => {

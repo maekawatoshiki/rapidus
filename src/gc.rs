@@ -42,10 +42,12 @@ impl Gc for Value {
 
     fn trace(&self, marked: &mut FxHashSet<GcPtr>) {
         match self.val {
-            ValueBase::Undefined => {}
-            ValueBase::Bool(_) => {}
-            ValueBase::Number(_) => {}
-            ValueBase::String(_) => {}
+            ValueBase::Empty
+            | ValueBase::Null
+            | ValueBase::Undefined
+            | ValueBase::Bool(_)
+            | ValueBase::Number(_)
+            | ValueBase::String(_) => {}
             ValueBase::Function(box (_, _, ref obj, ref c)) => {
                 not_marked_then(*obj, marked, |obj, marked| unsafe {
                     (*obj).trace(marked);

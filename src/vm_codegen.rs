@@ -224,6 +224,10 @@ impl VMCodeGen {
                 self.bytecode_gen.gen_get_name(name, iseq);
                 self.bytecode_gen.gen_set_cur_callobj(iseq);
             }
+            &NodeBase::Nope if use_value => {
+                self.bytecode_gen.gen_push_const(Value::empty(), iseq);
+            }
+
             _ => {}
         }
     }
