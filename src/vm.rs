@@ -395,25 +395,36 @@ impl Value {
         let property_of_object =
             |properties: &FxHashMap<String, Value>| -> Value { property_of_simple(properties) };
         let property_of_array = |ary: &ArrayValue| -> Value {
+            let get_by_idx = |n: usize| -> Value {
+                let arr = &ary.elems;
+
+                if n >= ary.length {
+                    return Value::undefined();
+                }
+
+                match arr[n] {
+                    Value {
+                        val: ValueBase::Empty,
+                        ..
+                    } => Value::undefined(),
+                    ref other => other.clone(),
+                }
+            };
+
             match property {
                 // Index
-                ValueBase::Number(n) if is_integer(n) => {
-                    let arr = &ary.elems;
-
-                    if n as usize >= ary.length {
-                        return Value::undefined();
-                    }
-
-                    match arr[n as usize] {
-                        Value {
-                            val: ValueBase::Empty,
-                            ..
-                        } => Value::undefined(),
-                        ref other => other.clone(),
-                    }
-                }
+                ValueBase::Number(n) if is_integer(n) && n >= 0.0 => get_by_idx(n as usize),
                 ValueBase::String(ref s) if s.to_str().unwrap() == "length" => {
                     Value::number(ary.length as f64)
+                }
+                ValueBase::String(ref s) => {
+                    // https://www.ecma-international.org/ecma-262/9.0/index.html#sec-array-exotic-objects
+                    let num = property.to_uint32();
+                    if Value::number(num).to_string() == s.to_str().unwrap() {
+                        get_by_idx(num as usize)
+                    } else {
+                        property_of_simple(&ary.obj)
+                    }
                 }
                 _ => property_of_simple(&ary.obj),
             }
@@ -422,7 +433,7 @@ impl Value {
             unsafe {
                 match property {
                     // Index
-                    ValueBase::Number(n) if is_integer(n) => callobjref
+                    ValueBase::Number(n) if is_integer(n) && n >= 0.0 => callobjref
                         .and_then(|co| Some((**co).get_arguments_nth_value(n as usize).unwrap()))
                         .unwrap_or_else(|| Value::undefined()),
                     ValueBase::String(ref s) if s.to_str().unwrap() == "length" => {
@@ -523,6 +534,27 @@ impl ValueBase {
                 ValueBase::Array(ary) => ary_to_num(&**ary),
                 _ => ::std::f64::NAN,
             }
+        }
+    }
+
+    pub fn to_uint32(&self) -> f64 {
+        let num = self.to_number();
+        let p2_32 = 4294967296i64;
+
+        if num.is_nan() || num == 0.0 || num.is_infinite() {
+            return 0.0;
+        }
+
+        let int32bit = (if num < 0.0 {
+            -num.abs().floor()
+        } else {
+            num.abs().floor()
+        } as i64 % p2_32) as f64;
+
+        if int32bit < 0.0 {
+            p2_32 as f64 + int32bit
+        } else {
+            int32bit
         }
     }
 
@@ -1483,20 +1515,25 @@ fn set_member(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
                 .or_insert_with(|| Value::undefined()) = val;
         },
         ValueBase::Array(map) => unsafe {
+            fn set_by_idx(map: &mut ArrayValue, n: usize, val: Value) {
+                if n >= map.length as usize {
+                    map.length = n + 1;
+                    while map.elems.len() < n + 1 {
+                        map.elems.push(Value::empty());
+                    }
+                }
+                map.elems[n] = val;
+            };
+
             let mut map = &mut *map;
+
             match member.val {
                 // Index
-                ValueBase::Number(n) if n - n.floor() == 0.0 => {
-                    if n as usize >= map.length as usize {
-                        map.length = n as usize + 1;
-                        while map.elems.len() < n as usize + 1 {
-                            map.elems.push(Value::empty());
-                        }
-                    }
-                    map.elems[n as usize] = val;
+                ValueBase::Number(n) if n - n.floor() == 0.0 && n >= 0.0 => {
+                    set_by_idx(map, n as usize, val)
                 }
                 ValueBase::String(ref s) if s.to_str().unwrap() == "length" => match val.val {
-                    ValueBase::Number(n) if n - n.floor() == 0.0 => {
+                    ValueBase::Number(n) if n - n.floor() == 0.0 && n >= 0.0 => {
                         map.length = n as usize;
                         while map.elems.len() < n as usize + 1 {
                             map.elems.push(Value::empty());
@@ -1504,6 +1541,13 @@ fn set_member(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
                     }
                     _ => {}
                 },
+                // https://www.ecma-international.org/ecma-262/9.0/index.html#sec-array-exotic-objects
+                ValueBase::String(ref s)
+                    if Value::number(member.val.to_uint32()).to_string() == s.to_str().unwrap() =>
+                {
+                    let num = member.val.to_uint32();
+                    set_by_idx(map, num as usize, val)
+                }
                 _ => {
                     *map.obj
                         .entry(member.to_string())

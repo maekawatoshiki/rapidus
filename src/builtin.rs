@@ -74,6 +74,22 @@ pub unsafe fn process_stdout_write(_: CallObject, args: Vec<Value>, self_: &mut 
 }
 
 pub unsafe fn debug_print(val: &Value, nest: bool) {
+    unsafe fn show_obj(sorted_key_val: Vec<(&String, &Value)>) {
+        for (i, (key, val)) in sorted_key_val.iter().enumerate() {
+            libc::printf(
+                "'%s'\0".as_ptr() as RawStringPtr,
+                CString::new(key.as_str()).unwrap().into_raw(),
+            );
+            libc::printf(": \0".as_ptr() as RawStringPtr);
+            debug_print(&val, true);
+            libc::printf(if i != sorted_key_val.len() - 1 {
+                ", \0".as_ptr() as RawStringPtr
+            } else {
+                " \0".as_ptr() as RawStringPtr
+            });
+        }
+    }
+
     match val.val {
         ValueBase::Null => {
             libc::printf(b"null\0".as_ptr() as RawStringPtr);
@@ -108,20 +124,10 @@ pub unsafe fn debug_print(val: &Value, nest: bool) {
             let key_val = &**values;
             let mut sorted_key_val = key_val.iter().collect::<Vec<(&String, &Value)>>();
             sorted_key_val.sort_by(|(key1, _), (key2, _)| key1.as_str().cmp(key2.as_str()));
+            sorted_key_val.retain(|(ref key, _)| key != &"__proto__");
 
-            for (i, (key, val)) in sorted_key_val.iter().enumerate() {
-                libc::printf(
-                    "'%s'\0".as_ptr() as RawStringPtr,
-                    CString::new(key.as_str()).unwrap().into_raw(),
-                );
-                libc::printf(": \0".as_ptr() as RawStringPtr);
-                debug_print(&val, true);
-                libc::printf(if i != sorted_key_val.len() - 1 {
-                    ", \0".as_ptr() as RawStringPtr
-                } else {
-                    " \0".as_ptr() as RawStringPtr
-                });
-            }
+            show_obj(sorted_key_val);
+
             libc::printf("}\0".as_ptr() as RawStringPtr);
         }
         ValueBase::Array(ref values) => {
@@ -130,6 +136,11 @@ pub unsafe fn debug_print(val: &Value, nest: bool) {
             let elems = &arr.elems;
             let is_last_idx = |idx: usize| -> bool { idx == arr.length - 1 };
             let mut i = 0;
+
+            let key_val = &arr.obj;
+            let mut sorted_key_val = key_val.iter().collect::<Vec<(&String, &Value)>>();
+            sorted_key_val.sort_by(|(key1, _), (key2, _)| key1.as_str().cmp(key2.as_str()));
+            sorted_key_val.retain(|(ref key, _)| key != &"__proto__");
 
             while i < arr.length {
                 let mut empty_elems = 0;
@@ -143,7 +154,11 @@ pub unsafe fn debug_print(val: &Value, nest: bool) {
                         "<%u empty item%s>%s\0".as_ptr() as RawStringPtr,
                         empty_elems,
                         if empty_elems >= 2 { "s\0" } else { "\0" }.as_ptr() as RawStringPtr,
-                        if is_last_idx(i - 1) { " \0" } else { ", \0" }.as_ptr() as RawStringPtr,
+                        if is_last_idx(i - 1) && sorted_key_val.len() == 0 {
+                            " \0"
+                        } else {
+                            ", \0"
+                        }.as_ptr() as RawStringPtr,
                     );
 
                     if is_last_idx(i - 1) {
@@ -152,10 +167,18 @@ pub unsafe fn debug_print(val: &Value, nest: bool) {
                 }
 
                 debug_print(&elems[i], true);
-                libc::printf(if is_last_idx(i) { " \0" } else { ", \0" }.as_ptr() as RawStringPtr);
+                libc::printf(
+                    if is_last_idx(i) && sorted_key_val.len() == 0 {
+                        " \0"
+                    } else {
+                        ", \0"
+                    }.as_ptr() as RawStringPtr,
+                );
 
                 i += 1;
             }
+
+            show_obj(sorted_key_val);
 
             libc::printf("]\0".as_ptr() as RawStringPtr);
         }
