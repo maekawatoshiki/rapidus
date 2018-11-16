@@ -10,6 +10,8 @@ use rapidus::vm_codegen;
 use parser::Error::*;
 use vm::RuntimeError;
 
+extern crate libc;
+
 extern crate rustyline;
 
 extern crate clap;
@@ -121,12 +123,6 @@ fn main() {
 
 fn repl() {
     // TODO: REFINE CODE!!!!
-    extern crate libc;
-    use extract_anony_func;
-    use parser;
-    use parser::Error::*;
-    use vm;
-    use vm_codegen;
 
     let mut vm_codegen = vm_codegen::VMCodeGen::new();
     let mut vm = vm::VM::new(vm_codegen.global_varmap);
@@ -135,7 +131,10 @@ fn repl() {
 
     loop {
         let line = match rl.readline("> ") {
-            Ok(line) => line,
+            Ok(line) => {
+                rl.add_history_entry(line.as_ref());
+                line
+            }
             Err(_) => break,
         };
 
