@@ -10,6 +10,8 @@ use rapidus::vm_codegen;
 use parser::Error::*;
 use vm::RuntimeError;
 
+extern crate rustyline;
+
 extern crate clap;
 use clap::{App, Arg};
 
@@ -123,26 +125,21 @@ fn repl() {
     use extract_anony_func;
     use parser;
     use parser::Error::*;
-    // use std::ffi::CString;
-    use std::io;
     use vm;
     use vm_codegen;
 
-    let mut line = "".to_string();
-    let stdin = io::stdin();
-
-    // let mut global = vm::CallObject::new_global();
     let mut vm_codegen = vm_codegen::VMCodeGen::new();
     let mut vm = vm::VM::new(vm_codegen.global_varmap);
 
-    loop {
-        print!("> ");
-        io::stdout().flush().unwrap();
-        line.clear();
-        stdin.read_line(&mut line).unwrap();
-        line.pop();
+    let mut rl = rustyline::Editor::<()>::new();
 
-        let mut parser = parser::Parser::new(line.clone());
+    loop {
+        let line = match rl.readline("> ") {
+            Ok(line) => line,
+            Err(_) => break,
+        };
+
+        let mut parser = parser::Parser::new(line);
 
         let mut node = match parser.parse_all() {
             Ok(ok) => ok,

@@ -125,45 +125,6 @@ impl VMCodeGen {
                 (*self.global_varmap).set_value(name.clone(), val.clone());
             }
         }
-
-        // let mut i = 0;
-        // while i < iseq.len() {
-        //     let inst_size = VMInst::get_inst_size(iseq[i])
-        //         .unwrap_or_else(|| panic!("Illegal VM Instruction occurred"));
-        //     match iseq[i] {
-        //         VMInst::GET_NAME => {
-        //             let id = iseq[i + 1] as i32
-        //                 + ((iseq[i + 2] as i32) << 8)
-        //                 + ((iseq[i + 3] as i32) << 16)
-        //                 + ((iseq[i + 4] as i32) << 24);
-        //             if let Some(val) = function_value_list
-        //                 .get(self.bytecode_gen.const_table.string[id as usize].as_str())
-        //             {
-        //                 match val {
-        //                     Value::NeedThis(callee) => {
-        //                         iseq[i] = VMInst::PUSH_CONST;
-        //                         let id = self.bytecode_gen.const_table.value.len();
-        //                         self.bytecode_gen
-        //                             .const_table
-        //                             .value
-        //                             .push(Value::NeedThis(callee.clone()));
-        //                         self.bytecode_gen
-        //                             .replace_int32(id as i32, &mut iseq[i + 1..i + 5]);
-        //                     }
-        //                     _ => {
-        //                         iseq[i] = VMInst::PUSH_CONST;
-        //                         let id = self.bytecode_gen.const_table.value.len();
-        //                         self.bytecode_gen.const_table.value.push(val.clone());
-        //                         self.bytecode_gen
-        //                             .replace_int32(id as i32, &mut iseq[i + 1..i + 5]);
-        //                     }
-        //                 }
-        //             }
-        //             i += inst_size
-        //         }
-        //         _ => i += inst_size,
-        //     }
-        // }
     }
 
     fn run(&mut self, node: &Node, iseq: &mut ByteCode, use_value: bool) {
@@ -180,7 +141,9 @@ impl VMCodeGen {
         }
 
         match &node.base {
-            &NodeBase::StatementList(ref node_list) => self.run_statement_list(node_list, iseq),
+            &NodeBase::StatementList(ref node_list) => {
+                self.run_statement_list(node_list, iseq, use_value)
+            }
             &NodeBase::FunctionDecl(ref name, ref params, ref body) => {
                 self.run_function_decl(name, params, &*body)
             }
@@ -234,9 +197,14 @@ impl VMCodeGen {
 }
 
 impl VMCodeGen {
-    pub fn run_statement_list(&mut self, node_list: &Vec<Node>, iseq: &mut ByteCode) {
+    pub fn run_statement_list(
+        &mut self,
+        node_list: &Vec<Node>,
+        iseq: &mut ByteCode,
+        use_value: bool,
+    ) {
         for node in node_list {
-            self.run(node, iseq, false)
+            self.run(node, iseq, use_value)
         }
     }
 }
