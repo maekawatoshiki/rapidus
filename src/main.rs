@@ -58,7 +58,7 @@ fn main() {
         return;
     }
 
-    // Show the information for debugging
+    // Show information for debugging
 
     let mut file_body = String::new();
 
@@ -131,22 +131,24 @@ fn repl() {
 
     loop {
         let line = match rl.readline("> ") {
-            Ok(ref line) if line == ".." => {
-                let mut lines = "".to_string();
-
-                while let Ok(line) = rl.readline(">> ") {
-                    if line == ".." {
-                        break;
-                    }
-                    lines += line.as_str();
-                }
-
-                rl.add_history_entry(lines.as_ref());
-                lines
-            }
             Ok(line) => {
-                rl.add_history_entry(line.as_ref());
-                line
+                let body = if line == ".." {
+                    let mut lines = "".to_string();
+
+                    while let Ok(line) = rl.readline(">> ") {
+                        if line == ".." {
+                            break;
+                        }
+                        lines += line.as_str();
+                    }
+
+                    lines
+                } else {
+                    line
+                };
+
+                rl.add_history_entry(body.as_ref());
+                body
             }
             Err(_) => break,
         };
@@ -187,6 +189,7 @@ fn repl() {
             continue;
         }
 
+        // Show the evaluated result
         if let Some(value) = vm.state.stack.pop() {
             unsafe {
                 builtin::debug_print(&value, false);
@@ -208,7 +211,7 @@ fn run(file_name: &str) {
                         panic!("exited. status: {}", status)
                     },
                     WaitStatus::Signaled(pid, status, _) => {
-                        // We can do anything (like calling destructors) here.
+                        // TODO: We can do anything (like calling destructors) here.
                         panic!("child: pid={:?}, status={:?}\nRapidus Internal Error: segmentation fault", pid, status);
                     }
                     e => panic!("Rapidus Internal Error: VM exited abnormally!: {:?}", e),
