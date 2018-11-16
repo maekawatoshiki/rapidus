@@ -11,7 +11,6 @@ use bytecode_gen::{ByteCode, VMInst};
 use gc;
 use id::Id;
 use jit::{TracingJit, UniquePosition};
-use node::BinOp;
 
 pub type RawStringPtr = *mut libc::c_char;
 
@@ -63,6 +62,7 @@ pub enum RuntimeError {
     Unknown,
     Type(String),
     Reference(String),
+    Unimplemented,
 }
 
 #[derive(Debug, Clone)]
@@ -1309,187 +1309,248 @@ fn neg(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
     let expr = self_.state.stack.last_mut().unwrap();
     match &mut expr.val {
         &mut ValueBase::Number(ref mut n) => *n = -*n,
-        _ => unimplemented!(),
+        _ => return Err(RuntimeError::Unimplemented),
     };
     Ok(())
 }
 
-macro_rules! bin_op {
-    ($name:ident, $binop:ident) => {
-        fn $name(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
-            self_.state.pc += 1; // $name
-            binary(self_, &BinOp::$binop)?;
-            Ok(())
-        }
-    };
-}
-
-bin_op!(add, Add);
-bin_op!(sub, Sub);
-bin_op!(mul, Mul);
-bin_op!(div, Div);
-bin_op!(rem, Rem);
-bin_op!(lt, Lt);
-bin_op!(gt, Gt);
-bin_op!(le, Le);
-bin_op!(ge, Ge);
-bin_op!(eq, Eq);
-bin_op!(ne, Ne);
-bin_op!(seq, SEq);
-bin_op!(sne, SNe);
-bin_op!(and, And);
-bin_op!(or, Or);
-bin_op!(xor, Xor);
-bin_op!(shl, Shl);
-bin_op!(shr, Shr);
-bin_op!(zfshr, ZFShr);
-
-#[rustfmt::skip]
-#[inline]
-fn binary(self_: &mut VM, op: &BinOp) -> Result<(), RuntimeError> {
+fn add(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+    self_.state.pc += 1; // $name
     let rhs = self_.state.stack.pop().unwrap();
     let lhs = self_.state.stack.pop().unwrap();
+    self_.state.stack.push(match (lhs.val, rhs.val) {
+        (ValueBase::Number(l), ValueBase::Number(r)) => Value::number(l + r),
+        (ValueBase::Bool(false), ValueBase::Number(x))
+        | (ValueBase::Number(x), ValueBase::Bool(false)) => Value::number(x),
+        (ValueBase::Bool(true), ValueBase::Number(x))
+        | (ValueBase::Number(x), ValueBase::Bool(true)) => Value::number(x + 1.0),
+        (l, r) => Value::string(CString::new(l.to_string() + r.to_string().as_str()).unwrap()),
+    });
+    Ok(())
+}
 
-    match op {
-        &BinOp::Add => add (self_, lhs, rhs),
-        &BinOp::Sub => sub (self_, lhs, rhs),
-        &BinOp::Mul => mul (self_, lhs, rhs),
-        &BinOp::Div => div (self_, lhs, rhs),
-        &BinOp::Rem => rem (self_, lhs, rhs),
-        &BinOp::Lt  => lt  (self_, lhs, rhs),
-        &BinOp::Gt  => gt  (self_, lhs, rhs),
-        &BinOp::Le  => le  (self_, lhs, rhs),
-        &BinOp::Ge  => ge  (self_, lhs, rhs),
-        &BinOp::Eq  => eq  (self_, lhs, rhs),
-        &BinOp::Ne  => ne  (self_, lhs, rhs),
-        &BinOp::SEq => seq (self_, lhs, rhs),
-        &BinOp::SNe => sne (self_, lhs, rhs),
-        &BinOp::And => and (self_, lhs, rhs),
-        &BinOp::Or  => or  (self_, lhs, rhs),
-        &BinOp::Xor => xor (self_, lhs, rhs),
-        &BinOp::Shl => shl (self_, lhs, rhs),
-        &BinOp::Shr => shr (self_, lhs, rhs),
-        &BinOp::ZFShr => zfshr (self_, lhs, rhs),
-        _ => unimplemented!(),
-    };
-
-    #[inline]
-    fn add(self_: &mut VM, lhs: Value, rhs: Value) {
-        self_.state.stack.push(match (lhs.val, rhs.val) {
-            (ValueBase::Number(l), ValueBase::Number(r)) => Value::number(l + r),
-            (ValueBase::Bool(false), ValueBase::Number(x)) | (ValueBase::Number(x), ValueBase::Bool(false)) => {
-                Value::number(x)
-            }
-            (ValueBase::Bool(true), ValueBase::Number(x)) | (ValueBase::Number(x), ValueBase::Bool(true)) => {
-                Value::number(x + 1.0)
-            }
-            (l, r) => {
-                Value::string(CString::new(l.to_string() + r.to_string().as_str()).unwrap())
-            }
-        })
-    };
-    #[inline]
-    fn sub(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
+fn sub(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+    self_.state.pc += 1; // $name
+    let rhs = self_.state.stack.pop().unwrap();
+    let lhs = self_.state.stack.pop().unwrap();
+    self_.state.stack.push(match (lhs.val, rhs.val) {
         (ValueBase::Number(l), ValueBase::Number(r)) => Value::number(l - r),
-        _ => unimplemented!(),
-    }) };
-    #[inline]
-    fn mul(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
+        _ => return Err(RuntimeError::Unimplemented),
+    });
+    Ok(())
+}
+
+fn mul(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+    self_.state.pc += 1; // $name
+    let rhs = self_.state.stack.pop().unwrap();
+    let lhs = self_.state.stack.pop().unwrap();
+    self_.state.stack.push(match (lhs.val, rhs.val) {
         (ValueBase::Number(l), ValueBase::Number(r)) => Value::number(l * r),
-        (ValueBase::String(l), ValueBase::Number(r)) => 
-            Value::string(CString::new(l.to_str().unwrap().repeat(r as usize)).unwrap()),
-        _ => unimplemented!(),
-    }) };
-    #[inline]
-    fn div(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
+        (ValueBase::String(l), ValueBase::Number(r)) => {
+            Value::string(CString::new(l.to_str().unwrap().repeat(r as usize)).unwrap())
+        }
+        _ => return Err(RuntimeError::Unimplemented),
+    });
+    Ok(())
+}
+
+fn div(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+    self_.state.pc += 1; // $name
+    let rhs = self_.state.stack.pop().unwrap();
+    let lhs = self_.state.stack.pop().unwrap();
+    self_.state.stack.push(match (lhs.val, rhs.val) {
         (ValueBase::Number(l), ValueBase::Number(r)) => Value::number(l / r),
-        _ => unimplemented!(),
-    }) };
-    #[inline]
-    fn rem(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
+        _ => return Err(RuntimeError::Unimplemented),
+    });
+    Ok(())
+}
+
+fn rem(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+    self_.state.pc += 1; // $name
+    let rhs = self_.state.stack.pop().unwrap();
+    let lhs = self_.state.stack.pop().unwrap();
+    self_.state.stack.push(match (lhs.val, rhs.val) {
         (ValueBase::Number(l), ValueBase::Number(r)) => Value::number((l as i64 % r as i64) as f64),
-        _ => unimplemented!(),
-    }) };
-    #[inline]
-    fn lt(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
+        _ => return Err(RuntimeError::Unimplemented),
+    });
+    Ok(())
+}
+
+fn lt(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+    self_.state.pc += 1; // $name
+    let rhs = self_.state.stack.pop().unwrap();
+    let lhs = self_.state.stack.pop().unwrap();
+    self_.state.stack.push(match (lhs.val, rhs.val) {
         (ValueBase::Number(l), ValueBase::Number(r)) => Value::bool(l < r),
         (ValueBase::String(l), ValueBase::String(r)) => Value::bool(l < r),
-        _ => unimplemented!(),
-    }) };
-    #[inline]
-    fn gt(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
+        _ => return Err(RuntimeError::Unimplemented),
+    });
+    Ok(())
+}
+
+fn gt(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+    self_.state.pc += 1; // $name
+    let rhs = self_.state.stack.pop().unwrap();
+    let lhs = self_.state.stack.pop().unwrap();
+    self_.state.stack.push(match (lhs.val, rhs.val) {
         (ValueBase::Number(l), ValueBase::Number(r)) => Value::bool(l > r),
         (ValueBase::String(l), ValueBase::String(r)) => Value::bool(l > r),
-        _ => unimplemented!(),
-    }) };
-    #[inline]
-    fn le(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
+        _ => return Err(RuntimeError::Unimplemented),
+    });
+    Ok(())
+}
+
+fn le(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+    self_.state.pc += 1; // $name
+    let rhs = self_.state.stack.pop().unwrap();
+    let lhs = self_.state.stack.pop().unwrap();
+    self_.state.stack.push(match (lhs.val, rhs.val) {
         (ValueBase::Number(l), ValueBase::Number(r)) => Value::bool(l <= r),
         (ValueBase::String(l), ValueBase::String(r)) => Value::bool(l <= r),
-        _ => unimplemented!(),
-    }) };
-    #[inline]
-    fn ge(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
+        _ => return Err(RuntimeError::Unimplemented),
+    });
+    Ok(())
+}
+
+fn ge(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+    self_.state.pc += 1; // $name
+    let rhs = self_.state.stack.pop().unwrap();
+    let lhs = self_.state.stack.pop().unwrap();
+    self_.state.stack.push(match (lhs.val, rhs.val) {
         (ValueBase::Number(l), ValueBase::Number(r)) => Value::bool(l >= r),
         (ValueBase::String(l), ValueBase::String(r)) => Value::bool(l >= r),
-        _ => unimplemented!(),
-    }) };
-    #[inline]
-    // TODO: Need more precise implementation 
-    fn eq(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
-        (ValueBase::Number(l), ValueBase::Number(r)) => Value::bool(l == r),
-        (ValueBase::String(l), ValueBase::String(r)) => Value::bool(l == r),
-        _ => unimplemented!(),
-    }) };
-    #[inline]
-    fn ne(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
-        (ValueBase::Number(l), ValueBase::Number(r)) => Value::bool(l != r),
-        (ValueBase::String(l), ValueBase::String(r)) => Value::bool(l != r),
-        _ => unimplemented!(),
-    }) };
-    #[inline]
-    fn seq(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
-        (ValueBase::Number(l), ValueBase::Number(r)) => Value::bool(l == r),
-        (ValueBase::String(l), ValueBase::String(r)) => Value::bool(l == r),
-        _ => unimplemented!(),
-    }) };
-    #[inline]
-    fn sne(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
-        (ValueBase::Number(l), ValueBase::Number(r)) => Value::bool(l != r),
-        (ValueBase::String(l), ValueBase::String(r)) => Value::bool(l != r),
-        _ => unimplemented!(),
-    }) };
-    #[inline]
-    fn and(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
-        (ValueBase::Number(l), ValueBase::Number(r)) => Value::number(((l as i64 as i32) & (r as i64 as i32)) as f64),
-        _ => unimplemented!(),
-    }) };
-    #[inline]
-    fn or(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
-        (ValueBase::Number(l), ValueBase::Number(r)) => Value::number(((l as i64 as i32) | (r as i64 as i32)) as f64),
-        _ => unimplemented!(),
-    }) };
-    #[inline]
-    fn xor(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
-        (ValueBase::Number(l), ValueBase::Number(r)) => Value::number(((l as i64 as i32) ^ (r as i64 as i32)) as f64),
-        _ => unimplemented!(),
-    }) };
-    #[inline]
-    fn shl(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
-        (ValueBase::Number(l), ValueBase::Number(r)) => Value::number(((l as i64 as i32) << (r as i64 as i32)) as f64),
-        _ => unimplemented!(),
-    }) };
-    #[inline]
-    fn shr(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
-        (ValueBase::Number(l), ValueBase::Number(r)) => Value::number(((l as i64 as i32) >> (r as i64 as i32)) as f64),
-        _ => unimplemented!(),
-    }) };
-    #[inline]
-    fn zfshr(self_: &mut VM, lhs: Value, rhs: Value) { self_.state.stack.push(match (lhs.val, rhs.val) {
-        (ValueBase::Number(l), ValueBase::Number(r)) => Value::number(((l as u64 as u32) >> (r as u64 as u32)) as f64),
-        _ => unimplemented!(),
-    }) };
+        _ => return Err(RuntimeError::Unimplemented),
+    });
+    Ok(())
+}
 
+// TODO: Need more precise implemention
+fn eq(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+    self_.state.pc += 1; // $name
+    let rhs = self_.state.stack.pop().unwrap();
+    let lhs = self_.state.stack.pop().unwrap();
+    self_.state.stack.push(match (lhs.val, rhs.val) {
+        (ValueBase::Number(l), ValueBase::Number(r)) => Value::bool(l == r),
+        (ValueBase::String(l), ValueBase::String(r)) => Value::bool(l == r),
+        _ => return Err(RuntimeError::Unimplemented),
+    });
+    Ok(())
+}
+
+// TODO: Need more precise implemention
+fn ne(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+    self_.state.pc += 1; // $name
+    let rhs = self_.state.stack.pop().unwrap();
+    let lhs = self_.state.stack.pop().unwrap();
+    self_.state.stack.push(match (lhs.val, rhs.val) {
+        (ValueBase::Number(l), ValueBase::Number(r)) => Value::bool(l != r),
+        (ValueBase::String(l), ValueBase::String(r)) => Value::bool(l != r),
+        _ => return Err(RuntimeError::Unimplemented),
+    });
+    Ok(())
+}
+
+// TODO: Need more precise implemention
+fn seq(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+    self_.state.pc += 1; // $name
+    let rhs = self_.state.stack.pop().unwrap();
+    let lhs = self_.state.stack.pop().unwrap();
+    self_.state.stack.push(match (lhs.val, rhs.val) {
+        (ValueBase::Number(l), ValueBase::Number(r)) => Value::bool(l == r),
+        (ValueBase::String(l), ValueBase::String(r)) => Value::bool(l == r),
+        _ => return Err(RuntimeError::Unimplemented),
+    });
+    Ok(())
+}
+
+// TODO: Need more precise implemention
+fn sne(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+    self_.state.pc += 1; // $name
+    let rhs = self_.state.stack.pop().unwrap();
+    let lhs = self_.state.stack.pop().unwrap();
+    self_.state.stack.push(match (lhs.val, rhs.val) {
+        (ValueBase::Number(l), ValueBase::Number(r)) => Value::bool(l != r),
+        (ValueBase::String(l), ValueBase::String(r)) => Value::bool(l != r),
+        _ => return Err(RuntimeError::Unimplemented),
+    });
+    Ok(())
+}
+
+fn and(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+    self_.state.pc += 1; // $name
+    let rhs = self_.state.stack.pop().unwrap();
+    let lhs = self_.state.stack.pop().unwrap();
+    self_.state.stack.push(match (lhs.val, rhs.val) {
+        (ValueBase::Number(l), ValueBase::Number(r)) => {
+            Value::number(((l as i64 as i32) & (r as i64 as i32)) as f64)
+        }
+        _ => return Err(RuntimeError::Unimplemented),
+    });
+    Ok(())
+}
+
+fn or(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+    self_.state.pc += 1; // $name
+    let rhs = self_.state.stack.pop().unwrap();
+    let lhs = self_.state.stack.pop().unwrap();
+    self_.state.stack.push(match (lhs.val, rhs.val) {
+        (ValueBase::Number(l), ValueBase::Number(r)) => {
+            Value::number(((l as i64 as i32) | (r as i64 as i32)) as f64)
+        }
+        _ => return Err(RuntimeError::Unimplemented),
+    });
+    Ok(())
+}
+
+fn xor(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+    self_.state.pc += 1; // $name
+    let rhs = self_.state.stack.pop().unwrap();
+    let lhs = self_.state.stack.pop().unwrap();
+    self_.state.stack.push(match (lhs.val, rhs.val) {
+        (ValueBase::Number(l), ValueBase::Number(r)) => {
+            Value::number(((l as i64 as i32) ^ (r as i64 as i32)) as f64)
+        }
+        _ => return Err(RuntimeError::Unimplemented),
+    });
+    Ok(())
+}
+
+fn shl(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+    self_.state.pc += 1; // $name
+    let rhs = self_.state.stack.pop().unwrap();
+    let lhs = self_.state.stack.pop().unwrap();
+    self_.state.stack.push(match (lhs.val, rhs.val) {
+        (ValueBase::Number(l), ValueBase::Number(r)) => {
+            Value::number(((l as i64 as i32) << (r as i64 as i32)) as f64)
+        }
+        _ => return Err(RuntimeError::Unimplemented),
+    });
+    Ok(())
+}
+
+fn shr(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+    self_.state.pc += 1; // $name
+    let rhs = self_.state.stack.pop().unwrap();
+    let lhs = self_.state.stack.pop().unwrap();
+    self_.state.stack.push(match (lhs.val, rhs.val) {
+        (ValueBase::Number(l), ValueBase::Number(r)) => {
+            Value::number(((l as i64 as i32) >> (r as i64 as i32)) as f64)
+        }
+        _ => return Err(RuntimeError::Unimplemented),
+    });
+    Ok(())
+}
+
+fn zfshr(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+    self_.state.pc += 1; // $name
+    let rhs = self_.state.stack.pop().unwrap();
+    let lhs = self_.state.stack.pop().unwrap();
+    self_.state.stack.push(match (lhs.val, rhs.val) {
+        (ValueBase::Number(l), ValueBase::Number(r)) => {
+            Value::number(((l as u64 as u32) >> (r as u64 as u32)) as f64)
+        }
+        _ => return Err(RuntimeError::Unimplemented),
+    });
     Ok(())
 }
 

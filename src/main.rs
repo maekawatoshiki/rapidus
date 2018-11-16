@@ -169,6 +169,10 @@ fn repl() {
                 vm::runtime_error("unknown error occurred");
                 continue;
             }
+            Err(RuntimeError::Unimplemented) => {
+                vm::runtime_error("unimplemented feature");
+                continue;
+            }
             Err(RuntimeError::Reference(msg)) | Err(RuntimeError::Type(msg)) => {
                 vm::runtime_error(msg.as_str());
                 continue;
@@ -267,6 +271,7 @@ fn run(file_name: &str) {
             match vm.run(iseq) {
                 Ok(()) => {}
                 Err(RuntimeError::Unknown) => vm::runtime_error("unknown error occurred"),
+                Err(RuntimeError::Unimplemented) => vm::runtime_error("unimplemented feature"),
                 Err(RuntimeError::Reference(msg)) | Err(RuntimeError::Type(msg)) => {
                     vm::runtime_error(msg.as_str())
                 }
