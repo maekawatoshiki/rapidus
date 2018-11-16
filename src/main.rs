@@ -131,6 +131,19 @@ fn repl() {
 
     loop {
         let line = match rl.readline("> ") {
+            Ok(ref line) if line == ".." => {
+                let mut lines = "".to_string();
+
+                while let Ok(line) = rl.readline(">> ") {
+                    if line == ".." {
+                        break;
+                    }
+                    lines += line.as_str();
+                }
+
+                rl.add_history_entry(lines.as_ref());
+                lines
+            }
             Ok(line) => {
                 rl.add_history_entry(line.as_ref());
                 line
@@ -163,20 +176,15 @@ fn repl() {
         vm.const_table = vm_codegen.bytecode_gen.const_table.clone();
         vm.state.pc = 0;
 
-        match vm.run(iseq) {
-            Ok(()) => {}
-            Err(RuntimeError::Unknown) => {
-                vm::runtime_error("unknown error occurred");
-                continue;
+        if let Err(e) = vm.run(iseq) {
+            match e {
+                RuntimeError::Unknown => vm::runtime_error("unknown error occurred"),
+                RuntimeError::Unimplemented => vm::runtime_error("unimplemented feature"),
+                RuntimeError::Reference(msg) | RuntimeError::Type(msg) => {
+                    vm::runtime_error(msg.as_str())
+                }
             }
-            Err(RuntimeError::Unimplemented) => {
-                vm::runtime_error("unimplemented feature");
-                continue;
-            }
-            Err(RuntimeError::Reference(msg)) | Err(RuntimeError::Type(msg)) => {
-                vm::runtime_error(msg.as_str());
-                continue;
-            }
+            continue;
         }
 
         if let Some(value) = vm.state.stack.pop() {
@@ -268,12 +276,13 @@ fn run(file_name: &str) {
             let mut vm = vm::VM::new(vm_codegen.global_varmap);
             vm.const_table = vm_codegen.bytecode_gen.const_table;
 
-            match vm.run(iseq) {
-                Ok(()) => {}
-                Err(RuntimeError::Unknown) => vm::runtime_error("unknown error occurred"),
-                Err(RuntimeError::Unimplemented) => vm::runtime_error("unimplemented feature"),
-                Err(RuntimeError::Reference(msg)) | Err(RuntimeError::Type(msg)) => {
-                    vm::runtime_error(msg.as_str())
+            if let Err(e) = vm.run(iseq) {
+                match e {
+                    RuntimeError::Unknown => vm::runtime_error("unknown error occurred"),
+                    RuntimeError::Unimplemented => vm::runtime_error("unimplemented feature"),
+                    RuntimeError::Reference(msg) | RuntimeError::Type(msg) => {
+                        vm::runtime_error(msg.as_str())
+                    }
                 }
             }
         }
