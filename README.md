@@ -4,12 +4,13 @@
 [![codecov](https://codecov.io/gh/maekawatoshiki/rapidus/branch/master/graph/badge.svg)](https://codecov.io/gh/maekawatoshiki/rapidus)
 [![](http://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
-A toy JavaScript engine (aiming to pass test262)
+A toy JavaScript engine (now aiming for ES5)
 
 # Features 
 
 - Small
 - Partly support for Tracing-JIT compiling
+- Simple REPL 
 
 # Building from Source
 
