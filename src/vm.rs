@@ -1626,7 +1626,7 @@ fn set_member(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
                 _ => {}
             }
         }
-        e => unreachable!("{:?}", e),
+        _ => {}
     };
 
     Ok(())
