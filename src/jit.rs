@@ -15,6 +15,7 @@ use llvm::prelude::*;
 
 use std::ffi::CString;
 use std::ptr;
+use std::mem::transmute;
 
 const MAX_FUNCTION_PARAMS: usize = 3;
 
@@ -91,18 +92,18 @@ pub struct JITInfo {
 
 #[derive(Debug, Clone)]
 pub struct LoopInfo {
-    func_addr: Option<fn(*mut f64) -> i32>,
+    raw_func: Option<fn(*mut f64) -> i32>,
     llvm_func: Option<LLVMValueRef>,
-    local_vars_id: Vec<(usize, ValueType)>, // the (ids, types) of local variables used in this loop
+    local_vars: Vec<(usize, ValueType)>, // the (ids, types) of local variables used in this loop
     jit_info: JITInfo,
 }
 
 impl LoopInfo {
     pub fn new() -> LoopInfo {
         LoopInfo {
-            func_addr: None,
+            raw_func: None,
             llvm_func: None,
-            local_vars_id: vec![],
+            local_vars: vec![],
             jit_info: JITInfo { cannot_jit: false },
         }
     }
@@ -411,7 +412,7 @@ impl TracingJit {
             ee,
             CString::new(name.as_str()).unwrap().as_ptr(),
         );
-        let f = ::std::mem::transmute::<u64, fn()>(f_raw);
+        let f = transmute::<u64, fn()>(f_raw);
 
         let info = self.func_info.get_mut(&id).unwrap();
         info.func_addr = Some(f);
@@ -521,10 +522,9 @@ impl TracingJit {
         iseq: &ByteCode,
         const_table: &vm::ConstantTable,
         vm_state: &mut vm::VMState,
+        bgn: usize,
         end: usize,
     ) -> Option<isize> {
-        let bgn = vm_state.pc as usize;
-
         if !self.loop_is_called_enough_times(func_id, bgn) {
             self.inc_count(func_id, bgn);
             return None;
@@ -532,19 +532,21 @@ impl TracingJit {
 
         {
             let LoopInfo {
-                func_addr,
-                local_vars_id,
+                raw_func,
+                local_vars,
                 jit_info: JITInfo { cannot_jit },
                 ..
             } = self
                 .loop_info
                 .entry(UniquePosition::new(func_id, bgn))
                 .or_insert(LoopInfo::new());
+
             if *cannot_jit {
                 return None;
             }
-            if let Some(func_addr) = func_addr {
-                return run_loop_llvm_func(*func_addr, vm_state, const_table, local_vars_id.clone());
+
+            if let Some(raw_func) = raw_func {
+                return run_loop_llvm_func(*raw_func, vm_state, const_table, local_vars);
             }
         }
 
@@ -626,21 +628,23 @@ impl TracingJit {
                 math_random as *mut libc::c_void,
             );
         }
-        let f_raw = llvm::execution_engine::LLVMGetFunctionAddress(
-            ee,
-            CString::new(name.as_str()).unwrap().as_ptr(),
-        );
-        let f = ::std::mem::transmute::<u64, fn(*mut f64) -> i32>(f_raw);
+
+        let raw_func =
+            transmute::<u64, fn(*mut f64) -> i32>(llvm::execution_engine::LLVMGetFunctionAddress(
+                ee,
+                CString::new(name.as_str()).unwrap().as_ptr(),
+            ));
 
         let info = self
             .loop_info
             .get_mut(&UniquePosition::new(func_id, bgn))
             .unwrap();
-        info.func_addr = Some(f);
-        info.llvm_func = Some(llvm_func);
-        info.local_vars_id = local_vars.clone();
 
-        run_loop_llvm_func(f, vm_state, const_table, local_vars)
+        info.raw_func = Some(raw_func);
+        info.llvm_func = Some(llvm_func);
+        info.local_vars = local_vars.clone();
+
+        run_loop_llvm_func(raw_func, vm_state, const_table, &local_vars)
     }
 
     unsafe fn gen_code_for_loop(
@@ -1031,6 +1035,7 @@ impl TracingJit {
             match iseq[pc] {
                 VMInst::END => break,
                 VMInst::CREATE_CONTEXT => break,
+                VMInst::LOOP_START => pc += 5,
                 VMInst::CONSTRUCT | VMInst::CREATE_OBJECT | VMInst::CREATE_ARRAY => pc += 5,
                 VMInst::JMP_IF_FALSE => {
                     pc += 1;
@@ -1822,13 +1827,13 @@ impl TracingJit {
         // TODO: MAX_FUNCTION_PARAMS is too small?
         match func_ret_ty {
             &ValueType::Number => vm::Value::number(match llvm_args.len() {
-                0 => ::std::mem::transmute::<fn(), fn() -> f64>(f)(),
-                1 => ::std::mem::transmute::<fn(), fn(f64) -> f64>(f)(llvm_args[0]),
-                2 => ::std::mem::transmute::<fn(), fn(f64, f64) -> f64>(f)(
+                0 => transmute::<fn(), fn() -> f64>(f)(),
+                1 => transmute::<fn(), fn(f64) -> f64>(f)(llvm_args[0]),
+                2 => transmute::<fn(), fn(f64, f64) -> f64>(f)(
                     llvm_args[0],
                     llvm_args[1],
                 ),
-                3 => ::std::mem::transmute::<fn(), fn(f64, f64, f64) -> f64>(f)(
+                3 => transmute::<fn(), fn(f64, f64, f64) -> f64>(f)(
                     llvm_args[0],
                     llvm_args[1],
                     llvm_args[2],
@@ -1836,13 +1841,13 @@ impl TracingJit {
                 _ => unimplemented!("should be implemented.."),
             }),
             &ValueType::Bool => vm::Value::bool(match llvm_args.len() {
-                0 => ::std::mem::transmute::<fn(), fn() -> bool>(f)(),
-                1 => ::std::mem::transmute::<fn(), fn(f64) -> bool>(f)(llvm_args[0]),
-                2 => ::std::mem::transmute::<fn(), fn(f64, f64) -> bool>(f)(
+                0 => transmute::<fn(), fn() -> bool>(f)(),
+                1 => transmute::<fn(), fn(f64) -> bool>(f)(llvm_args[0]),
+                2 => transmute::<fn(), fn(f64, f64) -> bool>(f)(
                     llvm_args[0],
                     llvm_args[1],
                 ),
-                3 => ::std::mem::transmute::<fn(), fn(f64, f64, f64) -> bool>(f)(
+                3 => transmute::<fn(), fn(f64, f64, f64) -> bool>(f)(
                     llvm_args[0],
                     llvm_args[1],
                     llvm_args[2],
@@ -1858,12 +1863,12 @@ pub unsafe fn run_loop_llvm_func(
     f: fn(*mut f64) -> i32,
     vm_state: &mut vm::VMState,
     const_table: &vm::ConstantTable,
-    local_vars: Vec<(usize, ValueType)>,
+    local_vars: &Vec<(usize, ValueType)>,
 ) -> Option<isize> {
     let scope = *vm_state.scope.last().unwrap();
     let mut args_of_local_vars = vec![];
 
-    for (id, _) in &local_vars {
+    for (id, _) in local_vars {
         let name = &const_table.string[*id];
         args_of_local_vars.push(match (*scope).get_value(name).unwrap().val {
             vm::ValueBase::Number(f) => Box::into_raw(Box::new(f)) as *mut libc::c_void,
@@ -1873,7 +1878,7 @@ pub unsafe fn run_loop_llvm_func(
     }
 
     // println!("before: farg[{:?}] local[{:?}]", args_of_arg_vars, args_of_local_vars);
-    let pc = ::std::mem::transmute::<fn(*mut f64) -> i32, fn(*mut *mut libc::c_void) -> i32>(f)(
+    let pc = transmute::<fn(*mut f64) -> i32, fn(*mut *mut libc::c_void) -> i32>(f)(
         args_of_local_vars.as_mut_slice().as_mut_ptr(),
     );
     // println!("after:  farg[{:?}] local[{:?}]", args_of_arg_vars, args_of_local_vars);

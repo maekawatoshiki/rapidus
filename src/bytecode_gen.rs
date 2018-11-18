@@ -54,12 +54,13 @@ pub mod VMInst {
     pub const SET_NAME: u8 = 0x2f;
     pub const DECL_VAR: u8 = 0x30;
     pub const COND_OP: u8 = 0x31;
+    pub const LOOP_START: u8 = 0x32;
 
     pub fn get_inst_size(inst: u8) -> Option<usize> {
         match inst {
             CREATE_CONTEXT => Some(1),
             CONSTRUCT | CREATE_OBJECT | PUSH_CONST | PUSH_INT32 | CREATE_ARRAY | JMP_IF_FALSE
-            | JMP | DECL_VAR | SET_NAME | GET_NAME | CALL => Some(5),
+            | LOOP_START | JMP | DECL_VAR | SET_NAME | GET_NAME | CALL => Some(5),
             PUSH_INT8 => Some(2),
             PUSH_FALSE | END | PUSH_TRUE | PUSH_THIS | ADD | SUB | MUL | DIV | REM | LT
             | PUSH_ARGUMENTS | NEG | POSI | GT | LE | GE | EQ | NE | GET_MEMBER | RETURN | SNE
@@ -329,6 +330,11 @@ impl ByteCodeGen {
 
     pub fn gen_cond_op(&mut self, iseq: &mut ByteCode) {
         iseq.push(VMInst::COND_OP);
+    }
+
+    pub fn gen_loop_start(&mut self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::LOOP_START);
+        self.gen_int32(0, iseq);
     }
 
     // Utils

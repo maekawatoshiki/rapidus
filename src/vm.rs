@@ -86,7 +86,7 @@ pub struct VM {
     pub const_table: ConstantTable,
     pub loop_bgn_end: FxHashMap<UniquePosition, isize>,
     pub cur_func_id: FuncId, // id == 0: main
-    pub op_table: [fn(&mut VM, &ByteCode) -> Result<(), RuntimeError>; 50],
+    pub op_table: [fn(&mut VM, &ByteCode) -> Result<(), RuntimeError>; 51],
     pub builtin_functions: Vec<unsafe fn(CallObject, Vec<Value>, &mut VM)>,
 }
 
@@ -979,6 +979,7 @@ impl VM {
                 set_name,
                 decl_var,
                 cond_op,
+                loop_start,
             ],
             builtin_functions: vec![
                 builtin::console_log,
@@ -1043,25 +1044,8 @@ impl VM {
     }
 
     pub fn do_run(&mut self, iseq: &ByteCode) -> Result<(), RuntimeError> {
-        let id = self.cur_func_id;
+        // let id = self.cur_func_id;
         loop {
-            if let Some(end) = self
-                .loop_bgn_end
-                .get(&UniquePosition::new(id, self.state.pc as usize))
-            {
-                unsafe {
-                    if let Some(pc) = self.jit.can_loop_jit(
-                        id,
-                        &iseq,
-                        &self.const_table,
-                        &mut self.state,
-                        *end as usize,
-                    ) {
-                        self.state.pc = pc;
-                        continue;
-                    }
-                }
-            }
             let code = iseq[self.state.pc as usize];
             self.op_table[code as usize](self, iseq)?;
             if code == VMInst::RETURN || code == VMInst::END {
@@ -1635,12 +1619,12 @@ fn set_member(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
 fn jmp(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
     self_.state.pc += 1; // jmp
     get_int32!(self_, iseq, dst, i32);
-    if dst < 0 {
-        self_.loop_bgn_end.insert(
-            UniquePosition::new(self_.cur_func_id, (self_.state.pc + dst as isize) as usize),
-            self_.state.pc,
-        );
-    }
+    // if dst < 0 {
+    //     self_.loop_bgn_end.insert(
+    //         UniquePosition::new(self_.cur_func_id, (self_.state.pc + dst as isize) as usize),
+    //         self_.state.pc,
+    //     );
+    // }
     self_.state.pc += dst as isize;
     Ok(())
 }
@@ -1850,6 +1834,30 @@ fn decl_var(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
 // 'cond_op' is for JIT compiler. Nope for VM.
 fn cond_op(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
     self_.state.pc += 1;
+    Ok(())
+}
+
+fn loop_start(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
+    let loop_start = self_.state.pc as usize;
+
+    self_.state.pc += 1;
+    get_int32!(self_, iseq, loop_end, usize);
+
+    let id = self_.cur_func_id;
+
+    if let Some(pc) = unsafe {
+        self_.jit.can_loop_jit(
+            id,
+            &iseq,
+            &self_.const_table,
+            &mut self_.state,
+            loop_start,
+            loop_end,
+        )
+    } {
+        self_.state.pc = pc;
+    }
+
     Ok(())
 }
 

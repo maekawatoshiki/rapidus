@@ -328,6 +328,8 @@ impl VMCodeGen {
         let pos1 = iseq.len() as isize;
         self.labels.push(Labels::new());
 
+        self.bytecode_gen.gen_loop_start(iseq);
+
         self.run(cond, iseq, true);
 
         let cond_pos = iseq.len() as isize;
@@ -338,6 +340,11 @@ impl VMCodeGen {
         let loop_pos = iseq.len() as isize;
         self.bytecode_gen
             .gen_jmp((pos1 - loop_pos) as i32 - 5, iseq);
+
+        self.bytecode_gen.replace_int32(
+            iseq.len() as i32,
+            &mut iseq[pos1 as usize + 1..pos1 as usize + 5],
+        );
 
         let break_label_pos = iseq.len() as isize;
         self.labels.last_mut().unwrap().replace_break_jmps(
@@ -371,6 +378,8 @@ impl VMCodeGen {
         let pos = iseq.len() as isize;
         self.labels.push(Labels::new());
 
+        self.bytecode_gen.gen_loop_start(iseq);
+
         self.run(cond, iseq, true);
 
         let cond_pos = iseq.len() as isize;
@@ -388,6 +397,11 @@ impl VMCodeGen {
 
         let loop_pos = iseq.len() as isize;
         self.bytecode_gen.gen_jmp((pos - loop_pos) as i32 - 5, iseq);
+
+        self.bytecode_gen.replace_int32(
+            iseq.len() as i32,
+            &mut iseq[pos as usize + 1..pos as usize + 5],
+        );
 
         let break_label_pos = iseq.len() as isize;
         self.labels.last_mut().unwrap().replace_break_jmps(
