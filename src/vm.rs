@@ -207,21 +207,33 @@ impl ArrayValue {
                 let mut hm = FxHashMap::default();
                 hm.insert(
                     "__proto__".to_string(),
-                    Value::new(ValueBase::Object(gc::new({
-                        let mut hm = FxHashMap::default();
-                        hm.insert(
-                            "push".to_string(),
-                            Value::builtin_function(
-                                builtin::ARRAY_PUSH,
-                                CallObject::new(Value::new(ValueBase::Undefined)),
-                            ),
-                        );
-                        hm
-                    }))),
+                    Value::new(ValueBase::Object(gc::new({ Self::prototype() }))),
                 );
                 hm
             },
         }
+    }
+
+    pub fn prototype() -> FxHashMap<String, Value> {
+        let mut prototype = FxHashMap::default();
+
+        prototype.insert(
+            "push".to_string(),
+            Value::builtin_function(
+                builtin::ARRAY_PUSH,
+                CallObject::new(Value::new(ValueBase::Undefined)),
+            ),
+        );
+
+        prototype.insert(
+            "pop".to_string(),
+            Value::builtin_function(
+                builtin::ARRAY_PUSH,
+                CallObject::new(Value::new(ValueBase::Undefined)),
+            ),
+        );
+
+        prototype
     }
 
     pub fn to_string(&self) -> String {
@@ -283,37 +295,47 @@ impl Value {
     }
 
     pub fn builtin_function(pc: usize, callobj: CallObject) -> Value {
-        let mut obj = {
-            let mut hm = FxHashMap::default();
-            hm.insert(
-                "prototype".to_string(),
-                Value::new(ValueBase::Object(gc::new(FxHashMap::default()))),
-            );
-            hm.insert(
-                "__proto__".to_string(),
-                Value::new(ValueBase::Object(gc::new({
-                    let mut hm = FxHashMap::default();
-                    hm.insert(
-                        "apply".to_string(),
-                        Value::new(ValueBase::BuiltinFunction(Box::new((
-                            builtin::FUNCTION_PROTOTYPE_APPLY,
-                            ::std::ptr::null_mut(),
-                            CallObject::new(Value::undefined()),
-                        )))),
-                    );
-                    hm.insert(
-                        "call".to_string(),
-                        Value::new(ValueBase::BuiltinFunction(Box::new((
-                            builtin::FUNCTION_PROTOTYPE_CALL,
-                            ::std::ptr::null_mut(),
-                            CallObject::new(Value::undefined()),
-                        )))),
-                    );
-                    hm
-                }))),
-            );
-            hm
-        };
+        Value::builtin_function_with_obj_and_prototype(
+            pc,
+            callobj,
+            FxHashMap::default(),
+            FxHashMap::default(),
+        )
+    }
+
+    pub fn builtin_function_with_obj_and_prototype(
+        pc: usize,
+        callobj: CallObject,
+        mut obj: FxHashMap<String, Value>,
+        prototype: FxHashMap<String, Value>,
+    ) -> Value {
+        obj.insert(
+            "prototype".to_string(),
+            Value::new(ValueBase::Object(gc::new(prototype))),
+        );
+        obj.insert(
+            "__proto__".to_string(),
+            Value::new(ValueBase::Object(gc::new({
+                let mut hm = FxHashMap::default();
+                hm.insert(
+                    "apply".to_string(),
+                    Value::new(ValueBase::BuiltinFunction(Box::new((
+                        builtin::FUNCTION_PROTOTYPE_APPLY,
+                        ::std::ptr::null_mut(),
+                        CallObject::new(Value::undefined()),
+                    )))),
+                );
+                hm.insert(
+                    "call".to_string(),
+                    Value::new(ValueBase::BuiltinFunction(Box::new((
+                        builtin::FUNCTION_PROTOTYPE_CALL,
+                        ::std::ptr::null_mut(),
+                        CallObject::new(Value::undefined()),
+                    )))),
+                );
+                hm
+            }))),
+        );
 
         let obj_ = obj.clone();
 
@@ -695,6 +717,27 @@ impl VM {
         }
 
         unsafe {
+            (*global_vals).set_value(
+                "Array".to_string(),
+                Value::builtin_function_with_obj_and_prototype(
+                    builtin::ARRAY_NEW,
+                    CallObject::new(Value::undefined()),
+                    {
+                        let obj = FxHashMap::default();
+                        // TODO: Add:
+                        //          - Array.from()
+                        //          - Array.isArray()
+                        //          - Array.observe()
+                        //          - Array.of()
+                        //          etc...
+                        obj
+                    },
+                    ArrayValue::prototype(),
+                ),
+            );
+        }
+
+        unsafe {
             (*global_vals).set_value("Math".to_string(), {
                 let mut map = FxHashMap::default();
                 map.insert("PI".to_string(), Value::number(::std::f64::consts::PI));
@@ -984,6 +1027,7 @@ impl VM {
             builtin_functions: vec![
                 builtin::console_log,
                 builtin::process_stdout_write,
+                builtin::array_new,
                 builtin::array_push,
                 builtin::math_floor,
                 builtin::math_random,
@@ -1091,8 +1135,28 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
     let callee = self_.state.stack.pop().unwrap();
 
     match callee.val.clone() {
+        ValueBase::BuiltinFunction(box (id, obj, mut callobj)) => {
+            let new_this = {
+                let mut map = FxHashMap::default();
+                map.insert("__proto__".to_string(), unsafe {
+                    (*obj)
+                        .get("prototype")
+                        .unwrap_or(&Value::undefined())
+                        .clone()
+                });
+                gc::new(map)
+            };
+            let mut args = vec![];
+
+            for _ in 0..argc {
+                args.push(self_.state.stack.pop().unwrap());
+            }
+
+            *callobj.this = Value::object(new_this);
+
+            unsafe { self_.builtin_functions[id](callobj, args, self_) };
+        }
         ValueBase::Function(box (id, iseq, obj, mut callobj)) => {
-            // insert new 'this'
             let new_this = {
                 let mut map = FxHashMap::default();
                 map.insert("__proto__".to_string(), unsafe {
@@ -1173,7 +1237,10 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
             };
         }
         c => {
-            println!("Constract: err: {:?}, pc = {}", c, self_.state.pc);
+            return Err(RuntimeError::Type(format!(
+                "type error(pc:{}): '{:?}' is not a constructor",
+                self_.state.pc, c
+            )));
         }
     };
 

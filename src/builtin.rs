@@ -1,5 +1,5 @@
 use gc;
-use vm::{call_function, CallObject, RawStringPtr, Value, ValueBase, VM};
+use vm::{call_function, ArrayValue, CallObject, RawStringPtr, Value, ValueBase, VM};
 
 use libc;
 use rand::random;
@@ -9,46 +9,46 @@ use std::ffi::CString;
 
 pub const CONSOLE_LOG: usize = 0;
 pub const PROCESS_STDOUT_WRITE: usize = 1;
-pub const ARRAY_PUSH: usize = 2;
-pub const MATH_FLOOR: usize = 3;
-pub const MATH_RANDOM: usize = 4;
-pub const MATH_POW: usize = 5;
-pub const MATH_ABS: usize = 6;
-pub const MATH_ACOS: usize = 7;
-pub const MATH_ACOSH: usize = 8;
-pub const MATH_ASIN: usize = 9;
-pub const MATH_ASINH: usize = 10;
-pub const MATH_ATAN: usize = 11;
-pub const MATH_ATANH: usize = 12;
+pub const ARRAY_NEW: usize = 2;
+pub const ARRAY_PUSH: usize = 3;
+pub const MATH_FLOOR: usize = 4;
+pub const MATH_RANDOM: usize = 5;
+pub const MATH_POW: usize = 6;
+pub const MATH_ABS: usize = 7;
+pub const MATH_ACOS: usize = 8;
+pub const MATH_ACOSH: usize = 9;
+pub const MATH_ASIN: usize = 10;
+pub const MATH_ASINH: usize = 11;
+pub const MATH_ATAN: usize = 12;
+pub const MATH_ATANH: usize = 13;
 pub const MATH_ATAN2: usize = 13;
-pub const MATH_CBRT: usize = 14;
-pub const MATH_CEIL: usize = 15;
+pub const MATH_CBRT: usize = 15;
+pub const MATH_CEIL: usize = 16;
 pub const MATH_CLZ32: usize = 16;
-pub const MATH_COS: usize = 17;
-pub const MATH_COSH: usize = 18;
-pub const MATH_EXP: usize = 19;
+pub const MATH_COS: usize = 18;
+pub const MATH_COSH: usize = 19;
+pub const MATH_EXP: usize = 20;
 pub const MATH_EXPM1: usize = 20;
-pub const MATH_FROUND: usize = 21;
-pub const MATH_HYPOT: usize = 22;
-pub const MATH_LOG: usize = 23;
+pub const MATH_FROUND: usize = 22;
+pub const MATH_HYPOT: usize = 23;
+pub const MATH_LOG: usize = 24;
 pub const MATH_LOG1P: usize = 24;
 pub const MATH_LOG10: usize = 25;
 pub const MATH_LOG2: usize = 26;
-pub const MATH_MAX: usize = 27;
-pub const MATH_MIN: usize = 28;
-pub const MATH_ROUND: usize = 29;
-pub const MATH_SIGN: usize = 30;
-pub const MATH_SIN: usize = 31;
-pub const MATH_SINH: usize = 32;
-pub const MATH_SQRT: usize = 33;
-pub const MATH_TAN: usize = 34;
-pub const MATH_TANH: usize = 35;
-pub const MATH_TRUNC: usize = 36;
-pub const FUNCTION_PROTOTYPE_APPLY: usize = 37;
-pub const FUNCTION_PROTOTYPE_CALL: usize = 38;
-pub const REQUIRE: usize = 39;
+pub const MATH_MAX: usize = 28;
+pub const MATH_MIN: usize = 29;
+pub const MATH_ROUND: usize = 30;
+pub const MATH_SIGN: usize = 31;
+pub const MATH_SIN: usize = 32;
+pub const MATH_SINH: usize = 33;
+pub const MATH_SQRT: usize = 34;
+pub const MATH_TAN: usize = 35;
+pub const MATH_TANH: usize = 36;
+pub const MATH_TRUNC: usize = 37;
+pub const FUNCTION_PROTOTYPE_APPLY: usize = 38;
+pub const FUNCTION_PROTOTYPE_CALL: usize = 39;
+pub const REQUIRE: usize = 40;
 
-// BuiltinFunction(0)
 pub unsafe fn console_log(_: CallObject, args: Vec<Value>, self_: &mut VM) {
     let args_len = args.len();
     for i in 0..args_len {
@@ -61,7 +61,6 @@ pub unsafe fn console_log(_: CallObject, args: Vec<Value>, self_: &mut VM) {
     self_.state.stack.push(Value::undefined())
 }
 
-// BuiltinFunction(1)
 pub unsafe fn process_stdout_write(_: CallObject, args: Vec<Value>, self_: &mut VM) {
     let args_len = args.len();
     for i in 0..args_len {
@@ -182,26 +181,59 @@ pub unsafe fn debug_print(val: &Value, nest: bool) {
 
             libc::printf("]\0".as_ptr() as RawStringPtr);
         }
-        ValueBase::Function(_) => {
+        ValueBase::Function(_) | ValueBase::BuiltinFunction(_) => {
             libc::printf("[Function]\0".as_ptr() as RawStringPtr);
         }
         _ => {}
     }
 }
 
-// BuiltinFunction(2)
+pub unsafe fn array_new(_callobj: CallObject, args: Vec<Value>, self_: &mut VM) {
+    let args_len = args.len();
+
+    if args_len == 0 {
+        self_
+            .state
+            .stack
+            .push(Value::array(gc::new(ArrayValue::new(vec![]))));
+        gc::mark_and_sweep(&self_.state);
+        return;
+    }
+
+    let mut elems = vec![];
+
+    match args[0].val {
+        ValueBase::Number(length) if args_len == 1 => {
+            for _ in 0..length as usize {
+                elems.push(Value::empty());
+            }
+        }
+        _ => {
+            for arg in args {
+                elems.push(arg);
+            }
+        }
+    }
+
+    self_
+        .state
+        .stack
+        .push(Value::array(gc::new(ArrayValue::new(elems))));
+
+    gc::mark_and_sweep(&self_.state);
+}
+
 pub unsafe fn array_push(callobj: CallObject, args: Vec<Value>, self_: &mut VM) {
     if let ValueBase::Array(ref map) = callobj.this.val {
         let mut map = &mut **map;
-        // let mut elems = &mut map.elems;
         for val in &args {
             map.elems.push(val.clone());
         }
         map.length += args.len();
         self_.state.stack.push(Value::number(map.length as f64))
     } else {
-        unreachable!()
-    };
+        self_.state.stack.push(Value::undefined())
+    }
 }
 
 macro_rules! simple_math {
@@ -215,16 +247,15 @@ macro_rules! simple_math {
     };
 }
 
-simple_math!(math_floor, floor); // BuiltinFunction(3)
-simple_math!(math_abs, abs); // builtinfunction(6)
-simple_math!(math_acos, acos); // builtinfunction(7)
-simple_math!(math_acosh, acosh); // builtinfunction(8)
-simple_math!(math_asin, asin); // builtinfunction(9)
-simple_math!(math_asinh, asinh); // builtinfunction(10)
-simple_math!(math_atan, atan); // builtinfunction(11)
-simple_math!(math_atanh, atanh); // builtinfunction(12)
+simple_math!(math_floor, floor);
+simple_math!(math_abs, abs);
+simple_math!(math_acos, acos);
+simple_math!(math_acosh, acosh);
+simple_math!(math_asin, asin);
+simple_math!(math_asinh, asinh);
+simple_math!(math_atan, atan);
+simple_math!(math_atanh, atanh);
 
-// builtinfunction(13)
 pub unsafe fn math_atan2(_: CallObject, args: Vec<Value>, self_: &mut VM) {
     if let ValueBase::Number(n1) = args[0].val {
         if let ValueBase::Number(n2) = args[1].val {
@@ -233,10 +264,9 @@ pub unsafe fn math_atan2(_: CallObject, args: Vec<Value>, self_: &mut VM) {
         self_.state.stack.push(Value::undefined())
     }
 }
-simple_math!(math_cbrt, cbrt); // builtinfunction(14)
-simple_math!(math_ceil, ceil); // builtinfunction(15)
+simple_math!(math_cbrt, cbrt);
+simple_math!(math_ceil, ceil);
 
-// builtinfunction(16)
 pub unsafe fn math_clz32(_: CallObject, args: Vec<Value>, self_: &mut VM) {
     if let ValueBase::Number(n) = args[0].val {
         return self_.state.stack.push(Value::number(if n == 0.0 {
@@ -250,13 +280,12 @@ pub unsafe fn math_clz32(_: CallObject, args: Vec<Value>, self_: &mut VM) {
     }
     self_.state.stack.push(Value::undefined())
 }
-simple_math!(math_cos, cos); // builtinfunction(17)
-simple_math!(math_cosh, cosh); // builtinfunction(18)
-simple_math!(math_exp, exp); // builtinfunction(19)
-simple_math!(math_expm1, exp_m1); // builtinfunction(20)
-simple_math!(math_fround, round); // builtinfunction(21) TODO: Implement correctly
+simple_math!(math_cos, cos);
+simple_math!(math_cosh, cosh);
+simple_math!(math_exp, exp);
+simple_math!(math_expm1, exp_m1);
+simple_math!(math_fround, round);
 
-// builtinfunction(22)
 pub unsafe fn math_hypot(_: CallObject, args: Vec<Value>, self_: &mut VM) {
     let mut sum2 = 0.0;
     for n in args {
@@ -267,7 +296,6 @@ pub unsafe fn math_hypot(_: CallObject, args: Vec<Value>, self_: &mut VM) {
     self_.state.stack.push(Value::number(sum2.sqrt()));
 }
 
-// builtinfunction(23)
 pub unsafe fn math_log(_: CallObject, args: Vec<Value>, self_: &mut VM) {
     if let ValueBase::Number(n1) = args[0].val {
         return self_
@@ -278,7 +306,6 @@ pub unsafe fn math_log(_: CallObject, args: Vec<Value>, self_: &mut VM) {
     self_.state.stack.push(Value::undefined())
 }
 
-// builtinfunction(24)
 pub unsafe fn math_log1p(_: CallObject, args: Vec<Value>, self_: &mut VM) {
     if let ValueBase::Number(n1) = args[0].val {
         return self_
@@ -289,10 +316,9 @@ pub unsafe fn math_log1p(_: CallObject, args: Vec<Value>, self_: &mut VM) {
     self_.state.stack.push(Value::undefined())
 }
 
-simple_math!(math_log10, log10); // builtinfunction(25)
-simple_math!(math_log2, log2); // builtinfunction(26)
+simple_math!(math_log10, log10);
+simple_math!(math_log2, log2);
 
-// builtinfunction(27)
 pub unsafe fn math_max(_: CallObject, args: Vec<Value>, self_: &mut VM) {
     let mut max = if let ValueBase::Number(n) = args[0].val {
         n
@@ -309,7 +335,6 @@ pub unsafe fn math_max(_: CallObject, args: Vec<Value>, self_: &mut VM) {
     self_.state.stack.push(Value::number(max));
 }
 
-// builtinfunction(28)
 pub unsafe fn math_min(_: CallObject, args: Vec<Value>, self_: &mut VM) {
     let mut min = if let ValueBase::Number(n) = args[0].val {
         n
@@ -326,9 +351,8 @@ pub unsafe fn math_min(_: CallObject, args: Vec<Value>, self_: &mut VM) {
     self_.state.stack.push(Value::number(min));
 }
 
-simple_math!(math_round, round); // builtinfunction(29)
+simple_math!(math_round, round);
 
-// builtinfunction(30)
 pub unsafe fn math_sign(_: CallObject, args: Vec<Value>, self_: &mut VM) {
     if let ValueBase::Number(n) = args[0].val {
         return self_.state.stack.push(Value::number(if n == 0.0 {
@@ -342,19 +366,17 @@ pub unsafe fn math_sign(_: CallObject, args: Vec<Value>, self_: &mut VM) {
     self_.state.stack.push(Value::undefined())
 }
 
-simple_math!(math_sin, sin); // builtinfunction(31)
-simple_math!(math_sinh, sinh); // builtinfunction(32)
-simple_math!(math_sqrt, sqrt); // builtinfunction(33)
-simple_math!(math_tan, tan); // builtinfunction(34)
-simple_math!(math_tanh, tanh); // builtinfunction(35)
-simple_math!(math_trunc, trunc); // builtinfunction(36)
+simple_math!(math_sin, sin);
+simple_math!(math_sinh, sinh);
+simple_math!(math_sqrt, sqrt);
+simple_math!(math_tan, tan);
+simple_math!(math_tanh, tanh);
+simple_math!(math_trunc, trunc);
 
-// BuiltinFunction(4)
 pub unsafe fn math_random(_: CallObject, _args: Vec<Value>, self_: &mut VM) {
     self_.state.stack.push(Value::number(random::<f64>()))
 }
 
-// BuiltinFunction(5)
 pub unsafe fn math_pow(_: CallObject, args: Vec<Value>, self_: &mut VM) {
     if let ValueBase::Number(f1) = args[0].val {
         if let ValueBase::Number(f2) = args[1].val {
@@ -364,7 +386,6 @@ pub unsafe fn math_pow(_: CallObject, args: Vec<Value>, self_: &mut VM) {
     self_.state.stack.push(Value::undefined())
 }
 
-// BuiltinFunction(37)
 pub unsafe fn function_prototype_apply(callobj: CallObject, args: Vec<Value>, self_: &mut VM) {
     let arg_this = args[0].clone();
     let arg = match args[1].val {
@@ -406,7 +427,6 @@ pub unsafe fn function_prototype_apply(callobj: CallObject, args: Vec<Value>, se
     }
 }
 
-// BuiltinFunction(38)
 pub unsafe fn function_prototype_call(callobj: CallObject, args: Vec<Value>, self_: &mut VM) {
     let callee = *callobj.this;
     let arg_this = args[0].clone();
@@ -427,7 +447,6 @@ pub unsafe fn function_prototype_call(callobj: CallObject, args: Vec<Value>, sel
     }
 }
 
-// BuiltinFunction(39)
 pub unsafe fn require(_callobj: CallObject, args: Vec<Value>, self_: &mut VM) {
     // TODO: REFINE CODE!!!!
     use ansi_term::Colour;
