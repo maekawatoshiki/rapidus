@@ -1308,6 +1308,8 @@ fn add(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
         | (ValueBase::Number(x), ValueBase::Bool(false)) => Value::number(x),
         (ValueBase::Bool(true), ValueBase::Number(x))
         | (ValueBase::Number(x), ValueBase::Bool(true)) => Value::number(x + 1.0),
+        // TODO: We need the correct implementation.
+        (ValueBase::Undefined, _) | (_, ValueBase::Undefined) => Value::number(::std::f64::NAN),
         (l, r) => Value::string(CString::new(l.to_string() + r.to_string().as_str()).unwrap()),
     });
     Ok(())
