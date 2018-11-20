@@ -1818,12 +1818,12 @@ fn set_name(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
     let mut val = self_.state.stack.pop().unwrap();
 
     // We must change cobj.this to the current scope one. (./examples/this.js)
-    match &mut val.val {
-        ValueBase::Function(box (_, _, _, ref mut cobj))
-        | ValueBase::BuiltinFunction(box (_, _, ref mut cobj)) => unsafe {
+    if let ValueBase::Function(box (_, _, _, ref mut cobj))
+    | ValueBase::BuiltinFunction(box (_, _, ref mut cobj)) = &mut val.val
+    {
+        unsafe {
             cobj.this = (**self_.state.scope.last().unwrap()).this.clone();
-        },
-        _ => {}
+        }
     }
 
     unsafe { (**self_.state.scope.last().unwrap()).set_value_if_exist(name, val) };
@@ -1838,12 +1838,12 @@ fn decl_var(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
     let mut val = self_.state.stack.pop().unwrap();
 
     // We must change cobj.this to the current scope one. (./examples/this.js)
-    match &mut val.val {
-        ValueBase::Function(box (_, _, _, ref mut cobj))
-        | ValueBase::BuiltinFunction(box (_, _, ref mut cobj)) => unsafe {
+    if let ValueBase::Function(box (_, _, _, ref mut cobj))
+    | ValueBase::BuiltinFunction(box (_, _, ref mut cobj)) = &mut val.val
+    {
+        unsafe {
             cobj.this = (**self_.state.scope.last().unwrap()).this.clone();
-        },
-        _ => {}
+        }
     }
 
     unsafe {
