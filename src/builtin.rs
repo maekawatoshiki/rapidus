@@ -11,43 +11,44 @@ pub const CONSOLE_LOG: usize = 0;
 pub const PROCESS_STDOUT_WRITE: usize = 1;
 pub const ARRAY_NEW: usize = 2;
 pub const ARRAY_PUSH: usize = 3;
-pub const MATH_FLOOR: usize = 4;
-pub const MATH_RANDOM: usize = 5;
-pub const MATH_POW: usize = 6;
-pub const MATH_ABS: usize = 7;
-pub const MATH_ACOS: usize = 8;
-pub const MATH_ACOSH: usize = 9;
-pub const MATH_ASIN: usize = 10;
-pub const MATH_ASINH: usize = 11;
-pub const MATH_ATAN: usize = 12;
-pub const MATH_ATANH: usize = 13;
-pub const MATH_ATAN2: usize = 13;
-pub const MATH_CBRT: usize = 15;
-pub const MATH_CEIL: usize = 16;
-pub const MATH_CLZ32: usize = 16;
-pub const MATH_COS: usize = 18;
-pub const MATH_COSH: usize = 19;
-pub const MATH_EXP: usize = 20;
-pub const MATH_EXPM1: usize = 20;
-pub const MATH_FROUND: usize = 22;
-pub const MATH_HYPOT: usize = 23;
-pub const MATH_LOG: usize = 24;
-pub const MATH_LOG1P: usize = 24;
-pub const MATH_LOG10: usize = 25;
-pub const MATH_LOG2: usize = 26;
-pub const MATH_MAX: usize = 28;
-pub const MATH_MIN: usize = 29;
-pub const MATH_ROUND: usize = 30;
-pub const MATH_SIGN: usize = 31;
-pub const MATH_SIN: usize = 32;
-pub const MATH_SINH: usize = 33;
-pub const MATH_SQRT: usize = 34;
-pub const MATH_TAN: usize = 35;
-pub const MATH_TANH: usize = 36;
-pub const MATH_TRUNC: usize = 37;
-pub const FUNCTION_PROTOTYPE_APPLY: usize = 38;
-pub const FUNCTION_PROTOTYPE_CALL: usize = 39;
-pub const REQUIRE: usize = 40;
+pub const ARRAY_POP: usize = 4;
+pub const MATH_FLOOR: usize = 5;
+pub const MATH_RANDOM: usize = 6;
+pub const MATH_POW: usize = 7;
+pub const MATH_ABS: usize = 8;
+pub const MATH_ACOS: usize = 9;
+pub const MATH_ACOSH: usize = 10;
+pub const MATH_ASIN: usize = 11;
+pub const MATH_ASINH: usize = 12;
+pub const MATH_ATAN: usize = 13;
+pub const MATH_ATANH: usize = 14;
+pub const MATH_ATAN2: usize = 14;
+pub const MATH_CBRT: usize = 16;
+pub const MATH_CEIL: usize = 17;
+pub const MATH_CLZ32: usize = 17;
+pub const MATH_COS: usize = 19;
+pub const MATH_COSH: usize = 20;
+pub const MATH_EXP: usize = 21;
+pub const MATH_EXPM1: usize = 21;
+pub const MATH_FROUND: usize = 23;
+pub const MATH_HYPOT: usize = 24;
+pub const MATH_LOG: usize = 25;
+pub const MATH_LOG1P: usize = 25;
+pub const MATH_LOG10: usize = 26;
+pub const MATH_LOG2: usize = 27;
+pub const MATH_MAX: usize = 29;
+pub const MATH_MIN: usize = 30;
+pub const MATH_ROUND: usize = 31;
+pub const MATH_SIGN: usize = 32;
+pub const MATH_SIN: usize = 33;
+pub const MATH_SINH: usize = 34;
+pub const MATH_SQRT: usize = 35;
+pub const MATH_TAN: usize = 36;
+pub const MATH_TANH: usize = 37;
+pub const MATH_TRUNC: usize = 38;
+pub const FUNCTION_PROTOTYPE_APPLY: usize = 39;
+pub const FUNCTION_PROTOTYPE_CALL: usize = 40;
+pub const REQUIRE: usize = 41;
 
 pub unsafe fn console_log(_: CallObject, args: Vec<Value>, self_: &mut VM) {
     let args_len = args.len();
@@ -224,6 +225,19 @@ pub unsafe fn array_new(_callobj: CallObject, args: Vec<Value>, self_: &mut VM) 
 }
 
 pub unsafe fn array_push(callobj: CallObject, args: Vec<Value>, self_: &mut VM) {
+    if let ValueBase::Array(ref map) = callobj.this.val {
+        let mut map = &mut **map;
+        for val in &args {
+            map.elems.push(val.clone());
+        }
+        map.length += args.len();
+        self_.state.stack.push(Value::number(map.length as f64))
+    } else {
+        self_.state.stack.push(Value::undefined())
+    }
+}
+
+pub unsafe fn array_pop(callobj: CallObject, args: Vec<Value>, self_: &mut VM) {
     if let ValueBase::Array(ref map) = callobj.this.val {
         let mut map = &mut **map;
         for val in &args {

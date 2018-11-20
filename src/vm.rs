@@ -197,6 +197,32 @@ impl CallObject {
     }
 }
 
+thread_local!(pub static ARRAY_PROTOTYPE: *mut ArrayValue = {
+    let mut prototype = FxHashMap::default();
+
+    prototype.insert(
+        "push".to_string(),
+        Value::builtin_function(
+            builtin::ARRAY_PUSH,
+            CallObject::new(Value::new(ValueBase::Undefined)),
+        ),
+    );
+
+    prototype.insert(
+        "pop".to_string(),
+        Value::builtin_function(
+            builtin::ARRAY_PUSH,
+            CallObject::new(Value::new(ValueBase::Undefined)),
+        ),
+    );
+
+    gc::new(ArrayValue {
+        elems: vec![],
+        length: 0,
+        obj: prototype
+    })
+});
+
 impl ArrayValue {
     pub fn new(arr: Vec<Value>) -> ArrayValue {
         let len = arr.len();
@@ -205,35 +231,14 @@ impl ArrayValue {
             length: len,
             obj: {
                 let mut hm = FxHashMap::default();
-                hm.insert(
-                    "__proto__".to_string(),
-                    Value::new(ValueBase::Object(gc::new({ Self::prototype() }))),
-                );
+                hm.insert("__proto__".to_string(), Value::array(Self::prototype()));
                 hm
             },
         }
     }
 
-    pub fn prototype() -> FxHashMap<String, Value> {
-        let mut prototype = FxHashMap::default();
-
-        prototype.insert(
-            "push".to_string(),
-            Value::builtin_function(
-                builtin::ARRAY_PUSH,
-                CallObject::new(Value::new(ValueBase::Undefined)),
-            ),
-        );
-
-        prototype.insert(
-            "pop".to_string(),
-            Value::builtin_function(
-                builtin::ARRAY_PUSH,
-                CallObject::new(Value::new(ValueBase::Undefined)),
-            ),
-        );
-
-        prototype
+    pub fn prototype() -> *mut ArrayValue {
+        ARRAY_PROTOTYPE.with(|x| x.clone())
     }
 
     pub fn to_string(&self) -> String {
@@ -299,7 +304,7 @@ impl Value {
             pc,
             callobj,
             FxHashMap::default(),
-            FxHashMap::default(),
+            Value::new(ValueBase::Object(gc::new(FxHashMap::default()))),
         )
     }
 
@@ -307,12 +312,9 @@ impl Value {
         pc: usize,
         callobj: CallObject,
         mut obj: FxHashMap<String, Value>,
-        prototype: FxHashMap<String, Value>,
+        prototype: Value,
     ) -> Value {
-        obj.insert(
-            "prototype".to_string(),
-            Value::new(ValueBase::Object(gc::new(prototype))),
-        );
+        obj.insert("prototype".to_string(), prototype);
         obj.insert(
             "__proto__".to_string(),
             Value::new(ValueBase::Object(gc::new({
@@ -648,10 +650,13 @@ pub fn obj_find_val(obj: &FxHashMap<String, Value>, key: &str) -> Value {
     match obj.get(key) {
         Some(addr) => addr.clone(),
         None => match obj.get("__proto__") {
-            Some(Value {
-                val: ValueBase::Object(obj),
-                ..
-            }) => unsafe { obj_find_val(&**obj, key) },
+            Some(val) => match val.val {
+                ValueBase::Function(box (_, _, obj, _))
+                | ValueBase::BuiltinFunction(box (_, obj, _))
+                | ValueBase::Object(obj) => unsafe { obj_find_val(&*obj, key) },
+                ValueBase::Array(aryval) => unsafe { obj_find_val(&(*aryval).obj, key) },
+                _ => Value::undefined(),
+            },
             _ => Value::undefined(),
         },
     }
@@ -732,7 +737,7 @@ impl VM {
                         //          etc...
                         obj
                     },
-                    ArrayValue::prototype(),
+                    Value::array(ArrayValue::prototype()),
                 ),
             );
         }
@@ -1029,6 +1034,7 @@ impl VM {
                 builtin::process_stdout_write,
                 builtin::array_new,
                 builtin::array_push,
+                builtin::array_pop,
                 builtin::math_floor,
                 builtin::math_random,
                 builtin::math_pow,
