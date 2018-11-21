@@ -197,31 +197,57 @@ impl CallObject {
     }
 }
 
-thread_local!(pub static ARRAY_PROTOTYPE: *mut ArrayValue = {
-    let mut prototype = FxHashMap::default();
+thread_local!(
+    pub static ARRAY_PROTOTYPE: *mut ArrayValue = {
+        let mut prototype = FxHashMap::default();
 
-    prototype.insert(
-        "push".to_string(),
-        Value::builtin_function(
-            builtin::ARRAY_PUSH,
-            CallObject::new(Value::new(ValueBase::Undefined)),
-        ),
-    );
+        prototype.insert(
+            "push".to_string(),
+            Value::builtin_function(
+                builtin::ARRAY_PUSH,
+                CallObject::new(Value::new(ValueBase::Undefined)),
+            ),
+        );
 
-    prototype.insert(
-        "pop".to_string(),
-        Value::builtin_function(
-            builtin::ARRAY_PUSH,
-            CallObject::new(Value::new(ValueBase::Undefined)),
-        ),
-    );
+        prototype.insert(
+            "pop".to_string(),
+            Value::builtin_function(
+                builtin::ARRAY_PUSH,
+                CallObject::new(Value::new(ValueBase::Undefined)),
+            ),
+        );
 
-    gc::new(ArrayValue {
-        elems: vec![],
-        length: 0,
-        obj: prototype
-    })
-});
+        // https://www.ecma-international.org/ecma-262/7.0/#sec-properties-of-the-array-prototype-object
+        // TODO: precise implementation
+        gc::new(ArrayValue {
+            elems: vec![],
+            length: 0,
+            obj: prototype
+        })
+    };
+
+    pub static ARRAY_OBJ: Value = {
+        let prototype = ArrayValue::prototype();
+        let array = Value::builtin_function_with_obj_and_prototype(
+            builtin::ARRAY_NEW,
+            CallObject::new(Value::undefined()),
+            {
+                let obj = FxHashMap::default();
+                // TODO: Add:
+                //          - Array.from()
+                //          - Array.isArray()
+                //          - Array.observe()
+                //          - Array.of()
+                //          etc...
+                obj
+            },
+            Value::array(ArrayValue::prototype()),
+        );
+
+        unsafe {(*prototype).obj.insert("constructor".to_string(), array.clone()); }
+        array
+    }
+);
 
 impl ArrayValue {
     pub fn new(arr: Vec<Value>) -> ArrayValue {
@@ -598,6 +624,7 @@ impl ValueBase {
     }
 }
 
+// TODO: Implement correctly
 pub fn new_value_function(id: FuncId, iseq: ByteCode, callobj: CallObject) -> Value {
     let mut val = Value::new(ValueBase::Function(Box::new((
         id,
@@ -722,24 +749,7 @@ impl VM {
         }
 
         unsafe {
-            (*global_vals).set_value(
-                "Array".to_string(),
-                Value::builtin_function_with_obj_and_prototype(
-                    builtin::ARRAY_NEW,
-                    CallObject::new(Value::undefined()),
-                    {
-                        let obj = FxHashMap::default();
-                        // TODO: Add:
-                        //          - Array.from()
-                        //          - Array.isArray()
-                        //          - Array.observe()
-                        //          - Array.of()
-                        //          etc...
-                        obj
-                    },
-                    Value::array(ArrayValue::prototype()),
-                ),
-            );
+            (*global_vals).set_value("Array".to_string(), ARRAY_OBJ.with(|x| x.clone()));
         }
 
         unsafe {
