@@ -10,7 +10,7 @@ use builtin;
 use bytecode_gen::{ByteCode, VMInst};
 use gc;
 use id::Id;
-use jit::{TracingJit, UniquePosition};
+use jit::TracingJit;
 
 pub type RawStringPtr = *mut libc::c_char;
 
@@ -84,7 +84,6 @@ pub struct VM {
     pub jit: TracingJit,
     pub state: VMState,
     pub const_table: ConstantTable,
-    pub loop_bgn_end: FxHashMap<UniquePosition, isize>,
     pub cur_func_id: FuncId, // id == 0: main
     pub op_table: [fn(&mut VM, &ByteCode) -> Result<(), RuntimeError>; 51],
     pub builtin_functions: Vec<unsafe fn(CallObject, Vec<Value>, &mut VM)>,
@@ -984,7 +983,6 @@ impl VM {
                 pc: 0isize,
             },
             const_table: ConstantTable::new(),
-            loop_bgn_end: FxHashMap::default(),
             cur_func_id: 0, // 0 is main
             op_table: [
                 end,
@@ -1704,12 +1702,6 @@ fn set_member(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
 fn jmp(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
     self_.state.pc += 1; // jmp
     get_int32!(self_, iseq, dst, i32);
-    // if dst < 0 {
-    //     self_.loop_bgn_end.insert(
-    //         UniquePosition::new(self_.cur_func_id, (self_.state.pc + dst as isize) as usize),
-    //         self_.state.pc,
-    //     );
-    // }
     self_.state.pc += dst as isize;
     Ok(())
 }
@@ -1902,7 +1894,7 @@ fn set_name(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
     let name = self_.const_table.string[name_id].clone();
     let mut val = self_.state.stack.pop().unwrap();
 
-    // We must change cobj.this to the current scope one. (./examples/this.js)
+    // We have to change cobj.this to the current scope one. (./examples/this.js)
     if let ValueBase::Function(box (_, _, _, ref mut cobj))
     | ValueBase::BuiltinFunction(box (_, _, ref mut cobj)) = &mut val.val
     {
@@ -1922,7 +1914,7 @@ fn decl_var(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
     let name = self_.const_table.string[name_id].clone();
     let mut val = self_.state.stack.pop().unwrap();
 
-    // We must change cobj.this to the current scope one. (./examples/this.js)
+    // We have to change cobj.this to the current scope one. (./examples/this.js)
     if let ValueBase::Function(box (_, _, _, ref mut cobj))
     | ValueBase::BuiltinFunction(box (_, _, ref mut cobj)) = &mut val.val
     {
