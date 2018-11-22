@@ -211,7 +211,7 @@ thread_local!(
         prototype.insert(
             "pop".to_string(),
             Value::builtin_function(
-                builtin::ARRAY_PUSH,
+                builtin::ARRAY_POP,
                 CallObject::new(Value::new(ValueBase::Undefined)),
             ),
         );

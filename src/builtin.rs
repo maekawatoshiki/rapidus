@@ -226,29 +226,37 @@ pub unsafe fn array_new(_callobj: CallObject, args: Vec<Value>, self_: &mut VM) 
 }
 
 pub unsafe fn array_push(callobj: CallObject, args: Vec<Value>, self_: &mut VM) {
-    if let ValueBase::Array(ref map) = callobj.this.val {
-        let mut map = &mut **map;
-        for val in &args {
-            map.elems.push(val.clone());
-        }
-        map.length += args.len();
-        self_.state.stack.push(Value::number(map.length as f64))
+    let array = if let ValueBase::Array(ref array) = callobj.this.val {
+        &mut **array
     } else {
-        self_.state.stack.push(Value::undefined())
+        self_.state.stack.push(Value::undefined());
+        return;
+    };
+
+    for val in &args {
+        array.elems.push(val.clone());
     }
+
+    array.length += args.len();
+
+    self_.state.stack.push(Value::number(array.length as f64))
 }
 
-pub unsafe fn array_pop(callobj: CallObject, args: Vec<Value>, self_: &mut VM) {
-    if let ValueBase::Array(ref map) = callobj.this.val {
-        let mut map = &mut **map;
-        for val in &args {
-            map.elems.push(val.clone());
-        }
-        map.length += args.len();
-        self_.state.stack.push(Value::number(map.length as f64))
+pub unsafe fn array_pop(callobj: CallObject, _args: Vec<Value>, self_: &mut VM) {
+    let array = if let ValueBase::Array(ref array) = callobj.this.val {
+        &mut **array
     } else {
-        self_.state.stack.push(Value::undefined())
+        self_.state.stack.push(Value::undefined());
+        return;
+    };
+
+    if let Some(val) = array.elems.pop() {
+        array.length -= 1;
+        self_.state.stack.push(val);
+        return;
     }
+
+    self_.state.stack.push(Value::undefined())
 }
 
 pub unsafe fn array_map(callobj: CallObject, args: Vec<Value>, self_: &mut VM) {
