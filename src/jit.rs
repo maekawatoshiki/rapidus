@@ -1808,7 +1808,7 @@ impl TracingJit {
         }
     }
 
-    pub unsafe fn run_llvm_func(&mut self, pc: usize, f: fn(), args: Vec<vm::Value>) -> vm::Value {
+    pub unsafe fn run_llvm_func(&mut self, pc: usize, f: fn(), args: &Vec<vm::Value>) -> vm::Value {
         let mut llvm_args = vec![];
         for arg in args {
             llvm_args.push(match arg.val {

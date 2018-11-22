@@ -216,6 +216,14 @@ thread_local!(
             ),
         );
 
+        prototype.insert(
+            "map".to_string(),
+            Value::builtin_function(
+                builtin::ARRAY_MAP,
+                CallObject::new(Value::new(ValueBase::Undefined)),
+            ),
+        );
+
         // https://www.ecma-international.org/ecma-262/7.0/#sec-properties-of-the-array-prototype-object
         // TODO: precise implementation
         gc::new(ArrayValue {
@@ -274,6 +282,11 @@ impl ArrayValue {
             })
             .trim_right_matches(",")
             .to_string()
+    }
+
+    pub fn push(&mut self, val: Value) {
+        self.elems.push(val);
+        self.length += 1;
     }
 }
 
@@ -507,6 +520,12 @@ impl Value {
                 // TODO: Implement
                 _ => Value::undefined(),
             }
+        }
+    }
+
+    pub fn set_number_if_possible(&mut self, n: f64) {
+        if let ValueBase::Number(ref mut n_) = self.val {
+            *n_ = n;
         }
     }
 }
@@ -1043,6 +1062,7 @@ impl VM {
                 builtin::array_new,
                 builtin::array_push,
                 builtin::array_pop,
+                builtin::array_map,
                 builtin::math_floor,
                 builtin::math_random,
                 builtin::math_pow,
@@ -1720,7 +1740,7 @@ pub fn call_function(
     self_: &mut VM,
     id: FuncId,
     iseq: &ByteCode,
-    args: Vec<Value>,
+    args: &Vec<Value>,
     mut callobj: CallObject,
 ) -> Result<(), RuntimeError> {
     let argc = args.len();
@@ -1768,7 +1788,7 @@ pub fn call_function(
             self_
                 .state
                 .stack
-                .push(unsafe { self_.jit.run_llvm_func(id, f, args) });
+                .push(unsafe { self_.jit.run_llvm_func(id, f, &args) });
             self_.state.scope.pop();
             return Ok(());
         }
@@ -1818,7 +1838,7 @@ fn call(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
                 args.push(self_.state.stack.pop().unwrap());
             }
 
-            call_function(self_, id, iseq, args, callobj)?;
+            call_function(self_, id, iseq, &args, callobj)?;
         }
         c => {
             return Err(RuntimeError::Type(format!(

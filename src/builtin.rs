@@ -12,43 +12,44 @@ pub const PROCESS_STDOUT_WRITE: usize = 1;
 pub const ARRAY_NEW: usize = 2;
 pub const ARRAY_PUSH: usize = 3;
 pub const ARRAY_POP: usize = 4;
-pub const MATH_FLOOR: usize = 5;
-pub const MATH_RANDOM: usize = 6;
-pub const MATH_POW: usize = 7;
-pub const MATH_ABS: usize = 8;
-pub const MATH_ACOS: usize = 9;
-pub const MATH_ACOSH: usize = 10;
-pub const MATH_ASIN: usize = 11;
-pub const MATH_ASINH: usize = 12;
-pub const MATH_ATAN: usize = 13;
-pub const MATH_ATANH: usize = 14;
-pub const MATH_ATAN2: usize = 14;
-pub const MATH_CBRT: usize = 16;
-pub const MATH_CEIL: usize = 17;
-pub const MATH_CLZ32: usize = 17;
-pub const MATH_COS: usize = 19;
-pub const MATH_COSH: usize = 20;
-pub const MATH_EXP: usize = 21;
-pub const MATH_EXPM1: usize = 21;
-pub const MATH_FROUND: usize = 23;
-pub const MATH_HYPOT: usize = 24;
-pub const MATH_LOG: usize = 25;
-pub const MATH_LOG1P: usize = 25;
-pub const MATH_LOG10: usize = 26;
-pub const MATH_LOG2: usize = 27;
-pub const MATH_MAX: usize = 29;
-pub const MATH_MIN: usize = 30;
-pub const MATH_ROUND: usize = 31;
-pub const MATH_SIGN: usize = 32;
-pub const MATH_SIN: usize = 33;
-pub const MATH_SINH: usize = 34;
-pub const MATH_SQRT: usize = 35;
-pub const MATH_TAN: usize = 36;
-pub const MATH_TANH: usize = 37;
-pub const MATH_TRUNC: usize = 38;
-pub const FUNCTION_PROTOTYPE_APPLY: usize = 39;
-pub const FUNCTION_PROTOTYPE_CALL: usize = 40;
-pub const REQUIRE: usize = 41;
+pub const ARRAY_MAP: usize = 5;
+pub const MATH_FLOOR: usize = 6;
+pub const MATH_RANDOM: usize = 7;
+pub const MATH_POW: usize = 8;
+pub const MATH_ABS: usize = 9;
+pub const MATH_ACOS: usize = 10;
+pub const MATH_ACOSH: usize = 11;
+pub const MATH_ASIN: usize = 12;
+pub const MATH_ASINH: usize = 13;
+pub const MATH_ATAN: usize = 14;
+pub const MATH_ATANH: usize = 15;
+pub const MATH_ATAN2: usize = 15;
+pub const MATH_CBRT: usize = 17;
+pub const MATH_CEIL: usize = 18;
+pub const MATH_CLZ32: usize = 18;
+pub const MATH_COS: usize = 20;
+pub const MATH_COSH: usize = 21;
+pub const MATH_EXP: usize = 22;
+pub const MATH_EXPM1: usize = 22;
+pub const MATH_FROUND: usize = 24;
+pub const MATH_HYPOT: usize = 25;
+pub const MATH_LOG: usize = 26;
+pub const MATH_LOG1P: usize = 26;
+pub const MATH_LOG10: usize = 27;
+pub const MATH_LOG2: usize = 28;
+pub const MATH_MAX: usize = 30;
+pub const MATH_MIN: usize = 31;
+pub const MATH_ROUND: usize = 32;
+pub const MATH_SIGN: usize = 33;
+pub const MATH_SIN: usize = 34;
+pub const MATH_SINH: usize = 35;
+pub const MATH_SQRT: usize = 36;
+pub const MATH_TAN: usize = 37;
+pub const MATH_TANH: usize = 38;
+pub const MATH_TRUNC: usize = 39;
+pub const FUNCTION_PROTOTYPE_APPLY: usize = 40;
+pub const FUNCTION_PROTOTYPE_CALL: usize = 41;
+pub const REQUIRE: usize = 42;
 
 pub unsafe fn console_log(_: CallObject, args: Vec<Value>, self_: &mut VM) {
     let args_len = args.len();
@@ -250,6 +251,49 @@ pub unsafe fn array_pop(callobj: CallObject, args: Vec<Value>, self_: &mut VM) {
     }
 }
 
+pub unsafe fn array_map(callobj: CallObject, args: Vec<Value>, self_: &mut VM) {
+    let array = if let ValueBase::Array(ref array) = callobj.this.val {
+        &mut **array
+    } else {
+        self_.state.stack.push(Value::undefined());
+        return;
+    };
+
+    let mut new_array = ArrayValue::new(vec![]);
+    let callback = &args[0];
+
+    let mut args_for_callback = vec![
+        Value::undefined(),
+        Value::number(0.0),
+        /* array itself = */ (*callobj.this).clone(),
+    ];
+
+    for i in 0..array.length {
+        args_for_callback[0] = array.elems[i].clone();
+        args_for_callback[1].set_number_if_possible(i as f64);
+
+        match callback.val {
+            ValueBase::BuiltinFunction(box (id, _, ref callobj)) => {
+                let mut callobj = callobj.clone();
+                // *callobj.this = arg_this;
+                self_.builtin_functions[id](callobj, args_for_callback.clone(), self_);
+            }
+            ValueBase::Function(box (id, ref iseq, _, ref callobj)) => {
+                let mut callobj = callobj.clone();
+                // *callobj.this = arg_this;
+                (*callobj.vals).clear();
+                call_function(self_, id, iseq, &args_for_callback, callobj).unwrap();
+            }
+            _ => self_.state.stack.push(Value::undefined()),
+        }
+
+        let val = self_.state.stack.pop().unwrap();
+        new_array.push(val);
+    }
+
+    self_.state.stack.push(Value::array(gc::new(new_array)))
+}
+
 macro_rules! simple_math {
     ($name:ident, $f:ident) => {
         pub unsafe fn $name(_: CallObject, args: Vec<Value>, self_: &mut VM) {
@@ -435,7 +479,7 @@ pub unsafe fn function_prototype_apply(callobj: CallObject, args: Vec<Value>, se
             let mut callobj = callobj.clone();
             *callobj.this = arg_this;
             callobj.vals = gc::new(FxHashMap::default());
-            call_function(self_, id, iseq, arg, callobj).unwrap();
+            call_function(self_, id, iseq, &arg, callobj).unwrap();
         }
         _ => self_.state.stack.push(Value::undefined()),
     }
@@ -455,7 +499,7 @@ pub unsafe fn function_prototype_call(callobj: CallObject, args: Vec<Value>, sel
             let mut callobj = callobj.clone();
             *callobj.this = arg_this;
             callobj.vals = gc::new(FxHashMap::default());
-            call_function(self_, id, iseq, args[1..].to_vec(), callobj).unwrap();
+            call_function(self_, id, iseq, &args[1..].to_vec(), callobj).unwrap();
         }
         _ => self_.state.stack.push(Value::undefined()),
     }
