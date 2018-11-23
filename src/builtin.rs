@@ -538,10 +538,12 @@ fn f64_to_string(f: f64, radix: usize) -> String {
         s.push('.');
     }
 
-    while fraction > 0.0 {
+    let mut count = 0;
+    while fraction > 0.0 && count < /* digits = */14 {
         fraction *= radix as f64;
         s.push(chars[fraction as usize..].chars().next().unwrap());
         fraction -= fraction.floor();
+        count += 1;
     }
 
     if negative {
