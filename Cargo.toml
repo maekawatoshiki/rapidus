@@ -13,7 +13,7 @@ ansi_term = "0.9.0"
 nix = "*"
 encoding = "*"
 rustc-hash = "*"
-rustyline="*"
+rustyline = "*"
 
 [profile.dev]
 codegen-units = 16

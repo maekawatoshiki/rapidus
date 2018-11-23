@@ -197,6 +197,20 @@ impl CallObject {
 }
 
 thread_local!(
+    pub static NUMBER_PROTOTYPE: *mut FxHashMap<String, Value> = {
+        let mut prototype = FxHashMap::default();
+
+        prototype.insert(
+            "toString".to_string(),
+            Value::builtin_function(
+                builtin::NUMBER_PROTOTYPE_TOSTRING,
+                CallObject::new(Value::new(ValueBase::Undefined)),
+            ),
+        );
+
+        gc::new(prototype)
+    };
+
     pub static ARRAY_PROTOTYPE: *mut ArrayValue = {
         let mut prototype = FxHashMap::default();
 
@@ -411,6 +425,27 @@ impl Value {
     }
 
     pub fn get_property(&self, property: ValueBase, callobjref: Option<&CallObjectRef>) -> Value {
+        let property_of_number = || -> Value {
+            match obj_find_val(
+                NUMBER_PROTOTYPE.with(|x| unsafe { &**x }),
+                property.to_string().as_str(),
+            ).val
+            {
+                ValueBase::Function(box (id, iseq, map2, mut callobj)) => {
+                    Value::new(ValueBase::Function(Box::new((id, iseq, map2, {
+                        *callobj.this = self.clone();
+                        callobj
+                    }))))
+                }
+                ValueBase::BuiltinFunction(box (id, obj, mut callobj)) => {
+                    Value::new(ValueBase::BuiltinFunction(Box::new((id, obj, {
+                        *callobj.this = self.clone();
+                        callobj
+                    }))))
+                }
+                val => Value::new(val),
+            }
+        };
         let property_of_simple = |obj: &FxHashMap<String, Value>| -> Value {
             match obj_find_val(obj, property.to_string().as_str()).val {
                 ValueBase::Function(box (id, iseq, map2, mut callobj)) => {
@@ -511,6 +546,7 @@ impl Value {
 
         unsafe {
             match self.val {
+                ValueBase::Number(_) => property_of_number(),
                 ValueBase::String(ref s) => property_of_string(s),
                 ValueBase::BuiltinFunction(box (_, ref obj, _))
                 | ValueBase::Function(box (_, _, ref obj, _))
@@ -1100,6 +1136,7 @@ impl VM {
                 builtin::function_prototype_apply,
                 builtin::function_prototype_call,
                 builtin::require,
+                builtin::number_prototype_tostring,
             ],
         }
     }
