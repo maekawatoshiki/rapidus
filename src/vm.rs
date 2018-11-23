@@ -1530,6 +1530,8 @@ fn ne(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
     let rhs = self_.state.stack.pop().unwrap();
     let lhs = self_.state.stack.pop().unwrap();
     self_.state.stack.push(match (lhs.val, rhs.val) {
+        (ValueBase::Null, ValueBase::Null) => Value::bool(false),
+        (ValueBase::Undefined, ValueBase::Undefined) => Value::bool(false),
         (ValueBase::Number(l), ValueBase::Number(r)) => Value::bool(l != r),
         (ValueBase::String(l), ValueBase::String(r)) => Value::bool(l != r),
         _ => return Err(RuntimeError::Unimplemented),
@@ -1543,6 +1545,8 @@ fn seq(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
     let rhs = self_.state.stack.pop().unwrap();
     let lhs = self_.state.stack.pop().unwrap();
     self_.state.stack.push(match (lhs.val, rhs.val) {
+        (ValueBase::Null, ValueBase::Null) => Value::bool(true),
+        (ValueBase::Undefined, ValueBase::Undefined) => Value::bool(true),
         (ValueBase::Number(l), ValueBase::Number(r)) => Value::bool(l == r),
         (ValueBase::String(l), ValueBase::String(r)) => Value::bool(l == r),
         _ => return Err(RuntimeError::Unimplemented),
