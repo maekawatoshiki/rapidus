@@ -86,7 +86,7 @@ pub struct VM {
     pub const_table: ConstantTable,
     pub cur_func_id: FuncId, // id == 0: main
     pub op_table: [fn(&mut VM, &ByteCode) -> Result<(), RuntimeError>; 51],
-    pub builtin_functions: Vec<unsafe fn(CallObject, Vec<Value>, &mut VM)>,
+    pub builtin_functions: Vec<unsafe fn(&mut VM, &Vec<Value>, &CallObject)>,
 }
 
 pub struct VMState {
@@ -203,7 +203,7 @@ thread_local!(
         prototype.insert(
             "push".to_string(),
             Value::builtin_function(
-                builtin::ARRAY_PUSH,
+                builtin::ARRAY_PROTOTYPE_PUSH,
                 CallObject::new(Value::new(ValueBase::Undefined)),
             ),
         );
@@ -211,7 +211,7 @@ thread_local!(
         prototype.insert(
             "pop".to_string(),
             Value::builtin_function(
-                builtin::ARRAY_POP,
+                builtin::ARRAY_PROTOTYPE_POP,
                 CallObject::new(Value::new(ValueBase::Undefined)),
             ),
         );
@@ -219,7 +219,7 @@ thread_local!(
         prototype.insert(
             "map".to_string(),
             Value::builtin_function(
-                builtin::ARRAY_MAP,
+                builtin::ARRAY_PROTOTYPE_MAP,
                 CallObject::new(Value::new(ValueBase::Undefined)),
             ),
         );
@@ -1188,7 +1188,7 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
 
             *callobj.this = Value::object(new_this);
 
-            unsafe { self_.builtin_functions[id](callobj, args, self_) };
+            unsafe { self_.builtin_functions[id](self_, &args, &callobj) };
         }
         ValueBase::Function(box (id, iseq, obj, mut callobj)) => {
             let new_this = {
@@ -1831,7 +1831,7 @@ fn call(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
             for _ in 0..argc {
                 args.push(self_.state.stack.pop().unwrap());
             }
-            unsafe { self_.builtin_functions[x](callobj, args, self_) };
+            unsafe { self_.builtin_functions[x](self_, &args, &callobj) };
         }
         ValueBase::Function(box (id, ref iseq, _, ref callobj)) => {
             let mut callobj = callobj.clone();
