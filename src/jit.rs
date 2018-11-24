@@ -14,8 +14,8 @@ use llvm::core::*;
 use llvm::prelude::*;
 
 use std::ffi::CString;
-use std::ptr;
 use std::mem::transmute;
+use std::ptr;
 
 const MAX_FUNCTION_PARAMS: usize = 3;
 
@@ -1591,12 +1591,13 @@ impl TracingJit {
                                     _ => return Err(()),
                                 }
                             }
-                            vm::ValueBase::BuiltinFunction(box (n, _, _)) => {
-                                match self.builtin_funcs.get(&n) {
-                                    Some(f) => stack.push((*f, None)),
-                                    _ => return Err(()),
-                                }
-                            }
+                            // vm::ValueBase::BuiltinFunction(box (info, _, _)) => {
+                            //     // TODO: BUG
+                            //     match self.builtin_funcs.get(&info.id) {
+                            //         Some(f) => stack.push((*f, None)),
+                            //         _ => return Err(()),
+                            //     }
+                            // }
                             vm::ValueBase::Object(obj) => {
                                 stack.push((ptr::null_mut(), Some(vm::Value::object(obj))))
                             }
@@ -1634,10 +1635,10 @@ impl TracingJit {
 
                         try_opt!(call_builtin_function(
                             self,
-                            if let vm::ValueBase::BuiltinFunction(box (builtin_func_id, _, _)) =
+                            if let vm::ValueBase::BuiltinFunction(box (info, _, _)) =
                                 callee.val
                             {
-                                builtin_func_id
+                                info.id
                             } else {
                                 return Err(());
                             },
@@ -1719,14 +1720,15 @@ impl TracingJit {
                         vm::ValueBase::Object(_) => {
                             stack.push((ptr::null_mut(), Some(const_table.value[n].clone())))
                         }
-                        vm::ValueBase::BuiltinFunction(box (n, _, _)) => stack.push((
-                            if let Some(f) = self.builtin_funcs.get(&n) {
-                                *f
-                            } else {
-                                return Err(());
-                            },
-                            None,
-                        )),
+                        // vm::ValueBase::BuiltinFunction(box (ref info, _, _)) => stack.push((
+                        //         // TODO: BUG
+                        //     if let Some(f) = self.builtin_funcs.get(&info.id) {
+                        //         *f
+                        //     } else {
+                        //         return Err(());
+                        //     },
+                        //     None,
+                        // )),
                         _ => return Err(()),
                     }
                 }
@@ -1829,10 +1831,7 @@ impl TracingJit {
             &ValueType::Number => vm::Value::number(match llvm_args.len() {
                 0 => transmute::<fn(), fn() -> f64>(f)(),
                 1 => transmute::<fn(), fn(f64) -> f64>(f)(llvm_args[0]),
-                2 => transmute::<fn(), fn(f64, f64) -> f64>(f)(
-                    llvm_args[0],
-                    llvm_args[1],
-                ),
+                2 => transmute::<fn(), fn(f64, f64) -> f64>(f)(llvm_args[0], llvm_args[1]),
                 3 => transmute::<fn(), fn(f64, f64, f64) -> f64>(f)(
                     llvm_args[0],
                     llvm_args[1],
@@ -1843,10 +1842,7 @@ impl TracingJit {
             &ValueType::Bool => vm::Value::bool(match llvm_args.len() {
                 0 => transmute::<fn(), fn() -> bool>(f)(),
                 1 => transmute::<fn(), fn(f64) -> bool>(f)(llvm_args[0]),
-                2 => transmute::<fn(), fn(f64, f64) -> bool>(f)(
-                    llvm_args[0],
-                    llvm_args[1],
-                ),
+                2 => transmute::<fn(), fn(f64, f64) -> bool>(f)(llvm_args[0], llvm_args[1]),
                 3 => transmute::<fn(), fn(f64, f64, f64) -> bool>(f)(
                     llvm_args[0],
                     llvm_args[1],

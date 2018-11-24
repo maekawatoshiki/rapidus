@@ -42,6 +42,32 @@ pub struct Value {
     pub configurable: bool,
 }
 
+pub type BuiltinFuncTy = unsafe fn(&mut VM, &Vec<Value>, &CallObject);
+
+#[derive(Clone)]
+pub struct BuiltinFuncInfo {
+    pub func: BuiltinFuncTy,
+    pub id: usize, // TODO: Should be Option<Id>
+}
+
+impl BuiltinFuncInfo {
+    pub fn new(func: BuiltinFuncTy, id: usize) -> BuiltinFuncInfo {
+        BuiltinFuncInfo { func, id }
+    }
+}
+
+impl PartialEq for BuiltinFuncInfo {
+    fn eq(&self, other: &BuiltinFuncInfo) -> bool {
+        self.id == other.id
+    }
+}
+
+impl ::std::fmt::Debug for BuiltinFuncInfo {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        write!(f, "[BuiltinFunction]")
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum ValueBase {
     Empty,
@@ -51,7 +77,7 @@ pub enum ValueBase {
     Number(f64),
     String(CString),
     Function(Box<(FuncId, ByteCode, *mut FxHashMap<String, Value>, CallObject)>),
-    BuiltinFunction(Box<(usize, *mut FxHashMap<String, Value>, CallObject)>), // id(==0:unknown)
+    BuiltinFunction(Box<(BuiltinFuncInfo, *mut FxHashMap<String, Value>, CallObject)>), // id(==0:unknown)
     Object(*mut FxHashMap<String, Value>), // Object(FxHashMap<String, Value>),
     Array(*mut ArrayValue),
     Arguments,
@@ -86,7 +112,6 @@ pub struct VM {
     pub const_table: ConstantTable,
     pub cur_func_id: FuncId, // id == 0: main
     pub op_table: [fn(&mut VM, &ByteCode) -> Result<(), RuntimeError>; 51],
-    pub builtin_functions: Vec<unsafe fn(&mut VM, &Vec<Value>, &CallObject)>,
 }
 
 pub struct VMState {
@@ -203,6 +228,7 @@ thread_local!(
         prototype.insert(
             "toString".to_string(),
             Value::builtin_function(
+                builtin::number_prototype_tostring,
                 builtin::NUMBER_PROTOTYPE_TOSTRING,
                 CallObject::new(Value::new(ValueBase::Undefined)),
             ),
@@ -217,6 +243,7 @@ thread_local!(
         prototype.insert(
             "push".to_string(),
             Value::builtin_function(
+                builtin::array_prototype_push,
                 builtin::ARRAY_PROTOTYPE_PUSH,
                 CallObject::new(Value::new(ValueBase::Undefined)),
             ),
@@ -225,6 +252,7 @@ thread_local!(
         prototype.insert(
             "pop".to_string(),
             Value::builtin_function(
+                builtin::array_prototype_pop,
                 builtin::ARRAY_PROTOTYPE_POP,
                 CallObject::new(Value::new(ValueBase::Undefined)),
             ),
@@ -233,6 +261,7 @@ thread_local!(
         prototype.insert(
             "map".to_string(),
             Value::builtin_function(
+                builtin::array_prototype_map,
                 builtin::ARRAY_PROTOTYPE_MAP,
                 CallObject::new(Value::new(ValueBase::Undefined)),
             ),
@@ -250,6 +279,7 @@ thread_local!(
     pub static ARRAY_OBJ: Value = {
         let prototype = ArrayValue::prototype();
         let array = Value::builtin_function_with_obj_and_prototype(
+            builtin::array_new,
             builtin::ARRAY_NEW,
             CallObject::new(Value::undefined()),
             {
@@ -351,9 +381,10 @@ impl Value {
         Value::new(ValueBase::Function(Box::new((id, iseq, obj, callobj))))
     }
 
-    pub fn builtin_function(pc: usize, callobj: CallObject) -> Value {
+    pub fn builtin_function(func: BuiltinFuncTy, id: usize, callobj: CallObject) -> Value {
         Value::builtin_function_with_obj_and_prototype(
-            pc,
+            func,
+            id,
             callobj,
             FxHashMap::default(),
             Value::new(ValueBase::Object(gc::new(FxHashMap::default()))),
@@ -361,7 +392,8 @@ impl Value {
     }
 
     pub fn builtin_function_with_obj_and_prototype(
-        pc: usize,
+        func: BuiltinFuncTy,
+        id: usize,
         callobj: CallObject,
         mut obj: FxHashMap<String, Value>,
         prototype: Value,
@@ -374,7 +406,10 @@ impl Value {
                 hm.insert(
                     "apply".to_string(),
                     Value::new(ValueBase::BuiltinFunction(Box::new((
-                        builtin::FUNCTION_PROTOTYPE_APPLY,
+                        BuiltinFuncInfo::new(
+                            builtin::function_prototype_apply,
+                            builtin::FUNCTION_PROTOTYPE_APPLY,
+                        ),
                         ::std::ptr::null_mut(),
                         CallObject::new(Value::undefined()),
                     )))),
@@ -382,7 +417,10 @@ impl Value {
                 hm.insert(
                     "call".to_string(),
                     Value::new(ValueBase::BuiltinFunction(Box::new((
-                        builtin::FUNCTION_PROTOTYPE_CALL,
+                        BuiltinFuncInfo::new(
+                            builtin::function_prototype_call,
+                            builtin::FUNCTION_PROTOTYPE_CALL,
+                        ),
                         ::std::ptr::null_mut(),
                         CallObject::new(Value::undefined()),
                     )))),
@@ -406,7 +444,7 @@ impl Value {
         }
 
         Value::new(ValueBase::BuiltinFunction(Box::new((
-            pc,
+            BuiltinFuncInfo::new(func, id),
             gc::new(obj),
             callobj,
         ))))
@@ -696,6 +734,7 @@ pub fn new_value_function(id: FuncId, iseq: ByteCode, callobj: CallObject) -> Va
                     hm.insert(
                         "apply".to_string(),
                         Value::builtin_function(
+                            builtin::function_prototype_apply,
                             builtin::FUNCTION_PROTOTYPE_APPLY,
                             CallObject::new(Value::undefined()),
                         ),
@@ -703,6 +742,7 @@ pub fn new_value_function(id: FuncId, iseq: ByteCode, callobj: CallObject) -> Va
                     hm.insert(
                         "call".to_string(),
                         Value::builtin_function(
+                            builtin::function_prototype_call,
                             builtin::FUNCTION_PROTOTYPE_CALL,
                             CallObject::new(Value::undefined()),
                         ),
@@ -758,7 +798,11 @@ impl VM {
         unsafe {
             (*global_vals).set_value(
                 "require".to_string(),
-                Value::builtin_function(builtin::REQUIRE, CallObject::new(Value::undefined())),
+                Value::builtin_function(
+                    builtin::require,
+                    builtin::REQUIRE,
+                    CallObject::new(Value::undefined()),
+                ),
             );
 
             let module_exports = Value::object(gc::new(FxHashMap::default()));
@@ -776,6 +820,7 @@ impl VM {
                 map.insert(
                     "log".to_string(),
                     Value::builtin_function(
+                        builtin::console_log,
                         builtin::CONSOLE_LOG,
                         CallObject::new(Value::undefined()),
                     ),
@@ -792,6 +837,7 @@ impl VM {
                     map.insert(
                         "write".to_string(),
                         Value::builtin_function(
+                            builtin::process_stdout_write,
                             builtin::PROCESS_STDOUT_WRITE,
                             CallObject::new(Value::undefined()),
                         ),
@@ -813,6 +859,7 @@ impl VM {
                 map.insert(
                     "floor".to_string(),
                     Value::builtin_function(
+                        builtin::math_floor,
                         builtin::MATH_FLOOR,
                         CallObject::new(Value::undefined()),
                     ),
@@ -820,21 +867,31 @@ impl VM {
                 map.insert(
                     "random".to_string(),
                     Value::builtin_function(
+                        builtin::math_random,
                         builtin::MATH_RANDOM,
                         CallObject::new(Value::undefined()),
                     ),
                 );
                 map.insert(
                     "pow".to_string(),
-                    Value::builtin_function(builtin::MATH_POW, CallObject::new(Value::undefined())),
+                    Value::builtin_function(
+                        builtin::math_pow,
+                        builtin::MATH_POW,
+                        CallObject::new(Value::undefined()),
+                    ),
                 );
                 map.insert(
                     "abs".to_string(),
-                    Value::builtin_function(builtin::MATH_ABS, CallObject::new(Value::undefined())),
+                    Value::builtin_function(
+                        builtin::math_abs,
+                        builtin::MATH_ABS,
+                        CallObject::new(Value::undefined()),
+                    ),
                 );
                 map.insert(
                     "acos".to_string(),
                     Value::builtin_function(
+                        builtin::math_acos,
                         builtin::MATH_ACOS,
                         CallObject::new(Value::undefined()),
                     ),
@@ -842,6 +899,7 @@ impl VM {
                 map.insert(
                     "acosh".to_string(),
                     Value::builtin_function(
+                        builtin::math_acosh,
                         builtin::MATH_ACOSH,
                         CallObject::new(Value::undefined()),
                     ),
@@ -849,6 +907,7 @@ impl VM {
                 map.insert(
                     "asin".to_string(),
                     Value::builtin_function(
+                        builtin::math_asin,
                         builtin::MATH_ASIN,
                         CallObject::new(Value::undefined()),
                     ),
@@ -856,6 +915,7 @@ impl VM {
                 map.insert(
                     "asinh".to_string(),
                     Value::builtin_function(
+                        builtin::math_asinh,
                         builtin::MATH_ASINH,
                         CallObject::new(Value::undefined()),
                     ),
@@ -863,6 +923,7 @@ impl VM {
                 map.insert(
                     "atan".to_string(),
                     Value::builtin_function(
+                        builtin::math_atan,
                         builtin::MATH_ATAN,
                         CallObject::new(Value::undefined()),
                     ),
@@ -870,6 +931,7 @@ impl VM {
                 map.insert(
                     "atanh".to_string(),
                     Value::builtin_function(
+                        builtin::math_atanh,
                         builtin::MATH_ATANH,
                         CallObject::new(Value::undefined()),
                     ),
@@ -877,6 +939,7 @@ impl VM {
                 map.insert(
                     "atan2".to_string(),
                     Value::builtin_function(
+                        builtin::math_atan2,
                         builtin::MATH_ATAN2,
                         CallObject::new(Value::undefined()),
                     ),
@@ -884,6 +947,7 @@ impl VM {
                 map.insert(
                     "cbrt".to_string(),
                     Value::builtin_function(
+                        builtin::math_cbrt,
                         builtin::MATH_CBRT,
                         CallObject::new(Value::undefined()),
                     ),
@@ -891,6 +955,7 @@ impl VM {
                 map.insert(
                     "ceil".to_string(),
                     Value::builtin_function(
+                        builtin::math_ceil,
                         builtin::MATH_CEIL,
                         CallObject::new(Value::undefined()),
                     ),
@@ -898,28 +963,39 @@ impl VM {
                 map.insert(
                     "clz32".to_string(),
                     Value::builtin_function(
+                        builtin::math_clz32,
                         builtin::MATH_CLZ32,
                         CallObject::new(Value::undefined()),
                     ),
                 );
                 map.insert(
                     "cos".to_string(),
-                    Value::builtin_function(builtin::MATH_COS, CallObject::new(Value::undefined())),
+                    Value::builtin_function(
+                        builtin::math_cos,
+                        builtin::MATH_COS,
+                        CallObject::new(Value::undefined()),
+                    ),
                 );
                 map.insert(
                     "cosh".to_string(),
                     Value::builtin_function(
+                        builtin::math_cosh,
                         builtin::MATH_COSH,
                         CallObject::new(Value::undefined()),
                     ),
                 );
                 map.insert(
                     "exp".to_string(),
-                    Value::builtin_function(builtin::MATH_EXP, CallObject::new(Value::undefined())),
+                    Value::builtin_function(
+                        builtin::math_exp,
+                        builtin::MATH_EXP,
+                        CallObject::new(Value::undefined()),
+                    ),
                 );
                 map.insert(
                     "expm1".to_string(),
                     Value::builtin_function(
+                        builtin::math_expm1,
                         builtin::MATH_EXPM1,
                         CallObject::new(Value::undefined()),
                     ),
@@ -927,6 +1003,7 @@ impl VM {
                 map.insert(
                     "fround".to_string(),
                     Value::builtin_function(
+                        builtin::math_fround,
                         builtin::MATH_FROUND,
                         CallObject::new(Value::undefined()),
                     ),
@@ -934,17 +1011,23 @@ impl VM {
                 map.insert(
                     "hypot".to_string(),
                     Value::builtin_function(
+                        builtin::math_hypot,
                         builtin::MATH_HYPOT,
                         CallObject::new(Value::undefined()),
                     ),
                 );
                 map.insert(
                     "log".to_string(),
-                    Value::builtin_function(builtin::MATH_LOG, CallObject::new(Value::undefined())),
+                    Value::builtin_function(
+                        builtin::math_log,
+                        builtin::MATH_LOG,
+                        CallObject::new(Value::undefined()),
+                    ),
                 );
                 map.insert(
                     "log1p".to_string(),
                     Value::builtin_function(
+                        builtin::math_log1p,
                         builtin::MATH_LOG1P,
                         CallObject::new(Value::undefined()),
                     ),
@@ -952,6 +1035,7 @@ impl VM {
                 map.insert(
                     "log10".to_string(),
                     Value::builtin_function(
+                        builtin::math_log10,
                         builtin::MATH_LOG10,
                         CallObject::new(Value::undefined()),
                     ),
@@ -959,21 +1043,31 @@ impl VM {
                 map.insert(
                     "log2".to_string(),
                     Value::builtin_function(
+                        builtin::math_log2,
                         builtin::MATH_LOG2,
                         CallObject::new(Value::undefined()),
                     ),
                 );
                 map.insert(
                     "max".to_string(),
-                    Value::builtin_function(builtin::MATH_MAX, CallObject::new(Value::undefined())),
+                    Value::builtin_function(
+                        builtin::math_max,
+                        builtin::MATH_MAX,
+                        CallObject::new(Value::undefined()),
+                    ),
                 );
                 map.insert(
                     "min".to_string(),
-                    Value::builtin_function(builtin::MATH_MIN, CallObject::new(Value::undefined())),
+                    Value::builtin_function(
+                        builtin::math_min,
+                        builtin::MATH_MIN,
+                        CallObject::new(Value::undefined()),
+                    ),
                 );
                 map.insert(
                     "round".to_string(),
                     Value::builtin_function(
+                        builtin::math_round,
                         builtin::MATH_ROUND,
                         CallObject::new(Value::undefined()),
                     ),
@@ -981,17 +1075,23 @@ impl VM {
                 map.insert(
                     "sign".to_string(),
                     Value::builtin_function(
+                        builtin::math_sign,
                         builtin::MATH_SIGN,
                         CallObject::new(Value::undefined()),
                     ),
                 );
                 map.insert(
                     "sin".to_string(),
-                    Value::builtin_function(builtin::MATH_SIN, CallObject::new(Value::undefined())),
+                    Value::builtin_function(
+                        builtin::math_sin,
+                        builtin::MATH_SIN,
+                        CallObject::new(Value::undefined()),
+                    ),
                 );
                 map.insert(
                     "sinh".to_string(),
                     Value::builtin_function(
+                        builtin::math_sinh,
                         builtin::MATH_SINH,
                         CallObject::new(Value::undefined()),
                     ),
@@ -999,17 +1099,23 @@ impl VM {
                 map.insert(
                     "sqrt".to_string(),
                     Value::builtin_function(
+                        builtin::math_sqrt,
                         builtin::MATH_SQRT,
                         CallObject::new(Value::undefined()),
                     ),
                 );
                 map.insert(
                     "tan".to_string(),
-                    Value::builtin_function(builtin::MATH_TAN, CallObject::new(Value::undefined())),
+                    Value::builtin_function(
+                        builtin::math_tan,
+                        builtin::MATH_TAN,
+                        CallObject::new(Value::undefined()),
+                    ),
                 );
                 map.insert(
                     "tanh".to_string(),
                     Value::builtin_function(
+                        builtin::math_tanh,
                         builtin::MATH_TANH,
                         CallObject::new(Value::undefined()),
                     ),
@@ -1017,6 +1123,7 @@ impl VM {
                 map.insert(
                     "trunc".to_string(),
                     Value::builtin_function(
+                        builtin::math_trunc,
                         builtin::MATH_TRUNC,
                         CallObject::new(Value::undefined()),
                     ),
@@ -1092,52 +1199,6 @@ impl VM {
                 cond_op,
                 loop_start,
             ],
-            builtin_functions: vec![
-                builtin::console_log,
-                builtin::process_stdout_write,
-                builtin::array_new,
-                builtin::array_push,
-                builtin::array_pop,
-                builtin::array_map,
-                builtin::math_floor,
-                builtin::math_random,
-                builtin::math_pow,
-                builtin::math_abs,
-                builtin::math_acos,
-                builtin::math_acosh,
-                builtin::math_asin,
-                builtin::math_asinh,
-                builtin::math_atan,
-                builtin::math_atanh,
-                builtin::math_atan2,
-                builtin::math_cbrt,
-                builtin::math_ceil,
-                builtin::math_clz32,
-                builtin::math_cos,
-                builtin::math_cosh,
-                builtin::math_exp,
-                builtin::math_expm1,
-                builtin::math_fround,
-                builtin::math_hypot,
-                builtin::math_log,
-                builtin::math_log1p,
-                builtin::math_log10,
-                builtin::math_log2,
-                builtin::math_max,
-                builtin::math_min,
-                builtin::math_round,
-                builtin::math_sign,
-                builtin::math_sin,
-                builtin::math_sinh,
-                builtin::math_sqrt,
-                builtin::math_tan,
-                builtin::math_tanh,
-                builtin::math_trunc,
-                builtin::function_prototype_apply,
-                builtin::function_prototype_call,
-                builtin::require,
-                builtin::number_prototype_tostring,
-            ],
         }
     }
 }
@@ -1206,7 +1267,7 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
     let callee = self_.state.stack.pop().unwrap();
 
     match callee.val.clone() {
-        ValueBase::BuiltinFunction(box (id, obj, mut callobj)) => {
+        ValueBase::BuiltinFunction(box (x, obj, mut callobj)) => {
             let new_this = {
                 let mut map = FxHashMap::default();
                 map.insert("__proto__".to_string(), unsafe {
@@ -1225,7 +1286,7 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
 
             *callobj.this = Value::object(new_this);
 
-            unsafe { self_.builtin_functions[id](self_, &args, &callobj) };
+            unsafe { (x.func)(self_, &args, &callobj) };
         }
         ValueBase::Function(box (id, iseq, obj, mut callobj)) => {
             let new_this = {
@@ -1862,23 +1923,18 @@ fn call(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
 
     let callee = self_.state.stack.pop().unwrap();
 
+    let mut args = vec![];
+    for _ in 0..argc {
+        args.push(self_.state.stack.pop().unwrap());
+    }
+
     match callee.val {
-        ValueBase::BuiltinFunction(box (x, _, callobj)) => {
-            let mut args = vec![];
-            for _ in 0..argc {
-                args.push(self_.state.stack.pop().unwrap());
-            }
-            unsafe { self_.builtin_functions[x](self_, &args, &callobj) };
+        ValueBase::BuiltinFunction(box (ref info, _, ref callobj)) => {
+            unsafe { (info.func)(self_, &args, callobj) };
         }
         ValueBase::Function(box (id, ref iseq, _, ref callobj)) => {
             let mut callobj = callobj.clone();
             callobj.vals = gc::new(FxHashMap::default());
-
-            let mut args = vec![];
-            for _ in 0..argc {
-                args.push(self_.state.stack.pop().unwrap());
-            }
-
             call_function(self_, id, iseq, &args, callobj)?;
         }
         c => {

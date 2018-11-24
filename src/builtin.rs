@@ -224,7 +224,7 @@ pub unsafe fn array_new(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
     gc::mark_and_sweep(&vm.state);
 }
 
-pub unsafe fn array_push(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject) {
+pub unsafe fn array_prototype_push(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject) {
     let array = if let ValueBase::Array(ref array) = callobj.this.val {
         &mut **array
     } else {
@@ -241,7 +241,7 @@ pub unsafe fn array_push(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject) {
     vm.state.stack.push(Value::number(array.length as f64))
 }
 
-pub unsafe fn array_pop(vm: &mut VM, _args: &Vec<Value>, callobj: &CallObject) {
+pub unsafe fn array_prototype_pop(vm: &mut VM, _args: &Vec<Value>, callobj: &CallObject) {
     let array = if let ValueBase::Array(ref array) = callobj.this.val {
         &mut **array
     } else {
@@ -258,7 +258,7 @@ pub unsafe fn array_pop(vm: &mut VM, _args: &Vec<Value>, callobj: &CallObject) {
     vm.state.stack.push(Value::undefined())
 }
 
-pub unsafe fn array_map(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject) {
+pub unsafe fn array_prototype_map(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject) {
     let array = if let ValueBase::Array(ref array) = callobj.this.val {
         &mut **array
     } else {
@@ -280,10 +280,10 @@ pub unsafe fn array_map(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject) {
         args_for_callback[1].set_number_if_possible(i as f64);
 
         match callback.val {
-            ValueBase::BuiltinFunction(box (id, _, ref callobj)) => {
+            ValueBase::BuiltinFunction(box (ref info, _, ref callobj)) => {
                 // let mut callobj = callobj.clone();
                 // *callobj.this = arg_this;
-                vm.builtin_functions[id](vm, &args_for_callback, callobj);
+                (info.func)(vm, &args_for_callback, callobj);
             }
             ValueBase::Function(box (id, ref iseq, _, ref callobj)) => {
                 let mut callobj = callobj.clone();
@@ -477,11 +477,11 @@ pub unsafe fn function_prototype_apply(vm: &mut VM, args: &Vec<Value>, callobj: 
     };
 
     match callee.val {
-        ValueBase::BuiltinFunction(box (id, _, ref callobj)) => {
+        ValueBase::BuiltinFunction(box (ref info, _, ref callobj)) => {
             let mut callobj = callobj.clone();
             *callobj.this = arg_this;
             callobj.vals = gc::new(FxHashMap::default());
-            vm.builtin_functions[id](vm, &arg, &callobj);
+            (info.func)(vm, &arg, &callobj);
         }
         ValueBase::Function(box (id, ref iseq, _, ref callobj)) => {
             let mut callobj = callobj.clone();
@@ -497,11 +497,11 @@ pub unsafe fn function_prototype_call(vm: &mut VM, args: &Vec<Value>, callobj: &
     let callee = &*callobj.this;
     let arg_this = args[0].clone();
     match callee.val {
-        ValueBase::BuiltinFunction(box (id, _, ref callobj)) => {
+        ValueBase::BuiltinFunction(box (ref info, _, ref callobj)) => {
             let mut callobj = callobj.clone();
             *callobj.this = arg_this;
             callobj.vals = gc::new(FxHashMap::default());
-            vm.builtin_functions[id](vm, &args[1..].to_vec(), &callobj);
+            (info.func)(vm, &args[1..].to_vec(), &callobj);
         }
         ValueBase::Function(box (id, ref iseq, _, ref callobj)) => {
             let mut callobj = callobj.clone();
