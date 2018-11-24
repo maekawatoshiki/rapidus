@@ -14,6 +14,7 @@ pub mod parser;
 pub mod token;
 pub mod vm;
 pub mod vm_codegen;
+pub mod builtins;
 
 extern crate ansi_term;
 extern crate encoding;

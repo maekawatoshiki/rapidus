@@ -872,12 +872,12 @@ impl TracingJit {
         // TODO: Need a better way to deal with builtin functions available in JIT.
         unsafe fn call_builtin_function(
             self_: &TracingJit,
-            builtin_func_id: usize,
+            builtin_func_id: builtin::Builtins,
             args: Vec<(LLVMValueRef, ValueType)>,
             stack: &mut Vec<(LLVMValueRef, Option<vm::Value>)>,
         ) -> Option<()> {
             match builtin_func_id {
-                builtin::CONSOLE_LOG => {
+                builtin::Builtins::ConsoleLog => {
                     for (arg, ty) in args {
                         LLVMBuildCall(
                             self_.builder,
@@ -905,7 +905,7 @@ impl TracingJit {
                         CString::new("").unwrap().as_ptr(),
                     );
                 }
-                builtin::PROCESS_STDOUT_WRITE => {
+                builtin::Builtins::ProcessStdoutWrite => {
                     for (arg, ty) in args {
                         match ty {
                             ValueType::String => LLVMBuildCall(
@@ -922,7 +922,7 @@ impl TracingJit {
                         };
                     }
                 }
-                builtin::MATH_FLOOR => stack.push((
+                builtin::Builtins::MathFloor => stack.push((
                     LLVMBuildCall(
                         self_.builder,
                         *self_.builtin_funcs.get(&BUILTIN_MATH_FLOOR).unwrap(),
@@ -935,7 +935,7 @@ impl TracingJit {
                     ),
                     None,
                 )),
-                builtin::MATH_RANDOM => stack.push((
+                builtin::Builtins::MathRandom => stack.push((
                     LLVMBuildCall(
                         self_.builder,
                         *self_.builtin_funcs.get(&BUILTIN_MATH_RANDOM).unwrap(),
@@ -948,7 +948,7 @@ impl TracingJit {
                     ),
                     None,
                 )),
-                builtin::MATH_POW => stack.push((
+                builtin::Builtins::MathPow => stack.push((
                     LLVMBuildCall(
                         self_.builder,
                         *self_.builtin_funcs.get(&BUILTIN_MATH_POW).unwrap(),
@@ -1635,9 +1635,7 @@ impl TracingJit {
 
                         try_opt!(call_builtin_function(
                             self,
-                            if let vm::ValueBase::BuiltinFunction(box (info, _, _)) =
-                                callee.val
-                            {
+                            if let vm::ValueBase::BuiltinFunction(box (info, _, _)) = callee.val {
                                 info.id
                             } else {
                                 return Err(());

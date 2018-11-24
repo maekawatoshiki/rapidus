@@ -1,81 +1,88 @@
 use gc;
-use vm::{call_function, ArrayValue, CallObject, RawStringPtr, Value, ValueBase, VM};
-
 use libc;
 use rand::random;
+use vm::{call_function, CallObject, RawStringPtr, Value, ValueBase, VM};
 
 use rustc_hash::FxHashMap;
 use std::ffi::CString;
 
-pub const CONSOLE_LOG: usize = 0;
-pub const PROCESS_STDOUT_WRITE: usize = 1;
-pub const ARRAY_NEW: usize = 2;
-pub const ARRAY_PROTOTYPE_PUSH: usize = 3;
-pub const ARRAY_PROTOTYPE_POP: usize = 4;
-pub const ARRAY_PROTOTYPE_MAP: usize = 5;
-pub const MATH_FLOOR: usize = 6;
-pub const MATH_RANDOM: usize = 7;
-pub const MATH_POW: usize = 8;
-pub const MATH_ABS: usize = 9;
-pub const MATH_ACOS: usize = 10;
-pub const MATH_ACOSH: usize = 11;
-pub const MATH_ASIN: usize = 12;
-pub const MATH_ASINH: usize = 13;
-pub const MATH_ATAN: usize = 14;
-pub const MATH_ATANH: usize = 15;
-pub const MATH_ATAN2: usize = 15;
-pub const MATH_CBRT: usize = 17;
-pub const MATH_CEIL: usize = 18;
-pub const MATH_CLZ32: usize = 18;
-pub const MATH_COS: usize = 20;
-pub const MATH_COSH: usize = 21;
-pub const MATH_EXP: usize = 22;
-pub const MATH_EXPM1: usize = 22;
-pub const MATH_FROUND: usize = 24;
-pub const MATH_HYPOT: usize = 25;
-pub const MATH_LOG: usize = 26;
-pub const MATH_LOG1P: usize = 26;
-pub const MATH_LOG10: usize = 27;
-pub const MATH_LOG2: usize = 28;
-pub const MATH_MAX: usize = 30;
-pub const MATH_MIN: usize = 31;
-pub const MATH_ROUND: usize = 32;
-pub const MATH_SIGN: usize = 33;
-pub const MATH_SIN: usize = 34;
-pub const MATH_SINH: usize = 35;
-pub const MATH_SQRT: usize = 36;
-pub const MATH_TAN: usize = 37;
-pub const MATH_TANH: usize = 38;
-pub const MATH_TRUNC: usize = 39;
-pub const FUNCTION_PROTOTYPE_APPLY: usize = 40;
-pub const FUNCTION_PROTOTYPE_CALL: usize = 41;
-pub const REQUIRE: usize = 42;
-pub const NUMBER_PROTOTYPE_TOSTRING: usize = 43;
+#[derive(Debug, Clone, PartialEq)]
+pub enum Builtins {
+    ConsoleLog,
+    ProcessStdoutWrite,
+    ArrayNew,
+    ArrayPrototypePush,
+    ArrayPrototypePop,
+    ArrayPrototypeMap,
+    MathFloor,
+    MathRandom,
+    MathPow,
+    MathAbs,
+    MathAcos,
+    MathAcosh,
+    MathAsin,
+    MathAsinh,
+    MathAtan,
+    MathAtanh,
+    MathAtan2,
+    MathCbrt,
+    MathCeil,
+    MathClz32,
+    MathCos,
+    MathCosh,
+    MathExp,
+    MathExpm1,
+    MathFround,
+    MathHypot,
+    MathLog,
+    MathLog1p,
+    MathLog10,
+    MathLog2,
+    MathMax,
+    MathMin,
+    MathRound,
+    MathSign,
+    MathSin,
+    MathSinh,
+    MathSqrt,
+    MathTan,
+    MathTanh,
+    MathTrunc,
+    FunctionPrototypeApply,
+    FunctionPrototypeCall,
+    Require,
+    NumberPrototypeTostring,
+    UserDefined,
+}
 
-pub unsafe fn console_log(self_: &mut VM, args: &Vec<Value>, _: &CallObject) {
+pub fn console_log(self_: &mut VM, args: &Vec<Value>, _: &CallObject) {
     let args_len = args.len();
-    for i in 0..args_len {
-        debug_print(&args[i], false);
-        if args_len - 1 != i {
-            libc::printf(b" \0".as_ptr() as RawStringPtr);
+    unsafe {
+        for i in 0..args_len {
+            debug_print(&args[i], false);
+            if args_len - 1 != i {
+                libc::printf(b" \0".as_ptr() as RawStringPtr);
+            }
         }
+        libc::puts(b"\0".as_ptr() as RawStringPtr);
     }
-    libc::puts(b"\0".as_ptr() as RawStringPtr);
     self_.state.stack.push(Value::undefined())
 }
 
-pub unsafe fn process_stdout_write(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
+pub fn process_stdout_write(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
     let args_len = args.len();
-    for i in 0..args_len {
-        debug_print(&args[i], false);
-        if args_len - 1 != i {
-            libc::printf(b" \0".as_ptr() as RawStringPtr);
+    unsafe {
+        for i in 0..args_len {
+            debug_print(&args[i], false);
+            if args_len - 1 != i {
+                libc::printf(b" \0".as_ptr() as RawStringPtr);
+            }
         }
     }
     vm.state.stack.push(Value::undefined())
 }
 
-pub unsafe fn debug_print(val: &Value, nest: bool) {
+pub fn debug_print(val: &Value, nest: bool) {
     unsafe fn show_obj(sorted_key_val: Vec<(&String, &Value)>) {
         for (i, (key, val)) in sorted_key_val.iter().enumerate() {
             libc::printf(
@@ -92,219 +99,111 @@ pub unsafe fn debug_print(val: &Value, nest: bool) {
         }
     }
 
-    match val.val {
-        ValueBase::Null => {
-            libc::printf(b"null\0".as_ptr() as RawStringPtr);
-        }
-        ValueBase::Undefined => {
-            libc::printf(b"undefined\0".as_ptr() as RawStringPtr);
-        }
-        ValueBase::Bool(true) => {
-            libc::printf(b"true\0".as_ptr() as RawStringPtr);
-        }
-        ValueBase::Bool(false) => {
-            libc::printf(b"false\0".as_ptr() as RawStringPtr);
-        }
-        ValueBase::Number(n) => {
-            if n.is_nan() {
-                libc::printf("NaN\0".as_ptr() as RawStringPtr);
-            } else if n.is_infinite() {
-                libc::printf("Infinity\0".as_ptr() as RawStringPtr);
-            } else {
-                libc::printf("%.15g\0".as_ptr() as RawStringPtr, n);
+    unsafe {
+        match val.val {
+            ValueBase::Null => {
+                libc::printf(b"null\0".as_ptr() as RawStringPtr);
             }
-        }
-        ValueBase::String(ref s) => {
-            libc::printf(
-                if nest { "'%s'\0" } else { "%s\0" }.as_ptr() as RawStringPtr,
-                s.as_ptr(),
-            );
-        }
-        ValueBase::Object(ref values) => {
-            libc::printf("{ \0".as_ptr() as RawStringPtr);
-
-            let key_val = &**values;
-            let mut sorted_key_val = key_val.iter().collect::<Vec<(&String, &Value)>>();
-            sorted_key_val.sort_by(|(key1, _), (key2, _)| key1.as_str().cmp(key2.as_str()));
-            sorted_key_val.retain(|(ref key, _)| key != &"__proto__");
-
-            show_obj(sorted_key_val);
-
-            libc::printf("}\0".as_ptr() as RawStringPtr);
-        }
-        ValueBase::Array(ref values) => {
-            libc::printf("[ \0".as_ptr() as RawStringPtr);
-            let arr = &*(*values);
-            let elems = &arr.elems;
-            let is_last_idx = |idx: usize| -> bool { idx == arr.length - 1 };
-            let mut i = 0;
-
-            let key_val = &arr.obj;
-            let mut sorted_key_val = key_val.iter().collect::<Vec<(&String, &Value)>>();
-            sorted_key_val.sort_by(|(key1, _), (key2, _)| key1.as_str().cmp(key2.as_str()));
-            sorted_key_val.retain(|(ref key, _)| key != &"__proto__");
-
-            while i < arr.length {
-                let mut empty_elems = 0;
-                while i < arr.length && ValueBase::Empty == elems[i].val {
-                    empty_elems += 1;
-                    i += 1;
+            ValueBase::Undefined => {
+                libc::printf(b"undefined\0".as_ptr() as RawStringPtr);
+            }
+            ValueBase::Bool(true) => {
+                libc::printf(b"true\0".as_ptr() as RawStringPtr);
+            }
+            ValueBase::Bool(false) => {
+                libc::printf(b"false\0".as_ptr() as RawStringPtr);
+            }
+            ValueBase::Number(n) => {
+                if n.is_nan() {
+                    libc::printf("NaN\0".as_ptr() as RawStringPtr);
+                } else if n.is_infinite() {
+                    libc::printf("Infinity\0".as_ptr() as RawStringPtr);
+                } else {
+                    libc::printf("%.15g\0".as_ptr() as RawStringPtr, n);
                 }
+            }
+            ValueBase::String(ref s) => {
+                libc::printf(
+                    if nest { "'%s'\0" } else { "%s\0" }.as_ptr() as RawStringPtr,
+                    s.as_ptr(),
+                );
+            }
+            ValueBase::Object(ref values) => {
+                libc::printf("{ \0".as_ptr() as RawStringPtr);
 
-                if empty_elems > 0 {
+                let key_val = &**values;
+                let mut sorted_key_val = key_val.iter().collect::<Vec<(&String, &Value)>>();
+                sorted_key_val.sort_by(|(key1, _), (key2, _)| key1.as_str().cmp(key2.as_str()));
+                sorted_key_val.retain(|(ref key, _)| key != &"__proto__");
+
+                show_obj(sorted_key_val);
+
+                libc::printf("}\0".as_ptr() as RawStringPtr);
+            }
+            ValueBase::Array(ref values) => {
+                libc::printf("[ \0".as_ptr() as RawStringPtr);
+                let arr = &*(*values);
+                let elems = &arr.elems;
+                let is_last_idx = |idx: usize| -> bool { idx == arr.length - 1 };
+                let mut i = 0;
+
+                let key_val = &arr.obj;
+                let mut sorted_key_val = key_val.iter().collect::<Vec<(&String, &Value)>>();
+                sorted_key_val.sort_by(|(key1, _), (key2, _)| key1.as_str().cmp(key2.as_str()));
+                sorted_key_val.retain(|(ref key, _)| key != &"__proto__");
+
+                while i < arr.length {
+                    let mut empty_elems = 0;
+                    while i < arr.length && ValueBase::Empty == elems[i].val {
+                        empty_elems += 1;
+                        i += 1;
+                    }
+
+                    if empty_elems > 0 {
+                        libc::printf(
+                            "<%u empty item%s>%s\0".as_ptr() as RawStringPtr,
+                            empty_elems,
+                            if empty_elems >= 2 { "s\0" } else { "\0" }.as_ptr() as RawStringPtr,
+                            if is_last_idx(i - 1) && sorted_key_val.len() == 0 {
+                                " \0"
+                            } else {
+                                ", \0"
+                            }.as_ptr() as RawStringPtr,
+                        );
+
+                        if is_last_idx(i - 1) {
+                            break;
+                        }
+                    }
+
+                    debug_print(&elems[i], true);
                     libc::printf(
-                        "<%u empty item%s>%s\0".as_ptr() as RawStringPtr,
-                        empty_elems,
-                        if empty_elems >= 2 { "s\0" } else { "\0" }.as_ptr() as RawStringPtr,
-                        if is_last_idx(i - 1) && sorted_key_val.len() == 0 {
+                        if is_last_idx(i) && sorted_key_val.len() == 0 {
                             " \0"
                         } else {
                             ", \0"
                         }.as_ptr() as RawStringPtr,
                     );
 
-                    if is_last_idx(i - 1) {
-                        break;
-                    }
+                    i += 1;
                 }
 
-                debug_print(&elems[i], true);
-                libc::printf(
-                    if is_last_idx(i) && sorted_key_val.len() == 0 {
-                        " \0"
-                    } else {
-                        ", \0"
-                    }.as_ptr() as RawStringPtr,
-                );
+                show_obj(sorted_key_val);
 
-                i += 1;
+                libc::printf("]\0".as_ptr() as RawStringPtr);
             }
-
-            show_obj(sorted_key_val);
-
-            libc::printf("]\0".as_ptr() as RawStringPtr);
-        }
-        ValueBase::Function(_) | ValueBase::BuiltinFunction(_) => {
-            libc::printf("[Function]\0".as_ptr() as RawStringPtr);
-        }
-        _ => {}
-    }
-}
-
-pub unsafe fn array_new(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
-    let args_len = args.len();
-
-    if args_len == 0 {
-        vm.state
-            .stack
-            .push(Value::array(gc::new(ArrayValue::new(vec![]))));
-        gc::mark_and_sweep(&vm.state);
-        return;
-    }
-
-    let mut elems = vec![];
-
-    match args[0].val {
-        ValueBase::Number(length) if args_len == 1 => {
-            for _ in 0..length as usize {
-                elems.push(Value::empty());
+            ValueBase::Function(_) | ValueBase::BuiltinFunction(_) => {
+                libc::printf("[Function]\0".as_ptr() as RawStringPtr);
             }
-        }
-        _ => {
-            for arg in args {
-                elems.push(arg.clone());
-            }
+            _ => {}
         }
     }
-
-    vm.state
-        .stack
-        .push(Value::array(gc::new(ArrayValue::new(elems))));
-
-    gc::mark_and_sweep(&vm.state);
-}
-
-pub unsafe fn array_prototype_push(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject) {
-    let array = if let ValueBase::Array(ref array) = callobj.this.val {
-        &mut **array
-    } else {
-        vm.state.stack.push(Value::undefined());
-        return;
-    };
-
-    for val in args {
-        array.elems.push(val.clone());
-    }
-
-    array.length += args.len();
-
-    vm.state.stack.push(Value::number(array.length as f64))
-}
-
-pub unsafe fn array_prototype_pop(vm: &mut VM, _args: &Vec<Value>, callobj: &CallObject) {
-    let array = if let ValueBase::Array(ref array) = callobj.this.val {
-        &mut **array
-    } else {
-        vm.state.stack.push(Value::undefined());
-        return;
-    };
-
-    if let Some(val) = array.elems.pop() {
-        array.length -= 1;
-        vm.state.stack.push(val);
-        return;
-    }
-
-    vm.state.stack.push(Value::undefined())
-}
-
-pub unsafe fn array_prototype_map(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject) {
-    let array = if let ValueBase::Array(ref array) = callobj.this.val {
-        &mut **array
-    } else {
-        vm.state.stack.push(Value::undefined());
-        return;
-    };
-
-    let mut new_array = ArrayValue::new(vec![]);
-    let callback = &args[0];
-
-    let mut args_for_callback = vec![
-        Value::undefined(),
-        Value::number(0.0),
-        /* array itself = */ (*callobj.this).clone(),
-    ];
-
-    for i in 0..array.length {
-        args_for_callback[0] = array.elems[i].clone();
-        args_for_callback[1].set_number_if_possible(i as f64);
-
-        match callback.val {
-            ValueBase::BuiltinFunction(box (ref info, _, ref callobj)) => {
-                // let mut callobj = callobj.clone();
-                // *callobj.this = arg_this;
-                (info.func)(vm, &args_for_callback, callobj);
-            }
-            ValueBase::Function(box (id, ref iseq, _, ref callobj)) => {
-                let mut callobj = callobj.clone();
-                // *callobj.this = arg_this;
-                (*callobj.vals).clear();
-                call_function(vm, id, iseq, &args_for_callback, callobj).unwrap();
-            }
-            _ => vm.state.stack.push(Value::undefined()),
-        }
-
-        let val = vm.state.stack.pop().unwrap();
-        new_array.push(val);
-    }
-
-    vm.state.stack.push(Value::array(gc::new(new_array)))
 }
 
 macro_rules! simple_math {
     ($name:ident, $f:ident) => {
         #[allow(unused_variables)]
-        pub unsafe fn $name(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject) {
+        pub fn $name(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject) {
             if let ValueBase::Number(n) = args[0].val {
                 return vm.state.stack.push(Value::number(n.$f()));
             }
@@ -322,7 +221,7 @@ simple_math!(math_asinh, asinh);
 simple_math!(math_atan, atan);
 simple_math!(math_atanh, atanh);
 
-pub unsafe fn math_atan2(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
+pub fn math_atan2(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
     if let ValueBase::Number(n1) = args[0].val {
         if let ValueBase::Number(n2) = args[1].val {
             return vm.state.stack.push(Value::number(n1.atan2(n2)));
@@ -333,7 +232,7 @@ pub unsafe fn math_atan2(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
 simple_math!(math_cbrt, cbrt);
 simple_math!(math_ceil, ceil);
 
-pub unsafe fn math_clz32(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
+pub fn math_clz32(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
     if let ValueBase::Number(n) = args[0].val {
         return vm.state.stack.push(Value::number(if n == 0.0 {
             32.0
@@ -352,7 +251,7 @@ simple_math!(math_exp, exp);
 simple_math!(math_expm1, exp_m1);
 simple_math!(math_fround, round);
 
-pub unsafe fn math_hypot(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
+pub fn math_hypot(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
     let mut sum2 = 0.0;
     for n in args {
         if let ValueBase::Number(n) = n.val {
@@ -362,7 +261,7 @@ pub unsafe fn math_hypot(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
     vm.state.stack.push(Value::number(sum2.sqrt()));
 }
 
-pub unsafe fn math_log(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
+pub fn math_log(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
     if let ValueBase::Number(n1) = args[0].val {
         return vm
             .state
@@ -372,7 +271,7 @@ pub unsafe fn math_log(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
     vm.state.stack.push(Value::undefined())
 }
 
-pub unsafe fn math_log1p(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
+pub fn math_log1p(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
     if let ValueBase::Number(n1) = args[0].val {
         return vm
             .state
@@ -385,7 +284,7 @@ pub unsafe fn math_log1p(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
 simple_math!(math_log10, log10);
 simple_math!(math_log2, log2);
 
-pub unsafe fn math_max(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
+pub fn math_max(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
     let mut max = if let ValueBase::Number(n) = args[0].val {
         n
     } else {
@@ -401,7 +300,7 @@ pub unsafe fn math_max(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
     vm.state.stack.push(Value::number(max));
 }
 
-pub unsafe fn math_min(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
+pub fn math_min(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
     let mut min = if let ValueBase::Number(n) = args[0].val {
         n
     } else {
@@ -419,7 +318,7 @@ pub unsafe fn math_min(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
 
 simple_math!(math_round, round);
 
-pub unsafe fn math_sign(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
+pub fn math_sign(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
     if let ValueBase::Number(n) = args[0].val {
         return vm.state.stack.push(Value::number(if n == 0.0 {
             n
@@ -439,11 +338,11 @@ simple_math!(math_tan, tan);
 simple_math!(math_tanh, tanh);
 simple_math!(math_trunc, trunc);
 
-pub unsafe fn math_random(vm: &mut VM, _: &Vec<Value>, _: &CallObject) {
+pub fn math_random(vm: &mut VM, _: &Vec<Value>, _: &CallObject) {
     vm.state.stack.push(Value::number(random::<f64>()))
 }
 
-pub unsafe fn math_pow(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
+pub fn math_pow(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
     if let ValueBase::Number(f1) = args[0].val {
         if let ValueBase::Number(f2) = args[1].val {
             return vm.state.stack.push(Value::number(f1.powf(f2)));
@@ -452,12 +351,12 @@ pub unsafe fn math_pow(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
     vm.state.stack.push(Value::undefined())
 }
 
-pub unsafe fn function_prototype_apply(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject) {
+pub fn function_prototype_apply(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject) {
     let callee = &*callobj.this;
     let arg_this = args[0].clone();
     let arg = match args[1].val {
         ValueBase::Array(aryval) => {
-            let aryval = &*aryval;
+            let aryval = unsafe { &*aryval };
             let mut elems = vec![];
             for i in 0..aryval.length {
                 elems.push(aryval.elems[i].clone());
@@ -466,7 +365,7 @@ pub unsafe fn function_prototype_apply(vm: &mut VM, args: &Vec<Value>, callobj: 
         }
         ValueBase::Arguments => {
             let mut elems = vec![];
-            let callobj = &**vm.state.scope.last().unwrap();
+            let callobj = unsafe { &**vm.state.scope.last().unwrap() };
             let length = callobj.get_arguments_length();
             for i in 0..length {
                 elems.push(callobj.get_arguments_nth_value(i).unwrap());
@@ -493,7 +392,7 @@ pub unsafe fn function_prototype_apply(vm: &mut VM, args: &Vec<Value>, callobj: 
     }
 }
 
-pub unsafe fn function_prototype_call(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject) {
+pub fn function_prototype_call(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject) {
     let callee = &*callobj.this;
     let arg_this = args[0].clone();
     match callee.val {
@@ -513,72 +412,7 @@ pub unsafe fn function_prototype_call(vm: &mut VM, args: &Vec<Value>, callobj: &
     }
 }
 
-// TODO: Maybe, this function had better be somewhere else. (like ./src/util.rs)
-fn f64_to_string(f: f64, radix: usize) -> String {
-    if f.is_nan() {
-        return "NaN".to_string();
-    }
-    if f.is_infinite() {
-        return "Infinity".to_string();
-    }
-
-    let chars = "0123456789abcdefghijklmnopqrstuvwxyz";
-    let negative = f < 0.0;
-    let mut integer = f.abs() as usize;
-    let mut fraction = f.abs() - integer as f64;
-    let mut s = "".to_string();
-
-    while integer > 0 {
-        s.push(chars[(integer % radix)..].chars().next().unwrap());
-        integer /= radix;
-    }
-
-    s = s.chars().rev().collect();
-    if fraction != 0.0 {
-        s.push('.');
-    }
-
-    let mut count = 0;
-    while fraction > 0.0 && count < /* digits = */14 {
-        fraction *= radix as f64;
-        s.push(chars[fraction as usize..].chars().next().unwrap());
-        fraction -= fraction.floor();
-        count += 1;
-    }
-
-    if negative {
-        s.insert(0, '-')
-    }
-
-    s
-}
-
-pub unsafe fn number_prototype_tostring(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject) {
-    let number = if let ValueBase::Number(num) = callobj.this.val {
-        num
-    } else {
-        vm.state.stack.push(Value::undefined());
-        return;
-    };
-
-    let base = match args.get(0) {
-        Some(Value { val, .. }) => {
-            let num = val.to_number();
-            if num - num.floor() == 0.0 && 2.0 <= num && num <= 36.0 {
-                num as usize
-            } else {
-                10
-            }
-        }
-        _ => 10,
-    };
-
-    vm.state.stack.push(Value::string(
-        CString::new(f64_to_string(number, base)).unwrap(),
-    ));
-}
-
-pub unsafe fn require(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
+pub fn require(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
     // TODO: REFINE CODE!!!!
     use ansi_term::Colour;
     use extract_anony_func;
@@ -660,9 +494,9 @@ pub unsafe fn require(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
     // TODO: Do not unwrap
     vm.run(iseq).unwrap();
 
-    let module_exports = (**vm.state.scope.last().unwrap())
-        .get_value(&"module".to_string())
-        .unwrap()
+    let module_exports = unsafe {
+        (**vm.state.scope.last().unwrap()).get_value(&"module".to_string())
+    }.unwrap()
         .get_property(Value::string(CString::new("exports").unwrap()).val, None);
     vm.state.stack.push(module_exports);
 }
