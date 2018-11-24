@@ -6,7 +6,6 @@ use vm::{
     callobj::{CallObject, CallObjectRef}, value::Value,
 };
 
-use std::collections::HashMap;
 use std::ffi::CString;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -75,7 +74,6 @@ impl Labels {
 pub struct VMCodeGen {
     pub global_varmap: CallObjectRef,
     pub cur_callobj: CallObjectRef,
-    pub functions: HashMap<String, FunctionInfo>,
     pub bytecode_gen: ByteCodeGen,
     pub labels: Vec<Labels>,
 }
@@ -86,7 +84,6 @@ impl VMCodeGen {
         VMCodeGen {
             global_varmap: global,
             cur_callobj: global,
-            functions: HashMap::new(),
             bytecode_gen: ByteCodeGen::new(),
             labels: vec![Labels::new()],
         }
@@ -100,38 +97,6 @@ impl VMCodeGen {
         self.run(node, iseq, use_value);
 
         self.bytecode_gen.gen_end(iseq);
-
-        for (
-            _,
-            FunctionInfo {
-                name,
-                params,
-                iseq: func_iseq,
-            },
-        ) in &self.functions
-        {
-            let val = Value::function(id::get_unique_id(), func_iseq.clone(), {
-                let mut callobj =
-                    CallObject::new(unsafe { Value::object((*self.global_varmap).vals.clone()) });
-                callobj.params = params
-                    .clone()
-                    .iter()
-                    .map(
-                        |FormalParameter {
-                             name,
-                             is_rest_param,
-                             ..
-                         }| (name.clone(), *is_rest_param),
-                    )
-                    .collect();
-                callobj.parent = Some(self.global_varmap.clone());
-                callobj
-            });
-
-            unsafe {
-                (*self.global_varmap).set_value(name.clone(), val.clone());
-            }
-        }
     }
 
     fn run(&mut self, node: &Node, iseq: &mut ByteCode, use_value: bool) {
