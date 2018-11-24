@@ -8,7 +8,7 @@ use rapidus::vm;
 use rapidus::vm_codegen;
 
 use parser::Error::*;
-use vm::RuntimeError;
+use vm::error::RuntimeError;
 
 extern crate libc;
 
@@ -125,7 +125,7 @@ fn repl() {
     // TODO: REFINE CODE!!!!
 
     let mut vm_codegen = vm_codegen::VMCodeGen::new();
-    let mut vm = vm::VM::new(vm_codegen.global_varmap);
+    let mut vm = vm::vm::VM::new(vm_codegen.global_varmap);
 
     let mut rl = rustyline::Editor::<()>::new();
 
@@ -180,10 +180,10 @@ fn repl() {
 
         if let Err(e) = vm.run(iseq) {
             match e {
-                RuntimeError::Unknown => vm::runtime_error("unknown error occurred"),
-                RuntimeError::Unimplemented => vm::runtime_error("unimplemented feature"),
+                RuntimeError::Unknown => vm::error::runtime_error("unknown error occurred"),
+                RuntimeError::Unimplemented => vm::error::runtime_error("unimplemented feature"),
                 RuntimeError::Reference(msg) | RuntimeError::Type(msg) => {
-                    vm::runtime_error(msg.as_str())
+                    vm::error::runtime_error(msg.as_str())
                 }
             }
             continue;
@@ -276,15 +276,15 @@ fn run(file_name: &str) {
             let mut iseq = vec![];
             vm_codegen.compile(&node, &mut iseq, false);
 
-            let mut vm = vm::VM::new(vm_codegen.global_varmap);
+            let mut vm = vm::vm::VM::new(vm_codegen.global_varmap);
             vm.const_table = vm_codegen.bytecode_gen.const_table;
 
             if let Err(e) = vm.run(iseq) {
                 match e {
-                    RuntimeError::Unknown => vm::runtime_error("unknown error occurred"),
-                    RuntimeError::Unimplemented => vm::runtime_error("unimplemented feature"),
+                    RuntimeError::Unknown => vm::error::runtime_error("unknown error occurred"),
+                    RuntimeError::Unimplemented => vm::error::runtime_error("unimplemented feature"),
                     RuntimeError::Reference(msg) | RuntimeError::Type(msg) => {
-                        vm::runtime_error(msg.as_str())
+                        vm::error::runtime_error(msg.as_str())
                     }
                 }
             }

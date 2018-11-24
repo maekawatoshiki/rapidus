@@ -1,7 +1,9 @@
 use gc;
 use libc;
 use rand::random;
-use vm::{call_function, CallObject, RawStringPtr, Value, ValueBase, VM};
+use vm::{
+    callobj::CallObject, value::{RawStringPtr, Value, ValueBase}, vm::{call_function, VM},
+};
 
 use rustc_hash::FxHashMap;
 use std::ffi::CString;
@@ -421,7 +423,6 @@ pub fn require(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
     use std::ffi::CString;
     use std::fs::OpenOptions;
     use std::io::prelude::*;
-    use vm;
     use vm_codegen;
 
     let file_name = match args[0].val {
@@ -489,7 +490,7 @@ pub fn require(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
     vm_codegen.compile(&node, &mut iseq, false);
     vm.const_table = vm_codegen.bytecode_gen.const_table.clone();
 
-    let mut vm = vm::VM::new(vm_codegen.global_varmap);
+    let mut vm = VM::new(vm_codegen.global_varmap);
     vm.const_table = vm_codegen.bytecode_gen.const_table;
     // TODO: Do not unwrap
     vm.run(iseq).unwrap();

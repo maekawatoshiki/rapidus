@@ -3,7 +3,9 @@ use std::cell::RefCell;
 use std::hash::{Hash, Hasher};
 use std::mem;
 use std::sync::atomic::{self, AtomicUsize};
-use vm::{ArrayValue, CallObject, VMState, Value, ValueBase};
+use vm::{
+    callobj::CallObject, value::{ArrayValue, Value, ValueBase}, vm::VMState,
+};
 
 static ALLOCATED_MEM_SIZE_BYTE: AtomicUsize = AtomicUsize::new(0);
 

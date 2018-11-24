@@ -1,6 +1,8 @@
 use builtin;
 use gc;
-use vm::{CallObject, Value, ValueBase, VM};
+use vm::{
+    callobj::CallObject, value::{Value, ValueBase}, vm::VM,
+};
 
 use rustc_hash::FxHashMap;
 use std::ffi::CString;

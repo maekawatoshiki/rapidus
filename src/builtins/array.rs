@@ -1,6 +1,8 @@
 use builtin;
 use gc;
-use vm::{call_function, ArrayValue, CallObject, Value, ValueBase, VM};
+use vm::{
+    callobj::CallObject, value::{ArrayValue, Value, ValueBase}, vm::{call_function, VM},
+};
 
 use rustc_hash::FxHashMap;
 

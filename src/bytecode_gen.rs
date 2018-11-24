@@ -1,4 +1,4 @@
-use vm::{ConstantTable, Value};
+use vm::{value::Value, vm::ConstantTable};
 
 pub type ByteCode = Vec<u8>;
 
