@@ -21,7 +21,7 @@ impl FormalParameter {
 // TODO: Support all features: https://tc39.github.io/ecma262/#prod-PropertyDefinition
 #[derive(Clone, Debug, PartialEq)]
 pub enum PropertyDefinition {
-    IdentifierReference(String), // Not used in phases after fv_finder. This is replaced with Property(_, _) in fv_finder.
+    IdentifierReference(String), 
     Property(String, Node),
 }
 
@@ -61,7 +61,6 @@ pub enum NodeBase {
     Boolean(bool),
     Number(f64),
     Nope,
-    SetCurCallObj(String),
 }
 
 impl Node {

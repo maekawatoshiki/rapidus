@@ -549,8 +549,6 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
                 gc::new(map)
             };
 
-            callobj.vals = gc::new(FxHashMap::default());
-
             // similar code is used some times. should make it a function.
             let mut args = vec![];
             let mut rest_args = vec![];
@@ -1183,7 +1181,7 @@ fn call(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
         }
         ValueBase::Function(box (id, ref iseq, _, ref callobj)) => {
             let mut callobj = callobj.clone();
-            callobj.vals = gc::new(FxHashMap::default());
+            // callobj.vals = gc::new(FxHashMap::default());
             call_function(self_, id, iseq, &args, callobj)?;
         }
         c => {

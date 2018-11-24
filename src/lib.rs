@@ -4,7 +4,6 @@
 
 pub mod builtin;
 pub mod bytecode_gen;
-pub mod extract_anony_func;
 pub mod gc;
 pub mod id;
 pub mod jit;

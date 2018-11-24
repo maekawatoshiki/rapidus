@@ -1,7 +1,6 @@
 extern crate rapidus;
 use rapidus::builtin;
 use rapidus::bytecode_gen;
-use rapidus::extract_anony_func;
 use rapidus::lexer;
 use rapidus::parser;
 use rapidus::vm;
@@ -83,7 +82,7 @@ fn main() {
     let mut parser = parser::Parser::new(file_body);
 
     println!("Parser:");
-    let mut node = match parser.parse_all() {
+    let node = match parser.parse_all() {
         Ok(ok) => ok,
         Err(NormalEOF) => unreachable!(),
         Err(Expect(pos, kind, msg))
@@ -98,13 +97,6 @@ fn main() {
         }
     };
     println!("{:?}", node);
-
-    extract_anony_func::AnonymousFunctionExtractor::new().run_toplevel(&mut node);
-    // fv_finder::FreeVariableFinder::new().run_toplevel(&mut node);
-    // println!("extract_anony_func, fv_finder:\n {:?}", node);
-    // fv_solver::FreeVariableSolver::new().run_toplevel(&mut node);
-    //
-    println!("extract_anony_func:\n {:?}", node);
 
     let mut vm_codegen = vm_codegen::VMCodeGen::new();
     let mut iseq = vec![];
@@ -155,7 +147,7 @@ fn repl() {
 
         let mut parser = parser::Parser::new(line);
 
-        let mut node = match parser.parse_all() {
+        let node = match parser.parse_all() {
             Ok(ok) => ok,
             Err(NormalEOF) => unreachable!(),
             Err(Expect(pos, kind, msg))
@@ -169,8 +161,6 @@ fn repl() {
                 continue;
             }
         };
-
-        extract_anony_func::AnonymousFunctionExtractor::new().run_toplevel(&mut node);
 
         let mut iseq = vec![];
         vm_codegen.compile(&node, &mut iseq, true);
@@ -270,8 +260,6 @@ fn run(file_name: &str) {
                 }
             };
 
-            extract_anony_func::AnonymousFunctionExtractor::new().run_toplevel(&mut node);
-
             let mut vm_codegen = vm_codegen::VMCodeGen::new();
             let mut iseq = vec![];
             vm_codegen.compile(&node, &mut iseq, false);
@@ -282,7 +270,9 @@ fn run(file_name: &str) {
             if let Err(e) = vm.run(iseq) {
                 match e {
                     RuntimeError::Unknown => vm::error::runtime_error("unknown error occurred"),
-                    RuntimeError::Unimplemented => vm::error::runtime_error("unimplemented feature"),
+                    RuntimeError::Unimplemented => {
+                        vm::error::runtime_error("unimplemented feature")
+                    }
                     RuntimeError::Reference(msg) | RuntimeError::Type(msg) => {
                         vm::error::runtime_error(msg.as_str())
                     }

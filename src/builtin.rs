@@ -1,11 +1,9 @@
-use gc;
 use libc;
 use rand::random;
 use vm::{
     callobj::CallObject, value::{RawStringPtr, Value, ValueBase}, vm::{call_function, VM},
 };
 
-use rustc_hash::FxHashMap;
 use std::ffi::CString;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -381,13 +379,11 @@ pub fn function_prototype_apply(vm: &mut VM, args: &Vec<Value>, callobj: &CallOb
         ValueBase::BuiltinFunction(box (ref info, _, ref callobj)) => {
             let mut callobj = callobj.clone();
             *callobj.this = arg_this;
-            callobj.vals = gc::new(FxHashMap::default());
             (info.func)(vm, &arg, &callobj);
         }
         ValueBase::Function(box (id, ref iseq, _, ref callobj)) => {
             let mut callobj = callobj.clone();
             *callobj.this = arg_this;
-            callobj.vals = gc::new(FxHashMap::default());
             call_function(vm, id, iseq, &arg, callobj).unwrap();
         }
         _ => vm.state.stack.push(Value::undefined()),
@@ -401,13 +397,11 @@ pub fn function_prototype_call(vm: &mut VM, args: &Vec<Value>, callobj: &CallObj
         ValueBase::BuiltinFunction(box (ref info, _, ref callobj)) => {
             let mut callobj = callobj.clone();
             *callobj.this = arg_this;
-            callobj.vals = gc::new(FxHashMap::default());
             (info.func)(vm, &args[1..].to_vec(), &callobj);
         }
         ValueBase::Function(box (id, ref iseq, _, ref callobj)) => {
             let mut callobj = callobj.clone();
             *callobj.this = arg_this;
-            callobj.vals = gc::new(FxHashMap::default());
             call_function(vm, id, iseq, &args[1..].to_vec(), callobj).unwrap();
         }
         _ => vm.state.stack.push(Value::undefined()),
@@ -417,7 +411,6 @@ pub fn function_prototype_call(vm: &mut VM, args: &Vec<Value>, callobj: &CallObj
 pub fn require(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
     // TODO: REFINE CODE!!!!
     use ansi_term::Colour;
-    use extract_anony_func;
     use parser;
     use parser::Error::*;
     use std::ffi::CString;
@@ -465,7 +458,7 @@ pub fn require(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
 
     let mut parser = parser::Parser::new(file_body);
 
-    let mut node = match parser.parse_all() {
+    let node = match parser.parse_all() {
         Ok(ok) => ok,
         Err(NormalEOF) => unreachable!(),
         Err(Expect(pos, kind, msg))
@@ -481,8 +474,6 @@ pub fn require(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
             return;
         }
     };
-
-    extract_anony_func::AnonymousFunctionExtractor::new().run_toplevel(&mut node);
 
     let mut vm_codegen = vm_codegen::VMCodeGen::new();
     let mut iseq = vec![];
