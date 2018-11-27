@@ -21,7 +21,7 @@ impl FormalParameter {
 // TODO: Support all features: https://tc39.github.io/ecma262/#prod-PropertyDefinition
 #[derive(Clone, Debug, PartialEq)]
 pub enum PropertyDefinition {
-    IdentifierReference(String), 
+    IdentifierReference(String),
     Property(String, Node),
 }
 

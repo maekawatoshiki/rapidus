@@ -1097,6 +1097,7 @@ pub fn call_function(
     let mut rest_param_name = None;
 
     callobj.clear_args_vals();
+    callobj.vals = gc::new(unsafe { (*callobj.vals).clone() });
 
     for (i, arg) in args.iter().enumerate() {
         if let Some(name) = callobj.get_parameter_nth_name(i) {

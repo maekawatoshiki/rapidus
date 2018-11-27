@@ -117,7 +117,7 @@ impl VMCodeGen {
                 self.run_statement_list(node_list, iseq, use_value)
             }
             &NodeBase::FunctionDecl(ref name, ref params, ref body) => {
-                self.run_function_decl(name, params, &*body)
+                self.run_function_decl(name, params, &*body, iseq)
             }
             &NodeBase::FunctionExpr(ref name, ref params, ref body) => {
                 self.run_function_expr(name, params, &*body, iseq)
@@ -181,7 +181,13 @@ impl VMCodeGen {
 }
 
 impl VMCodeGen {
-    pub fn run_function_decl(&mut self, name: &String, params: &FormalParameters, body: &Node) {
+    pub fn run_function_decl(
+        &mut self,
+        name: &String,
+        params: &FormalParameters,
+        body: &Node,
+        iseq: &mut ByteCode,
+    ) {
         let parent_callobj = self.cur_callobj;
         let mut new_callobj =
             CallObject::new(unsafe { Value::object((*self.global_varmap).vals.clone()) });
@@ -220,6 +226,10 @@ impl VMCodeGen {
         let val = Value::function(id::get_unique_id(), func_iseq.clone(), unsafe {
             (*self.cur_callobj).clone()
         });
+
+        self.bytecode_gen.gen_get_name(&name.clone(), iseq);
+        self.bytecode_gen.gen_set_cur_callobj(iseq);
+        self.bytecode_gen.gen_set_name(&name.clone(), iseq);
 
         unsafe { (*parent_callobj).set_value(name.clone(), val.clone()) }
 
@@ -274,6 +284,7 @@ impl VMCodeGen {
         });
 
         self.bytecode_gen.gen_push_const(val, iseq);
+        self.bytecode_gen.gen_set_cur_callobj(iseq);
 
         self.cur_callobj = parent_callobj;
     }
