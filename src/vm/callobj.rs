@@ -2,7 +2,7 @@ use rustc_hash::FxHashMap;
 use std::collections::hash_map::Entry;
 
 use super::error::RuntimeError;
-use super::value::{Value, ValueBase};
+use super::value::{ArrayValue, Value, ValueBase};
 use gc;
 
 pub type CallObjectRef = *mut CallObject;
@@ -50,6 +50,36 @@ impl CallObject {
         }
 
         self.arg_rest_vals.clear();
+    }
+
+    pub fn apply_arguments(&mut self, args: &Vec<Value>) {
+        let mut rest_args = vec![];
+        let mut rest_param_name = None;
+
+        for (i, arg) in args.iter().enumerate() {
+            if let Some(name) = self.get_parameter_nth_name(i) {
+                // When rest parameter. TODO: More features of rest parameter
+                if self.params[i].1 {
+                    rest_param_name = Some(name);
+                    rest_args.push(arg.clone());
+                } else {
+                    self.set_value(name, arg.clone());
+                }
+            } else {
+                rest_args.push(arg.clone());
+            }
+        }
+
+        if let Some(rest_param_name) = rest_param_name {
+            self.set_value(
+                rest_param_name,
+                Value::array(gc::new(ArrayValue::new(rest_args))),
+            );
+        } else {
+            for arg in rest_args {
+                self.arg_rest_vals.push(arg);
+            }
+        }
     }
 
     pub fn set_value(&mut self, name: String, val: Value) {

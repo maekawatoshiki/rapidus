@@ -511,6 +511,11 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
     self_.state.pc += 1; // construct
     get_int32!(self_, iseq, argc, usize);
 
+    let mut args = vec![];
+    for _ in 0..argc {
+        args.push(self_.state.stack.pop().unwrap());
+    }
+
     let callee = self_.state.stack.pop().unwrap();
 
     match callee.val.clone() {
@@ -525,17 +530,13 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
                 });
                 gc::new(map)
             };
-            let mut args = vec![];
-
-            for _ in 0..argc {
-                args.push(self_.state.stack.pop().unwrap());
-            }
 
             *callobj.this = Value::object(new_this);
 
             (x.func)(self_, &args, &callobj);
         }
         ValueBase::Function(box (id, iseq, obj, mut callobj)) => {
+            // similar code is used some times. should make it a function.
             let new_this = {
                 let mut map = FxHashMap::default();
                 map.insert("__proto__".to_string(), unsafe {
@@ -547,39 +548,9 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
                 gc::new(map)
             };
 
-            // similar code is used some times. should make it a function.
             callobj.clear_args_vals();
             callobj.vals = gc::new(unsafe { (*callobj.vals).clone() });
-
-            let mut args = vec![];
-            let mut rest_args = vec![];
-            let mut rest_param_name = None;
-            for _ in 0..argc {
-                args.push(self_.state.stack.pop().unwrap());
-            }
-            for (i, arg) in args.iter().enumerate() {
-                if let Some(name) = callobj.get_parameter_nth_name(i) {
-                    // When rest parameter
-                    if callobj.params[i].1 {
-                        rest_param_name = Some(name);
-                        rest_args.push(arg.clone());
-                    } else {
-                        callobj.set_value(name, arg.clone());
-                    }
-                } else {
-                    rest_args.push(arg.clone());
-                }
-            }
-            if let Some(rest_param_name) = rest_param_name {
-                callobj.set_value(
-                    rest_param_name,
-                    Value::array(gc::new(ArrayValue::new(rest_args))),
-                );
-            } else {
-                for arg in rest_args {
-                    callobj.arg_rest_vals.push(arg.clone());
-                }
-            }
+            callobj.apply_arguments(&args);
 
             *callobj.this = Value::object(new_this);
             self_.state.scope.push(gc::new(callobj));
@@ -1085,41 +1056,14 @@ pub fn call_function(
     mut callobj: CallObject,
 ) -> Result<(), RuntimeError> {
     let argc = args.len();
-    let mut args_all_numbers = true;
-    let mut rest_args = vec![];
-    let mut rest_param_name = None;
+    let args_all_numbers = args.iter().all(|Value { val, .. }| match val {
+        ValueBase::Number(_) => true,
+        _ => false,
+    });
 
     callobj.clear_args_vals();
     callobj.vals = gc::new(unsafe { (*callobj.vals).clone() });
-
-    for (i, arg) in args.iter().enumerate() {
-        if let Some(name) = callobj.get_parameter_nth_name(i) {
-            // When rest parameter
-            if callobj.params[i].1 {
-                rest_param_name = Some(name);
-                rest_args.push(arg.clone());
-            } else {
-                callobj.set_value(name, arg.clone());
-            }
-        } else {
-            rest_args.push(arg.clone());
-        }
-
-        match &arg.val {
-            &ValueBase::Number(_) => {}
-            _ => args_all_numbers = false,
-        }
-    }
-    if let Some(rest_param_name) = rest_param_name {
-        callobj.set_value(
-            rest_param_name,
-            Value::array(gc::new(ArrayValue::new(rest_args))),
-        );
-    } else {
-        for arg in rest_args {
-            callobj.arg_rest_vals.push(arg.clone());
-        }
-    }
+    callobj.apply_arguments(args);
 
     self_.state.scope.push(gc::new(callobj));
 
