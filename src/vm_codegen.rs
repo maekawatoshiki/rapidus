@@ -340,7 +340,10 @@ impl VMCodeGen {
         } else {
             self.bytecode_gen.gen_push_const(Value::undefined(), iseq);
         }
-        self.bytecode_gen.gen_decl_var(name, iseq);
+        unsafe {
+            (*self.cur_callobj).set_value(name.clone(), Value::undefined());
+        }
+        self.bytecode_gen.gen_set_name(name, iseq);
     }
 }
 

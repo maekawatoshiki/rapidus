@@ -14,7 +14,7 @@ pub struct VM {
     pub state: VMState,
     pub const_table: ConstantTable,
     pub cur_func_id: FuncId, // id == 0: main
-    pub op_table: [fn(&mut VM, &ByteCode) -> Result<(), RuntimeError>; 51],
+    pub op_table: [fn(&mut VM, &ByteCode) -> Result<(), RuntimeError>; 50],
 }
 
 pub struct VMState {
@@ -443,7 +443,6 @@ impl VM {
                 set_cur_callobj,
                 get_name,
                 set_name,
-                decl_var,
                 cond_op,
                 loop_start,
             ],
@@ -1270,28 +1269,6 @@ fn set_name(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
     }
 
     unsafe { (**self_.state.scope.last().unwrap()).set_value_if_exist(name, val) };
-
-    Ok(())
-}
-
-fn decl_var(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
-    self_.state.pc += 1;
-    get_int32!(self_, iseq, name_id, usize);
-    let name = self_.const_table.string[name_id].clone();
-    let mut val = self_.state.stack.pop().unwrap();
-
-    // We have to change cobj.this to the current scope one. (./examples/this.js)
-    if let ValueBase::Function(box (_, _, _, ref mut cobj))
-    | ValueBase::BuiltinFunction(box (_, _, ref mut cobj)) = &mut val.val
-    {
-        unsafe {
-            cobj.this = (**self_.state.scope.last().unwrap()).this.clone();
-        }
-    }
-
-    unsafe {
-        (**self_.state.scope.last().unwrap()).set_value(name, val);
-    }
 
     Ok(())
 }

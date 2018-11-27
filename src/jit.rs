@@ -2,7 +2,7 @@ use builtin;
 use bytecode_gen::{ByteCode, VMInst};
 use id::Id;
 use vm;
-use vm::{value::FuncId, callobj::CallObject};
+use vm::{callobj::CallObject, value::FuncId};
 
 use rand::{random, thread_rng, RngCore};
 
@@ -686,26 +686,29 @@ impl TracingJit {
 
         let arg_0 = LLVMGetParam(func, 0);
         for i in 0..local_vars.len() {
+            let local_var_name = const_table.string[local_vars[i].0].clone();
+            let local_var_ref = LLVMBuildGEP(
+                self.builder,
+                arg_0,
+                vec![LLVMConstInt(
+                    LLVMInt32TypeInContext(self.context),
+                    i as u64,
+                    0,
+                )].as_mut_slice()
+                    .as_mut_ptr(),
+                1,
+                CString::new("").unwrap().as_ptr(),
+            );
+            let local_var_val = LLVMBuildLoad(
+                self.builder,
+                local_var_ref,
+                CString::new("").unwrap().as_ptr(),
+            );
             env.insert(
-                const_table.string[local_vars[i].0].clone(),
+                local_var_name,
                 LLVMBuildPointerCast(
                     self.builder,
-                    LLVMBuildLoad(
-                        self.builder,
-                        LLVMBuildGEP(
-                            self.builder,
-                            arg_0,
-                            vec![LLVMConstInt(
-                                LLVMInt32TypeInContext(self.context),
-                                i as u64,
-                                0,
-                            )].as_mut_slice()
-                                .as_mut_ptr(),
-                            1,
-                            CString::new("").unwrap().as_ptr(),
-                        ),
-                        CString::new("").unwrap().as_ptr(),
-                    ),
+                    local_var_val,
                     LLVMPointerType(local_vars[i].1.to_llvmty(self.context), 0),
                     CString::new("").unwrap().as_ptr(),
                 ),
@@ -802,7 +805,7 @@ impl TracingJit {
         while pc < end {
             let inst_size = try_opt!(VMInst::get_inst_size(iseq[pc]));
             match iseq[pc] {
-                VMInst::DECL_VAR | VMInst::SET_NAME | VMInst::GET_NAME => {
+                VMInst::SET_NAME | VMInst::GET_NAME => {
                     pc += 1;
                     get_int32!(iseq, pc, id, usize);
                     let name = &const_table.string[id];
@@ -1610,15 +1613,7 @@ impl TracingJit {
                     get_int32!(iseq, pc, id, usize);
                     let name = &const_table.string[id];
                     let val = try_stack!(stack.pop());
-                    LLVMBuildStore(self.builder, val, *try_opt!(env.get(name)));
-                }
-                VMInst::DECL_VAR => {
-                    pc += 1;
-                    get_int32!(iseq, pc, id, usize);
-                    let name = const_table.string[id].clone();
-                    let dst = self.declare_local_var(name, env);
-                    let src = try_stack!(stack.pop());
-                    LLVMBuildStore(self.builder, src, dst);
+                    LLVMBuildStore(self.builder, val, self.declare_local_var(name.clone(), env));
                 }
                 VMInst::CALL => {
                     pc += 1;

@@ -52,15 +52,14 @@ pub mod VMInst {
     pub const SET_CUR_CALLOBJ: u8 = 0x2d;
     pub const GET_NAME: u8 = 0x2e;
     pub const SET_NAME: u8 = 0x2f;
-    pub const DECL_VAR: u8 = 0x30;
-    pub const COND_OP: u8 = 0x31;
-    pub const LOOP_START: u8 = 0x32;
+    pub const COND_OP: u8 = 0x30;
+    pub const LOOP_START: u8 = 0x31;
 
     pub fn get_inst_size(inst: u8) -> Option<usize> {
         match inst {
             CREATE_CONTEXT => Some(1),
             CONSTRUCT | CREATE_OBJECT | PUSH_CONST | PUSH_INT32 | CREATE_ARRAY | JMP_IF_FALSE
-            | LOOP_START | JMP | DECL_VAR | SET_NAME | GET_NAME | CALL => Some(5),
+            | LOOP_START | JMP | SET_NAME | GET_NAME | CALL => Some(5),
             PUSH_INT8 => Some(2),
             PUSH_FALSE | END | PUSH_TRUE | PUSH_THIS | ADD | SUB | MUL | DIV | REM | LT
             | PUSH_ARGUMENTS | NEG | POSI | GT | LE | GE | EQ | NE | GET_MEMBER | RETURN | SNE
@@ -312,22 +311,6 @@ impl ByteCodeGen {
         self.gen_int32(id as i32, iseq);
     }
 
-    pub fn gen_decl_var(&mut self, name: &String, iseq: &mut ByteCode) {
-        let id = (|| {
-            for (i, string) in self.const_table.string.iter().enumerate() {
-                if name == string {
-                    return i;
-                }
-            }
-
-            let id = self.const_table.string.len();
-            self.const_table.string.push(name.clone());
-            id
-        })();
-        iseq.push(VMInst::DECL_VAR);
-        self.gen_int32(id as i32, iseq);
-    }
-
     pub fn gen_cond_op(&mut self, iseq: &mut ByteCode) {
         iseq.push(VMInst::COND_OP);
     }
@@ -495,11 +478,11 @@ pub fn show(code: &ByteCode) {
                 println!("SetName");
                 i += 5;
             }
-            VMInst::DECL_VAR => {
-                println!("DeclVar");
-                i += 5;
+            VMInst::POP => {
+                println!("Pop");
+                i += 1;
             }
-            _ => unreachable!(),
+            _ => unreachable!("sorry. need to implement more opcodes"),
         }
     }
 }
