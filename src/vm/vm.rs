@@ -39,7 +39,6 @@ impl ConstantTable {
     }
 }
 
-
 impl VM {
     pub fn new(global_vals: CallObjectRef) -> VM {
         // TODO: Support for 'require' is not enough.
@@ -1096,6 +1095,9 @@ pub fn call_function(
     let mut args_all_numbers = true;
     let mut rest_args = vec![];
     let mut rest_param_name = None;
+
+    callobj.clear_args_vals();
+
     for (i, arg) in args.iter().enumerate() {
         if let Some(name) = callobj.get_parameter_nth_name(i) {
             // When rest parameter
@@ -1181,7 +1183,6 @@ fn call(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
         }
         ValueBase::Function(box (id, ref iseq, _, ref callobj)) => {
             let mut callobj = callobj.clone();
-            // callobj.vals = gc::new(FxHashMap::default());
             call_function(self_, id, iseq, &args, callobj)?;
         }
         c => {

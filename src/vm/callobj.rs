@@ -1,8 +1,8 @@
 use rustc_hash::FxHashMap;
 use std::collections::hash_map::Entry;
 
-use super::value::{Value, ValueBase};
 use super::error::RuntimeError;
+use super::value::{Value, ValueBase};
 use gc;
 
 pub type CallObjectRef = *mut CallObject;
@@ -40,6 +40,16 @@ impl CallObject {
             *(*callobj).this = Value::new(ValueBase::Object(vals));
         }
         callobj
+    }
+
+    pub fn clear_args_vals(&mut self) {
+        let params = self.params.clone();
+
+        for (name, _) in params {
+            self.set_value_if_exist(name, Value::undefined());
+        }
+
+        self.arg_rest_vals.clear();
     }
 
     pub fn set_value(&mut self, name: String, val: Value) {
@@ -115,4 +125,3 @@ impl CallObject {
         None
     }
 }
-

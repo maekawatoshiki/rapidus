@@ -166,10 +166,6 @@ pub fn array_prototype_map(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject)
             }
             ValueBase::Function(box (id, ref iseq, _, ref callobj)) => {
                 let mut callobj = callobj.clone();
-                // *callobj.this = arg_this;
-                unsafe {
-                    (*callobj.vals).clear();
-                }
                 call_function(vm, id, iseq, &args_for_callback, callobj).unwrap();
             }
             _ => vm.state.stack.push(Value::undefined()),
