@@ -8,23 +8,6 @@ use vm::{
 
 use std::ffi::CString;
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct FunctionInfo {
-    pub name: String,
-    pub params: FormalParameters,
-    pub iseq: ByteCode,
-}
-
-impl FunctionInfo {
-    pub fn new(name: String, params: FormalParameters, iseq: ByteCode) -> FunctionInfo {
-        FunctionInfo {
-            name: name,
-            params: params,
-            iseq: iseq,
-        }
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct Labels {
     continue_jmp_list: Vec<isize>,
@@ -74,6 +57,7 @@ impl Labels {
 pub struct VMCodeGen {
     pub global_varmap: CallObjectRef,
     pub cur_callobj: CallObjectRef,
+    pub pending_funcs: Vec<String>,
     pub bytecode_gen: ByteCodeGen,
     pub labels: Vec<Labels>,
 }
@@ -84,6 +68,7 @@ impl VMCodeGen {
         VMCodeGen {
             global_varmap: global,
             cur_callobj: global,
+            pending_funcs: vec![],
             bytecode_gen: ByteCodeGen::new(),
             labels: vec![Labels::new()],
         }
@@ -117,7 +102,7 @@ impl VMCodeGen {
                 self.run_statement_list(node_list, iseq, use_value)
             }
             &NodeBase::FunctionDecl(ref name, ref params, ref body) => {
-                self.run_function_decl(name, params, &*body, iseq)
+                self.run_function_decl(name, params, &*body)
             }
             &NodeBase::FunctionExpr(ref name, ref params, ref body) => {
                 self.run_function_expr(name, params, &*body, iseq)
@@ -181,13 +166,23 @@ impl VMCodeGen {
 }
 
 impl VMCodeGen {
-    pub fn run_function_decl(
-        &mut self,
-        name: &String,
-        params: &FormalParameters,
-        body: &Node,
-        iseq: &mut ByteCode,
-    ) {
+    fn set_functions_callobj(&mut self, iseq: &mut ByteCode) {
+        let mut section_callobj_set = vec![];
+        while let Some(func_name) = self.pending_funcs.pop() {
+            self.bytecode_gen
+                .gen_get_name(&func_name, &mut section_callobj_set);
+            self.bytecode_gen
+                .gen_set_cur_callobj(&mut section_callobj_set);
+            self.bytecode_gen
+                .gen_set_name(&func_name, &mut section_callobj_set);
+        }
+        iseq.splice(1..1, section_callobj_set);
+    }
+
+    pub fn run_function_decl(&mut self, name: &String, params: &FormalParameters, body: &Node) {
+        let save_pending_funcs = self.pending_funcs.clone();
+        self.pending_funcs = vec![];
+
         let parent_callobj = self.cur_callobj;
         let mut new_callobj =
             CallObject::new(unsafe { Value::object((*self.global_varmap).vals.clone()) });
@@ -223,17 +218,18 @@ impl VMCodeGen {
                 .collect();
         }
 
+        self.set_functions_callobj(&mut func_iseq);
+
         let val = Value::function(id::get_unique_id(), func_iseq.clone(), unsafe {
             (*self.cur_callobj).clone()
         });
 
-        self.bytecode_gen.gen_get_name(&name.clone(), iseq);
-        self.bytecode_gen.gen_set_cur_callobj(iseq);
-        self.bytecode_gen.gen_set_name(&name.clone(), iseq);
-
         unsafe { (*parent_callobj).set_value(name.clone(), val.clone()) }
 
         self.cur_callobj = parent_callobj;
+        self.pending_funcs = save_pending_funcs;
+
+        self.pending_funcs.push(name.clone())
     }
 
     pub fn run_function_expr(
@@ -244,6 +240,9 @@ impl VMCodeGen {
         body: &Node,
         iseq: &mut ByteCode,
     ) {
+        let save_pending_funcs = self.pending_funcs.clone();
+        self.pending_funcs = vec![];
+
         let parent_callobj = self.cur_callobj;
         let mut new_callobj =
             CallObject::new(unsafe { Value::object((*self.global_varmap).vals.clone()) });
@@ -264,6 +263,8 @@ impl VMCodeGen {
                 self.bytecode_gen.gen_return(&mut func_iseq);
             }
         }
+
+        self.set_functions_callobj(&mut func_iseq);
 
         unsafe {
             (*self.cur_callobj).params = params
@@ -287,6 +288,7 @@ impl VMCodeGen {
         self.bytecode_gen.gen_set_cur_callobj(iseq);
 
         self.cur_callobj = parent_callobj;
+        self.pending_funcs = save_pending_funcs;
     }
 
     pub fn run_return(&mut self, val: &Option<Box<Node>>, iseq: &mut ByteCode) {

@@ -548,6 +548,9 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
             };
 
             // similar code is used some times. should make it a function.
+            callobj.clear_args_vals();
+            callobj.vals = gc::new(unsafe { (*callobj.vals).clone() });
+
             let mut args = vec![];
             let mut rest_args = vec![];
             let mut rest_param_name = None;
@@ -593,24 +596,13 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
             self_.cur_func_id = save_id;
             self_.state.scope.pop();
 
-            match self_.state.stack.last_mut().unwrap() {
-                &mut Value {
-                    val: ValueBase::Object(_),
-                    ..
-                }
-                | &mut Value {
-                    val: ValueBase::Array(_),
-                    ..
-                }
-                | &mut Value {
-                    val: ValueBase::Function(box (_, _, _, _)),
-                    ..
-                }
-                | &mut Value {
-                    val: ValueBase::BuiltinFunction(box (_, _, _)),
-                    ..
-                } => {}
-                others => *others = Value::object(new_this),
+            let ret = self_.state.stack.last_mut().unwrap();
+            match &ret.val {
+                &ValueBase::Object(_)
+                | &ValueBase::Array(_)
+                | &ValueBase::Function(_)
+                | &ValueBase::BuiltinFunction(_) => {}
+                _ => *ret = Value::object(new_this),
             };
         }
         c => {
@@ -1004,7 +996,9 @@ fn set_member(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
     let val = self_.state.stack.pop().unwrap();
     // TODO: The following code should be a function (like Value::set_property).
     match parent.val {
-        ValueBase::Object(map) | ValueBase::Function(box (_, _, map, _)) => unsafe {
+        ValueBase::Object(map)
+        | ValueBase::Function(box (_, _, map, _))
+        | ValueBase::BuiltinFunction(box (_, map, _)) => unsafe {
             *(*map)
                 .entry(member.to_string())
                 .or_insert_with(|| Value::undefined()) = val;
