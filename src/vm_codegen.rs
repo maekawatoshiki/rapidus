@@ -184,8 +184,7 @@ impl VMCodeGen {
         self.pending_funcs = vec![];
 
         let parent_callobj = self.cur_callobj;
-        let mut new_callobj =
-            CallObject::new(unsafe { Value::object((*self.global_varmap).vals.clone()) });
+        let mut new_callobj = CallObject::new(unsafe { Value::object((*self.global_varmap).vals) });
         new_callobj.parent = Some(parent_callobj);
         self.cur_callobj = gc::new(new_callobj);
 
@@ -244,8 +243,7 @@ impl VMCodeGen {
         self.pending_funcs = vec![];
 
         let parent_callobj = self.cur_callobj;
-        let mut new_callobj =
-            CallObject::new(unsafe { Value::object((*self.global_varmap).vals.clone()) });
+        let mut new_callobj = CallObject::new(unsafe { Value::object((*self.global_varmap).vals) });
         new_callobj.parent = Some(parent_callobj);
         self.cur_callobj = gc::new(new_callobj);
 

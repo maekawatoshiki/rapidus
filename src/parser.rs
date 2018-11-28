@@ -952,6 +952,13 @@ impl Parser {
             return Ok(Node::new(NodeBase::Return(None), pos));
         }
 
+        // TODO: Better way
+        let tok = self.lexer.next()?;
+        if let Kind::Symbol(Symbol::ClosingBrace) = tok.kind {
+            self.lexer.unget(&tok);
+            return Ok(Node::new(NodeBase::Return(None), pos));
+        }
+
         let expr = self.read_expression()?;
         self.lexer.skip(Kind::Symbol(Symbol::Semicolon));
 
