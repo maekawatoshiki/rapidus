@@ -952,10 +952,7 @@ impl Parser {
             return Ok(Node::new(NodeBase::Return(None), pos));
         }
 
-        // TODO: Better way
-        let tok = self.lexer.next()?;
-        if let Kind::Symbol(Symbol::ClosingBrace) = tok.kind {
-            self.lexer.unget(&tok);
+        if self.lexer.peek()?.kind == Kind::Symbol(Symbol::ClosingBrace) {
             return Ok(Node::new(NodeBase::Return(None), pos));
         }
 
@@ -1855,6 +1852,20 @@ fn function_decl() {
                     "f".to_string(),
                     vec![],
                     Box::new(Node::new(NodeBase::StatementList(vec![]), 14)),
+                ),
+                8,
+            ),
+        ),
+        (
+            "function f() { return }",
+            Node::new(
+                NodeBase::FunctionDecl(
+                    "f".to_string(),
+                    vec![],
+                    Box::new(Node::new(
+                        NodeBase::StatementList(vec![Node::new(NodeBase::Return(None), 21)]),
+                        14,
+                    )),
                 ),
                 8,
             ),
