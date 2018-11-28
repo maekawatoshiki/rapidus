@@ -511,12 +511,12 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
     self_.state.pc += 1; // construct
     get_int32!(self_, iseq, argc, usize);
 
+    let callee = self_.state.stack.pop().unwrap();
+
     let mut args = vec![];
     for _ in 0..argc {
         args.push(self_.state.stack.pop().unwrap());
     }
-
-    let callee = self_.state.stack.pop().unwrap();
 
     match callee.val.clone() {
         ValueBase::BuiltinFunction(box (x, obj, mut callobj)) => {
