@@ -70,6 +70,45 @@ impl Node {
             pos: pos,
         }
     }
+
+    pub fn definitely_returns(&self) -> bool {
+        match self.base {
+            NodeBase::StatementList(ref body) => match body.last() {
+                Some(node) => node.definitely_returns(),
+                None => false,
+            },
+            NodeBase::FunctionExpr(_, _, ref body) | NodeBase::FunctionDecl(_, _, ref body) => {
+                body.definitely_returns()
+            }
+            NodeBase::If(_, ref then_, ref else_) => {
+                then_.definitely_returns() && else_.definitely_returns()
+            }
+            NodeBase::Return(_) => true,
+            NodeBase::Array(_)
+            | NodeBase::Object(_)
+            | NodeBase::Identifier(_)
+            | NodeBase::This
+            | NodeBase::Arguments
+            | NodeBase::Undefined
+            | NodeBase::String(_)
+            | NodeBase::Boolean(_)
+            | NodeBase::Number(_)
+            | NodeBase::Nope
+            | NodeBase::Break
+            | NodeBase::Continue
+            | NodeBase::Assign(_, _)
+            | NodeBase::UnaryOp(_, _)
+            | NodeBase::BinaryOp(_, _, _)
+            | NodeBase::TernaryOp(_, _, _)
+            | NodeBase::While(_, _)
+            | NodeBase::For(_, _, _, _)
+            | NodeBase::New(_)
+            | NodeBase::Call(_, _)
+            | NodeBase::VarDecl(_, _)
+            | NodeBase::Member(_, _)
+            | NodeBase::Index(_, _) => false,
+        }
+    }
 }
 
 impl NodeBase {

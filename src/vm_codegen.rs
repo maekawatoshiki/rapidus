@@ -194,13 +194,10 @@ impl VMCodeGen {
 
         self.run(body, &mut func_iseq, false);
 
-        match func_iseq.last() {
-            Some(&VMInst::RETURN) => {}
-            _ => {
-                self.bytecode_gen
-                    .gen_push_const(Value::undefined(), &mut func_iseq);
-                self.bytecode_gen.gen_return(&mut func_iseq);
-            }
+        if !body.definitely_returns() {
+            self.bytecode_gen
+                .gen_push_const(Value::undefined(), &mut func_iseq);
+            self.bytecode_gen.gen_return(&mut func_iseq);
         }
 
         unsafe {
@@ -253,13 +250,10 @@ impl VMCodeGen {
 
         self.run(body, &mut func_iseq, false);
 
-        match func_iseq.last() {
-            Some(&VMInst::RETURN) => {}
-            _ => {
-                self.bytecode_gen
-                    .gen_push_const(Value::undefined(), &mut func_iseq);
-                self.bytecode_gen.gen_return(&mut func_iseq);
-            }
+        if !body.definitely_returns() {
+            self.bytecode_gen
+                .gen_push_const(Value::undefined(), &mut func_iseq);
+            self.bytecode_gen.gen_return(&mut func_iseq);
         }
 
         self.set_functions_callobj(&mut func_iseq);
