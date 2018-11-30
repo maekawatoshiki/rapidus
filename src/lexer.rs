@@ -139,45 +139,76 @@ impl Lexer {
     pub fn read_number(&mut self) -> Result<Token, Error> {
         let pos = self.pos;
         self.pos_line_list.push((pos, self.line));
-        let mut is_float = false;
-        let mut last = ' ';
-        let num = self.skip_while(|c| {
-            let is_f = "eE".contains(last) && "+-0123456789".contains(c);
-            let is_end_of_num = !c.is_alphanumeric() && c != '.' && !is_f;
-            is_float = is_float || is_f || c == '.';
-            last = c;
-            !is_end_of_num
-        })?;
 
-        macro_rules! verify {
-            ( $( $valid_chars:pat ),* ) => {
-                num.chars().all(|c| match c.to_ascii_lowercase() {
-                    $( $valid_chars )|* => true,
-                    _ => false,
-                })
-            }
+        #[derive(Debug, Clone, PartialEq)]
+        enum NumLiteralKind {
+            Hex,
+            Dec,
+            Oct,
+            OldOct,
+            Bin,
         }
 
-        let num: f64 = if is_float {
-            num.parse().unwrap()
-        } else if num.len() > 2
-            && num.chars().nth(1).unwrap().to_ascii_lowercase() == 'x'
-            && verify!('0'...'9', 'a'...'f', 'x')
-        {
-            self.read_hex_num(&num[2..]) as f64
-        } else if num.len() > 2
-            && num.chars().nth(1).unwrap().to_ascii_lowercase() == 'b'
-            && verify!('0'...'1', 'b')
-        {
-            self.read_bin_num(&num[2..]) as f64
-        } else if num.chars().nth(0).unwrap() == '0' && verify!('0'...'7') {
-            self.read_oct_num(&num[1..]) as f64
-        } else if (num.len() > 2 && num.chars().nth(1).unwrap().to_ascii_lowercase() == 'o')
-            && verify!('0'...'7', 'o')
-        {
-            self.read_oct_num(&num[2..]) as f64
-        } else {
-            self.read_dec_num(num.as_str()) as f64
+        let mut kind = NumLiteralKind::Dec;
+        let mut num_literal = "".to_string();
+
+        match self.skip_char()? {
+            '0' => {
+                let c = self.next_char()?;
+                match c {
+                    'x' | 'X' => kind = NumLiteralKind::Hex,
+                    'b' | 'B' => kind = NumLiteralKind::Bin,
+                    'o' | 'O' => kind = NumLiteralKind::Oct,
+                    '0'...'7' => {
+                        kind = NumLiteralKind::OldOct;
+                        num_literal.push(c);
+                    }
+                    '.' => num_literal.push('.'),
+                    _ => return Ok(Token::new_number(0.0, pos)),
+                }
+                self.skip_char()?;
+            }
+            c => num_literal.push(c),
+        }
+
+        macro_rules! read_num {
+            ( $($valid_chars:pat),* ) => {
+                self.skip_while(|c| match c.to_ascii_lowercase() {
+                    $( $valid_chars )|* => true,
+                    _ => false }
+                )?
+            };
+        }
+
+        num_literal += match kind {
+            NumLiteralKind::Hex => read_num!('0'...'9', 'a'...'f'),
+            NumLiteralKind::Oct => read_num!('0'...'7'),
+            NumLiteralKind::Bin => read_num!('0'...'1'),
+            NumLiteralKind::OldOct => self.skip_while(|c| match c {
+                '0'...'7' => true,
+                '8'...'9' => {
+                    kind = NumLiteralKind::Dec;
+                    true
+                }
+                _ => false,
+            })?,
+            NumLiteralKind::Dec => {
+                let mut last = ' ';
+                self.skip_while(|c| {
+                    let is_f = "eE".contains(last) && "+-0123456789".contains(c);
+                    last = c;
+                    c.is_alphanumeric() || c == '.' || is_f
+                })?
+            }
+        }.as_str();
+
+        let num = match kind {
+            NumLiteralKind::Dec => num_literal.parse().unwrap(),
+            NumLiteralKind::Hex => self.read_hex_num(num_literal.as_str()) as f64,
+            NumLiteralKind::Oct | NumLiteralKind::OldOct => {
+                self.read_oct_num(num_literal.as_str()) as f64
+            }
+            NumLiteralKind::Bin => self.read_bin_num(num_literal.as_str()) as f64,
         };
 
         Ok(Token::new_number(num, pos))
@@ -188,15 +219,6 @@ impl Lexer {
             .chars()
             .fold(0, |n, c| match c.to_ascii_lowercase() {
                 '0'...'9' | 'A'...'F' | 'a'...'f' => n * 16 + c.to_digit(16).unwrap() as i64,
-                _ => n,
-            })
-    }
-
-    fn read_dec_num(&mut self, num_literal: &str) -> i64 {
-        num_literal
-            .chars()
-            .fold(0, |n, c| match c.to_ascii_lowercase() {
-                '0'...'9' => n * 10 + c.to_digit(10).unwrap() as i64,
                 _ => n,
             })
     }
