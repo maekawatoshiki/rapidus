@@ -143,6 +143,7 @@ impl VMCodeGen {
             &NodeBase::This => self.bytecode_gen.gen_push_this(iseq),
             &NodeBase::Arguments => self.bytecode_gen.gen_push_arguments(iseq),
             &NodeBase::Undefined => self.bytecode_gen.gen_push_undefined(iseq),
+            &NodeBase::Null => self.bytecode_gen.gen_push_const(Value::null(), iseq),
             &NodeBase::String(ref s) => self
                 .bytecode_gen
                 .gen_push_const(Value::string(CString::new(s.as_str()).unwrap()), iseq),
@@ -206,8 +207,7 @@ impl VMCodeGen {
         self.run(body, &mut func_iseq, false);
 
         if !body.definitely_returns() {
-            self.bytecode_gen
-                .gen_push_const(Value::undefined(), &mut func_iseq);
+            self.bytecode_gen.gen_push_undefined(&mut func_iseq);
             self.bytecode_gen.gen_return(&mut func_iseq);
         }
 
@@ -254,8 +254,7 @@ impl VMCodeGen {
         self.run(body, &mut func_iseq, false);
 
         if !body.definitely_returns() {
-            self.bytecode_gen
-                .gen_push_const(Value::undefined(), &mut func_iseq);
+            self.bytecode_gen.gen_push_undefined(&mut func_iseq);
             self.bytecode_gen.gen_return(&mut func_iseq);
         }
 
@@ -285,7 +284,7 @@ impl VMCodeGen {
         if let &Some(ref val) = val {
             self.run(&*val, iseq, true)
         } else {
-            self.bytecode_gen.gen_push_const(Value::undefined(), iseq);
+            self.bytecode_gen.gen_push_undefined(iseq);
         }
         self.bytecode_gen.gen_return(iseq);
     }
@@ -330,7 +329,7 @@ impl VMCodeGen {
         if let &Some(ref init) = init {
             self.run(&*init, iseq, true);
         } else {
-            self.bytecode_gen.gen_push_const(Value::undefined(), iseq);
+            self.bytecode_gen.gen_push_undefined(iseq);
         }
         self.func_header_info
             .last_mut()

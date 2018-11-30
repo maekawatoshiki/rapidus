@@ -57,6 +57,7 @@ pub enum NodeBase {
     This,
     Arguments,
     Undefined,
+    Null,
     String(String),
     Boolean(bool),
     Number(f64),
@@ -88,6 +89,7 @@ impl Node {
             | NodeBase::Object(_)
             | NodeBase::Identifier(_)
             | NodeBase::This
+            | NodeBase::Null
             | NodeBase::Arguments
             | NodeBase::Undefined
             | NodeBase::String(_)
