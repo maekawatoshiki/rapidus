@@ -34,7 +34,7 @@ pub enum ValueBase {
     Undefined,
     Bool(bool),
     Number(f64),
-    String(CString),
+    String(CString), // TODO: Using CString is good for JIT. However, we need better one instead.
     Function(Box<(FuncId, ByteCode, *mut FxHashMap<String, Value>, CallObject)>),
     BuiltinFunction(Box<(BuiltinFuncInfo, *mut FxHashMap<String, Value>, CallObject)>), // id(==0:unknown)
     Object(*mut FxHashMap<String, Value>), // Object(FxHashMap<String, Value>),
