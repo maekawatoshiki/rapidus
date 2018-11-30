@@ -153,6 +153,7 @@ impl Lexer {
         let mut num_literal = "".to_string();
 
         match self.skip_char()? {
+            '0' if self.eof() => return Ok(Token::new_number(0.0, pos)),
             '0' => {
                 let c = self.next_char()?;
                 match c {
@@ -164,6 +165,7 @@ impl Lexer {
                         num_literal.push(c);
                     }
                     '.' => num_literal.push('.'),
+                    '8'...'9' => num_literal.push(c),
                     _ => return Ok(Token::new_number(0.0, pos)),
                 }
                 self.skip_char()?;
