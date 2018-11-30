@@ -1,5 +1,4 @@
 use bytecode_gen::{ByteCode, ByteCodeGen, VMInst};
-use gc;
 use id;
 use node::{BinOp, FormalParameter, FormalParameters, Node, NodeBase, PropertyDefinition, UnaryOp};
 use vm::{
@@ -54,10 +53,15 @@ impl Labels {
 }
 
 #[derive(Clone, Debug)]
+pub enum FunctionHeaderInst {
+    Closure(String, Value),
+    DeclVar(String),
+}
+
+#[derive(Clone, Debug)]
 pub struct VMCodeGen {
     pub global_varmap: CallObjectRef,
-    pub cur_callobj: CallObjectRef,
-    pub pending_funcs: Vec<String>,
+    pub func_header_info: Vec<Vec<FunctionHeaderInst>>,
     pub bytecode_gen: ByteCodeGen,
     pub labels: Vec<Labels>,
 }
@@ -67,8 +71,7 @@ impl VMCodeGen {
         let global = CallObject::new_global();
         VMCodeGen {
             global_varmap: global,
-            cur_callobj: global,
-            pending_funcs: vec![],
+            func_header_info: vec![vec![]],
             bytecode_gen: ByteCodeGen::new(),
             labels: vec![Labels::new()],
         }
@@ -82,6 +85,8 @@ impl VMCodeGen {
         self.run(node, iseq, use_value);
 
         self.bytecode_gen.gen_end(iseq);
+
+        self.set_function_header(iseq);
     }
 
     fn run(&mut self, node: &Node, iseq: &mut ByteCode, use_value: bool) {
@@ -166,28 +171,34 @@ impl VMCodeGen {
 }
 
 impl VMCodeGen {
-    fn set_functions_callobj(&mut self, iseq: &mut ByteCode) {
+    fn set_function_header(&mut self, iseq: &mut ByteCode) {
         let mut section_callobj_set = vec![];
-        while let Some(func_name) = self.pending_funcs.pop() {
-            self.bytecode_gen
-                .gen_get_name(&func_name, &mut section_callobj_set);
-            self.bytecode_gen
-                .gen_set_cur_callobj(&mut section_callobj_set);
-            self.bytecode_gen
-                .gen_set_name(&func_name, &mut section_callobj_set);
+        let func_header_info = self.func_header_info.last_mut().unwrap();
+        while let Some(header) = func_header_info.pop() {
+            match header {
+                FunctionHeaderInst::Closure(func_name, val) => {
+                    self.bytecode_gen
+                        .gen_decl_var(&func_name, &mut section_callobj_set);
+                    self.bytecode_gen
+                        .gen_push_const(val, &mut section_callobj_set);
+                    self.bytecode_gen
+                        .gen_set_cur_callobj(&mut section_callobj_set);
+                    self.bytecode_gen
+                        .gen_set_name(&func_name, &mut section_callobj_set);
+                }
+                FunctionHeaderInst::DeclVar(var_name) => {
+                    self.bytecode_gen
+                        .gen_decl_var(&var_name, &mut section_callobj_set);
+                }
+            }
         }
         iseq.splice(1..1, section_callobj_set);
     }
 
     pub fn run_function_decl(&mut self, name: &String, params: &FormalParameters, body: &Node) {
-        let save_pending_funcs = self.pending_funcs.clone();
-        self.pending_funcs = vec![];
+        self.func_header_info.push(vec![]);
 
-        let parent_callobj = self.cur_callobj;
         let mut new_callobj = CallObject::new(unsafe { Value::object((*self.global_varmap).vals) });
-        new_callobj.parent = Some(parent_callobj);
-        self.cur_callobj = gc::new(new_callobj);
-
         let mut func_iseq = vec![];
 
         self.bytecode_gen.gen_create_context(&mut func_iseq);
@@ -200,32 +211,28 @@ impl VMCodeGen {
             self.bytecode_gen.gen_return(&mut func_iseq);
         }
 
-        unsafe {
-            (*self.cur_callobj).params = params
-                .clone()
-                .iter()
-                .map(
-                    |FormalParameter {
-                         name,
-                         is_rest_param,
-                         ..
-                     }| (name.clone(), *is_rest_param),
-                )
-                .collect();
-        }
+        new_callobj.params = params
+            .clone()
+            .iter()
+            .map(
+                |FormalParameter {
+                     name,
+                     is_rest_param,
+                     ..
+                 }| (name.clone(), *is_rest_param),
+            )
+            .collect();
 
-        self.set_functions_callobj(&mut func_iseq);
+        self.set_function_header(&mut func_iseq);
 
-        let val = Value::function(id::get_unique_id(), func_iseq.clone(), unsafe {
-            (*self.cur_callobj).clone()
-        });
+        let val = Value::function(id::get_unique_id(), func_iseq.clone(), new_callobj);
 
-        unsafe { (*parent_callobj).set_value(name.clone(), val.clone()) }
+        self.func_header_info.pop();
 
-        self.cur_callobj = parent_callobj;
-        self.pending_funcs = save_pending_funcs;
-
-        self.pending_funcs.push(name.clone())
+        self.func_header_info
+            .last_mut()
+            .unwrap()
+            .push(FunctionHeaderInst::Closure(name.clone(), val))
     }
 
     pub fn run_function_expr(
@@ -236,13 +243,9 @@ impl VMCodeGen {
         body: &Node,
         iseq: &mut ByteCode,
     ) {
-        let save_pending_funcs = self.pending_funcs.clone();
-        self.pending_funcs = vec![];
+        self.func_header_info.push(vec![]);
 
-        let parent_callobj = self.cur_callobj;
         let mut new_callobj = CallObject::new(unsafe { Value::object((*self.global_varmap).vals) });
-        new_callobj.parent = Some(parent_callobj);
-        self.cur_callobj = gc::new(new_callobj);
 
         let mut func_iseq = vec![];
 
@@ -256,31 +259,26 @@ impl VMCodeGen {
             self.bytecode_gen.gen_return(&mut func_iseq);
         }
 
-        self.set_functions_callobj(&mut func_iseq);
+        new_callobj.params = params
+            .clone()
+            .iter()
+            .map(
+                |FormalParameter {
+                     name,
+                     is_rest_param,
+                     ..
+                 }| (name.clone(), *is_rest_param),
+            )
+            .collect();
 
-        unsafe {
-            (*self.cur_callobj).params = params
-                .clone()
-                .iter()
-                .map(
-                    |FormalParameter {
-                         name,
-                         is_rest_param,
-                         ..
-                     }| (name.clone(), *is_rest_param),
-                )
-                .collect();
-        }
+        self.set_function_header(&mut func_iseq);
 
-        let val = Value::function(id::get_unique_id(), func_iseq.clone(), unsafe {
-            (*self.cur_callobj).clone()
-        });
+        let val = Value::function(id::get_unique_id(), func_iseq.clone(), new_callobj);
 
         self.bytecode_gen.gen_push_const(val, iseq);
         self.bytecode_gen.gen_set_cur_callobj(iseq);
 
-        self.cur_callobj = parent_callobj;
-        self.pending_funcs = save_pending_funcs;
+        self.func_header_info.pop();
     }
 
     pub fn run_return(&mut self, val: &Option<Box<Node>>, iseq: &mut ByteCode) {
@@ -334,9 +332,10 @@ impl VMCodeGen {
         } else {
             self.bytecode_gen.gen_push_const(Value::undefined(), iseq);
         }
-        unsafe {
-            (*self.cur_callobj).set_value(name.clone(), Value::undefined());
-        }
+        self.func_header_info
+            .last_mut()
+            .unwrap()
+            .push(FunctionHeaderInst::DeclVar(name.clone()));
         self.bytecode_gen.gen_set_name(name, iseq);
     }
 }
@@ -394,7 +393,7 @@ impl VMCodeGen {
             .gen_jmp((pos1 - loop_pos) as i32 - 5, iseq);
 
         self.bytecode_gen.replace_int32(
-            iseq.len() as i32,
+            iseq.len() as i32 - pos1 as i32,
             &mut iseq[pos1 as usize + 1..pos1 as usize + 5],
         );
 
@@ -451,7 +450,7 @@ impl VMCodeGen {
         self.bytecode_gen.gen_jmp((pos - loop_pos) as i32 - 5, iseq);
 
         self.bytecode_gen.replace_int32(
-            iseq.len() as i32,
+            iseq.len() as i32 - pos as i32,
             &mut iseq[pos as usize + 1..pos as usize + 5],
         );
 

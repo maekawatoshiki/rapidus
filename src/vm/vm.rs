@@ -14,7 +14,7 @@ pub struct VM {
     pub state: VMState,
     pub const_table: ConstantTable,
     pub cur_func_id: FuncId, // id == 0: main
-    pub op_table: [fn(&mut VM, &ByteCode) -> Result<(), RuntimeError>; 50],
+    pub op_table: [fn(&mut VM, &ByteCode) -> Result<(), RuntimeError>; 51],
 }
 
 pub struct VMState {
@@ -443,6 +443,7 @@ impl VM {
                 set_cur_callobj,
                 get_name,
                 set_name,
+                decl_var,
                 cond_op,
                 loop_start,
             ],
@@ -1211,6 +1212,14 @@ fn set_name(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
     Ok(())
 }
 
+fn decl_var(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
+    self_.state.pc += 1;
+    get_int32!(self_, iseq, name_id, usize);
+    let name = self_.const_table.string[name_id].clone();
+    unsafe { (**self_.state.scope.last().unwrap()).set_value(name, Value::undefined()) };
+    Ok(())
+}
+
 // 'cond_op' is for JIT compiler. Nope for VM.
 fn cond_op(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
     self_.state.pc += 1;
@@ -1221,7 +1230,8 @@ fn loop_start(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
     let loop_start = self_.state.pc as usize;
 
     self_.state.pc += 1;
-    get_int32!(self_, iseq, loop_end, usize);
+    get_int32!(self_, iseq, relatinal_loop_end, usize);
+    let loop_end = loop_start + relatinal_loop_end;
 
     let id = self_.cur_func_id;
 
