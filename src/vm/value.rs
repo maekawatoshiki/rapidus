@@ -3,11 +3,9 @@ use std::ffi::CString;
 
 // use cpuprofiler::PROFILER;
 
-use super::{
-    callobj::{CallObject, CallObjectRef}, vm::VM,
-};
+use super::callobj::{CallObject, CallObjectRef};
 use builtin;
-use builtin::Builtins;
+use builtin::{BuiltinFuncInfo, BuiltinFuncTy, BuiltinJITFuncInfo};
 use builtins::function;
 use bytecode_gen::ByteCode;
 use gc;
@@ -16,8 +14,6 @@ use id::Id;
 pub type FuncId = Id;
 
 pub type RawStringPtr = *mut libc::c_char;
-
-pub type BuiltinFuncTy = fn(&mut VM, &Vec<Value>, &CallObject);
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Value {
@@ -47,12 +43,6 @@ pub struct ArrayValue {
     pub elems: Vec<Value>,
     pub length: usize,
     pub obj: FxHashMap<String, Value>,
-}
-
-#[derive(Clone)]
-pub struct BuiltinFuncInfo {
-    pub func: BuiltinFuncTy,
-    pub id: Builtins,
 }
 
 impl Value {
@@ -130,10 +120,24 @@ impl Value {
         val
     }
 
-    pub fn builtin_function(func: BuiltinFuncTy, id: Builtins, callobj: CallObject) -> Value {
+    pub fn builtin_function_with_jit(
+        func: BuiltinFuncTy,
+        builtin_jit_func_info: BuiltinJITFuncInfo,
+        callobj: CallObject,
+    ) -> Value {
         Value::builtin_function_with_obj_and_prototype(
             func,
-            id,
+            Some(builtin_jit_func_info),
+            callobj,
+            FxHashMap::default(),
+            Value::new(ValueBase::Object(gc::new(FxHashMap::default()))),
+        )
+    }
+
+    pub fn builtin_function(func: BuiltinFuncTy, callobj: CallObject) -> Value {
+        Value::builtin_function_with_obj_and_prototype(
+            func,
+            None,
             callobj,
             FxHashMap::default(),
             Value::new(ValueBase::Object(gc::new(FxHashMap::default()))),
@@ -142,7 +146,7 @@ impl Value {
 
     pub fn builtin_function_with_obj_and_prototype(
         func: BuiltinFuncTy,
-        id: Builtins,
+        builtin_jit_func_info: Option<BuiltinJITFuncInfo>,
         callobj: CallObject,
         mut obj: FxHashMap<String, Value>,
         prototype: Value,
@@ -155,10 +159,7 @@ impl Value {
                 hm.insert(
                     "apply".to_string(),
                     Value::new(ValueBase::BuiltinFunction(Box::new((
-                        BuiltinFuncInfo::new(
-                            builtin::function_prototype_apply,
-                            builtin::Builtins::FunctionPrototypeApply,
-                        ),
+                        BuiltinFuncInfo::new(builtin::function_prototype_apply, None),
                         ::std::ptr::null_mut(),
                         CallObject::new(Value::undefined()),
                     )))),
@@ -166,10 +167,7 @@ impl Value {
                 hm.insert(
                     "call".to_string(),
                     Value::new(ValueBase::BuiltinFunction(Box::new((
-                        BuiltinFuncInfo::new(
-                            builtin::function_prototype_call,
-                            builtin::Builtins::FunctionPrototypeCall,
-                        ),
+                        BuiltinFuncInfo::new(builtin::function_prototype_call, None),
                         ::std::ptr::null_mut(),
                         CallObject::new(Value::undefined()),
                     )))),
@@ -193,7 +191,7 @@ impl Value {
         }
 
         Value::new(ValueBase::BuiltinFunction(Box::new((
-            BuiltinFuncInfo::new(func, id),
+            BuiltinFuncInfo::new(func, builtin_jit_func_info),
             gc::new(obj),
             callobj,
         ))))
@@ -503,24 +501,6 @@ impl ArrayValue {
     pub fn push(&mut self, val: Value) {
         self.elems.push(val);
         self.length += 1;
-    }
-}
-
-impl BuiltinFuncInfo {
-    pub fn new(func: BuiltinFuncTy, id: Builtins) -> BuiltinFuncInfo {
-        BuiltinFuncInfo { func, id }
-    }
-}
-
-impl PartialEq for BuiltinFuncInfo {
-    fn eq(&self, other: &BuiltinFuncInfo) -> bool {
-        self.id == other.id
-    }
-}
-
-impl ::std::fmt::Debug for BuiltinFuncInfo {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        write!(f, "[BuiltinFunction]")
     }
 }
 

@@ -1,4 +1,3 @@
-use builtin;
 use gc;
 use vm::{
     callobj::CallObject, value::{ArrayValue, Value, ValueBase}, vm::{call_function, VM},
@@ -14,7 +13,6 @@ thread_local!(
             "push".to_string(),
             Value::builtin_function(
                 array_prototype_push,
-                builtin::Builtins::ArrayPrototypePush,
                 CallObject::new(Value::new(ValueBase::Undefined)),
             ),
         );
@@ -23,7 +21,6 @@ thread_local!(
             "pop".to_string(),
             Value::builtin_function(
                 array_prototype_pop,
-                builtin::Builtins::ArrayPrototypePop,
                 CallObject::new(Value::new(ValueBase::Undefined)),
             ),
         );
@@ -32,7 +29,6 @@ thread_local!(
             "map".to_string(),
             Value::builtin_function(
                 array_prototype_map,
-                builtin::Builtins::ArrayPrototypeMap,
                 CallObject::new(Value::new(ValueBase::Undefined)),
             ),
         );
@@ -50,7 +46,7 @@ thread_local!(
         let prototype = ArrayValue::prototype();
         let array = Value::builtin_function_with_obj_and_prototype(
             array_new,
-            builtin::Builtins::ArrayNew,
+            None,
             CallObject::new(Value::undefined()),
             {
                 let obj = FxHashMap::default();

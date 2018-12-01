@@ -12,7 +12,6 @@ thread_local!(
             "apply".to_string(),
             Value::builtin_function(
                 builtin::function_prototype_apply,
-                builtin::Builtins::FunctionPrototypeApply,
                 CallObject::new(Value::undefined()),
             ),
         );
@@ -21,7 +20,6 @@ thread_local!(
             "call".to_string(),
             Value::builtin_function(
                 builtin::function_prototype_call,
-                builtin::Builtins::FunctionPrototypeCall,
                 CallObject::new(Value::undefined()),
             ),
         );
@@ -31,7 +29,6 @@ thread_local!(
     //     let prototype = FUNCTION_PROTOTYPE.with(|x|*x);
     //     let function = Value::builtin_function_with_obj_and_prototype(
     //         function_new,
-    //         builtin::Builtins::FunctionNew,
     //         CallObject::new(Value::undefined()),
     //         {
     //             let obj = FxHashMap::default();

@@ -1,18 +1,16 @@
-use builtin;
+use builtin::{BuiltinFuncInfo, BuiltinJITFuncInfo, BuiltinJITFuncTy};
+use builtins::math;
 use bytecode_gen::{ByteCode, VMInst};
 use id::Id;
 use vm;
 use vm::{callobj::CallObject, value::FuncId};
 
-use rand::{random, thread_rng, RngCore};
-
-use rustc_hash::{FxHashMap, FxHashSet};
-
 use libc;
 use llvm;
 use llvm::core::*;
 use llvm::prelude::*;
-
+use rand::{random, thread_rng, RngCore};
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::ffi::CString;
 use std::mem::transmute;
 use std::ptr;
@@ -143,21 +141,21 @@ impl UniquePosition {
 
 #[derive(Debug, Clone)]
 pub struct TracingJit {
-    loop_info: FxHashMap<UniquePosition, LoopInfo>,
-    func_info: FxHashMap<FuncId, FuncInfo>,
-    function_return_types: FxHashMap<usize, ValueType>,
-    count: FxHashMap<UniquePosition, usize>,
-    cur_func: Option<LLVMValueRef>,
-    builtin_funcs: FxHashMap<usize, LLVMValueRef>,
-    context: LLVMContextRef,
-    module: LLVMModuleRef,
-    builder: LLVMBuilderRef,
-    pass_manager: LLVMPassManagerRef,
+    pub loop_info: FxHashMap<UniquePosition, LoopInfo>,
+    pub func_info: FxHashMap<FuncId, FuncInfo>,
+    pub function_return_types: FxHashMap<usize, ValueType>,
+    pub count: FxHashMap<UniquePosition, usize>,
+    pub cur_func: Option<LLVMValueRef>,
+    pub context: LLVMContextRef,
+    pub module: LLVMModuleRef,
+    pub builder: LLVMBuilderRef,
+    pub pass_manager: LLVMPassManagerRef,
+    pub used_builtin_funcs: FxHashSet<(BuiltinJITFuncTy, LLVMValueRef)>,
 }
 
 impl TracingJit {
     pub unsafe fn new() -> TracingJit {
-        MATH_RAND_SEED = thread_rng().next_u64();
+        math::MATH_RAND_SEED = thread_rng().next_u64();
 
         llvm::target::LLVM_InitializeNativeTarget();
         llvm::target::LLVM_InitializeNativeAsmPrinter();
@@ -187,116 +185,7 @@ impl TracingJit {
             builder: LLVMCreateBuilderInContext(context),
             pass_manager: pm,
             cur_func: None,
-            builtin_funcs: {
-                let mut hmap = FxHashMap::default();
-
-                let f_console_log_string = LLVMAddFunction(
-                    module,
-                    CString::new("console_log_string").unwrap().as_ptr(),
-                    LLVMFunctionType(
-                        LLVMVoidType(),
-                        vec![LLVMPointerType(LLVMInt8TypeInContext(context), 0)]
-                            .as_mut_slice()
-                            .as_mut_ptr(),
-                        1,
-                        0,
-                    ),
-                );
-                hmap.insert(BUILTIN_CONSOLE_LOG_STRING, f_console_log_string);
-
-                let f_console_log_bool = LLVMAddFunction(
-                    module,
-                    CString::new("console_log_bool").unwrap().as_ptr(),
-                    LLVMFunctionType(
-                        LLVMVoidType(),
-                        vec![LLVMInt1TypeInContext(context)]
-                            .as_mut_slice()
-                            .as_mut_ptr(),
-                        1,
-                        0,
-                    ),
-                );
-                hmap.insert(BUILTIN_CONSOLE_LOG_BOOL, f_console_log_bool);
-
-                let f_console_log_f64 = LLVMAddFunction(
-                    module,
-                    CString::new("console_log_f64").unwrap().as_ptr(),
-                    LLVMFunctionType(
-                        LLVMVoidType(),
-                        vec![LLVMDoubleTypeInContext(context)]
-                            .as_mut_slice()
-                            .as_mut_ptr(),
-                        1,
-                        0,
-                    ),
-                );
-                hmap.insert(BUILTIN_CONSOLE_LOG_F64, f_console_log_f64);
-
-                let f_console_log_newline = LLVMAddFunction(
-                    module,
-                    CString::new("console_log_newline").unwrap().as_ptr(),
-                    LLVMFunctionType(LLVMVoidType(), vec![].as_mut_ptr(), 0, 0),
-                );
-                hmap.insert(BUILTIN_CONSOLE_LOG_NEWLINE, f_console_log_newline);
-
-                let f_process_stdout_write = LLVMAddFunction(
-                    module,
-                    CString::new("process_stdout_write").unwrap().as_ptr(),
-                    LLVMFunctionType(
-                        LLVMVoidType(),
-                        vec![LLVMPointerType(LLVMInt8TypeInContext(context), 0)]
-                            .as_mut_slice()
-                            .as_mut_ptr(),
-                        1,
-                        0,
-                    ),
-                );
-                hmap.insert(BUILTIN_PROCESS_STDOUT_WRITE, f_process_stdout_write);
-
-                let f_math_pow = LLVMAddFunction(
-                    module,
-                    CString::new("math_pow").unwrap().as_ptr(),
-                    LLVMFunctionType(
-                        LLVMDoubleTypeInContext(context),
-                        vec![
-                            LLVMDoubleTypeInContext(context),
-                            LLVMDoubleTypeInContext(context),
-                        ].as_mut_slice()
-                            .as_mut_ptr(),
-                        2,
-                        0,
-                    ),
-                );
-                hmap.insert(BUILTIN_MATH_POW, f_math_pow);
-
-                let f_math_floor = LLVMAddFunction(
-                    module,
-                    CString::new("math_floor").unwrap().as_ptr(),
-                    LLVMFunctionType(
-                        LLVMDoubleTypeInContext(context),
-                        vec![LLVMDoubleTypeInContext(context)]
-                            .as_mut_slice()
-                            .as_mut_ptr(),
-                        1,
-                        0,
-                    ),
-                );
-                hmap.insert(BUILTIN_MATH_FLOOR, f_math_floor);
-
-                let f_math_random = LLVMAddFunction(
-                    module,
-                    CString::new("math_random").unwrap().as_ptr(),
-                    LLVMFunctionType(
-                        LLVMDoubleTypeInContext(context),
-                        vec![].as_mut_slice().as_mut_ptr(),
-                        0,
-                        0,
-                    ),
-                );
-                hmap.insert(BUILTIN_MATH_RANDOM, f_math_random);
-
-                hmap
-            },
+            used_builtin_funcs: FxHashSet::default(),
         }
     }
 }
@@ -360,53 +249,16 @@ impl TracingJit {
         {
             panic!()
         }
+
+        // self.exec_engine = Some(ee);
         {
-            llvm::execution_engine::LLVMAddGlobalMapping(
-                ee,
-                *self.builtin_funcs.get(&BUILTIN_CONSOLE_LOG_STRING).unwrap(),
-                console_log_string as *mut libc::c_void,
-            );
-            llvm::execution_engine::LLVMAddGlobalMapping(
-                ee,
-                *self.builtin_funcs.get(&BUILTIN_CONSOLE_LOG_BOOL).unwrap(),
-                console_log_bool as *mut libc::c_void,
-            );
-            llvm::execution_engine::LLVMAddGlobalMapping(
-                ee,
-                *self.builtin_funcs.get(&BUILTIN_CONSOLE_LOG_F64).unwrap(),
-                console_log_f64 as *mut libc::c_void,
-            );
-            llvm::execution_engine::LLVMAddGlobalMapping(
-                ee,
-                *self
-                    .builtin_funcs
-                    .get(&BUILTIN_CONSOLE_LOG_NEWLINE)
-                    .unwrap(),
-                console_log_newline as *mut libc::c_void,
-            );
-            llvm::execution_engine::LLVMAddGlobalMapping(
-                ee,
-                *self
-                    .builtin_funcs
-                    .get(&BUILTIN_PROCESS_STDOUT_WRITE)
-                    .unwrap(),
-                process_stdout_write as *mut libc::c_void,
-            );
-            llvm::execution_engine::LLVMAddGlobalMapping(
-                ee,
-                *self.builtin_funcs.get(&BUILTIN_MATH_POW).unwrap(),
-                math_pow as *mut libc::c_void,
-            );
-            llvm::execution_engine::LLVMAddGlobalMapping(
-                ee,
-                *self.builtin_funcs.get(&BUILTIN_MATH_FLOOR).unwrap(),
-                math_floor as *mut libc::c_void,
-            );
-            llvm::execution_engine::LLVMAddGlobalMapping(
-                ee,
-                *self.builtin_funcs.get(&BUILTIN_MATH_RANDOM).unwrap(),
-                math_random as *mut libc::c_void,
-            );
+            for (func, llvm_func) in &self.used_builtin_funcs {
+                llvm::execution_engine::LLVMAddGlobalMapping(
+                    ee,
+                    *llvm_func,
+                    *func as *mut libc::c_void,
+                );
+            }
         }
         let f_raw = llvm::execution_engine::LLVMGetFunctionAddress(
             ee,
@@ -580,53 +432,15 @@ impl TracingJit {
         {
             panic!()
         }
+
         {
-            llvm::execution_engine::LLVMAddGlobalMapping(
-                ee,
-                *self.builtin_funcs.get(&BUILTIN_CONSOLE_LOG_STRING).unwrap(),
-                console_log_string as *mut libc::c_void,
-            );
-            llvm::execution_engine::LLVMAddGlobalMapping(
-                ee,
-                *self.builtin_funcs.get(&BUILTIN_CONSOLE_LOG_BOOL).unwrap(),
-                console_log_bool as *mut libc::c_void,
-            );
-            llvm::execution_engine::LLVMAddGlobalMapping(
-                ee,
-                *self.builtin_funcs.get(&BUILTIN_CONSOLE_LOG_F64).unwrap(),
-                console_log_f64 as *mut libc::c_void,
-            );
-            llvm::execution_engine::LLVMAddGlobalMapping(
-                ee,
-                *self
-                    .builtin_funcs
-                    .get(&BUILTIN_CONSOLE_LOG_NEWLINE)
-                    .unwrap(),
-                console_log_newline as *mut libc::c_void,
-            );
-            llvm::execution_engine::LLVMAddGlobalMapping(
-                ee,
-                *self
-                    .builtin_funcs
-                    .get(&BUILTIN_PROCESS_STDOUT_WRITE)
-                    .unwrap(),
-                process_stdout_write as *mut libc::c_void,
-            );
-            llvm::execution_engine::LLVMAddGlobalMapping(
-                ee,
-                *self.builtin_funcs.get(&BUILTIN_MATH_POW).unwrap(),
-                math_pow as *mut libc::c_void,
-            );
-            llvm::execution_engine::LLVMAddGlobalMapping(
-                ee,
-                *self.builtin_funcs.get(&BUILTIN_MATH_FLOOR).unwrap(),
-                math_floor as *mut libc::c_void,
-            );
-            llvm::execution_engine::LLVMAddGlobalMapping(
-                ee,
-                *self.builtin_funcs.get(&BUILTIN_MATH_RANDOM).unwrap(),
-                math_random as *mut libc::c_void,
-            );
+            for (func, llvm_func) in &self.used_builtin_funcs {
+                llvm::execution_engine::LLVMAddGlobalMapping(
+                    ee,
+                    *llvm_func,
+                    *func as *mut libc::c_void,
+                );
+            }
         }
 
         let raw_func =
@@ -872,100 +686,70 @@ impl TracingJit {
             }
         }
 
-        // TODO: Need a better way to deal with builtin functions available in JIT.
         unsafe fn call_builtin_function(
-            self_: &TracingJit,
-            builtin_func_id: builtin::Builtins,
+            self_: &mut TracingJit,
+            builtin_func_info: BuiltinFuncInfo,
             args: Vec<(LLVMValueRef, ValueType)>,
             stack: &mut Vec<(LLVMValueRef, Option<vm::value::Value>)>,
         ) -> Option<()> {
-            match builtin_func_id {
-                builtin::Builtins::ConsoleLog => {
+            let jit_info = if let Some(jit_info) = builtin_func_info.jit_info {
+                jit_info
+            } else {
+                return None;
+            };
+
+            match jit_info {
+                BuiltinJITFuncInfo::ConsoleLog {
+                    bool,
+                    f64,
+                    string,
+                    newline,
+                } => {
                     for (arg, ty) in args {
                         LLVMBuildCall(
                             self_.builder,
-                            *self_
-                                .builtin_funcs
-                                .get(&match ty {
-                                    ValueType::Number => BUILTIN_CONSOLE_LOG_F64,
-                                    ValueType::Bool => BUILTIN_CONSOLE_LOG_BOOL,
-                                    ValueType::String => BUILTIN_CONSOLE_LOG_STRING,
-                                })
-                                .unwrap(),
+                            {
+                                let ty = match ty {
+                                    ValueType::Bool => bool,
+                                    ValueType::Number => f64,
+                                    ValueType::String => string,
+                                };
+                                self_.used_builtin_funcs.insert(ty);
+                                ty.1
+                            },
                             vec![arg].as_mut_ptr(),
                             1,
                             CString::new("").unwrap().as_ptr(),
                         );
                     }
+
+                    self_.used_builtin_funcs.insert(newline);
+
                     LLVMBuildCall(
                         self_.builder,
-                        *self_
-                            .builtin_funcs
-                            .get(&BUILTIN_CONSOLE_LOG_NEWLINE)
-                            .unwrap(),
+                        newline.1,
                         vec![].as_mut_ptr(),
                         0,
                         CString::new("").unwrap().as_ptr(),
                     );
                 }
-                builtin::Builtins::ProcessStdoutWrite => {
-                    for (arg, ty) in args {
-                        match ty {
-                            ValueType::String => LLVMBuildCall(
-                                self_.builder,
-                                *self_
-                                    .builtin_funcs
-                                    .get(&BUILTIN_PROCESS_STDOUT_WRITE)
-                                    .unwrap(),
-                                vec![arg].as_mut_ptr(),
-                                1,
-                                CString::new("").unwrap().as_ptr(),
-                            ),
-                            _ => return None,
-                        };
-                    }
+                BuiltinJITFuncInfo::Normal { func, llvm_func } => {
+                    self_.used_builtin_funcs.insert((func, llvm_func));
+
+                    let result = LLVMBuildCall(
+                        self_.builder,
+                        llvm_func,
+                        args.iter()
+                            .map(|(x, _)| *x)
+                            .collect::<Vec<LLVMValueRef>>()
+                            .as_mut_ptr(),
+                        args.len() as u32,
+                        CString::new("").unwrap().as_ptr(),
+                    );
+
+                    stack.push((result, None));
                 }
-                builtin::Builtins::MathFloor => stack.push((
-                    LLVMBuildCall(
-                        self_.builder,
-                        *self_.builtin_funcs.get(&BUILTIN_MATH_FLOOR).unwrap(),
-                        args.iter()
-                            .map(|(x, _)| *x)
-                            .collect::<Vec<LLVMValueRef>>()
-                            .as_mut_ptr(),
-                        1,
-                        CString::new("").unwrap().as_ptr(),
-                    ),
-                    None,
-                )),
-                builtin::Builtins::MathRandom => stack.push((
-                    LLVMBuildCall(
-                        self_.builder,
-                        *self_.builtin_funcs.get(&BUILTIN_MATH_RANDOM).unwrap(),
-                        args.iter()
-                            .map(|(x, _)| *x)
-                            .collect::<Vec<LLVMValueRef>>()
-                            .as_mut_ptr(),
-                        0,
-                        CString::new("").unwrap().as_ptr(),
-                    ),
-                    None,
-                )),
-                builtin::Builtins::MathPow => stack.push((
-                    LLVMBuildCall(
-                        self_.builder,
-                        *self_.builtin_funcs.get(&BUILTIN_MATH_POW).unwrap(),
-                        args.iter()
-                            .map(|(x, _)| *x)
-                            .collect::<Vec<LLVMValueRef>>()
-                            .as_mut_ptr(),
-                        2,
-                        CString::new("").unwrap().as_ptr(),
-                    ),
-                    None,
-                )),
-                _ => return None,
-            };
+            }
 
             Some(())
         }
@@ -1635,7 +1419,7 @@ impl TracingJit {
                             if let vm::value::ValueBase::BuiltinFunction(box (info, _, _)) =
                                 callee.val
                             {
-                                info.id
+                                info
                             } else {
                                 return Err(());
                             },
@@ -1912,76 +1696,4 @@ impl TracingJit {
     fn inc_count(&mut self, id: FuncId, pc: usize) {
         *self.count.entry(UniquePosition::new(id, pc)).or_insert(0) += 1;
     }
-}
-
-// Builtin functions
-
-const BUILTIN_CONSOLE_LOG_F64: usize = 0;
-const BUILTIN_CONSOLE_LOG_BOOL: usize = 1;
-const BUILTIN_CONSOLE_LOG_STRING: usize = 2;
-const BUILTIN_CONSOLE_LOG_NEWLINE: usize = 3;
-const BUILTIN_PROCESS_STDOUT_WRITE: usize = 4;
-const BUILTIN_MATH_POW: usize = 5;
-const BUILTIN_MATH_FLOOR: usize = 6;
-const BUILTIN_MATH_RANDOM: usize = 7;
-
-#[no_mangle]
-pub extern "C" fn console_log_string(s: vm::value::RawStringPtr) {
-    unsafe {
-        libc::printf(b"%s \0".as_ptr() as vm::value::RawStringPtr, s);
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn console_log_bool(b: bool) {
-    unsafe {
-        if b {
-            libc::printf(b"true \0".as_ptr() as vm::value::RawStringPtr);
-        } else {
-            libc::printf(b"false \0".as_ptr() as vm::value::RawStringPtr);
-        }
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn console_log_f64(n: f64) {
-    unsafe {
-        libc::printf(b"%.15g \0".as_ptr() as vm::value::RawStringPtr, n);
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn console_log_newline() {
-    unsafe {
-        libc::printf(b"\n\0".as_ptr() as vm::value::RawStringPtr);
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn process_stdout_write(s: vm::value::RawStringPtr) {
-    unsafe {
-        libc::printf(b"%s\0".as_ptr() as vm::value::RawStringPtr, s);
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn math_floor(n: f64) -> f64 {
-    n.floor()
-}
-
-// TODO: Find a better way for rand gen. (rand::random is slow)
-static mut MATH_RAND_SEED: u64 = 0xf6d582196d588cac;
-#[no_mangle]
-pub extern "C" fn math_random() -> f64 {
-    unsafe {
-        MATH_RAND_SEED = MATH_RAND_SEED ^ (MATH_RAND_SEED << 13);
-        MATH_RAND_SEED = MATH_RAND_SEED ^ (MATH_RAND_SEED >> 17);
-        MATH_RAND_SEED = MATH_RAND_SEED ^ (MATH_RAND_SEED << 5);
-        (MATH_RAND_SEED as f64) / ::std::u64::MAX as f64
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn math_pow(x: f64, y: f64) -> f64 {
-    x.powf(y)
 }

@@ -1,4 +1,3 @@
-use builtin;
 use gc;
 use vm::{
     callobj::CallObject, value::{Value, ValueBase}, vm::VM,
@@ -15,7 +14,6 @@ thread_local!(
             "toString".to_string(),
             Value::builtin_function(
                 number_prototype_tostring,
-                builtin::Builtins::NumberPrototypeTostring,
                 CallObject::new(Value::new(ValueBase::Undefined)),
             ),
         );

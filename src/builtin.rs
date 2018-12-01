@@ -1,59 +1,57 @@
 use libc;
-use rand::random;
+use libloading;
+use llvm::prelude::LLVMValueRef;
+use std::ffi::CString;
+
 use vm::{
     callobj::CallObject, value::{RawStringPtr, Value, ValueBase}, vm::{call_function, VM},
 };
 
-use libloading;
-use std::ffi::CString;
+pub type BuiltinFuncTy = fn(&mut VM, &Vec<Value>, &CallObject);
+pub type BuiltinJITFuncTy = *mut libc::c_void;
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum Builtins {
-    ConsoleLog,
-    ProcessStdoutWrite,
-    ArrayNew,
-    ArrayPrototypePush,
-    ArrayPrototypePop,
-    ArrayPrototypeMap,
-    MathFloor,
-    MathRandom,
-    MathPow,
-    MathAbs,
-    MathAcos,
-    MathAcosh,
-    MathAsin,
-    MathAsinh,
-    MathAtan,
-    MathAtanh,
-    MathAtan2,
-    MathCbrt,
-    MathCeil,
-    MathClz32,
-    MathCos,
-    MathCosh,
-    MathExp,
-    MathExpm1,
-    MathFround,
-    MathHypot,
-    MathLog,
-    MathLog1p,
-    MathLog10,
-    MathLog2,
-    MathMax,
-    MathMin,
-    MathRound,
-    MathSign,
-    MathSin,
-    MathSinh,
-    MathSqrt,
-    MathTan,
-    MathTanh,
-    MathTrunc,
-    FunctionPrototypeApply,
-    FunctionPrototypeCall,
-    Require,
-    NumberPrototypeTostring,
-    UserDefined,
+#[derive(Clone)]
+pub struct BuiltinFuncInfo {
+    pub func: BuiltinFuncTy,
+    pub jit_info: Option<BuiltinJITFuncInfo>,
+}
+
+#[derive(Clone, Debug)]
+pub enum BuiltinJITFuncInfo {
+    ConsoleLog {
+        bool: (BuiltinJITFuncTy, LLVMValueRef),
+        f64: (BuiltinJITFuncTy, LLVMValueRef),
+        string: (BuiltinJITFuncTy, LLVMValueRef),
+        newline: (BuiltinJITFuncTy, LLVMValueRef),
+    }, // 'console.log' has variable arguments so treat specially now.
+    Normal {
+        func: BuiltinJITFuncTy,
+        llvm_func: LLVMValueRef,
+    },
+}
+
+impl BuiltinFuncInfo {
+    pub fn new(
+        func: BuiltinFuncTy,
+        builtin_jit_func_info: Option<BuiltinJITFuncInfo>,
+    ) -> BuiltinFuncInfo {
+        BuiltinFuncInfo {
+            func,
+            jit_info: builtin_jit_func_info,
+        }
+    }
+}
+
+impl PartialEq for BuiltinFuncInfo {
+    fn eq(&self, other: &BuiltinFuncInfo) -> bool {
+        self.func as *mut libc::c_void == other.func as *mut libc::c_void
+    }
+}
+
+impl ::std::fmt::Debug for BuiltinFuncInfo {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        write!(f, "[BuiltinFunction]")
+    }
 }
 
 pub fn console_log(self_: &mut VM, args: &Vec<Value>, _: &CallObject) {
@@ -201,157 +199,6 @@ pub fn debug_print(val: &Value, nest: bool) {
     }
 }
 
-macro_rules! simple_math {
-    ($name:ident, $f:ident) => {
-        #[allow(unused_variables)]
-        pub fn $name(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject) {
-            if let ValueBase::Number(n) = args[0].val {
-                return vm.state.stack.push(Value::number(n.$f()));
-            }
-            vm.state.stack.push(Value::undefined())
-        }
-    };
-}
-
-simple_math!(math_floor, floor);
-simple_math!(math_abs, abs);
-simple_math!(math_acos, acos);
-simple_math!(math_acosh, acosh);
-simple_math!(math_asin, asin);
-simple_math!(math_asinh, asinh);
-simple_math!(math_atan, atan);
-simple_math!(math_atanh, atanh);
-
-pub fn math_atan2(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
-    if let ValueBase::Number(n1) = args[0].val {
-        if let ValueBase::Number(n2) = args[1].val {
-            return vm.state.stack.push(Value::number(n1.atan2(n2)));
-        }
-        vm.state.stack.push(Value::undefined())
-    }
-}
-simple_math!(math_cbrt, cbrt);
-simple_math!(math_ceil, ceil);
-
-pub fn math_clz32(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
-    if let ValueBase::Number(n) = args[0].val {
-        return vm.state.stack.push(Value::number(if n == 0.0 {
-            32.0
-        } else {
-            // TODO: >> ? >>> ?
-            31.0 - ((n as i32 >> 0) as f64 * ::std::f64::consts::LOG2_E)
-                .log(::std::f64::consts::E)
-                .floor()
-        }));
-    }
-    vm.state.stack.push(Value::undefined())
-}
-simple_math!(math_cos, cos);
-simple_math!(math_cosh, cosh);
-simple_math!(math_exp, exp);
-simple_math!(math_expm1, exp_m1);
-simple_math!(math_fround, round);
-
-pub fn math_hypot(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
-    let mut sum2 = 0.0;
-    for n in args {
-        if let ValueBase::Number(n) = n.val {
-            sum2 += n * n;
-        }
-    }
-    vm.state.stack.push(Value::number(sum2.sqrt()));
-}
-
-pub fn math_log(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
-    if let ValueBase::Number(n1) = args[0].val {
-        return vm
-            .state
-            .stack
-            .push(Value::number(n1.log(::std::f64::consts::E)));
-    }
-    vm.state.stack.push(Value::undefined())
-}
-
-pub fn math_log1p(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
-    if let ValueBase::Number(n1) = args[0].val {
-        return vm
-            .state
-            .stack
-            .push(Value::number(n1.log(1.0 + ::std::f64::consts::E)));
-    }
-    vm.state.stack.push(Value::undefined())
-}
-
-simple_math!(math_log10, log10);
-simple_math!(math_log2, log2);
-
-pub fn math_max(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
-    let mut max = if let ValueBase::Number(n) = args[0].val {
-        n
-    } else {
-        0.0
-    };
-    for n in args[1..].iter() {
-        if let ValueBase::Number(n) = n.val {
-            if n > max {
-                max = n;
-            }
-        }
-    }
-    vm.state.stack.push(Value::number(max));
-}
-
-pub fn math_min(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
-    let mut min = if let ValueBase::Number(n) = args[0].val {
-        n
-    } else {
-        0.0
-    };
-    for n in args[1..].iter() {
-        if let ValueBase::Number(n) = n.val {
-            if n < min {
-                min = n;
-            }
-        }
-    }
-    vm.state.stack.push(Value::number(min));
-}
-
-simple_math!(math_round, round);
-
-pub fn math_sign(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
-    if let ValueBase::Number(n) = args[0].val {
-        return vm.state.stack.push(Value::number(if n == 0.0 {
-            n
-        } else if n > 0.0 {
-            1.0
-        } else {
-            -1.0
-        }));
-    }
-    vm.state.stack.push(Value::undefined())
-}
-
-simple_math!(math_sin, sin);
-simple_math!(math_sinh, sinh);
-simple_math!(math_sqrt, sqrt);
-simple_math!(math_tan, tan);
-simple_math!(math_tanh, tanh);
-simple_math!(math_trunc, trunc);
-
-pub fn math_random(vm: &mut VM, _: &Vec<Value>, _: &CallObject) {
-    vm.state.stack.push(Value::number(random::<f64>()))
-}
-
-pub fn math_pow(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
-    if let ValueBase::Number(f1) = args[0].val {
-        if let ValueBase::Number(f2) = args[1].val {
-            return vm.state.stack.push(Value::number(f1.powf(f2)));
-        }
-    }
-    vm.state.stack.push(Value::undefined())
-}
-
 pub fn function_prototype_apply(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject) {
     let callee = &*callobj.this;
     let arg_this = args[0].clone();
@@ -424,6 +271,7 @@ pub fn require(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject) {
         _ => panic!(),
     };
 
+    // TODO: Consider better way
     if file_name.starts_with("DLL:") {
         let dylib_path = &file_name[4..];
         let dylib = libloading::Library::new(dylib_path);
@@ -516,4 +364,45 @@ pub fn require(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject) {
     }.unwrap()
         .get_property(Value::string(CString::new("exports").unwrap()).val, None);
     vm.state.stack.push(module_exports);
+}
+
+// Functions for JIT
+
+#[no_mangle]
+pub extern "C" fn jit_console_log_string(s: RawStringPtr) {
+    unsafe {
+        libc::printf(b"%s \0".as_ptr() as RawStringPtr, s);
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn jit_console_log_bool(b: bool) {
+    unsafe {
+        if b {
+            libc::printf(b"true \0".as_ptr() as RawStringPtr);
+        } else {
+            libc::printf(b"false \0".as_ptr() as RawStringPtr);
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn jit_console_log_f64(n: f64) {
+    unsafe {
+        libc::printf(b"%.15g \0".as_ptr() as RawStringPtr, n);
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn jit_console_log_newline() {
+    unsafe {
+        libc::printf(b"\n\0".as_ptr() as RawStringPtr);
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn jit_process_stdout_write(s: RawStringPtr) {
+    unsafe {
+        libc::printf(b"%s\0".as_ptr() as RawStringPtr, s);
+    }
 }
