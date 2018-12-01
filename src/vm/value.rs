@@ -1,3 +1,5 @@
+#![macro_use]
+
 use rustc_hash::FxHashMap;
 use std::ffi::CString;
 
@@ -43,6 +45,14 @@ pub struct ArrayValue {
     pub elems: Vec<Value>,
     pub length: usize,
     pub obj: FxHashMap<String, Value>,
+}
+
+macro_rules! make_object {
+    ($($property_name:ident : $val:expr),*) => { {
+        let mut map = FxHashMap::default();
+        $(map.insert(stringify!($property_name).to_string(), $val);)*
+        Value::object(gc::new(map))
+    } };
 }
 
 impl Value {
@@ -129,6 +139,16 @@ impl Value {
             func,
             Some(builtin_jit_func_info),
             callobj,
+            FxHashMap::default(),
+            Value::new(ValueBase::Object(gc::new(FxHashMap::default()))),
+        )
+    }
+
+    pub fn default_builtin_function(func: BuiltinFuncTy) -> Value {
+        Value::builtin_function_with_obj_and_prototype(
+            func,
+            None,
+            CallObject::new(Value::undefined()),
             FxHashMap::default(),
             Value::new(ValueBase::Object(gc::new(FxHashMap::default()))),
         )

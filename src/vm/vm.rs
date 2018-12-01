@@ -51,17 +51,12 @@ impl VM {
         unsafe {
             (*global_vals).set_value(
                 "require".to_string(),
-                Value::builtin_function(
-                    builtin::require,
-                    CallObject::new(Value::undefined()),
-                ),
+                Value::builtin_function(builtin::require, CallObject::new(Value::undefined())),
             );
 
             let module_exports = Value::object(gc::new(FxHashMap::default()));
             (*global_vals).set_value("module".to_string(), {
-                let mut map = FxHashMap::default();
-                map.insert("exports".to_string(), module_exports.clone());
-                Value::object(gc::new(map))
+                make_object!(exports: module_exports.clone())
             });
             (*global_vals).set_value("exports".to_string(), module_exports);
         }
@@ -138,38 +133,34 @@ impl VM {
         }
 
         unsafe {
-            (*global_vals).set_value("process".to_string(), {
-                let mut map = FxHashMap::default();
-                map.insert("stdout".to_string(), {
-                    let mut map = FxHashMap::default();
-                    map.insert(
-                        "write".to_string(),
+            let llvm_process_stdout_write = LLVMAddFunction(
+                jit.module,
+                CString::new("process_stdout_write").unwrap().as_ptr(),
+                LLVMFunctionType(
+                    LLVMVoidType(),
+                    vec![LLVMPointerType(LLVMInt8TypeInContext(jit.context), 0)]
+                        .as_mut_slice()
+                        .as_mut_ptr(),
+                    1,
+                    0,
+                ),
+            );
+            (*global_vals).set_value(
+                "process".to_string(),
+                make_object!(
+                    stdout:
+                        make_object!(write:
                         Value::builtin_function_with_jit(
                             builtin::process_stdout_write,
                             BuiltinJITFuncInfo::Normal {
                                 func: builtin::jit_process_stdout_write as *mut libc::c_void,
-                                llvm_func: LLVMAddFunction(
-                                    jit.module,
-                                    CString::new("process_stdout_write").unwrap().as_ptr(),
-                                    LLVMFunctionType(
-                                        LLVMVoidType(),
-                                        vec![LLVMPointerType(
-                                            LLVMInt8TypeInContext(jit.context),
-                                            0,
-                                        )].as_mut_slice()
-                                            .as_mut_ptr(),
-                                        1,
-                                        0,
-                                    ),
-                                ),
+                                llvm_func: llvm_process_stdout_write,
                             },
                             CallObject::new(Value::undefined()),
-                        ),
-                    );
-                    Value::object(gc::new(map))
-                });
-                Value::object(gc::new(map))
-            });
+                        )
+                    )
+                ),
+            );
         }
 
         unsafe {
@@ -178,297 +169,106 @@ impl VM {
         }
 
         unsafe {
-            (*global_vals).set_value("Math".to_string(), {
-                let mut map = FxHashMap::default();
-                map.insert("PI".to_string(), Value::number(::std::f64::consts::PI));
-
-                map.insert(
-                    "floor".to_string(),
-                    Value::builtin_function_with_jit(
-                        math::math_floor,
-                        BuiltinJITFuncInfo::Normal {
-                            func: math::jit_math_floor as *mut libc::c_void,
-                            llvm_func: LLVMAddFunction(
-                                jit.module,
-                                CString::new("jit_math_floor").unwrap().as_ptr(),
-                                LLVMFunctionType(
-                                    LLVMDoubleTypeInContext(jit.context),
-                                    vec![LLVMDoubleTypeInContext(jit.context)]
-                                        .as_mut_slice()
-                                        .as_mut_ptr(),
-                                    1,
-                                    0,
-                                ),
+            (*global_vals).set_value(
+                "Math".to_string(),
+                make_object!(
+                    PI:     Value::number(::std::f64::consts::PI),
+                    abs:    Value::default_builtin_function(math::math_abs),
+                    acos:   Value::default_builtin_function(math::math_acos),
+                    acosh:  Value::default_builtin_function(math::math_acosh),
+                    asin:   Value::default_builtin_function(math::math_asin),
+                    asinh:  Value::default_builtin_function(math::math_asinh),
+                    atan:   Value::default_builtin_function(math::math_atan),
+                    atanh:  Value::default_builtin_function(math::math_atanh),
+                    atan2:  Value::default_builtin_function(math::math_atan2),
+                    cbrt:   Value::default_builtin_function(math::math_cbrt),
+                    ceil:   Value::default_builtin_function(math::math_ceil),
+                    clz32:  Value::default_builtin_function(math::math_clz32),
+                    cos:    Value::default_builtin_function(math::math_cos),
+                    cosh:   Value::default_builtin_function(math::math_cosh),
+                    exp:    Value::default_builtin_function(math::math_exp),
+                    expm1:  Value::default_builtin_function(math::math_expm1),
+                    fround: Value::default_builtin_function(math::math_fround),
+                    hypot:  Value::default_builtin_function(math::math_hypot),
+                    log:    Value::default_builtin_function(math::math_log),
+                    log1p:  Value::default_builtin_function(math::math_log1p),
+                    log10:  Value::default_builtin_function(math::math_log10),
+                    log2:   Value::default_builtin_function(math::math_log2),
+                    max:    Value::default_builtin_function(math::math_max),
+                    min:    Value::default_builtin_function(math::math_min),
+                    round:  Value::default_builtin_function(math::math_round),
+                    sign:   Value::default_builtin_function(math::math_sign),
+                    sin:    Value::default_builtin_function(math::math_sin),
+                    sinh:   Value::default_builtin_function(math::math_sinh),
+                    sqrt:   Value::default_builtin_function(math::math_sqrt),
+                    tan:    Value::default_builtin_function(math::math_tan),
+                    tanh:   Value::default_builtin_function(math::math_tanh),
+                    trunc:  Value::default_builtin_function(math::math_trunc),
+                    floor: {
+                        let llvm_func = LLVMAddFunction(
+                            jit.module,
+                            CString::new("jit_math_floor").unwrap().as_ptr(),
+                            LLVMFunctionType(
+                                LLVMDoubleTypeInContext(jit.context),
+                                vec![LLVMDoubleTypeInContext(jit.context)]
+                                    .as_mut_slice().as_mut_ptr(),
+                                1, 0
+                            )
+                        );
+                        Value::builtin_function_with_jit(
+                            math::math_floor,
+                            BuiltinJITFuncInfo::Normal {
+                                func: math::jit_math_floor as *mut libc::c_void,
+                                llvm_func,
+                            },
+                            CallObject::new(Value::undefined()),
+                        )
+                    },
+                    random: {
+                        let llvm_func = LLVMAddFunction(
+                            jit.module,
+                            CString::new("jit_math_random").unwrap().as_ptr(),
+                            LLVMFunctionType(
+                                LLVMDoubleTypeInContext(jit.context),
+                                vec![].as_mut_slice().as_mut_ptr(),
+                                0,
+                                0,
                             ),
-                        },
-                        CallObject::new(Value::undefined()),
-                    ),
-                );
-
-                map.insert(
-                    "random".to_string(),
-                    Value::builtin_function_with_jit(
-                        math::math_random,
-                        BuiltinJITFuncInfo::Normal {
-                            func: math::jit_math_random as *mut libc::c_void,
-                            llvm_func: LLVMAddFunction(
-                                jit.module,
-                                CString::new("jit_math_random").unwrap().as_ptr(),
-                                LLVMFunctionType(
+                        );
+                        Value::builtin_function_with_jit(
+                            math::math_random,
+                            BuiltinJITFuncInfo::Normal {
+                                func: math::jit_math_random as *mut libc::c_void,
+                                llvm_func                        },
+                            CallObject::new(Value::undefined()),
+                        )
+                    },
+                    pow: {
+                        let llvm_func = LLVMAddFunction(
+                            jit.module,
+                            CString::new("jit_math_pow").unwrap().as_ptr(),
+                            LLVMFunctionType(
+                                LLVMDoubleTypeInContext(jit.context),
+                                vec![
                                     LLVMDoubleTypeInContext(jit.context),
-                                    vec![].as_mut_slice().as_mut_ptr(),
-                                    0,
-                                    0,
-                                ),
-                            ),
-                        },
-                        CallObject::new(Value::undefined()),
-                    ),
-                );
-
-                map.insert(
-                    "pow".to_string(),
-                    Value::builtin_function_with_jit(
-                        math::math_pow,
-                        BuiltinJITFuncInfo::Normal {
-                            func: math::jit_math_pow as *mut libc::c_void,
-                            llvm_func: LLVMAddFunction(
-                                jit.module,
-                                CString::new("jit_math_pow").unwrap().as_ptr(),
-                                LLVMFunctionType(
                                     LLVMDoubleTypeInContext(jit.context),
-                                    vec![
-                                        LLVMDoubleTypeInContext(jit.context),
-                                        LLVMDoubleTypeInContext(jit.context),
-                                    ].as_mut_slice()
-                                        .as_mut_ptr(),
-                                    2,
-                                    0,
-                                ),
+                                ].as_mut_slice()
+                                    .as_mut_ptr(),
+                                2,
+                                0,
                             ),
-                        },
-                        CallObject::new(Value::undefined()),
-                    ),
-                );
-                map.insert(
-                    "abs".to_string(),
-                    Value::builtin_function(
-                        math::math_abs,
-                        CallObject::new(Value::undefined()),
-                    ),
-                );
-                map.insert(
-                    "acos".to_string(),
-                    Value::builtin_function(
-                        math::math_acos,
-                        CallObject::new(Value::undefined()),
-                    ),
-                );
-                map.insert(
-                    "acosh".to_string(),
-                    Value::builtin_function(
-                        math::math_acosh,
-                        CallObject::new(Value::undefined()),
-                    ),
-                );
-                map.insert(
-                    "asin".to_string(),
-                    Value::builtin_function(
-                        math::math_asin,
-                        CallObject::new(Value::undefined()),
-                    ),
-                );
-                map.insert(
-                    "asinh".to_string(),
-                    Value::builtin_function(
-                        math::math_asinh,
-                        CallObject::new(Value::undefined()),
-                    ),
-                );
-                map.insert(
-                    "atan".to_string(),
-                    Value::builtin_function(
-                        math::math_atan,
-                        CallObject::new(Value::undefined()),
-                    ),
-                );
-                map.insert(
-                    "atanh".to_string(),
-                    Value::builtin_function(
-                        math::math_atanh,
-                        CallObject::new(Value::undefined()),
-                    ),
-                );
-                map.insert(
-                    "atan2".to_string(),
-                    Value::builtin_function(
-                        math::math_atan2,
-                        CallObject::new(Value::undefined()),
-                    ),
-                );
-                map.insert(
-                    "cbrt".to_string(),
-                    Value::builtin_function(
-                        math::math_cbrt,
-                        CallObject::new(Value::undefined()),
-                    ),
-                );
-                map.insert(
-                    "ceil".to_string(),
-                    Value::builtin_function(
-                        math::math_ceil,
-                        CallObject::new(Value::undefined()),
-                    ),
-                );
-                map.insert(
-                    "clz32".to_string(),
-                    Value::builtin_function(
-                        math::math_clz32,
-                        CallObject::new(Value::undefined()),
-                    ),
-                );
-                map.insert(
-                    "cos".to_string(),
-                    Value::builtin_function(
-                        math::math_cos,
-                        CallObject::new(Value::undefined()),
-                    ),
-                );
-                map.insert(
-                    "cosh".to_string(),
-                    Value::builtin_function(
-                        math::math_cosh,
-                        CallObject::new(Value::undefined()),
-                    ),
-                );
-                map.insert(
-                    "exp".to_string(),
-                    Value::builtin_function(
-                        math::math_exp,
-                        CallObject::new(Value::undefined()),
-                    ),
-                );
-                map.insert(
-                    "expm1".to_string(),
-                    Value::builtin_function(
-                        math::math_expm1,
-                        CallObject::new(Value::undefined()),
-                    ),
-                );
-                map.insert(
-                    "fround".to_string(),
-                    Value::builtin_function(
-                        math::math_fround,
-                        CallObject::new(Value::undefined()),
-                    ),
-                );
-                map.insert(
-                    "hypot".to_string(),
-                    Value::builtin_function(
-                        math::math_hypot,
-                        CallObject::new(Value::undefined()),
-                    ),
-                );
-                map.insert(
-                    "log".to_string(),
-                    Value::builtin_function(
-                        math::math_log,
-                        CallObject::new(Value::undefined()),
-                    ),
-                );
-                map.insert(
-                    "log1p".to_string(),
-                    Value::builtin_function(
-                        math::math_log1p,
-                        CallObject::new(Value::undefined()),
-                    ),
-                );
-                map.insert(
-                    "log10".to_string(),
-                    Value::builtin_function(
-                        math::math_log10,
-                        CallObject::new(Value::undefined()),
-                    ),
-                );
-                map.insert(
-                    "log2".to_string(),
-                    Value::builtin_function(
-                        math::math_log2,
-                        CallObject::new(Value::undefined()),
-                    ),
-                );
-                map.insert(
-                    "max".to_string(),
-                    Value::builtin_function(
-                        math::math_max,
-                        CallObject::new(Value::undefined()),
-                    ),
-                );
-                map.insert(
-                    "min".to_string(),
-                    Value::builtin_function(
-                        math::math_min,
-                        CallObject::new(Value::undefined()),
-                    ),
-                );
-                map.insert(
-                    "round".to_string(),
-                    Value::builtin_function(
-                        math::math_round,
-                        CallObject::new(Value::undefined()),
-                    ),
-                );
-                map.insert(
-                    "sign".to_string(),
-                    Value::builtin_function(
-                        math::math_sign,
-                        CallObject::new(Value::undefined()),
-                    ),
-                );
-                map.insert(
-                    "sin".to_string(),
-                    Value::builtin_function(
-                        math::math_sin,
-                        CallObject::new(Value::undefined()),
-                    ),
-                );
-                map.insert(
-                    "sinh".to_string(),
-                    Value::builtin_function(
-                        math::math_sinh,
-                        CallObject::new(Value::undefined()),
-                    ),
-                );
-                map.insert(
-                    "sqrt".to_string(),
-                    Value::builtin_function(
-                        math::math_sqrt,
-                        CallObject::new(Value::undefined()),
-                    ),
-                );
-                map.insert(
-                    "tan".to_string(),
-                    Value::builtin_function(
-                        math::math_tan,
-                        CallObject::new(Value::undefined()),
-                    ),
-                );
-                map.insert(
-                    "tanh".to_string(),
-                    Value::builtin_function(
-                        math::math_tanh,
-                        CallObject::new(Value::undefined()),
-                    ),
-                );
-                map.insert(
-                    "trunc".to_string(),
-                    Value::builtin_function(
-                        math::math_trunc,
-                        CallObject::new(Value::undefined()),
-                    ),
-                );
-                Value::object(gc::new(map))
-            });
+                        );
+                        Value::builtin_function_with_jit(
+                            math::math_pow,
+                            BuiltinJITFuncInfo::Normal {
+                                func: math::jit_math_pow as *mut libc::c_void,
+                                llvm_func
+                            },
+                            CallObject::new(Value::undefined()),
+                        )
+                    }
+                ),
+            );
         }
 
         VM {
