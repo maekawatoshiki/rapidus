@@ -4,6 +4,7 @@ use vm::{
     callobj::CallObject, value::{RawStringPtr, Value, ValueBase}, vm::{call_function, VM},
 };
 
+use libloading;
 use std::ffi::CString;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -408,7 +409,7 @@ pub fn function_prototype_call(vm: &mut VM, args: &Vec<Value>, callobj: &CallObj
     }
 }
 
-pub fn require(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
+pub fn require(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject) {
     // TODO: REFINE CODE!!!!
     use ansi_term::Colour;
     use parser;
@@ -422,6 +423,30 @@ pub fn require(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
         ValueBase::String(ref s) => s.to_str().unwrap().clone(),
         _ => panic!(),
     };
+
+    if file_name.starts_with("DLL:") {
+        let dylib_path = &file_name[4..];
+        let dylib = libloading::Library::new(dylib_path);
+        let symbol_name = b"initialize\0";
+
+        match dylib {
+            Ok(lib) => {
+                let initialize: Result<
+                    libloading::Symbol<fn(&mut VM, &Vec<Value>, &CallObject)>,
+                    _,
+                > = unsafe { lib.get(symbol_name) };
+                match initialize {
+                    Ok(initialize) => {
+                        initialize(vm, args, callobj);
+                    }
+                    Err(_) => println!("'initialize' needs to be defined in DLL."),
+                }
+            }
+            Err(msg) => println!("{}: {}", msg, dylib_path),
+        }
+
+        return;
+    }
 
     let mut file_body = String::new();
 

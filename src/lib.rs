@@ -23,4 +23,5 @@ extern crate nix;
 extern crate rand;
 extern crate rustc_hash;
 extern crate rustyline;
+extern crate libloading;
 // extern crate cpuprofiler;
