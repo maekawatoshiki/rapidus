@@ -8,48 +8,22 @@ use vm::{
 use std::ffi::CString;
 
 #[derive(Clone, Debug)]
-pub struct Labels {
-    continue_jmp_list: Vec<isize>,
-    break_jmp_list: Vec<isize>,
+pub struct Jumps {
+    global: JumpToGlobalLabel,
+    local: Vec<JumpFromLoop>,
+    loop_names: Vec<String>,
 }
 
-impl Labels {
-    pub fn new() -> Labels {
-        Labels {
-            continue_jmp_list: vec![],
-            break_jmp_list: vec![],
-        }
-    }
+#[derive(Clone, Debug)]
+pub struct JumpToGlobalLabel {
+    continue_inst_positions: Vec<(String, isize)>,
+    break_inst_positions: Vec<(String, isize)>,
+}
 
-    fn replace_break_jmps(
-        &mut self,
-        bytecode_gen: &mut ByteCodeGen,
-        iseq: &mut ByteCode,
-        break_label_pos: isize,
-    ) {
-        for jmp_pos in &self.break_jmp_list {
-            bytecode_gen.replace_int32(
-                (break_label_pos - jmp_pos) as i32 - 5,
-                &mut iseq[*jmp_pos as usize + 1..*jmp_pos as usize + 5],
-            );
-        }
-        self.break_jmp_list.clear();
-    }
-
-    fn replace_continue_jmps(
-        &mut self,
-        bytecode_gen: &mut ByteCodeGen,
-        iseq: &mut ByteCode,
-        continue_label_pos: isize,
-    ) {
-        for jmp_pos in &self.continue_jmp_list {
-            bytecode_gen.replace_int32(
-                (continue_label_pos - jmp_pos) as i32 - 5,
-                &mut iseq[*jmp_pos as usize + 1..*jmp_pos as usize + 5],
-            );
-        }
-        self.continue_jmp_list.clear();
-    }
+#[derive(Clone, Debug)]
+pub struct JumpFromLoop {
+    continue_inst_positions: Vec<isize>,
+    break_inst_positions: Vec<isize>,
 }
 
 #[derive(Clone, Debug)]
@@ -63,7 +37,7 @@ pub struct VMCodeGen {
     pub global_varmap: CallObjectRef,
     pub func_header_info: Vec<Vec<FunctionHeaderInst>>,
     pub bytecode_gen: ByteCodeGen,
-    pub labels: Vec<Labels>,
+    pub labels: Jumps,
 }
 
 impl VMCodeGen {
@@ -73,7 +47,7 @@ impl VMCodeGen {
             global_varmap: global,
             func_header_info: vec![vec![]],
             bytecode_gen: ByteCodeGen::new(),
-            labels: vec![Labels::new()],
+            labels: Jumps::new(),
         }
     }
 }
@@ -130,12 +104,13 @@ impl VMCodeGen {
             &NodeBase::TernaryOp(ref cond, ref then, ref else_) => {
                 self.run_ternary_op(&*cond, &*then, &*else_, iseq)
             }
+            &NodeBase::Label(ref name, ref body) => self.run_label(name, &*body, iseq),
             &NodeBase::Call(ref callee, ref args) => self.run_call(&*callee, args, iseq, use_value),
             &NodeBase::Member(ref parent, ref member) => self.run_member(&*parent, member, iseq),
             &NodeBase::Index(ref parent, ref idx) => self.run_index(&*parent, &*idx, iseq),
             &NodeBase::Return(ref val) => self.run_return(val, iseq),
-            &NodeBase::Break => self.run_break(iseq),
-            &NodeBase::Continue => self.run_continue(iseq),
+            &NodeBase::Break(ref name) => self.run_break(name, iseq),
+            &NodeBase::Continue(ref name) => self.run_continue(name, iseq),
             &NodeBase::New(ref expr) => self.run_new_expr(&*expr, iseq),
             &NodeBase::Object(ref properties) => self.run_object_literal(properties, iseq),
             &NodeBase::Array(ref properties) => self.run_array_literal(properties, iseq),
@@ -291,24 +266,42 @@ impl VMCodeGen {
 }
 
 impl VMCodeGen {
-    pub fn run_break(&mut self, iseq: &mut ByteCode) {
-        let break_jmp_pos = iseq.len() as isize;
+    pub fn run_break(&mut self, name: &Option<String>, iseq: &mut ByteCode) {
+        let break_inst_pos = iseq.len() as isize;
         self.bytecode_gen.gen_jmp(0, iseq);
-        self.labels
-            .last_mut()
-            .unwrap()
-            .break_jmp_list
-            .push(break_jmp_pos);
+
+        if let Some(name) = name {
+            self.labels
+                .global
+                .break_inst_positions
+                .push((name.clone(), break_inst_pos));
+        } else {
+            self.labels
+                .local
+                .last_mut()
+                .unwrap()
+                .break_inst_positions
+                .push(break_inst_pos);
+        }
     }
 
-    pub fn run_continue(&mut self, iseq: &mut ByteCode) {
-        let continue_jmp_pos = iseq.len() as isize;
+    pub fn run_continue(&mut self, name: &Option<String>, iseq: &mut ByteCode) {
+        let continue_inst_pos = iseq.len() as isize;
         self.bytecode_gen.gen_jmp(0, iseq);
-        self.labels
-            .last_mut()
-            .unwrap()
-            .continue_jmp_list
-            .push(continue_jmp_pos);
+
+        if let Some(name) = name {
+            self.labels
+                .global
+                .continue_inst_positions
+                .push((name.clone(), continue_inst_pos));
+        } else {
+            self.labels
+                .local
+                .last_mut()
+                .unwrap()
+                .continue_inst_positions
+                .push(continue_inst_pos);
+        }
     }
 }
 
@@ -375,8 +368,12 @@ impl VMCodeGen {
     }
 
     pub fn run_while(&mut self, cond: &Node, body: &Node, iseq: &mut ByteCode) {
+        // name:
+        //   while(...) {} // <- this while is named 'name'
+        let name = self.labels.loop_names.pop();
+
         let pos1 = iseq.len() as isize;
-        self.labels.push(Labels::new());
+        self.labels.make_new_local();
 
         self.bytecode_gen.gen_loop_start(iseq);
 
@@ -396,23 +393,28 @@ impl VMCodeGen {
             &mut iseq[pos1 as usize + 1..pos1 as usize + 5],
         );
 
-        let break_label_pos = iseq.len() as isize;
-        self.labels.last_mut().unwrap().replace_break_jmps(
-            &mut self.bytecode_gen,
-            iseq,
-            break_label_pos,
-        );
+        let break_pos = iseq.len() as isize;
         self.labels
-            .last_mut()
-            .unwrap()
-            .replace_continue_jmps(&mut self.bytecode_gen, iseq, pos1);
-        self.labels.pop();
+            .cur_local()
+            .replace_break_dsts(&mut self.bytecode_gen, break_pos, iseq);
+
+        self.labels
+            .cur_local()
+            .replace_continue_dsts(&mut self.bytecode_gen, pos1, iseq);
+
+        if let Some(name) = name {
+            self.labels
+                .global
+                .replace_continue_dsts(&mut self.bytecode_gen, &name, pos1, iseq);
+        }
 
         let pos2 = iseq.len() as isize;
         self.bytecode_gen.replace_int32(
             (pos2 - cond_pos) as i32 - 5,
             &mut iseq[cond_pos as usize + 1..cond_pos as usize + 5],
         );
+
+        self.labels.pop_local();
     }
 
     pub fn run_for(
@@ -423,10 +425,14 @@ impl VMCodeGen {
         body: &Node,
         iseq: &mut ByteCode,
     ) {
+        // name:
+        //   for(...) {} // <- this for is named 'name'
+        let name = self.labels.loop_names.pop();
+
         self.run(init, iseq, false);
 
         let pos = iseq.len() as isize;
-        self.labels.push(Labels::new());
+        self.labels.make_new_local();
 
         self.bytecode_gen.gen_loop_start(iseq);
 
@@ -437,12 +443,20 @@ impl VMCodeGen {
 
         self.run(body, iseq, false);
 
-        let continue_label_pos = iseq.len() as isize;
-        self.labels.last_mut().unwrap().replace_continue_jmps(
-            &mut self.bytecode_gen,
-            iseq,
-            continue_label_pos,
-        );
+        let continue_pos = iseq.len() as isize;
+        self.labels
+            .cur_local()
+            .replace_continue_dsts(&mut self.bytecode_gen, continue_pos, iseq);
+
+        if let Some(name) = name {
+            self.labels.global.replace_continue_dsts(
+                &mut self.bytecode_gen,
+                &name,
+                continue_pos,
+                iseq,
+            );
+        }
+
         self.run(step, iseq, false);
 
         let loop_pos = iseq.len() as isize;
@@ -453,19 +467,29 @@ impl VMCodeGen {
             &mut iseq[pos as usize + 1..pos as usize + 5],
         );
 
-        let break_label_pos = iseq.len() as isize;
-        self.labels.last_mut().unwrap().replace_break_jmps(
-            &mut self.bytecode_gen,
-            iseq,
-            break_label_pos,
-        );
-        self.labels.pop();
+        let break_pos = iseq.len() as isize;
+        self.labels
+            .cur_local()
+            .replace_break_dsts(&mut self.bytecode_gen, break_pos, iseq);
 
         let pos = iseq.len() as isize;
         self.bytecode_gen.replace_int32(
             (pos - cond_pos) as i32 - 5,
             &mut iseq[cond_pos as usize + 1..cond_pos as usize + 5],
         );
+
+        self.labels.pop_local();
+    }
+
+    pub fn run_label(&mut self, name: &String, body: &Node, iseq: &mut ByteCode) {
+        self.labels.loop_names.push(name.clone());
+
+        self.run(body, iseq, false);
+
+        let break_label_pos = iseq.len() as isize;
+        self.labels
+            .global
+            .replace_break_dsts(&mut self.bytecode_gen, name, break_label_pos, iseq);
     }
 }
 
@@ -730,5 +754,117 @@ impl VMCodeGen {
 
     fn run_identifier(&mut self, name: &String, iseq: &mut ByteCode) {
         self.bytecode_gen.gen_get_name(name, iseq);
+    }
+}
+
+// Manage Breaks and Continues
+
+impl Jumps {
+    pub fn new() -> Self {
+        Jumps {
+            global: JumpToGlobalLabel::new(),
+            local: vec![],
+            loop_names: vec![],
+        }
+    }
+
+    pub fn make_new_local(&mut self) {
+        self.local.push(JumpFromLoop::new());
+    }
+
+    pub fn pop_local(&mut self) {
+        self.local.pop();
+    }
+
+    pub fn cur_local(&mut self) -> &mut JumpFromLoop {
+        self.local.last_mut().unwrap()
+    }
+}
+
+impl JumpToGlobalLabel {
+    pub fn new() -> Self {
+        JumpToGlobalLabel {
+            continue_inst_positions: vec![],
+            break_inst_positions: vec![],
+        }
+    }
+
+    fn replace_break_dsts(
+        &mut self,
+        bytecode_gen: &mut ByteCodeGen,
+        label_name: &String,
+        break_dst_pos: isize,
+        iseq: &mut ByteCode,
+    ) {
+        self.break_inst_positions
+            .retain(|(dst_label_name, inst_pos)| {
+                let x = dst_label_name == label_name;
+                if x {
+                    bytecode_gen.replace_int32(
+                        (break_dst_pos - inst_pos) as i32 - 5,
+                        &mut iseq[*inst_pos as usize + 1..*inst_pos as usize + 5],
+                    );
+                }
+                !x
+            });
+    }
+
+    fn replace_continue_dsts(
+        &mut self,
+        bytecode_gen: &mut ByteCodeGen,
+        label_name: &String,
+        continue_dst_pos: isize,
+        iseq: &mut ByteCode,
+    ) {
+        self.continue_inst_positions
+            .retain(|(dst_label_name, inst_pos)| {
+                let x = dst_label_name == label_name;
+                if x {
+                    bytecode_gen.replace_int32(
+                        (continue_dst_pos - inst_pos) as i32 - 5,
+                        &mut iseq[*inst_pos as usize + 1..*inst_pos as usize + 5],
+                    );
+                }
+                !x
+            });
+    }
+}
+
+impl JumpFromLoop {
+    pub fn new() -> Self {
+        JumpFromLoop {
+            continue_inst_positions: vec![],
+            break_inst_positions: vec![],
+        }
+    }
+
+    fn replace_break_dsts(
+        &mut self,
+        bytecode_gen: &mut ByteCodeGen,
+        break_dst_pos: isize,
+        iseq: &mut ByteCode,
+    ) {
+        for inst_pos in &self.break_inst_positions {
+            bytecode_gen.replace_int32(
+                (break_dst_pos - inst_pos) as i32 - 5,
+                &mut iseq[*inst_pos as usize + 1..*inst_pos as usize + 5],
+            );
+        }
+        self.break_inst_positions.clear();
+    }
+
+    fn replace_continue_dsts(
+        &mut self,
+        bytecode_gen: &mut ByteCodeGen,
+        continue_dst_pos: isize,
+        iseq: &mut ByteCode,
+    ) {
+        for inst_pos in &self.continue_inst_positions {
+            bytecode_gen.replace_int32(
+                (continue_dst_pos - inst_pos) as i32 - 5,
+                &mut iseq[*inst_pos as usize + 1..*inst_pos as usize + 5],
+            );
+        }
+        self.continue_inst_positions.clear();
     }
 }

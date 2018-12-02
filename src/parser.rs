@@ -191,6 +191,22 @@ impl Parser {
 
     fn read_statement(&mut self) -> Result<Node, Error> {
         let tok = self.lexer.next_except_lineterminator()?;
+
+        // Label
+        if let Kind::Identifier(ref name) = tok.kind {
+            if self
+                .lexer
+                .skip_except_lineterminator(Kind::Symbol(Symbol::Colon))
+            {
+                // TODO: https://tc39.github.io/ecma262/#prod-LabelledStatement
+                let labeled_item = self.read_statement_list_item()?;
+                return Ok(Node::new(
+                    NodeBase::Label(name.clone(), Box::new(labeled_item)),
+                    tok.pos,
+                ));
+            }
+        }
+
         let stmt = match tok.kind {
             Kind::Keyword(Keyword::If) => self.read_if_statement(),
             Kind::Keyword(Keyword::Var) => self.read_variable_statement(),
@@ -205,6 +221,7 @@ impl Parser {
                 self.read_expression_statement()
             }
         };
+
         self.lexer
             .skip_except_lineterminator(Kind::Symbol(Symbol::Semicolon));
         stmt
@@ -377,12 +394,34 @@ impl Parser {
 impl Parser {
     fn read_break_statement(&mut self) -> Result<Node, Error> {
         let pos = self.lexer.pos - "break".len();
-        return Ok(Node::new(NodeBase::Break, pos));
+        let tok = self.lexer.next()?;
+        match tok.kind {
+            Kind::LineTerminator | Kind::Symbol(Symbol::Semicolon) => {
+                Ok(Node::new(NodeBase::Break(None), pos))
+            }
+            Kind::Identifier(name) => Ok(Node::new(NodeBase::Break(Some(name)), pos)),
+            _ => Err(Error::UnexpectedToken(
+                tok.pos,
+                ErrorMsgKind::Normal,
+                "expected ';', identifier or line terminator".to_string(),
+            )),
+        }
     }
 
     fn read_continue_statement(&mut self) -> Result<Node, Error> {
         let pos = self.lexer.pos - "continue".len();
-        return Ok(Node::new(NodeBase::Continue, pos));
+        let tok = self.lexer.next()?;
+        match tok.kind {
+            Kind::LineTerminator | Kind::Symbol(Symbol::Semicolon) => {
+                Ok(Node::new(NodeBase::Continue(None), pos))
+            }
+            Kind::Identifier(name) => Ok(Node::new(NodeBase::Continue(Some(name)), pos)),
+            _ => Err(Error::UnexpectedToken(
+                tok.pos,
+                ErrorMsgKind::Normal,
+                "expected ';', identifier or line terminator".to_string(),
+            )),
+        }
     }
 }
 

@@ -842,6 +842,9 @@ impl TracingJit {
                     if cur_bb_has_no_terminator(self.builder) {
                         LLVMBuildBr(self.builder, bb);
                     }
+
+                    let bb = LLVMAppendBasicBlock(func, CString::new("").unwrap().as_ptr());
+                    LLVMPositionBuilderAtEnd(self.builder, bb);
                 }
                 VMInst::COND_OP => {
                     pc += 1;

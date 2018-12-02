@@ -49,8 +49,9 @@ pub enum NodeBase {
     BinaryOp(Box<Node>, Box<Node>, BinOp),
     TernaryOp(Box<Node>, Box<Node>, Box<Node>),
     Return(Option<Box<Node>>),
-    Break,
-    Continue,
+    Label(String, Box<Node>),
+    Break(Option<String>),
+    Continue(Option<String>),
     Array(Vec<Node>),
     Object(Vec<PropertyDefinition>),
     Identifier(String),
@@ -78,6 +79,7 @@ impl Node {
                 Some(node) => node.definitely_returns(),
                 None => false,
             },
+            NodeBase::Label(_, ref body) => body.definitely_returns(),
             NodeBase::FunctionExpr(_, _, ref body) | NodeBase::FunctionDecl(_, _, ref body) => {
                 body.definitely_returns()
             }
@@ -96,8 +98,8 @@ impl Node {
             | NodeBase::Boolean(_)
             | NodeBase::Number(_)
             | NodeBase::Nope
-            | NodeBase::Break
-            | NodeBase::Continue
+            | NodeBase::Break(_)
+            | NodeBase::Continue(_)
             | NodeBase::Assign(_, _)
             | NodeBase::UnaryOp(_, _)
             | NodeBase::BinaryOp(_, _, _)
