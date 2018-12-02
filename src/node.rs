@@ -1,4 +1,5 @@
 // TODO: Support all features: https://tc39.github.io/ecma262/#prod-FormalParameter
+//       Especially, destructing of rest parameter.
 #[derive(Clone, Debug, PartialEq)]
 pub struct FormalParameter {
     pub name: String,

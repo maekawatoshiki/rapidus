@@ -68,9 +68,9 @@ impl Parser {
             self.lexer
                 .pos_line_list
                 .iter()
-                .find(|(p, _)| *p == pos)
-                .unwrap()
-                .1,
+                .find(|(p, _)| *p >= pos)
+                .and_then(|x| Some(x.1 /*=line number*/))
+                .unwrap_or(self.lexer.line),
             msg,
             source_at_err_point,
         );
@@ -1062,7 +1062,10 @@ impl Parser {
         let mut params = vec![];
 
         loop {
+            let mut rest_param = false;
+
             params.push(if self.lexer.skip(Kind::Symbol(Symbol::Rest)) {
+                rest_param = true;
                 self.read_function_rest_parameter()?
             } else {
                 self.read_formal_parameter()?
@@ -1070,6 +1073,14 @@ impl Parser {
 
             if self.lexer.skip(Kind::Symbol(Symbol::ClosingParen)) {
                 break;
+            }
+
+            if rest_param {
+                return Err(Error::UnexpectedToken(
+                    self.lexer.pos,
+                    ErrorMsgKind::LastToken,
+                    "rest parameter must be the last formal parameter".to_string(),
+                ));
             }
 
             expect!(self, Kind::Symbol(Symbol::Comma), "expect ','");
