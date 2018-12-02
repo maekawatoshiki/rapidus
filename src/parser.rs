@@ -194,9 +194,12 @@ impl Parser {
 
         // Label
         if let Kind::Identifier(ref name) = tok.kind {
-            if self
-                .lexer
-                .skip_except_lineterminator(Kind::Symbol(Symbol::Colon))
+            let save_pos = self.lexer.pos;
+            let maybe_colon = self.lexer.next_except_lineterminator();
+            if let Ok(Token {
+                kind: Kind::Symbol(Symbol::Colon),
+                ..
+            }) = maybe_colon
             {
                 // TODO: https://tc39.github.io/ecma262/#prod-LabelledStatement
                 let labeled_item = self.read_statement_list_item()?;
@@ -204,6 +207,8 @@ impl Parser {
                     NodeBase::Label(name.clone(), Box::new(labeled_item)),
                     tok.pos,
                 ));
+            } else {
+                self.lexer.pos = save_pos;
             }
         }
 
@@ -396,7 +401,10 @@ impl Parser {
         let pos = self.lexer.pos - "break".len();
         let tok = self.lexer.next()?;
         match tok.kind {
-            Kind::LineTerminator | Kind::Symbol(Symbol::Semicolon) => {
+            Kind::LineTerminator
+            | Kind::Symbol(Symbol::Semicolon)
+            | Kind::Symbol(Symbol::ClosingBrace) => {
+                self.lexer.unget(&tok);
                 Ok(Node::new(NodeBase::Break(None), pos))
             }
             Kind::Identifier(name) => Ok(Node::new(NodeBase::Break(Some(name)), pos)),
@@ -412,7 +420,10 @@ impl Parser {
         let pos = self.lexer.pos - "continue".len();
         let tok = self.lexer.next()?;
         match tok.kind {
-            Kind::LineTerminator | Kind::Symbol(Symbol::Semicolon) => {
+            Kind::LineTerminator
+            | Kind::Symbol(Symbol::Semicolon)
+            | Kind::Symbol(Symbol::ClosingBrace) => {
+                self.lexer.unget(&tok);
                 Ok(Node::new(NodeBase::Continue(None), pos))
             }
             Kind::Identifier(name) => Ok(Node::new(NodeBase::Continue(Some(name)), pos)),
@@ -1734,7 +1745,7 @@ fn break_() {
                 NodeBase::While(
                     Box::new(Node::new(NodeBase::Number(1.0), 6)),
                     Box::new(Node::new(
-                        NodeBase::StatementList(vec![Node::new(NodeBase::Break, 9)]),
+                        NodeBase::StatementList(vec![Node::new(NodeBase::Break(None), 9)]),
                         9,
                     )),
                 ),
@@ -1755,7 +1766,7 @@ fn continue_() {
                 NodeBase::While(
                     Box::new(Node::new(NodeBase::Number(1.0), 6)),
                     Box::new(Node::new(
-                        NodeBase::StatementList(vec![Node::new(NodeBase::Continue, 9)]),
+                        NodeBase::StatementList(vec![Node::new(NodeBase::Continue(None), 9)]),
                         9,
                     )),
                 ),
