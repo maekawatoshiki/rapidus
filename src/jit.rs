@@ -247,19 +247,17 @@ impl TracingJit {
             &mut error,
         ) != 0
         {
-            panic!()
+            panic!("llvm error: failed to initialize execute engine")
         }
 
-        // self.exec_engine = Some(ee);
-        {
-            for (func, llvm_func) in &self.used_builtin_funcs {
-                llvm::execution_engine::LLVMAddGlobalMapping(
-                    ee,
-                    *llvm_func,
-                    *func as *mut libc::c_void,
-                );
-            }
+        for (func, llvm_func) in &self.used_builtin_funcs {
+            llvm::execution_engine::LLVMAddGlobalMapping(
+                ee,
+                *llvm_func,
+                *func as *mut libc::c_void,
+            );
         }
+
         let f_raw = llvm::execution_engine::LLVMGetFunctionAddress(
             ee,
             CString::new(name.as_str()).unwrap().as_ptr(),
@@ -430,17 +428,15 @@ impl TracingJit {
             &mut error,
         ) != 0
         {
-            panic!()
+            panic!("llvm error: failed to initialize execute engine")
         }
 
-        {
-            for (func, llvm_func) in &self.used_builtin_funcs {
-                llvm::execution_engine::LLVMAddGlobalMapping(
-                    ee,
-                    *llvm_func,
-                    *func as *mut libc::c_void,
-                );
-            }
+        for (func, llvm_func) in &self.used_builtin_funcs {
+            llvm::execution_engine::LLVMAddGlobalMapping(
+                ee,
+                *llvm_func,
+                *func as *mut libc::c_void,
+            );
         }
 
         let raw_func =
