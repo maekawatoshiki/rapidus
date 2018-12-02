@@ -106,12 +106,7 @@ impl Value {
                 );
                 hm.insert(
                     "__proto__".to_string(),
-                    Value::new(ValueBase::Function(Box::new((
-                        0,
-                        vec![],
-                        function::FUNCTION_PROTOTYPE.with(|x| *x),
-                        CallObject::new(Value::undefined()),
-                    )))),
+                    function::FUNCTION_OBJ.with(|x| x.clone()),
                 );
                 hm
             }),
@@ -175,41 +170,8 @@ impl Value {
         obj.insert("prototype".to_string(), prototype);
         obj.insert(
             "__proto__".to_string(),
-            Value::new(ValueBase::Object(gc::new({
-                let mut hm = FxHashMap::default();
-                hm.insert(
-                    "apply".to_string(),
-                    Value::new(ValueBase::BuiltinFunction(Box::new((
-                        BuiltinFuncInfo::new(builtin::function_prototype_apply, None),
-                        ::std::ptr::null_mut(),
-                        CallObject::new(Value::undefined()),
-                    )))),
-                );
-                hm.insert(
-                    "call".to_string(),
-                    Value::new(ValueBase::BuiltinFunction(Box::new((
-                        BuiltinFuncInfo::new(builtin::function_prototype_call, None),
-                        ::std::ptr::null_mut(),
-                        CallObject::new(Value::undefined()),
-                    )))),
-                );
-                hm
-            }))),
+            function::FUNCTION_OBJ.with(|x| x.clone()),
         );
-
-        let obj_ = obj.clone();
-
-        if let ValueBase::Object(ref mut obj2) = obj.get_mut("__proto__").unwrap().val {
-            unsafe {
-                for name in ["apply", "call"].iter() {
-                    if let ValueBase::BuiltinFunction(box (_, ref mut obj3, _)) =
-                        (**obj2).get_mut(*name).unwrap().val
-                    {
-                        *obj3 = gc::new(obj_.clone());
-                    }
-                }
-            }
-        }
 
         Value::new(ValueBase::BuiltinFunction(Box::new((
             BuiltinFuncInfo::new(func, builtin_jit_func_info),
@@ -542,10 +504,8 @@ impl ValueBase {
             (ValueBase::Number(l), ValueBase::Number(r)) => Ok(l == r),
             (ValueBase::String(l), ValueBase::String(r)) => Ok(l == r),
             (ValueBase::Object(l), ValueBase::Object(r)) => Ok(l == r),
-            (ValueBase::Function(l), ValueBase::Function(r)) => Ok(l.as_ref() == r.as_ref()),
-            (ValueBase::BuiltinFunction(l), ValueBase::BuiltinFunction(r)) => {
-                Ok(l.as_ref() == r.as_ref())
-            }
+            (ValueBase::Function(l), ValueBase::Function(r)) => Ok(l == r),
+            (ValueBase::BuiltinFunction(l), ValueBase::BuiltinFunction(r)) => Ok(l == r),
             (ValueBase::Array(l), ValueBase::Array(r)) => Ok(l == r),
             (ValueBase::Arguments, ValueBase::Arguments) => return Err(RuntimeError::Unimplemented),
             _ => Ok(false),

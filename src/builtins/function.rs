@@ -1,82 +1,67 @@
 use builtin;
 use gc;
-use vm::{callobj::CallObject, value::Value};
+use vm::{
+    callobj::CallObject, value::{Value, ValueBase}, vm::VM,
+};
+use builtin::{BuiltinFuncInfo, BuiltinFuncTy};
 
 use rustc_hash::FxHashMap;
 
 thread_local!(
     pub static FUNCTION_PROTOTYPE: *mut FxHashMap<String, Value> = {
+        pub fn builtin_function(func: BuiltinFuncTy) -> Value {
+            let obj = FxHashMap::default();
+            Value::new(ValueBase::BuiltinFunction(Box::new((
+                BuiltinFuncInfo::new(func, None),
+                gc::new(obj),
+                CallObject::new(Value::undefined()),
+            ))))
+        }
+
         let mut prototype = FxHashMap::default();
 
         prototype.insert(
             "apply".to_string(),
-            Value::builtin_function(
-                builtin::function_prototype_apply,
-                CallObject::new(Value::undefined()),
-            ),
+            builtin_function(builtin::function_prototype_apply),
         );
 
         prototype.insert(
             "call".to_string(),
-            Value::builtin_function(
-                builtin::function_prototype_call,
-                CallObject::new(Value::undefined()),
-            ),
+            builtin_function(builtin::function_prototype_call),
         );
 
         gc::new(prototype)
-    }; // pub static FUNCTION_OBJ: Value = {
-    //     let prototype = FUNCTION_PROTOTYPE.with(|x|*x);
-    //     let function = Value::builtin_function_with_obj_and_prototype(
-    //         function_new,
-    //         CallObject::new(Value::undefined()),
-    //         {
-    //             let obj = FxHashMap::default();
-    //             // TODO: Add:
-    //             //          - Array.from()
-    //             //          - Array.isArray()
-    //             //          - Array.observe()
-    //             //          - Array.of()
-    //             //          etc...
-    //             obj
-    //         },
-    //         Value::new(ValueBase::Function(Box::new((0,vec![],prototype,CallObject::new(Value::undefined()))))),
-    //     );
-        //
-        // unsafe {(*prototype).obj.insert("constructor".to_string(), array.clone()); }
-        // array
-        //
-        // let mut val = Value::new(ValueBase::Function(Box::new((
-        //     id,
-        //     iseq,
-        //     gc::new({
-        //         let mut hm = FxHashMap::default();
-        //         hm.insert(
-        //             "prototype".to_string(),
-        //             Value::new(ValueBase::Object(gc::new(FxHashMap::default()))),
-        //         );
-        //         hm.insert(
-        //             "__proto__".to_string(),
-        //             Value::new(ValueBase::Function(Box::new((
-        //                 0,
-        //                 vec![],
-        //                 function::FUNCTION_PROTOTYPE.with(|x| *x),
-        //                 CallObject::new(Value::undefined()),
-        //             )))),
-        //         );
-        //         hm
-        //     }),
-        //     callobj,
-        // ))));
+    }; 
 
-        // let v2 = val.clone();
-        // if let ValueBase::Function(box (_, _, ref mut obj, _)) = &mut val.val {
-        //     // TODO: Add constructor of this function itself (==Function). (not prototype.constructor)
-        //     unsafe {
-        //         if let ValueBase::Object(ref mut obj) = (**obj).get_mut("prototype").unwrap().val {
-        //             (**obj).insert("constructor".to_string(), v2);
-        //         }
-        //     }
-        // }
-    // }
+    pub static FUNCTION_OBJ: Value = {
+       let prototype = FUNCTION_PROTOTYPE.with(|x|*x);
+       let empty_func = Value::new(
+            ValueBase::Function(
+            Box::new((0, vec![], prototype, CallObject::new(Value::undefined()))))
+       );
+       let obj = gc::new({
+           let mut obj = FxHashMap::default();
+           obj.insert("prototype".to_string(), empty_func.clone());
+           obj
+       });
+
+       let function = Value::new(ValueBase::BuiltinFunction(Box::new((
+           BuiltinFuncInfo::new(function_new, None),
+           obj, CallObject::new(Value::undefined()),
+       ))));
+
+       unsafe { (*prototype).insert("constructor".to_string(), function.clone()); }
+       unsafe {
+           (*obj).insert(
+               "__proto__".to_string(),
+               empty_func.clone(),
+           );
+       }
+   
+       function
+   }
 );
+
+pub fn function_new(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
+    unimplemented!("sorry");
+}

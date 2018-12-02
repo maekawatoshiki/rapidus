@@ -169,6 +169,11 @@ impl VM {
         }
 
         unsafe {
+            use builtins::function::FUNCTION_OBJ;
+            (*global_vals).set_value("Function".to_string(), FUNCTION_OBJ.with(|x| x.clone()));
+        }
+
+        unsafe {
             (*global_vals).set_value(
                 "Math".to_string(),
                 make_object!(

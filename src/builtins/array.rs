@@ -1,3 +1,4 @@
+use super::function;
 use gc;
 use vm::{
     callobj::CallObject, value::{ArrayValue, Value, ValueBase}, vm::{call_function, VM},
@@ -49,7 +50,10 @@ thread_local!(
             None,
             CallObject::new(Value::undefined()),
             {
-                let obj = FxHashMap::default();
+                let mut obj = FxHashMap::default();
+
+                obj.insert("__proto__".to_string(), function::FUNCTION_OBJ.with(|x| x.clone()));
+
                 // TODO: Add:
                 //          - Array.from()
                 //          - Array.isArray()

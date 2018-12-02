@@ -7,13 +7,22 @@ use gc;
 
 pub type CallObjectRef = *mut CallObject;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct CallObject {
     pub vals: *mut FxHashMap<String, Value>,
     pub params: Vec<(String, bool)>, // (name, rest param?)
     pub arg_rest_vals: Vec<Value>,
     pub this: Box<Value>,
     pub parent: Option<CallObjectRef>,
+}
+
+impl PartialEq for CallObject {
+    fn eq(&self, other: &CallObject) -> bool {
+        self.vals == other.vals
+            && self.params == other.params
+            && self.arg_rest_vals == other.arg_rest_vals
+            && self.parent == other.parent
+    }
 }
 
 impl CallObject {
