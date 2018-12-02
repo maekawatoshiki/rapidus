@@ -6,6 +6,7 @@ use std::ffi::CString;
 // use cpuprofiler::PROFILER;
 
 use super::callobj::{CallObject, CallObjectRef};
+use super::error::*;
 use builtin;
 use builtin::{BuiltinFuncInfo, BuiltinFuncTy, BuiltinJITFuncInfo};
 use builtins::function;
@@ -37,7 +38,7 @@ pub enum ValueBase {
     BuiltinFunction(Box<(BuiltinFuncInfo, *mut FxHashMap<String, Value>, CallObject)>), // id(==0:unknown)
     Object(*mut FxHashMap<String, Value>), // Object(FxHashMap<String, Value>),
     Array(*mut ArrayValue),
-    Arguments,
+    Arguments, // TODO: Should have CallObject
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -485,6 +486,29 @@ impl ValueBase {
             ValueBase::Array(_) => true,
             ValueBase::Object(_) => true,
             _ => false,
+        }
+    }
+}
+
+impl ValueBase {
+    // https://tc39.github.io/ecma262/#sec-strict-equality-comparison
+    pub fn strict_equal(self, other: ValueBase) -> Result<bool, RuntimeError> {
+        match (self, other) {
+            (ValueBase::Empty, ValueBase::Empty) => unreachable!(),
+            (ValueBase::Null, ValueBase::Null) => Ok(true),
+            (ValueBase::Undefined, ValueBase::Undefined) => Ok(true),
+            (ValueBase::Bool(l), ValueBase::Bool(r)) => Ok(l == r),
+            (ValueBase::Number(l), ValueBase::Number(r)) if l.is_nan() || r.is_nan() => Ok(false),
+            (ValueBase::Number(l), ValueBase::Number(r)) => Ok(l == r),
+            (ValueBase::String(l), ValueBase::String(r)) => Ok(l == r),
+            (ValueBase::Object(l), ValueBase::Object(r)) => Ok(l == r),
+            (ValueBase::Function(l), ValueBase::Function(r)) => Ok(l.as_ref() == r.as_ref()),
+            (ValueBase::BuiltinFunction(l), ValueBase::BuiltinFunction(r)) => {
+                Ok(l.as_ref() == r.as_ref())
+            }
+            (ValueBase::Array(l), ValueBase::Array(r)) => Ok(l == r),
+            (ValueBase::Arguments, ValueBase::Arguments) => return Err(RuntimeError::Unimplemented),
+            _ => Ok(false),
         }
     }
 }
