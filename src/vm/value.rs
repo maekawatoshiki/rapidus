@@ -491,6 +491,46 @@ impl ValueBase {
 }
 
 impl ValueBase {
+    pub fn type_equal(&self, other: &ValueBase) -> bool {
+        match (self, other) {
+            (&ValueBase::Empty, ValueBase::Empty)
+            | (&ValueBase::Null, ValueBase::Null)
+            | (&ValueBase::Undefined, ValueBase::Undefined)
+            | (&ValueBase::Bool(_), ValueBase::Bool(_))
+            | (&ValueBase::Number(_), ValueBase::Number(_))
+            | (&ValueBase::String(_), ValueBase::String(_))
+            | (&ValueBase::Object(_), ValueBase::Object(_))
+            | (&ValueBase::Function(_), ValueBase::Function(_))
+            | (&ValueBase::BuiltinFunction(_), ValueBase::BuiltinFunction(_))
+            | (ValueBase::Array(_), ValueBase::Array(_))
+            | (ValueBase::Arguments, ValueBase::Arguments) => true,
+            _ => false,
+        }
+    }
+    // https://tc39.github.io/ecma262/#sec-abstract-equality-comparison
+    pub fn abstract_equal(self, other: ValueBase) -> Result<bool, RuntimeError> {
+        if self.type_equal(&other) {
+            return self.strict_equal(other);
+        }
+
+        match (&self, &other) {
+            (&ValueBase::Number(l), &ValueBase::String(_)) => Ok(l == other.to_number()),
+            (&ValueBase::String(_), &ValueBase::Number(r)) => Ok(self.to_number() == r),
+            (&ValueBase::Bool(_), _) => {
+                Ok(ValueBase::Number(self.to_number()).abstract_equal(other)?)
+            }
+            (_, &ValueBase::Bool(_)) => {
+                Ok(ValueBase::Number(other.to_number()).abstract_equal(self)?)
+            }
+            // TODO: Implement the following cases:
+            //  8. If Type(x) is either String, Number, or Symbol and Type(y) is Object,
+            //      return the result of the comparison x == ToPrimitive(y).
+            //  9. If Type(x) is Object and Type(y) is either String, Number, or Symbol,
+            //      return the result of the comparison ToPrimitive(x) == y.
+            _ => Ok(false),
+        }
+    }
+
     // https://tc39.github.io/ecma262/#sec-strict-equality-comparison
     pub fn strict_equal(self, other: ValueBase) -> Result<bool, RuntimeError> {
         match (self, other) {

@@ -714,11 +714,10 @@ fn eq(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
     self_.state.pc += 1; // $name
     let rhs = self_.state.stack.pop().unwrap();
     let lhs = self_.state.stack.pop().unwrap();
-    self_.state.stack.push(match (lhs.val, rhs.val) {
-        (ValueBase::Number(l), ValueBase::Number(r)) => Value::bool(l == r),
-        (ValueBase::String(l), ValueBase::String(r)) => Value::bool(l == r),
-        _ => return Err(RuntimeError::Unimplemented),
-    });
+    self_
+        .state
+        .stack
+        .push(Value::bool(lhs.val.abstract_equal(rhs.val)?));
     Ok(())
 }
 
@@ -727,13 +726,10 @@ fn ne(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
     self_.state.pc += 1; // $name
     let rhs = self_.state.stack.pop().unwrap();
     let lhs = self_.state.stack.pop().unwrap();
-    self_.state.stack.push(match (lhs.val, rhs.val) {
-        (ValueBase::Null, ValueBase::Null) => Value::bool(false),
-        (ValueBase::Undefined, ValueBase::Undefined) => Value::bool(false),
-        (ValueBase::Number(l), ValueBase::Number(r)) => Value::bool(l != r),
-        (ValueBase::String(l), ValueBase::String(r)) => Value::bool(l != r),
-        _ => return Err(RuntimeError::Unimplemented),
-    });
+    self_
+        .state
+        .stack
+        .push(Value::bool(lhs.val.abstract_equal(rhs.val)?));
     Ok(())
 }
 
