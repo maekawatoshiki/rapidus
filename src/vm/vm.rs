@@ -4,7 +4,9 @@ use rustc_hash::FxHashMap;
 use std::ffi::CString;
 
 use super::{
-    callobj::{CallObject, CallObjectRef}, error::*, value::{ArrayValue, FuncId, Value, ValueBase},
+    callobj::{CallObject, CallObjectRef},
+    error::*,
+    value::{ArrayValue, FuncId, Value, ValueBase},
 };
 use builtin;
 use builtin::BuiltinJITFuncInfo;
@@ -109,8 +111,9 @@ impl VM {
                                         vec![LLVMPointerType(
                                             LLVMInt8TypeInContext(jit.context),
                                             0,
-                                        )].as_mut_slice()
-                                            .as_mut_ptr(),
+                                        )]
+                                        .as_mut_slice()
+                                        .as_mut_ptr(),
                                         1,
                                         0,
                                     ),
@@ -150,15 +153,15 @@ impl VM {
                 make_object!(
                     stdout:
                         make_object!(write:
-                        Value::builtin_function_with_jit(
-                            builtin::process_stdout_write,
-                            BuiltinJITFuncInfo::Normal {
-                                func: builtin::jit_process_stdout_write as *mut libc::c_void,
-                                llvm_func: llvm_process_stdout_write,
-                            },
-                            CallObject::new(Value::undefined()),
+                            Value::builtin_function_with_jit(
+                                builtin::process_stdout_write,
+                                BuiltinJITFuncInfo::Normal {
+                                    func: builtin::jit_process_stdout_write as *mut libc::c_void,
+                                    llvm_func: llvm_process_stdout_write,
+                                },
+                                CallObject::new(Value::undefined()),
+                            )
                         )
-                    )
                 ),
             );
         }

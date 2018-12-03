@@ -198,7 +198,8 @@ impl Value {
             match obj_find_val(
                 NUMBER_PROTOTYPE.with(|x| unsafe { &**x }),
                 property.to_string().as_str(),
-            ).val
+            )
+            .val
             {
                 ValueBase::Function(box (id, iseq, map2, mut callobj)) => {
                     Value::new(ValueBase::Function(Box::new((id, iseq, map2, {
@@ -245,7 +246,8 @@ impl Value {
                             .nth(n as usize)
                             .unwrap()
                             .to_string(),
-                    ).unwrap(),
+                    )
+                    .unwrap(),
                 ),
                 // Length of string. TODO: Is this implementation correct?
                 ValueBase::String(ref member) if member.to_str().unwrap() == "length" => {
@@ -427,7 +429,8 @@ impl ValueBase {
             -num.abs().floor()
         } else {
             num.abs().floor()
-        } as i64 % p2_32) as f64;
+        } as i64
+            % p2_32) as f64;
 
         if int32bit < 0.0 {
             p2_32 as f64 + int32bit
@@ -520,16 +523,12 @@ impl ArrayValue {
             elems: arr,
             length: len,
             obj: {
+                use builtins::array::ARRAY_PROTOTYPE;
                 let mut hm = FxHashMap::default();
-                hm.insert("__proto__".to_string(), Value::array(Self::prototype()));
+                hm.insert("__proto__".to_string(), ARRAY_PROTOTYPE.with(|x| x.clone()));
                 hm
             },
         }
-    }
-
-    pub fn prototype() -> *mut ArrayValue {
-        use builtins::array::ARRAY_PROTOTYPE;
-        ARRAY_PROTOTYPE.with(|x| x.clone())
     }
 
     pub fn to_string(&self) -> String {

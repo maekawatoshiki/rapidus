@@ -4,7 +4,9 @@ use llvm::prelude::LLVMValueRef;
 use std::ffi::CString;
 
 use vm::{
-    callobj::CallObject, value::{RawStringPtr, Value, ValueBase}, vm::{call_function, VM},
+    callobj::CallObject,
+    value::{RawStringPtr, Value, ValueBase},
+    vm::{call_function, VM},
 };
 
 pub type BuiltinFuncTy = fn(&mut VM, &Vec<Value>, &CallObject);
@@ -167,7 +169,8 @@ pub fn debug_print(val: &Value, nest: bool) {
                                 " \0"
                             } else {
                                 ", \0"
-                            }.as_ptr() as RawStringPtr,
+                            }
+                            .as_ptr() as RawStringPtr,
                         );
 
                         if is_last_idx(i - 1) {
@@ -181,7 +184,8 @@ pub fn debug_print(val: &Value, nest: bool) {
                             " \0"
                         } else {
                             ", \0"
-                        }.as_ptr() as RawStringPtr,
+                        }
+                        .as_ptr() as RawStringPtr,
                     );
 
                     i += 1;
@@ -359,10 +363,10 @@ pub fn require(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject) {
     // TODO: Do not unwrap
     vm.run(iseq).unwrap();
 
-    let module_exports = unsafe {
-        (**vm.state.scope.last().unwrap()).get_value(&"module".to_string())
-    }.unwrap()
-        .get_property(Value::string(CString::new("exports").unwrap()).val, None);
+    let module_exports =
+        unsafe { (**vm.state.scope.last().unwrap()).get_value(&"module".to_string()) }
+            .unwrap()
+            .get_property(Value::string(CString::new("exports").unwrap()).val, None);
     vm.state.stack.push(module_exports);
 }
 

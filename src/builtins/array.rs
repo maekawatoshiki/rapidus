@@ -1,13 +1,15 @@
 use super::function;
 use gc;
 use vm::{
-    callobj::CallObject, value::{ArrayValue, Value, ValueBase}, vm::{call_function, VM},
+    callobj::CallObject,
+    value::{ArrayValue, Value, ValueBase},
+    vm::{call_function, VM},
 };
 
 use rustc_hash::FxHashMap;
 
 thread_local!(
-    pub static ARRAY_PROTOTYPE: *mut ArrayValue = {
+    pub static ARRAY_PROTOTYPE: Value = {
         let mut prototype = FxHashMap::default();
 
         prototype.insert(
@@ -36,15 +38,15 @@ thread_local!(
 
         // https://www.ecma-international.org/ecma-262/7.0/#sec-properties-of-the-array-prototype-object
         // TODO: precise implementation
-        gc::new(ArrayValue {
+        Value::new(ValueBase::Array(gc::new(ArrayValue {
             elems: vec![],
             length: 0,
             obj: prototype
-        })
+        })))
     };
 
     pub static ARRAY_OBJ: Value = {
-        let prototype = ArrayValue::prototype();
+        let prototype = ARRAY_PROTOTYPE.with(|x| x.clone());
         let array = Value::builtin_function_with_obj_and_prototype(
             array_new,
             None,
@@ -62,10 +64,15 @@ thread_local!(
                 //          etc...
                 obj
             },
-            Value::array(ArrayValue::prototype()),
+            prototype.clone()
         );
 
-        unsafe {(*prototype).obj.insert("constructor".to_string(), array.clone()); }
+        unsafe {
+            if let Value { val: ValueBase::Array(arr), ..} = prototype {
+                (*arr).obj.insert("constructor".to_string(), array.clone()); 
+            }
+        }
+
         array
     }
 );

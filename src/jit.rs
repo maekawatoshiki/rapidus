@@ -474,8 +474,9 @@ impl TracingJit {
             vec![LLVMPointerType(
                 LLVMPointerType(LLVMInt8TypeInContext(self.context), 0),
                 0,
-            )].as_mut_slice()
-                .as_mut_ptr(),
+            )]
+            .as_mut_slice()
+            .as_mut_ptr(),
             1,
             0,
         );
@@ -504,8 +505,9 @@ impl TracingJit {
                     LLVMInt32TypeInContext(self.context),
                     i as u64,
                     0,
-                )].as_mut_slice()
-                    .as_mut_ptr(),
+                )]
+                .as_mut_slice()
+                .as_mut_ptr(),
                 1,
                 CString::new("").unwrap().as_ptr(),
             );

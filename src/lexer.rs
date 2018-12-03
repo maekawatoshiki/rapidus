@@ -202,7 +202,8 @@ impl Lexer {
                     c.is_alphanumeric() || c == '.' || is_f
                 })?
             }
-        }.as_str();
+        }
+        .as_str();
 
         let num = match kind {
             NumLiteralKind::Dec => num_literal.parse().unwrap(),
@@ -253,9 +254,11 @@ impl Lexer {
         loop {
             match self.skip_char()? {
                 q if q == quote => break,
-                '\\' => for c in self.read_escaped_char()? {
-                    s.push(c)
-                },
+                '\\' => {
+                    for c in self.read_escaped_char()? {
+                        s.push(c)
+                    }
+                }
                 c => s.push(c),
             }
         }
@@ -348,11 +351,13 @@ impl Lexer {
                         symbol = Symbol::Dec;
                     }
                 }
-                _ => if c == '+' {
-                    symbol = Symbol::Add;
-                } else if c == '-' {
-                    symbol = Symbol::Sub;
-                },
+                _ => {
+                    if c == '+' {
+                        symbol = Symbol::Add;
+                    } else if c == '-' {
+                        symbol = Symbol::Sub;
+                    }
+                }
             },
             '*' => {
                 if self.skip_char_if_any('=')? {
@@ -807,7 +812,7 @@ fn comment() {
                                 * comment 
                                 */
                                y"
-            .to_string(),
+        .to_string(),
     );
     assert_eq!(
         lexer.next_except_lineterminator().unwrap().kind,

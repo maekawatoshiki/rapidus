@@ -1,6 +1,8 @@
 use rand::random;
 use vm::{
-    callobj::CallObject, value::{Value, ValueBase}, vm::VM,
+    callobj::CallObject,
+    value::{Value, ValueBase},
+    vm::VM,
 };
 
 macro_rules! simple_math {

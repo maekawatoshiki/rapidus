@@ -167,7 +167,7 @@ impl Parser {
                         self.lexer.pos_line_list.last().unwrap().0,
                         ErrorMsgKind::LastToken,
                         "reach unexpected EOF".to_string(),
-                    ))
+                    ));
                 }
                 Err(e) => return Err(e),
             }
@@ -696,7 +696,7 @@ impl Parser {
                         UnaryOp::PrInc,
                     ),
                     pos,
-                ))
+                ));
             }
             Kind::Symbol(Symbol::Dec) => {
                 return Ok(Node::new(
@@ -705,7 +705,7 @@ impl Parser {
                         UnaryOp::PrDec,
                     ),
                     pos,
-                ))
+                ));
             }
             _ => self.lexer.unget(&tok),
         }
@@ -718,13 +718,13 @@ impl Parser {
                     return Ok(Node::new(
                         NodeBase::UnaryOp(Box::new(e), UnaryOp::PoInc),
                         pos,
-                    ))
+                    ));
                 }
                 Kind::Symbol(Symbol::Dec) => {
                     return Ok(Node::new(
                         NodeBase::UnaryOp(Box::new(e), UnaryOp::PoDec),
                         pos,
-                    ))
+                    ));
                 }
                 _ => self.lexer.unget(&tok),
             }
@@ -831,7 +831,7 @@ impl Parser {
                         pos,
                         ErrorMsgKind::LastToken,
                         "reach unexpected EOF".to_string(),
-                    ))
+                    ));
                 }
             }
 
@@ -848,7 +848,7 @@ impl Parser {
                         pos,
                         ErrorMsgKind::LastToken,
                         "reach unexpected EOF".to_string(),
-                    ))
+                    ));
                 }
             }
         }
@@ -890,7 +890,7 @@ impl Parser {
                     tok.pos,
                     proper_error_msg_kind(self, tok.pos),
                     "unexpected token".to_string(),
-                ))
+                ));
             }
         }
     }
@@ -1325,7 +1325,8 @@ fn simple_expr_eq() {
         ("1 + 2 != 3", BinOp::Ne, 9),
         ("1 + 2 === 3", BinOp::SEq, 10),
         ("1 + 2 !== 3", BinOp::SNe, 10),
-    ].iter()
+    ]
+    .iter()
     {
         let mut parser = Parser::new(input.to_string());
         assert_eq!(
@@ -1360,7 +1361,8 @@ fn simple_expr_rel() {
         ("1 + 2 > 3", BinOp::Gt, 8),
         ("1 + 2 <= 3", BinOp::Le, 9),
         ("1 + 2 >= 3", BinOp::Ge, 9),
-    ].iter()
+    ]
+    .iter()
     {
         let mut parser = Parser::new(input.to_string());
         assert_eq!(
@@ -1446,7 +1448,8 @@ fn simple_expr_bitwise_and() {
         ("1 & 3", BinOp::And),
         ("1 ^ 3", BinOp::Xor),
         ("1 | 3", BinOp::Or),
-    ].iter()
+    ]
+    .iter()
     {
         let mut parser = Parser::new(input.to_string());
         assert_eq!(
@@ -1474,7 +1477,8 @@ fn simple_expr_shift() {
         ("1 << 2", BinOp::Shl),
         ("1 >> 2", BinOp::Shr),
         ("1 >>> 2", BinOp::ZFShr),
-    ].iter()
+    ]
+    .iter()
     {
         let mut parser = Parser::new(input.to_string());
         assert_eq!(
@@ -1539,7 +1543,8 @@ fn simple_expr_unary() {
         ("--a", UnaryOp::PrDec, 2, 2),
         ("a++", UnaryOp::PoInc, 0, 1),
         ("a--", UnaryOp::PoDec, 0, 1),
-    ].iter()
+    ]
+    .iter()
     {
         let mut parser = Parser::new(input.to_string());
         assert_eq!(
@@ -1641,7 +1646,8 @@ fn call() {
         ("f()", vec![]),
         ("f(1, 2, 3)", vec![(1, 2), (2, 5), (3, 8)]),
         ("f(1, 2,)", vec![(1, 2), (2, 5)]),
-    ].iter()
+    ]
+    .iter()
     {
         let mut parser = Parser::new(input.to_string());
         assert_eq!(
@@ -1691,7 +1697,8 @@ fn member() {
                 7,
             ),
         ),
-    ].iter()
+    ]
+    .iter()
     {
         let mut parser = Parser::new(input.to_string());
         assert_eq!(
@@ -1799,7 +1806,8 @@ fn return_() {
             ),
         ),
         ("return;", Node::new(NodeBase::Return(None), 6)),
-    ].iter()
+    ]
+    .iter()
     {
         let mut parser = Parser::new(input.to_string());
         assert_eq!(
@@ -1959,7 +1967,8 @@ fn function_decl() {
                 8,
             ),
         ),
-    ].iter()
+    ]
+    .iter()
     {
         let mut parser = Parser::new(input.to_string());
         assert_eq!(
@@ -1977,7 +1986,7 @@ fn asi1() {
              return 
              {};
          }"
-            .to_string(),
+        .to_string(),
     );
     assert_eq!(
         parser.parse_all().unwrap(),
@@ -2008,7 +2017,7 @@ fn asi2() {
         b = a
         ++b
         "
-            .to_string(),
+        .to_string(),
     );
     assert_eq!(
         parser.parse_all().unwrap(),

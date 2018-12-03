@@ -37,7 +37,7 @@ thread_local!(pub static ID_GEN: RefCell<IdGen> = {
 
 // unique id must be greater than 0.
 pub fn get_unique_id() -> usize {
-    ID_GEN.with(|idgen| idgen.borrow_mut().gen_id() + 1) 
+    ID_GEN.with(|idgen| idgen.borrow_mut().gen_id() + 1)
 }
 
 #[test]

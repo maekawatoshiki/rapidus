@@ -197,9 +197,11 @@ fn run(file_name: &str) {
         Ok(ForkResult::Parent { child, .. }) => {
             match waitpid(child, None) {
                 Ok(ok) => match ok {
-                    WaitStatus::Exited(_, status) => if status != 0 {
-                        panic!("exited. status: {}", status)
-                    },
+                    WaitStatus::Exited(_, status) => {
+                        if status != 0 {
+                            panic!("exited. status: {}", status)
+                        }
+                    }
                     WaitStatus::Signaled(pid, status, _) => {
                         // TODO: We can do anything (like calling destructors) here.
                         panic!("child: pid={:?}, status={:?}\nRapidus Internal Error: segmentation fault", pid, status);

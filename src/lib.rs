@@ -3,6 +3,7 @@
 #![feature(repeat_generic_slice)]
 
 pub mod builtin;
+pub mod builtins;
 pub mod bytecode_gen;
 pub mod gc;
 pub mod id;
@@ -12,7 +13,6 @@ pub mod node;
 pub mod parser;
 pub mod token;
 pub mod vm;
-pub mod builtins;
 pub mod vm_codegen;
 
 extern crate ansi_term;

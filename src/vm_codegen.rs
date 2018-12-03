@@ -2,7 +2,8 @@ use bytecode_gen::{ByteCode, ByteCodeGen, VMInst};
 use id;
 use node::{BinOp, FormalParameter, FormalParameters, Node, NodeBase, PropertyDefinition, UnaryOp};
 use vm::{
-    callobj::{CallObject, CallObjectRef}, value::Value,
+    callobj::{CallObject, CallObjectRef},
+    value::Value,
 };
 
 use std::ffi::CString;
