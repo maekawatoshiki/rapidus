@@ -65,6 +65,6 @@ thread_local!(
     }
 );
 
-pub fn function_new(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
+pub fn function_new(_vm: &mut VM, _args: &Vec<Value>, _: &CallObject) {
     unimplemented!("sorry");
 }

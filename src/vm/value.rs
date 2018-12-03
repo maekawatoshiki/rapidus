@@ -7,7 +7,6 @@ use std::ffi::CString;
 
 use super::callobj::{CallObject, CallObjectRef};
 use super::error::*;
-use builtin;
 use builtin::{BuiltinFuncInfo, BuiltinFuncTy, BuiltinJITFuncInfo};
 use builtins::function;
 use bytecode_gen::ByteCode;

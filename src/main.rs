@@ -132,6 +132,7 @@ fn repl() {
                             break;
                         }
                         lines += line.as_str();
+                        lines += "\n";
                     }
 
                     lines
