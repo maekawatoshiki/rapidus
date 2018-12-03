@@ -106,7 +106,7 @@ impl Value {
                 );
                 hm.insert(
                     "__proto__".to_string(),
-                    function::FUNCTION_OBJ.with(|x| x.clone()),
+                    function::FUNCTION_PROTOTYPE.with(|x| x.clone()),
                 );
                 hm
             }),
@@ -170,7 +170,7 @@ impl Value {
         obj.insert("prototype".to_string(), prototype);
         obj.insert(
             "__proto__".to_string(),
-            function::FUNCTION_OBJ.with(|x| x.clone()),
+            function::FUNCTION_PROTOTYPE.with(|x| x.clone()),
         );
 
         Value::new(ValueBase::BuiltinFunction(Box::new((
