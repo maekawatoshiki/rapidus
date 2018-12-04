@@ -159,9 +159,9 @@ impl VMCodeGen {
                     self.bytecode_gen
                         .gen_push_const(val, &mut section_callobj_set);
                     self.bytecode_gen
-                        .gen_set_cur_callobj(&mut section_callobj_set);
+                        .gen_update_parent_scope(&mut section_callobj_set);
                     self.bytecode_gen
-                        .gen_set_name(&func_name, &mut section_callobj_set);
+                        .gen_set_value(&func_name, &mut section_callobj_set);
                 }
                 FunctionHeaderInst::DeclVar(var_name) => {
                     self.bytecode_gen
@@ -251,7 +251,7 @@ impl VMCodeGen {
         let val = Value::function(id::get_unique_id(), func_iseq.clone(), new_callobj);
 
         self.bytecode_gen.gen_push_const(val, iseq);
-        self.bytecode_gen.gen_set_cur_callobj(iseq);
+        self.bytecode_gen.gen_update_parent_scope(iseq);
 
         self.func_header_info.pop();
     }
@@ -329,7 +329,7 @@ impl VMCodeGen {
             .last_mut()
             .unwrap()
             .push(FunctionHeaderInst::DeclVar(name.clone()));
-        self.bytecode_gen.gen_set_name(name, iseq);
+        self.bytecode_gen.gen_set_value(name, iseq);
     }
 }
 
@@ -666,7 +666,7 @@ impl VMCodeGen {
     pub fn assign_stack_top(&mut self, dst: &Node, iseq: &mut ByteCode) {
         match dst.base {
             NodeBase::Identifier(ref name) => {
-                self.bytecode_gen.gen_set_name(name, iseq);
+                self.bytecode_gen.gen_set_value(name, iseq);
             }
             NodeBase::Member(ref parent, ref member) => {
                 self.run(&*parent, iseq, true);
@@ -754,7 +754,7 @@ impl VMCodeGen {
     }
 
     fn run_identifier(&mut self, name: &String, iseq: &mut ByteCode) {
-        self.bytecode_gen.gen_get_name(name, iseq);
+        self.bytecode_gen.gen_get_value(name, iseq);
     }
 }
 

@@ -49,9 +49,9 @@ pub mod VMInst {
     pub const POP: u8 = 0x2a;
     pub const LAND: u8 = 0x2b;
     pub const LOR: u8 = 0x2c;
-    pub const SET_CUR_CALLOBJ: u8 = 0x2d;
-    pub const GET_NAME: u8 = 0x2e;
-    pub const SET_NAME: u8 = 0x2f;
+    pub const UPDATE_PARENT_SCOPE: u8 = 0x2d;
+    pub const GET_VALUE: u8 = 0x2e;
+    pub const SET_VALUE: u8 = 0x2f;
     pub const DECL_VAR: u8 = 0x30;
     pub const COND_OP: u8 = 0x31;
     pub const LOOP_START: u8 = 0x32;
@@ -60,11 +60,11 @@ pub mod VMInst {
         match inst {
             CREATE_CONTEXT => Some(1),
             CONSTRUCT | CREATE_OBJECT | PUSH_CONST | PUSH_INT32 | CREATE_ARRAY | JMP_IF_FALSE
-            | DECL_VAR | LOOP_START | JMP | SET_NAME | GET_NAME | CALL => Some(5),
+            | DECL_VAR | LOOP_START | JMP | SET_VALUE | GET_VALUE | CALL => Some(5),
             PUSH_INT8 => Some(2),
             PUSH_FALSE | END | PUSH_TRUE | PUSH_THIS | ADD | SUB | MUL | DIV | REM | LT
             | PUSH_ARGUMENTS | NEG | POSI | GT | LE | GE | EQ | NE | GET_MEMBER | RETURN | SNE
-            | ZFSHR | POP | DOUBLE | AND | COND_OP | OR | SEQ | SET_MEMBER | SET_CUR_CALLOBJ
+            | ZFSHR | POP | DOUBLE | AND | COND_OP | OR | SEQ | SET_MEMBER | UPDATE_PARENT_SCOPE
             | PUSH_UNDEFINED | LAND | SHR | SHL | XOR | LOR => Some(1),
             _ => None,
         }
@@ -276,54 +276,24 @@ impl ByteCodeGen {
         iseq.push(VMInst::RETURN);
     }
 
-    pub fn gen_set_cur_callobj(&self, iseq: &mut ByteCode) {
-        iseq.push(VMInst::SET_CUR_CALLOBJ);
+    pub fn gen_update_parent_scope(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::UPDATE_PARENT_SCOPE);
     }
 
-    pub fn gen_get_name(&mut self, name: &String, iseq: &mut ByteCode) {
-        let id = (|| {
-            for (i, string) in self.const_table.string.iter().enumerate() {
-                if name == string {
-                    return i;
-                }
-            }
-
-            let id = self.const_table.string.len();
-            self.const_table.string.push(name.clone());
-            id
-        })();
-        iseq.push(VMInst::GET_NAME);
+    pub fn gen_get_value(&mut self, name: &String, iseq: &mut ByteCode) {
+        let id = self.add_const_string(name);
+        iseq.push(VMInst::GET_VALUE);
         self.gen_int32(id as i32, iseq);
     }
 
-    pub fn gen_set_name(&mut self, name: &String, iseq: &mut ByteCode) {
-        let id = (|| {
-            for (i, string) in self.const_table.string.iter().enumerate() {
-                if name == string {
-                    return i;
-                }
-            }
-
-            let id = self.const_table.string.len();
-            self.const_table.string.push(name.clone());
-            id
-        })();
-        iseq.push(VMInst::SET_NAME);
+    pub fn gen_set_value(&mut self, name: &String, iseq: &mut ByteCode) {
+        let id = self.add_const_string(name);
+        iseq.push(VMInst::SET_VALUE);
         self.gen_int32(id as i32, iseq);
     }
 
     pub fn gen_decl_var(&mut self, name: &String, iseq: &mut ByteCode) {
-        let id = (|| {
-            for (i, string) in self.const_table.string.iter().enumerate() {
-                if name == string {
-                    return i;
-                }
-            }
-
-            let id = self.const_table.string.len();
-            self.const_table.string.push(name.clone());
-            id
-        })();
+        let id = self.add_const_string(name);
         iseq.push(VMInst::DECL_VAR);
         self.gen_int32(id as i32, iseq);
     }
@@ -355,6 +325,18 @@ impl ByteCodeGen {
         iseq[2] = (n >> 16) as u8;
         iseq[1] = (n >> 8) as u8;
         iseq[0] = (n >> 0) as u8;
+    }
+
+    fn add_const_string(&mut self, name: &String) -> usize {
+        for (i, string) in self.const_table.string.iter().enumerate() {
+            if name == string {
+                return i;
+            }
+        }
+
+        let id = self.const_table.string.len();
+        self.const_table.string.push(name.clone());
+        id
     }
 }
 
@@ -483,16 +465,16 @@ pub fn show(code: &ByteCode) {
                 println!("Return");
                 i += 1
             }
-            VMInst::SET_CUR_CALLOBJ => {
-                println!("SetCurCallObj");
+            VMInst::UPDATE_PARENT_SCOPE => {
+                println!("UpdateParentScope");
                 i += 1;
             }
-            VMInst::GET_NAME => {
-                println!("GetName");
+            VMInst::GET_VALUE => {
+                println!("GetValue");
                 i += 5;
             }
-            VMInst::SET_NAME => {
-                println!("SetName");
+            VMInst::SET_VALUE => {
+                println!("SetValue");
                 i += 5;
             }
             VMInst::DECL_VAR => {

@@ -339,9 +339,9 @@ impl VM {
                 pop,
                 land,
                 lor,
-                set_cur_callobj,
-                get_name,
-                set_name,
+                update_parent_scope,
+                get_value,
+                set_value,
                 decl_var,
                 cond_op,
                 loop_start,
@@ -1062,7 +1062,7 @@ fn lor(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
     Ok(())
 }
 
-fn set_cur_callobj(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn update_parent_scope(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
     self_.state.pc += 1;
     if let Some(Value {
         val: ValueBase::Function(box (_, _, _, ref mut callobj)),
@@ -1074,7 +1074,7 @@ fn set_cur_callobj(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError>
     Ok(())
 }
 
-fn get_name(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn get_value(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
     self_.state.pc += 1;
     get_int32!(self_, iseq, name_id, usize);
     let name = &self_.const_table.string[name_id];
@@ -1083,7 +1083,7 @@ fn get_name(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
     Ok(())
 }
 
-fn set_name(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn set_value(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
     self_.state.pc += 1;
     get_int32!(self_, iseq, name_id, usize);
     let name = self_.const_table.string[name_id].clone();

@@ -617,7 +617,7 @@ impl TracingJit {
         while pc < end {
             let inst_size = try_opt!(VMInst::get_inst_size(iseq[pc]));
             match iseq[pc] {
-                VMInst::DECL_VAR | VMInst::SET_NAME | VMInst::GET_NAME => {
+                VMInst::DECL_VAR | VMInst::SET_VALUE | VMInst::GET_VALUE => {
                     pc += 1;
                     get_int32!(iseq, pc, id, usize);
                     let name = &const_table.string[id];
@@ -1352,7 +1352,7 @@ impl TracingJit {
                         None,
                     ));
                 }
-                VMInst::GET_NAME => {
+                VMInst::GET_VALUE => {
                     pc += 1;
                     get_int32!(iseq, pc, id, usize);
                     let name = &const_table.string[id];
@@ -1393,7 +1393,7 @@ impl TracingJit {
                         },
                     }
                 }
-                VMInst::SET_NAME => {
+                VMInst::SET_VALUE => {
                     pc += 1;
                     get_int32!(iseq, pc, id, usize);
                     let name = &const_table.string[id];
@@ -1401,7 +1401,7 @@ impl TracingJit {
                     LLVMBuildStore(self.builder, val, self.declare_local_var(name.clone(), env));
                 }
                 VMInst::DECL_VAR => pc += 5,
-                VMInst::SET_CUR_CALLOBJ => pc += 1,
+                VMInst::UPDATE_PARENT_SCOPE => pc += 1,
                 VMInst::CALL => {
                     pc += 1;
                     get_int32!(iseq, pc, argc, usize);
