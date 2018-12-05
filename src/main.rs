@@ -183,7 +183,7 @@ fn repl() {
         // Show the evaluated result
         if let Some(value) = vm.state.stack.pop() {
             unsafe {
-                builtin::debug_print(&value, false);
+                builtin::debug_print(&value, true);
                 libc::puts(b"\0".as_ptr() as *const i8);
             }
         }

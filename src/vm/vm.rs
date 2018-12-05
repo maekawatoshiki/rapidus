@@ -177,6 +177,11 @@ impl VM {
         }
 
         unsafe {
+            use builtins::date::DATE_OBJ;
+            (*global_vals).set_value("Date".to_string(), DATE_OBJ.with(|x| x.clone()));
+        }
+
+        unsafe {
             (*global_vals).set_value(
                 "Math".to_string(),
                 make_object!(
@@ -433,6 +438,8 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
 
             *callobj.this = Value::object(new_this);
 
+            self_.state.scope.push(gc::new(callobj.clone()));
+
             (x.func)(self_, &args, &callobj);
         }
         ValueBase::Function(box (id, iseq, obj, mut callobj)) => {
@@ -465,16 +472,6 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
             self_.do_run(&iseq)?;
 
             self_.cur_func_id = save_id;
-            self_.state.scope.pop();
-
-            let ret = self_.state.stack.last_mut().unwrap();
-            match &ret.val {
-                &ValueBase::Object(_)
-                | &ValueBase::Array(_)
-                | &ValueBase::Function(_)
-                | &ValueBase::BuiltinFunction(_) => {}
-                _ => *ret = Value::object(new_this),
-            };
         }
         c => {
             return Err(RuntimeError::Type(format!(
@@ -482,6 +479,17 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
                 self_.state.pc, c
             )));
         }
+    };
+
+    let new_this = unsafe { (*(*self_.state.scope.pop().unwrap()).clone().this) };
+    let ret = self_.state.stack.last_mut().unwrap();
+    match &ret.val {
+        &ValueBase::Object(_)
+        | &ValueBase::Array(_)
+        | &ValueBase::Date(_)
+        | &ValueBase::Function(_)
+        | &ValueBase::BuiltinFunction(_) => {}
+        _ => *ret = new_this,
     };
 
     Ok(())
@@ -860,6 +868,7 @@ fn set_member(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
     // TODO: The following code should be a function (like Value::set_property).
     match parent.val {
         ValueBase::Object(map)
+        | ValueBase::Date(box (_, map))
         | ValueBase::Function(box (_, _, map, _))
         | ValueBase::BuiltinFunction(box (_, map, _)) => unsafe {
             *(*map)

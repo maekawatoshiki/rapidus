@@ -16,6 +16,7 @@ pub mod vm;
 pub mod vm_codegen;
 
 extern crate ansi_term;
+extern crate chrono;
 extern crate encoding;
 extern crate libc;
 extern crate libloading;

@@ -51,7 +51,8 @@ impl Gc for Value {
             | ValueBase::Undefined
             | ValueBase::Bool(_)
             | ValueBase::Number(_)
-            | ValueBase::String(_) => {}
+            | ValueBase::String(_)
+            | ValueBase::Date(_) => {}
             ValueBase::Function(box (_, _, ref obj, ref c)) => {
                 not_marked_then(*obj, marked, |obj, marked| unsafe {
                     (*obj).trace(marked);

@@ -102,6 +102,9 @@ pub fn debug_print(val: &Value, nest: bool) {
 
     unsafe {
         match val.val {
+            ValueBase::Empty | ValueBase::Arguments => {
+                libc::printf("'Unsupported. Sorry.'\0".as_ptr() as RawStringPtr);
+            }
             ValueBase::Null => {
                 libc::printf(b"null\0".as_ptr() as RawStringPtr);
             }
@@ -198,7 +201,13 @@ pub fn debug_print(val: &Value, nest: bool) {
             ValueBase::Function(_) | ValueBase::BuiltinFunction(_) => {
                 libc::printf("[Function]\0".as_ptr() as RawStringPtr);
             }
-            _ => {}
+            ValueBase::Date(box (time_val, _)) => {
+                // TODO: Date needs toString() ?
+                libc::printf(
+                    "%s\0".as_ptr() as RawStringPtr,
+                    CString::new(time_val.to_rfc3339()).unwrap().as_ptr(),
+                );
+            }
         }
     }
 }

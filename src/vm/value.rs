@@ -1,5 +1,6 @@
 #![macro_use]
 
+use chrono::{DateTime, Utc};
 use rustc_hash::FxHashMap;
 use std::ffi::CString;
 
@@ -37,6 +38,7 @@ pub enum ValueBase {
     BuiltinFunction(Box<(BuiltinFuncInfo, *mut FxHashMap<String, Value>, CallObject)>), // id(==0:unknown)
     Object(*mut FxHashMap<String, Value>), // Object(FxHashMap<String, Value>),
     Array(*mut ArrayValue),
+    Date(Box<(DateTime<Utc>, *mut FxHashMap<String, Value>)>),
     Arguments, // TODO: Should have CallObject
 }
 
@@ -187,6 +189,15 @@ impl Value {
         Value::new(ValueBase::Array(ary))
     }
 
+    pub fn date(time_val: DateTime<Utc>) -> Value {
+        use builtins::date::DATE_PROTOTYPE;
+        Value::new(ValueBase::Date(Box::new((time_val, {
+            let mut hm = FxHashMap::default();
+            hm.insert("__proto__".to_string(), DATE_PROTOTYPE.with(|x| x.clone()));
+            gc::new(hm)
+        }))))
+    }
+
     pub fn arguments() -> Value {
         Value::new(ValueBase::Arguments)
     }
@@ -325,6 +336,7 @@ impl Value {
                 ValueBase::String(ref s) => property_of_string(s),
                 ValueBase::BuiltinFunction(box (_, ref obj, _))
                 | ValueBase::Function(box (_, _, ref obj, _))
+                | ValueBase::Date(box (_, ref obj))
                 | ValueBase::Object(ref obj) => property_of_object(&**obj),
                 ValueBase::Array(ref ary) => property_of_array(&**ary),
                 ValueBase::Arguments => property_of_arguments(),

@@ -64,8 +64,8 @@ pub mod VMInst {
             PUSH_INT8 => Some(2),
             PUSH_FALSE | END | PUSH_TRUE | PUSH_THIS | ADD | SUB | MUL | DIV | REM | LT
             | PUSH_ARGUMENTS | NEG | POSI | GT | LE | GE | EQ | NE | GET_MEMBER | RETURN | SNE
-            | ZFSHR | POP | DOUBLE | AND | COND_OP | OR | SEQ | SET_MEMBER | UPDATE_PARENT_SCOPE
-            | PUSH_UNDEFINED | LAND | SHR | SHL | XOR | LOR => Some(1),
+            | ZFSHR | POP | DOUBLE | AND | COND_OP | OR | SEQ | SET_MEMBER
+            | UPDATE_PARENT_SCOPE | PUSH_UNDEFINED | LAND | SHR | SHL | XOR | LOR => Some(1),
             _ => None,
         }
     }
