@@ -221,14 +221,13 @@ impl Parser {
             Kind::Keyword(Keyword::Break) => self.read_break_statement(),
             Kind::Keyword(Keyword::Continue) => self.read_continue_statement(),
             Kind::Symbol(Symbol::OpeningBrace) => self.read_block_statement(),
+            Kind::Symbol(Symbol::Semicolon) => return Ok(Node::new(NodeBase::Nope, tok.pos)),
             _ => {
                 self.lexer.unget(&tok);
                 self.read_expression_statement()
             }
         };
 
-        self.lexer
-            .skip_except_lineterminator(Kind::Symbol(Symbol::Semicolon));
         stmt
     }
 }
