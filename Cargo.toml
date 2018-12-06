@@ -15,6 +15,7 @@ encoding = "*"
 rustc-hash = "*"
 rustyline = "*"
 libloading = "0.5"
+chrono = "0.4"
 
 [profile.dev]
 codegen-units = 16
