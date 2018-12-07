@@ -27,7 +27,7 @@ pub struct VMState {
     pub stack: Vec<Value>,
     pub scope: Vec<CallObjectRef>,
     pub pc: isize,
-    pub history: Vec<(usize, isize)>, // sp, return_pc
+    pub history: Vec<(usize, isize, FuncId)>, // sp, return_pc
 }
 
 #[derive(Debug, Clone)]
@@ -289,11 +289,7 @@ impl VM {
             state: VMState {
                 stack: { Vec::with_capacity(128) },
                 scope: vec![global_vals],
-                history: {
-                    let mut s = Vec::with_capacity(128);
-                    s.push((0, 0));
-                    s
-                },
+                history: vec![(0, 0, 0)],
                 pc: 0isize,
             },
             const_table: ConstantTable::new(),
@@ -464,14 +460,10 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
             self_
                 .state
                 .history
-                .push((self_.state.stack.len(), self_.state.pc));
+                .push((self_.state.stack.len(), self_.state.pc, id));
             self_.state.pc = 0;
-            let save_id = self_.cur_func_id;
-            self_.cur_func_id = id;
 
             self_.do_run(&iseq)?;
-
-            self_.cur_func_id = save_id;
         }
         c => {
             return Err(RuntimeError::Type(format!(
@@ -987,15 +979,11 @@ pub fn call_function(
     self_
         .state
         .history
-        .push((self_.state.stack.len(), self_.state.pc));
+        .push((self_.state.stack.len(), self_.state.pc, id));
     self_.state.pc = 0;
-
-    let save_id = self_.cur_func_id;
-    self_.cur_func_id = id;
 
     self_.do_run(iseq)?;
 
-    self_.cur_func_id = save_id;
     self_.state.scope.pop();
 
     self_
@@ -1037,9 +1025,10 @@ fn call(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
 
 fn return_(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
     let len = self_.state.stack.len();
-    if let Some((previous_sp, return_pc)) = self_.state.history.pop() {
+    if let Some((previous_sp, return_pc, func_id)) = self_.state.history.pop() {
         self_.state.stack.drain(previous_sp..len - 1);
         self_.state.pc = return_pc;
+        self_.cur_func_id = func_id;
     } else {
         unreachable!()
     }
