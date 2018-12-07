@@ -8,7 +8,7 @@ use vm::{
 macro_rules! simple_math {
     ($name:ident, $f:ident) => {
         #[allow(unused_variables)]
-        pub fn $name(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject) {
+        pub fn $name(vm: &mut VM, args: &Vec<Value>, callobj: &mut CallObject) {
             if let ValueBase::Number(n) = args[0].val {
                 return vm.state.stack.push(Value::number(n.$f()));
             }
@@ -26,7 +26,7 @@ simple_math!(math_asinh, asinh);
 simple_math!(math_atan, atan);
 simple_math!(math_atanh, atanh);
 
-pub fn math_atan2(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
+pub fn math_atan2(vm: &mut VM, args: &Vec<Value>, _: &mut CallObject) {
     if let ValueBase::Number(n1) = args[0].val {
         if let ValueBase::Number(n2) = args[1].val {
             return vm.state.stack.push(Value::number(n1.atan2(n2)));
@@ -37,7 +37,7 @@ pub fn math_atan2(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
 simple_math!(math_cbrt, cbrt);
 simple_math!(math_ceil, ceil);
 
-pub fn math_clz32(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
+pub fn math_clz32(vm: &mut VM, args: &Vec<Value>, _: &mut CallObject) {
     if let ValueBase::Number(n) = args[0].val {
         return vm.state.stack.push(Value::number(if n == 0.0 {
             32.0
@@ -56,7 +56,7 @@ simple_math!(math_exp, exp);
 simple_math!(math_expm1, exp_m1);
 simple_math!(math_fround, round);
 
-pub fn math_hypot(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
+pub fn math_hypot(vm: &mut VM, args: &Vec<Value>, _: &mut CallObject) {
     let mut sum2 = 0.0;
     for n in args {
         if let ValueBase::Number(n) = n.val {
@@ -66,7 +66,7 @@ pub fn math_hypot(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
     vm.state.stack.push(Value::number(sum2.sqrt()));
 }
 
-pub fn math_log(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
+pub fn math_log(vm: &mut VM, args: &Vec<Value>, _: &mut CallObject) {
     if let ValueBase::Number(n1) = args[0].val {
         return vm
             .state
@@ -76,7 +76,7 @@ pub fn math_log(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
     vm.state.stack.push(Value::undefined())
 }
 
-pub fn math_log1p(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
+pub fn math_log1p(vm: &mut VM, args: &Vec<Value>, _: &mut CallObject) {
     if let ValueBase::Number(n1) = args[0].val {
         return vm
             .state
@@ -89,7 +89,7 @@ pub fn math_log1p(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
 simple_math!(math_log10, log10);
 simple_math!(math_log2, log2);
 
-pub fn math_max(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
+pub fn math_max(vm: &mut VM, args: &Vec<Value>, _: &mut CallObject) {
     let mut max = if let ValueBase::Number(n) = args[0].val {
         n
     } else {
@@ -105,7 +105,7 @@ pub fn math_max(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
     vm.state.stack.push(Value::number(max));
 }
 
-pub fn math_min(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
+pub fn math_min(vm: &mut VM, args: &Vec<Value>, _: &mut CallObject) {
     let mut min = if let ValueBase::Number(n) = args[0].val {
         n
     } else {
@@ -123,7 +123,7 @@ pub fn math_min(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
 
 simple_math!(math_round, round);
 
-pub fn math_sign(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
+pub fn math_sign(vm: &mut VM, args: &Vec<Value>, _: &mut CallObject) {
     if let ValueBase::Number(n) = args[0].val {
         return vm.state.stack.push(Value::number(if n == 0.0 {
             n
@@ -143,11 +143,11 @@ simple_math!(math_tan, tan);
 simple_math!(math_tanh, tanh);
 simple_math!(math_trunc, trunc);
 
-pub fn math_random(vm: &mut VM, _: &Vec<Value>, _: &CallObject) {
+pub fn math_random(vm: &mut VM, _: &Vec<Value>, _: &mut CallObject) {
     vm.state.stack.push(Value::number(random::<f64>()))
 }
 
-pub fn math_pow(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
+pub fn math_pow(vm: &mut VM, args: &Vec<Value>, _: &mut CallObject) {
     if let ValueBase::Number(f1) = args[0].val {
         if let ValueBase::Number(f2) = args[1].val {
             return vm.state.stack.push(Value::number(f1.powf(f2)));

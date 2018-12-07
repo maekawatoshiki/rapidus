@@ -49,21 +49,18 @@ thread_local!(
     }
 );
 
-pub fn date_new(vm: &mut VM, _args: &Vec<Value>, _: &CallObject) {
+pub fn date_new(vm: &mut VM, _args: &Vec<Value>, callobj: &mut CallObject) {
     let now = Utc::now();
 
-    unsafe {
-        *(**vm.state.scope.last_mut().unwrap()).this = Value::date(now);
-    }
+    *callobj.this = Value::date(now);
 
     vm.state
         .stack
         .push(Value::string(CString::new(now.to_rfc3339()).unwrap()))
 }
 
-pub fn date_now(vm: &mut VM, _args: &Vec<Value>, _: &CallObject) {
+pub fn date_now(vm: &mut VM, _args: &Vec<Value>, _: &mut CallObject) {
     let now = Utc::now();
     let now_millis = now.timestamp_millis();
     vm.state.stack.push(Value::number(now_millis as f64))
 }
-

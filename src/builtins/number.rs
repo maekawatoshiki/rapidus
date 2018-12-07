@@ -24,7 +24,7 @@ thread_local!(
     };
 );
 
-pub fn number_prototype_tostring(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject) {
+pub fn number_prototype_tostring(vm: &mut VM, args: &Vec<Value>, callobj: &mut CallObject) {
     let number = if let ValueBase::Number(num) = callobj.this.val {
         num
     } else {

@@ -77,7 +77,7 @@ thread_local!(
     }
 );
 
-pub fn array_new(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
+pub fn array_new(vm: &mut VM, args: &Vec<Value>, _: &mut CallObject) {
     let args_len = args.len();
 
     if args_len == 0 {
@@ -110,7 +110,7 @@ pub fn array_new(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
     gc::mark_and_sweep(&vm.state);
 }
 
-pub fn array_prototype_push(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject) {
+pub fn array_prototype_push(vm: &mut VM, args: &Vec<Value>, callobj: &mut CallObject) {
     let array = if let ValueBase::Array(ref array) = callobj.this.val {
         unsafe { &mut **array }
     } else {
@@ -127,7 +127,7 @@ pub fn array_prototype_push(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject
     vm.state.stack.push(Value::number(array.length as f64))
 }
 
-pub fn array_prototype_pop(vm: &mut VM, _args: &Vec<Value>, callobj: &CallObject) {
+pub fn array_prototype_pop(vm: &mut VM, _args: &Vec<Value>, callobj: &mut CallObject) {
     let array = if let ValueBase::Array(ref array) = callobj.this.val {
         unsafe { &mut **array }
     } else {
@@ -144,7 +144,7 @@ pub fn array_prototype_pop(vm: &mut VM, _args: &Vec<Value>, callobj: &CallObject
     vm.state.stack.push(Value::undefined())
 }
 
-pub fn array_prototype_map(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject) {
+pub fn array_prototype_map(vm: &mut VM, args: &Vec<Value>, callobj: &mut CallObject) {
     let array = if let ValueBase::Array(ref array) = callobj.this.val {
         unsafe { &mut **array }
     } else {
@@ -169,7 +169,7 @@ pub fn array_prototype_map(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject)
             ValueBase::BuiltinFunction(box (ref info, _, ref callobj)) => {
                 // let mut callobj = callobj.clone();
                 // *callobj.this = arg_this;
-                (info.func)(vm, &args_for_callback, callobj);
+                (info.func)(vm, &args_for_callback, &mut callobj.clone());
             }
             ValueBase::Function(box (id, ref iseq, _, ref callobj)) => {
                 let mut callobj = callobj.clone();

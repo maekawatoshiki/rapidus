@@ -436,7 +436,17 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
 
             self_.state.scope.push(gc::new(callobj.clone()));
 
-            (x.func)(self_, &args, &callobj);
+            (x.func)(self_, &args, &mut callobj);
+
+            let ret = self_.state.stack.last_mut().unwrap();
+            match &ret.val {
+                &ValueBase::Object(_)
+                | &ValueBase::Array(_)
+                | &ValueBase::Date(_)
+                | &ValueBase::Function(_)
+                | &ValueBase::BuiltinFunction(_) => {}
+                _ => *ret = *callobj.this,
+            };
         }
         ValueBase::Function(box (id, iseq, obj, mut callobj)) => {
             // similar code is used some times. should make it a function.
@@ -464,6 +474,17 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
             self_.state.pc = 0;
 
             self_.do_run(&iseq)?;
+
+            let new_this = unsafe { (*(*self_.state.scope.pop().unwrap()).clone().this) };
+            let ret = self_.state.stack.last_mut().unwrap();
+            match &ret.val {
+                &ValueBase::Object(_)
+                | &ValueBase::Array(_)
+                | &ValueBase::Date(_)
+                | &ValueBase::Function(_)
+                | &ValueBase::BuiltinFunction(_) => {}
+                _ => *ret = new_this,
+            };
         }
         c => {
             return Err(RuntimeError::Type(format!(
@@ -471,17 +492,6 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
                 self_.state.pc, c
             )));
         }
-    };
-
-    let new_this = unsafe { (*(*self_.state.scope.pop().unwrap()).clone().this) };
-    let ret = self_.state.stack.last_mut().unwrap();
-    match &ret.val {
-        &ValueBase::Object(_)
-        | &ValueBase::Array(_)
-        | &ValueBase::Date(_)
-        | &ValueBase::Function(_)
-        | &ValueBase::BuiltinFunction(_) => {}
-        _ => *ret = new_this,
     };
 
     Ok(())
@@ -1006,7 +1016,7 @@ fn call(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
 
     match callee.val {
         ValueBase::BuiltinFunction(box (ref info, _, ref callobj)) => {
-            (info.func)(self_, &args, callobj);
+            (info.func)(self_, &args, &mut callobj.clone());
         }
         ValueBase::Function(box (id, ref iseq, _, ref callobj)) => {
             let mut callobj = callobj.clone();

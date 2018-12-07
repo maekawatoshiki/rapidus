@@ -9,7 +9,7 @@ use vm::{
     vm::VM,
 };
 
-pub type BuiltinFuncTy = fn(&mut VM, &Vec<Value>, &CallObject);
+pub type BuiltinFuncTy = fn(&mut VM, &Vec<Value>, &mut CallObject);
 pub type BuiltinJITFuncTy = *mut libc::c_void;
 
 #[derive(Clone)]
@@ -56,7 +56,7 @@ impl ::std::fmt::Debug for BuiltinFuncInfo {
     }
 }
 
-pub fn console_log(self_: &mut VM, args: &Vec<Value>, _: &CallObject) {
+pub fn console_log(self_: &mut VM, args: &Vec<Value>, _: &mut CallObject) {
     let args_len = args.len();
     unsafe {
         for i in 0..args_len {
@@ -70,7 +70,7 @@ pub fn console_log(self_: &mut VM, args: &Vec<Value>, _: &CallObject) {
     self_.state.stack.push(Value::undefined())
 }
 
-pub fn process_stdout_write(vm: &mut VM, args: &Vec<Value>, _: &CallObject) {
+pub fn process_stdout_write(vm: &mut VM, args: &Vec<Value>, _: &mut CallObject) {
     let args_len = args.len();
     unsafe {
         for i in 0..args_len {
@@ -212,7 +212,7 @@ pub fn debug_print(val: &Value, nest: bool) {
     }
 }
 
-pub fn require(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject) {
+pub fn require(vm: &mut VM, args: &Vec<Value>, callobj: &mut CallObject) {
     // TODO: REFINE CODE!!!!
     use ansi_term::Colour;
     use parser;
@@ -236,7 +236,7 @@ pub fn require(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject) {
         match dylib {
             Ok(lib) => {
                 let initialize: Result<
-                    libloading::Symbol<fn(&mut VM, &Vec<Value>, &CallObject)>,
+                    libloading::Symbol<fn(&mut VM, &Vec<Value>, &mut CallObject)>,
                     _,
                 > = unsafe { lib.get(symbol_name) };
                 match initialize {

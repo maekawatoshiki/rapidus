@@ -64,11 +64,11 @@ thread_local!(
     }
 );
 
-pub fn function_new(_vm: &mut VM, _args: &Vec<Value>, _: &CallObject) {
+pub fn function_new(_vm: &mut VM, _args: &Vec<Value>, _: &mut CallObject) {
     unimplemented!("sorry");
 }
 
-pub fn function_prototype_apply(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject) {
+pub fn function_prototype_apply(vm: &mut VM, args: &Vec<Value>, callobj: &mut CallObject) {
     let callee = &*callobj.this;
     let arg_this = args[0].clone();
     let arg = match args[1].val {
@@ -96,7 +96,7 @@ pub fn function_prototype_apply(vm: &mut VM, args: &Vec<Value>, callobj: &CallOb
         ValueBase::BuiltinFunction(box (ref info, _, ref callobj)) => {
             let mut callobj = callobj.clone();
             *callobj.this = arg_this;
-            (info.func)(vm, &arg, &callobj);
+            (info.func)(vm, &arg, &mut callobj);
         }
         ValueBase::Function(box (id, ref iseq, _, ref callobj)) => {
             let mut callobj = callobj.clone();
@@ -107,14 +107,14 @@ pub fn function_prototype_apply(vm: &mut VM, args: &Vec<Value>, callobj: &CallOb
     }
 }
 
-pub fn function_prototype_call(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject) {
+pub fn function_prototype_call(vm: &mut VM, args: &Vec<Value>, callobj: &mut CallObject) {
     let callee = &*callobj.this;
     let arg_this = args[0].clone();
     match callee.val {
         ValueBase::BuiltinFunction(box (ref info, _, ref callobj)) => {
             let mut callobj = callobj.clone();
             *callobj.this = arg_this;
-            (info.func)(vm, &args[1..].to_vec(), &callobj);
+            (info.func)(vm, &args[1..].to_vec(), &mut callobj);
         }
         ValueBase::Function(box (id, ref iseq, _, ref callobj)) => {
             let mut callobj = callobj.clone();
