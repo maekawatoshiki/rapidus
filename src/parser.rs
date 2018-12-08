@@ -1165,11 +1165,14 @@ fn string() {
 
 #[test]
 fn boolean() {
-    let mut parser = Parser::new("true".to_string());
+    let mut parser = Parser::new("true false".to_string());
     assert_eq!(
         parser.parse_all().unwrap(),
         Node::new(
-            NodeBase::StatementList(vec![Node::new(NodeBase::Boolean(true), 0)]),
+            NodeBase::StatementList(vec![
+                Node::new(NodeBase::Boolean(true), 0),
+                Node::new(NodeBase::Boolean(false), 5)
+            ]),
             0
         )
     );
@@ -1940,27 +1943,28 @@ fn function_decl() {
             ),
         ),
         (
-            "function f(x, y) { return x + y }",
+            "function f(x, y, ...z) { return x + y }",
             Node::new(
                 NodeBase::FunctionDecl(
                     "f".to_string(),
                     vec![
                         FormalParameter::new("x".to_string(), None, false),
                         FormalParameter::new("y".to_string(), None, false),
+                        FormalParameter::new("z".to_string(), None, true),
                     ],
                     Box::new(Node::new(
                         NodeBase::StatementList(vec![Node::new(
                             NodeBase::Return(Some(Box::new(Node::new(
                                 NodeBase::BinaryOp(
-                                    Box::new(Node::new(NodeBase::Identifier("x".to_string()), 26)),
-                                    Box::new(Node::new(NodeBase::Identifier("y".to_string()), 30)),
+                                    Box::new(Node::new(NodeBase::Identifier("x".to_string()), 32)),
+                                    Box::new(Node::new(NodeBase::Identifier("y".to_string()), 36)),
                                     BinOp::Add,
                                 ),
-                                29,
+                                35,
                             )))),
-                            25,
+                            31,
                         )]),
-                        18,
+                        24,
                     )),
                 ),
                 8,
