@@ -29,8 +29,6 @@ thread_local!(
             {
                 let mut obj = FxHashMap::default();
 
-                obj.insert("__proto__".to_string(), function::FUNCTION_OBJ.with(|x| x.clone()));
-
                 // TODO: Add methods
                 obj.insert("now".to_string(), Value::builtin_function(date_now,
                     CallObject::new(Value::new(ValueBase::Undefined))));

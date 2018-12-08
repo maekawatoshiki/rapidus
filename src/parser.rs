@@ -228,6 +228,9 @@ impl Parser {
             }
         };
 
+        self.lexer
+            .skip_except_lineterminator(Kind::Symbol(Symbol::Semicolon));
+
         stmt
     }
 }
