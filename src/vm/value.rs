@@ -49,6 +49,7 @@ pub struct ArrayValue {
     pub obj: FxHashMap<String, Value>,
 }
 
+#[macro_export]
 macro_rules! make_object {
     ($($property_name:ident : $val:expr),*) => { {
         let mut map = FxHashMap::default();

@@ -5,6 +5,7 @@ pub enum RuntimeError {
     Unknown,
     Type(String),
     Reference(String),
+    General(String),
     Unimplemented,
 }
 

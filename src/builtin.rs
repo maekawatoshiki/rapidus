@@ -2,13 +2,19 @@ use libc;
 use libloading;
 use llvm::prelude::LLVMValueRef;
 use std::ffi::CString;
+use std::fs::OpenOptions;
+use std::io::prelude::*;
+use std::path;
 
+use parser;
+use parser::Error::*;
 use vm::{
     callobj::CallObject,
     error::RuntimeError,
     value::{RawStringPtr, Value, ValueBase},
     vm::VM,
 };
+use vm_codegen;
 
 pub type BuiltinFuncTy = fn(&mut VM, &Vec<Value>, &CallObject) -> Result<(), RuntimeError>;
 pub type BuiltinJITFuncTy = *mut libc::c_void;
@@ -220,109 +226,141 @@ pub fn debug_print(val: &Value, nest: bool) {
 }
 
 pub fn require(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject) -> Result<(), RuntimeError> {
-    // TODO: REFINE CODE!!!!
-    use ansi_term::Colour;
-    use parser;
-    use parser::Error::*;
-    use std::ffi::CString;
-    use std::fs::OpenOptions;
-    use std::io::prelude::*;
-    use vm_codegen;
+    enum RequireFileKind {
+        DLL(String),
+        Normal(String),
+        NotFound,
+    }
+
+    fn find_file(file_name: &str) -> RequireFileKind {
+        let paths = vec!["#", "lib#.so"];
+        match paths
+            .iter()
+            .find(|path| {
+                let file_name = path.replace("#", file_name);
+                path::Path::new(file_name.as_str()).exists()
+            })
+            .and_then(|path| Some(path.replace("#", file_name)))
+        {
+            Some(path) => {
+                if path.to_ascii_lowercase().ends_with(".so") {
+                    RequireFileKind::DLL(path)
+                } else {
+                    RequireFileKind::Normal(path)
+                }
+            }
+            None => RequireFileKind::NotFound,
+        }
+    }
+
+    if args.len() == 0 {
+        return Err(RuntimeError::General(
+            "error: require(NEED AN ARGUMENT)".to_string(),
+        ));
+    }
 
     let file_name = match args[0].val {
         ValueBase::String(ref s) => s.to_str().unwrap().clone(),
-        _ => panic!(),
+        _ => {
+            return Err(RuntimeError::Type(
+                "type error: require(ARGUMENT MUST BE STRING)".to_string(),
+            ));
+        }
     };
 
-    // TODO: Consider better way
-    if file_name.starts_with("DLL:") {
-        let dylib_path = &file_name[4..];
-        let dylib = libloading::Library::new(dylib_path);
-        let symbol_name = b"initialize\0";
+    match find_file(file_name) {
+        RequireFileKind::DLL(name) => {
+            let dylib_path = name.as_str();
+            let dylib = libloading::Library::new(dylib_path);
+            let symbol_name = b"initialize\0";
 
-        match dylib {
-            Ok(lib) => {
-                let initialize: Result<libloading::Symbol<BuiltinFuncTy>, _> =
-                    unsafe { lib.get(symbol_name) };
-                match initialize {
-                    Ok(initialize) => initialize(vm, args, callobj)?,
-                    Err(_) => println!("'initialize' needs to be defined in DLL."),
+            match dylib {
+                Ok(lib) => {
+                    let initialize: Result<libloading::Symbol<BuiltinFuncTy>, _> =
+                        unsafe { lib.get(symbol_name) };
+                    match initialize {
+                        Ok(initialize) => initialize(vm, args, callobj)?,
+                        Err(_) => println!("'initialize' needs to be defined in DLL."),
+                    }
                 }
+                Err(msg) => println!("{}: {}", msg, dylib_path),
             }
-            Err(msg) => println!("{}: {}", msg, dylib_path),
+
+            return Ok(());
         }
+        RequireFileKind::Normal(name) => {
+            let file_name = name.as_str();
+            let mut file_body = String::new();
 
-        return Ok(());
-    }
+            match OpenOptions::new().read(true).open(file_name) {
+                Ok(mut ok) => match ok.read_to_string(&mut file_body).ok() {
+                    Some(x) => x,
+                    None => {
+                        return Err(RuntimeError::General(format!(
+                            "error: Couldn't read file '{}'",
+                            file_name
+                        )));
+                    }
+                },
+                Err(_) => {
+                    return Err(RuntimeError::General(format!(
+                        "error: Couldn't find module '{}'",
+                        file_name
+                    )));
+                }
+            };
 
-    let mut file_body = String::new();
-
-    match OpenOptions::new().read(true).open(file_name) {
-        Ok(mut ok) => match ok.read_to_string(&mut file_body).ok() {
-            Some(x) => x,
-            None => {
-                eprintln!(
-                    "{}: Couldn't read the file '{}'",
-                    Colour::Red.bold().paint("error"),
-                    file_name,
-                );
+            if file_body.len() == 0 {
                 return Ok(());
             }
-        },
-        Err(_e) => {
-            eprintln!(
-                "{}: No such file or directory '{}'",
-                Colour::Red.bold().paint("error"),
-                file_name,
-            );
-            return Ok(());
-        }
-    };
 
-    if file_body.len() == 0 {
-        return Ok(());
+            if file_body.as_bytes()[0] == b'#' {
+                let first_ln = file_body.find('\n').unwrap_or(file_body.len());
+                file_body.drain(..first_ln);
+            }
+
+            let mut parser = parser::Parser::new(file_body);
+
+            let node = match parser.parse_all() {
+                Ok(ok) => ok,
+                Err(NormalEOF) => unreachable!(),
+                Err(Expect(pos, kind, msg))
+                | Err(UnexpectedEOF(pos, kind, msg))
+                | Err(UnexpectedToken(pos, kind, msg)) => {
+                    parser.show_error_at(pos, kind, msg.as_str());
+                    vm.state.stack.push(Value::undefined());
+                    return Ok(());
+                }
+                Err(UnsupportedFeature(pos)) => {
+                    parser.enhanced_show_error_at(pos, "unsupported feature");
+                    vm.state.stack.push(Value::undefined());
+                    return Ok(());
+                }
+            };
+
+            let mut vm_codegen = vm_codegen::VMCodeGen::new();
+            let mut iseq = vec![];
+            vm_codegen.bytecode_gen.const_table = vm.const_table.clone();
+            vm_codegen.compile(&node, &mut iseq, false);
+            vm.const_table = vm_codegen.bytecode_gen.const_table.clone();
+
+            let mut vm = VM::new(vm_codegen.global_varmap);
+            vm.const_table = vm_codegen.bytecode_gen.const_table;
+            vm.run(iseq).unwrap();
+
+            let module_exports =
+                unsafe { (**vm.state.scope.last().unwrap()).get_value(&"module".to_string()) }
+                    .unwrap()
+                    .get_property(Value::string(CString::new("exports").unwrap()).val, None);
+            vm.state.stack.push(module_exports);
+        }
+        RequireFileKind::NotFound => {
+            return Err(RuntimeError::General(format!(
+                "error: Couldn't find module '{}'",
+                file_name
+            )));
+        }
     }
-
-    if file_body.as_bytes()[0] == b'#' {
-        let first_ln = file_body.find('\n').unwrap_or(file_body.len());
-        file_body.drain(..first_ln);
-    }
-
-    let mut parser = parser::Parser::new(file_body);
-
-    let node = match parser.parse_all() {
-        Ok(ok) => ok,
-        Err(NormalEOF) => unreachable!(),
-        Err(Expect(pos, kind, msg))
-        | Err(UnexpectedEOF(pos, kind, msg))
-        | Err(UnexpectedToken(pos, kind, msg)) => {
-            parser.show_error_at(pos, kind, msg.as_str());
-            vm.state.stack.push(Value::undefined());
-            return Ok(());
-        }
-        Err(UnsupportedFeature(pos)) => {
-            parser.enhanced_show_error_at(pos, "unsupported feature");
-            vm.state.stack.push(Value::undefined());
-            return Ok(());
-        }
-    };
-
-    let mut vm_codegen = vm_codegen::VMCodeGen::new();
-    let mut iseq = vec![];
-    vm_codegen.bytecode_gen.const_table = vm.const_table.clone();
-    vm_codegen.compile(&node, &mut iseq, false);
-    vm.const_table = vm_codegen.bytecode_gen.const_table.clone();
-
-    let mut vm = VM::new(vm_codegen.global_varmap);
-    vm.const_table = vm_codegen.bytecode_gen.const_table;
-    // TODO: Do not unwrap
-    vm.run(iseq).unwrap();
-
-    let module_exports =
-        unsafe { (**vm.state.scope.last().unwrap()).get_value(&"module".to_string()) }
-            .unwrap()
-            .get_property(Value::string(CString::new("exports").unwrap()).val, None);
-    vm.state.stack.push(module_exports);
     Ok(())
 }
 
