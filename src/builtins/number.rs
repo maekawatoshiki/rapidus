@@ -1,6 +1,7 @@
 use gc;
 use vm::{
     callobj::CallObject,
+    error::RuntimeError,
     value::{Value, ValueBase},
     vm::VM,
 };
@@ -24,12 +25,16 @@ thread_local!(
     };
 );
 
-pub fn number_prototype_tostring(vm: &mut VM, args: &Vec<Value>, callobj: &mut CallObject) {
+pub fn number_prototype_tostring(
+    vm: &mut VM,
+    args: &Vec<Value>,
+    callobj: &CallObject,
+) -> Result<(), RuntimeError> {
     let number = if let ValueBase::Number(num) = callobj.this.val {
         num
     } else {
         vm.state.stack.push(Value::undefined());
-        return;
+        return Ok(());
     };
 
     let base = match args.get(0) {
@@ -47,6 +52,7 @@ pub fn number_prototype_tostring(vm: &mut VM, args: &Vec<Value>, callobj: &mut C
     vm.state.stack.push(Value::string(
         CString::new(f64_to_string(number, base)).unwrap(),
     ));
+    Ok(())
 }
 
 // TODO: Maybe, this function had better be somewhere else. (like ./src/util.rs)

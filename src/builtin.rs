@@ -5,11 +5,12 @@ use std::ffi::CString;
 
 use vm::{
     callobj::CallObject,
+    error::RuntimeError,
     value::{RawStringPtr, Value, ValueBase},
     vm::VM,
 };
 
-pub type BuiltinFuncTy = fn(&mut VM, &Vec<Value>, &mut CallObject);
+pub type BuiltinFuncTy = fn(&mut VM, &Vec<Value>, &CallObject) -> Result<(), RuntimeError>;
 pub type BuiltinJITFuncTy = *mut libc::c_void;
 
 #[derive(Clone)]
@@ -56,7 +57,7 @@ impl ::std::fmt::Debug for BuiltinFuncInfo {
     }
 }
 
-pub fn console_log(self_: &mut VM, args: &Vec<Value>, _: &mut CallObject) {
+pub fn console_log(self_: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
     let args_len = args.len();
     unsafe {
         for i in 0..args_len {
@@ -67,10 +68,15 @@ pub fn console_log(self_: &mut VM, args: &Vec<Value>, _: &mut CallObject) {
         }
         libc::puts(b"\0".as_ptr() as RawStringPtr);
     }
-    self_.state.stack.push(Value::undefined())
+    self_.state.stack.push(Value::undefined());
+    Ok(())
 }
 
-pub fn process_stdout_write(vm: &mut VM, args: &Vec<Value>, _: &mut CallObject) {
+pub fn process_stdout_write(
+    vm: &mut VM,
+    args: &Vec<Value>,
+    _: &CallObject,
+) -> Result<(), RuntimeError> {
     let args_len = args.len();
     unsafe {
         for i in 0..args_len {
@@ -80,7 +86,8 @@ pub fn process_stdout_write(vm: &mut VM, args: &Vec<Value>, _: &mut CallObject) 
             }
         }
     }
-    vm.state.stack.push(Value::undefined())
+    vm.state.stack.push(Value::undefined());
+    Ok(())
 }
 
 pub fn debug_print(val: &Value, nest: bool) {
@@ -212,7 +219,7 @@ pub fn debug_print(val: &Value, nest: bool) {
     }
 }
 
-pub fn require(vm: &mut VM, args: &Vec<Value>, callobj: &mut CallObject) {
+pub fn require(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject) -> Result<(), RuntimeError> {
     // TODO: REFINE CODE!!!!
     use ansi_term::Colour;
     use parser;
@@ -235,21 +242,17 @@ pub fn require(vm: &mut VM, args: &Vec<Value>, callobj: &mut CallObject) {
 
         match dylib {
             Ok(lib) => {
-                let initialize: Result<
-                    libloading::Symbol<fn(&mut VM, &Vec<Value>, &mut CallObject)>,
-                    _,
-                > = unsafe { lib.get(symbol_name) };
+                let initialize: Result<libloading::Symbol<BuiltinFuncTy>, _> =
+                    unsafe { lib.get(symbol_name) };
                 match initialize {
-                    Ok(initialize) => {
-                        initialize(vm, args, callobj);
-                    }
+                    Ok(initialize) => initialize(vm, args, callobj)?,
                     Err(_) => println!("'initialize' needs to be defined in DLL."),
                 }
             }
             Err(msg) => println!("{}: {}", msg, dylib_path),
         }
 
-        return;
+        return Ok(());
     }
 
     let mut file_body = String::new();
@@ -263,7 +266,7 @@ pub fn require(vm: &mut VM, args: &Vec<Value>, callobj: &mut CallObject) {
                     Colour::Red.bold().paint("error"),
                     file_name,
                 );
-                return;
+                return Ok(());
             }
         },
         Err(_e) => {
@@ -272,12 +275,12 @@ pub fn require(vm: &mut VM, args: &Vec<Value>, callobj: &mut CallObject) {
                 Colour::Red.bold().paint("error"),
                 file_name,
             );
-            return;
+            return Ok(());
         }
     };
 
     if file_body.len() == 0 {
-        return;
+        return Ok(());
     }
 
     if file_body.as_bytes()[0] == b'#' {
@@ -295,12 +298,12 @@ pub fn require(vm: &mut VM, args: &Vec<Value>, callobj: &mut CallObject) {
         | Err(UnexpectedToken(pos, kind, msg)) => {
             parser.show_error_at(pos, kind, msg.as_str());
             vm.state.stack.push(Value::undefined());
-            return;
+            return Ok(());
         }
         Err(UnsupportedFeature(pos)) => {
             parser.enhanced_show_error_at(pos, "unsupported feature");
             vm.state.stack.push(Value::undefined());
-            return;
+            return Ok(());
         }
     };
 
@@ -320,6 +323,7 @@ pub fn require(vm: &mut VM, args: &Vec<Value>, callobj: &mut CallObject) {
             .unwrap()
             .get_property(Value::string(CString::new("exports").unwrap()).val, None);
     vm.state.stack.push(module_exports);
+    Ok(())
 }
 
 // Functions for JIT

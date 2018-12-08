@@ -2,6 +2,7 @@ use builtin::{BuiltinFuncInfo, BuiltinFuncTy};
 use gc;
 use vm::{
     callobj::CallObject,
+    error::RuntimeError,
     value::{Value, ValueBase},
     vm::{call_function, VM},
 };
@@ -64,11 +65,15 @@ thread_local!(
     }
 );
 
-pub fn function_new(_vm: &mut VM, _args: &Vec<Value>, _: &mut CallObject) {
+pub fn function_new(_vm: &mut VM, _args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
     unimplemented!("sorry");
 }
 
-pub fn function_prototype_apply(vm: &mut VM, args: &Vec<Value>, callobj: &mut CallObject) {
+pub fn function_prototype_apply(
+    vm: &mut VM,
+    args: &Vec<Value>,
+    callobj: &CallObject,
+) -> Result<(), RuntimeError> {
     let callee = &*callobj.this;
     let arg_this = args[0].clone();
     let arg = match args[1].val {
@@ -96,7 +101,7 @@ pub fn function_prototype_apply(vm: &mut VM, args: &Vec<Value>, callobj: &mut Ca
         ValueBase::BuiltinFunction(box (ref info, _, ref callobj)) => {
             let mut callobj = callobj.clone();
             *callobj.this = arg_this;
-            (info.func)(vm, &arg, &mut callobj);
+            (info.func)(vm, &arg, &callobj)?;
         }
         ValueBase::Function(box (id, ref iseq, _, ref callobj)) => {
             let mut callobj = callobj.clone();
@@ -104,17 +109,22 @@ pub fn function_prototype_apply(vm: &mut VM, args: &Vec<Value>, callobj: &mut Ca
             call_function(vm, id, iseq, &arg, callobj).unwrap();
         }
         _ => vm.state.stack.push(Value::undefined()),
-    }
+    };
+    Ok(())
 }
 
-pub fn function_prototype_call(vm: &mut VM, args: &Vec<Value>, callobj: &mut CallObject) {
+pub fn function_prototype_call(
+    vm: &mut VM,
+    args: &Vec<Value>,
+    callobj: &CallObject,
+) -> Result<(), RuntimeError> {
     let callee = &*callobj.this;
     let arg_this = args[0].clone();
     match callee.val {
         ValueBase::BuiltinFunction(box (ref info, _, ref callobj)) => {
             let mut callobj = callobj.clone();
             *callobj.this = arg_this;
-            (info.func)(vm, &args[1..].to_vec(), &mut callobj);
+            (info.func)(vm, &args[1..].to_vec(), &callobj)?;
         }
         ValueBase::Function(box (id, ref iseq, _, ref callobj)) => {
             let mut callobj = callobj.clone();
@@ -122,5 +132,6 @@ pub fn function_prototype_call(vm: &mut VM, args: &Vec<Value>, callobj: &mut Cal
             call_function(vm, id, iseq, &args[1..].to_vec(), callobj).unwrap();
         }
         _ => vm.state.stack.push(Value::undefined()),
-    }
+    };
+    Ok(())
 }

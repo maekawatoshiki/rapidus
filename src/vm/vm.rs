@@ -434,19 +434,15 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
 
             *callobj.this = Value::object(new_this);
 
-            self_.state.scope.push(gc::new(callobj.clone()));
-
-            (x.func)(self_, &args, &mut callobj);
-
-            let ret = self_.state.stack.last_mut().unwrap();
-            match &ret.val {
-                &ValueBase::Object(_)
-                | &ValueBase::Array(_)
-                | &ValueBase::Date(_)
-                | &ValueBase::Function(_)
-                | &ValueBase::BuiltinFunction(_) => {}
-                _ => *ret = *callobj.this,
-            };
+            // https://tc39.github.io/ecma262/#sec-date-constructor
+            // > The Date constructor returns a String representing the current time (UTC) when
+            // > called as a function rather than as a constructor.
+            use builtins::date::{date, date_new};
+            (if x.func as *const u8 == date as *const u8 {
+                date_new
+            } else {
+                x.func
+            })(self_, &args, &callobj)?;
         }
         ValueBase::Function(box (id, iseq, obj, mut callobj)) => {
             // similar code is used some times. should make it a function.
@@ -1016,7 +1012,7 @@ fn call(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
 
     match callee.val {
         ValueBase::BuiltinFunction(box (ref info, _, ref callobj)) => {
-            (info.func)(self_, &args, &mut callobj.clone());
+            (info.func)(self_, &args, &callobj)?;
         }
         ValueBase::Function(box (id, ref iseq, _, ref callobj)) => {
             let mut callobj = callobj.clone();

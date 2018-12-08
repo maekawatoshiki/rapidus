@@ -2,6 +2,7 @@ use super::function;
 use gc;
 use vm::{
     callobj::CallObject,
+    error::RuntimeError,
     value::{Value, ValueBase},
     vm::VM,
 };
@@ -22,7 +23,7 @@ thread_local!(
     pub static DATE_OBJ: Value = {
         let prototype = DATE_PROTOTYPE.with(|x| x.clone());
         let date = Value::builtin_function_with_obj_and_prototype(
-            date_new,
+            date,
             None,
             CallObject::new(Value::undefined()),
             {
@@ -49,18 +50,27 @@ thread_local!(
     }
 );
 
-pub fn date_new(vm: &mut VM, _args: &Vec<Value>, callobj: &mut CallObject) {
+pub fn date(vm: &mut VM, _args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
     let now = Utc::now();
-
-    *callobj.this = Value::date(now);
 
     vm.state
         .stack
-        .push(Value::string(CString::new(now.to_rfc3339()).unwrap()))
+        .push(Value::string(CString::new(now.to_rfc3339()).unwrap()));
+
+    Ok(())
 }
 
-pub fn date_now(vm: &mut VM, _args: &Vec<Value>, _: &mut CallObject) {
+pub fn date_new(vm: &mut VM, _args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
+    let now = Utc::now();
+
+    vm.state.stack.push(Value::date(now));
+
+    Ok(())
+}
+
+pub fn date_now(vm: &mut VM, _args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
     let now = Utc::now();
     let now_millis = now.timestamp_millis();
-    vm.state.stack.push(Value::number(now_millis as f64))
+    vm.state.stack.push(Value::number(now_millis as f64));
+    Ok(())
 }
