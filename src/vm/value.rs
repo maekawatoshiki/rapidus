@@ -346,6 +346,74 @@ impl Value {
         }
     }
 
+    pub fn set_property(&self, property: Value, value: Value, callobjref: Option<&CallObjectRef>) {
+        fn set_by_idx(map: &mut ArrayValue, n: usize, val: Value) {
+            if n >= map.length as usize {
+                map.length = n + 1;
+                while map.elems.len() < n + 1 {
+                    map.elems.push(Value::empty());
+                }
+            }
+            map.elems[n] = val;
+        };
+
+        match self.val {
+            ValueBase::Object(map)
+            | ValueBase::Date(box (_, map))
+            | ValueBase::Function(box (_, _, map, _))
+            | ValueBase::BuiltinFunction(box (_, map, _)) => unsafe {
+                *(*map)
+                    .entry(property.to_string())
+                    .or_insert_with(|| Value::undefined()) = value;
+            },
+            ValueBase::Array(map) => {
+                let mut map = unsafe { &mut *map };
+
+                match property.val {
+                    // Index
+                    ValueBase::Number(n) if is_integer(n) && n >= 0.0 => {
+                        set_by_idx(map, n as usize, value)
+                    }
+                    ValueBase::String(ref s) if s.to_str().unwrap() == "length" => {
+                        match value.val {
+                            ValueBase::Number(n) if is_integer(n) && n >= 0.0 => {
+                                map.length = n as usize;
+                                while map.elems.len() < n as usize + 1 {
+                                    map.elems.push(Value::empty());
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    // https://www.ecma-international.org/ecma-262/9.0/index.html#sec-array-exotic-objects
+                    ValueBase::String(ref s)
+                        if Value::number(property.val.to_uint32()).to_string()
+                            == s.to_str().unwrap() =>
+                    {
+                        let num = property.val.to_uint32();
+                        set_by_idx(map, num as usize, value)
+                    }
+                    _ => {
+                        *map.obj
+                            .entry(property.to_string())
+                            .or_insert_with(|| Value::undefined()) = value
+                    }
+                }
+            }
+            ValueBase::Arguments => {
+                match property.val {
+                    // Index
+                    ValueBase::Number(n) if n - n.floor() == 0.0 => unsafe {
+                        (**callobjref.unwrap()).set_arguments_nth_value(n as usize, value);
+                    },
+                    // TODO: 'length'
+                    _ => {}
+                }
+            }
+            _ => {}
+        };
+    }
+
     pub fn set_number_if_possible(&mut self, n: f64) {
         if let ValueBase::Number(ref mut n_) = self.val {
             *n_ = n;

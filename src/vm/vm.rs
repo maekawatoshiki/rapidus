@@ -863,70 +863,7 @@ fn set_member(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
     let member = self_.state.stack.pop().unwrap();
     let parent = self_.state.stack.pop().unwrap();
     let val = self_.state.stack.pop().unwrap();
-    // TODO: The following code should be a function (like Value::set_property).
-    match parent.val {
-        ValueBase::Object(map)
-        | ValueBase::Date(box (_, map))
-        | ValueBase::Function(box (_, _, map, _))
-        | ValueBase::BuiltinFunction(box (_, map, _)) => unsafe {
-            *(*map)
-                .entry(member.to_string())
-                .or_insert_with(|| Value::undefined()) = val;
-        },
-        ValueBase::Array(map) => unsafe {
-            fn set_by_idx(map: &mut ArrayValue, n: usize, val: Value) {
-                if n >= map.length as usize {
-                    map.length = n + 1;
-                    while map.elems.len() < n + 1 {
-                        map.elems.push(Value::empty());
-                    }
-                }
-                map.elems[n] = val;
-            };
-
-            let mut map = &mut *map;
-
-            match member.val {
-                // Index
-                ValueBase::Number(n) if n - n.floor() == 0.0 && n >= 0.0 => {
-                    set_by_idx(map, n as usize, val)
-                }
-                ValueBase::String(ref s) if s.to_str().unwrap() == "length" => match val.val {
-                    ValueBase::Number(n) if n - n.floor() == 0.0 && n >= 0.0 => {
-                        map.length = n as usize;
-                        while map.elems.len() < n as usize + 1 {
-                            map.elems.push(Value::empty());
-                        }
-                    }
-                    _ => {}
-                },
-                // https://www.ecma-international.org/ecma-262/9.0/index.html#sec-array-exotic-objects
-                ValueBase::String(ref s)
-                    if Value::number(member.val.to_uint32()).to_string() == s.to_str().unwrap() =>
-                {
-                    let num = member.val.to_uint32();
-                    set_by_idx(map, num as usize, val)
-                }
-                _ => {
-                    *map.obj
-                        .entry(member.to_string())
-                        .or_insert_with(|| Value::undefined()) = val
-                }
-            }
-        },
-        ValueBase::Arguments => {
-            match member.val {
-                // Index
-                ValueBase::Number(n) if n - n.floor() == 0.0 => unsafe {
-                    (**self_.state.scope.last().unwrap()).set_arguments_nth_value(n as usize, val);
-                },
-                // TODO: 'length'
-                _ => {}
-            }
-        }
-        _ => {}
-    };
-
+    parent.set_property(member, val, Some(self_.state.scope.last().unwrap()));
     Ok(())
 }
 
