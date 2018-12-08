@@ -1,4 +1,3 @@
-use super::function;
 use gc;
 use vm::{
     callobj::CallObject,
