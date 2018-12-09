@@ -6,8 +6,6 @@ use vm::{
     value::Value,
 };
 
-use std::ffi::CString;
-
 #[derive(Clone, Debug)]
 pub struct Jumps {
     global: JumpToGlobalLabel,
@@ -69,7 +67,7 @@ impl VMCodeGen {
             match constant {
                 NodeBase::String(ref s) => self
                     .bytecode_gen
-                    .gen_push_const(Value::string(CString::new(s.as_str()).unwrap()), iseq),
+                    .gen_push_const(Value::string(s.clone()), iseq),
                 NodeBase::Number(n) => self.bytecode_gen.gen_push_number(n, iseq),
                 NodeBase::Boolean(b) => self.bytecode_gen.gen_push_bool(b, iseq),
                 _ => unreachable!(),
@@ -122,7 +120,7 @@ impl VMCodeGen {
             &NodeBase::Null => self.bytecode_gen.gen_push_const(Value::null(), iseq),
             &NodeBase::String(ref s) => self
                 .bytecode_gen
-                .gen_push_const(Value::string(CString::new(s.as_str()).unwrap()), iseq),
+                .gen_push_const(Value::string(s.clone()), iseq),
             &NodeBase::Number(n) => self.bytecode_gen.gen_push_number(n, iseq),
             &NodeBase::Boolean(b) => self.bytecode_gen.gen_push_bool(b, iseq),
             &NodeBase::Nope if use_value => {
@@ -671,7 +669,7 @@ impl VMCodeGen {
             NodeBase::Member(ref parent, ref member) => {
                 self.run(&*parent, iseq, true);
                 self.bytecode_gen
-                    .gen_push_const(Value::string(CString::new(member.as_str()).unwrap()), iseq);
+                    .gen_push_const(Value::string(member.clone()), iseq);
                 self.bytecode_gen.gen_set_member(iseq);
             }
             NodeBase::Index(ref parent, ref idx) => {
@@ -713,12 +711,12 @@ impl VMCodeGen {
                 PropertyDefinition::IdentifierReference(name) => {
                     self.run_identifier(name, iseq);
                     self.bytecode_gen
-                        .gen_push_const(Value::string(CString::new(name.as_str()).unwrap()), iseq);
+                        .gen_push_const(Value::string(name.clone()), iseq);
                 }
                 PropertyDefinition::Property(name, node) => {
                     self.run(&node, iseq, true);
                     self.bytecode_gen
-                        .gen_push_const(Value::string(CString::new(name.as_str()).unwrap()), iseq);
+                        .gen_push_const(Value::string(name.clone()), iseq);
                 }
             }
         }
@@ -742,7 +740,7 @@ impl VMCodeGen {
         self.run(parent, iseq, true);
 
         self.bytecode_gen
-            .gen_push_const(Value::string(CString::new(member.as_str()).unwrap()), iseq);
+            .gen_push_const(Value::string(member.clone()), iseq);
         self.bytecode_gen.gen_get_member(iseq);
     }
 

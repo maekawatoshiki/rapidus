@@ -8,7 +8,6 @@ use vm::{
 
 use chrono::Utc;
 use rustc_hash::FxHashMap;
-use std::ffi::CString;
 
 thread_local!(
     pub static DATE_PROTOTYPE: Value = {
@@ -46,9 +45,7 @@ thread_local!(
 pub fn date(vm: &mut VM, _args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
     let now = Utc::now();
 
-    vm.state
-        .stack
-        .push(Value::string(CString::new(now.to_rfc3339()).unwrap()));
+    vm.state.stack.push(Value::string(now.to_rfc3339()));
 
     Ok(())
 }

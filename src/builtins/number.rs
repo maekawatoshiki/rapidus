@@ -7,7 +7,6 @@ use vm::{
 };
 
 use rustc_hash::FxHashMap;
-use std::ffi::CString;
 
 thread_local!(
     pub static NUMBER_PROTOTYPE: *mut FxHashMap<String, Value> = {
@@ -49,9 +48,9 @@ pub fn number_prototype_tostring(
         _ => 10,
     };
 
-    vm.state.stack.push(Value::string(
-        CString::new(f64_to_string(number, base)).unwrap(),
-    ));
+    vm.state
+        .stack
+        .push(Value::string(f64_to_string(number, base)));
     Ok(())
 }
 

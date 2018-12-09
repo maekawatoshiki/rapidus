@@ -352,7 +352,7 @@ pub fn require(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject) -> Result<(
             let module_exports =
                 unsafe { (**vm.state.scope.last().unwrap()).get_value(&"module".to_string()) }
                     .unwrap()
-                    .get_property(Value::string(CString::new("exports").unwrap()).val, None);
+                    .get_property(Value::string("exports".to_string()).val, None);
             vm.state.stack.push(module_exports);
         }
         RequireFileKind::NotFound => {

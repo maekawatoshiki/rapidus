@@ -1,17 +1,15 @@
 #![macro_use]
 
 use chrono::{DateTime, Utc};
-use rustc_hash::FxHashMap;
+pub use rustc_hash::FxHashMap;
 use std::ffi::CString;
-
-// use cpuprofiler::PROFILER;
 
 use super::callobj::{CallObject, CallObjectRef};
 use super::error::*;
 use builtin::{BuiltinFuncInfo, BuiltinFuncTy, BuiltinJITFuncInfo};
 use builtins::function;
 use bytecode_gen::ByteCode;
-use gc;
+pub use gc;
 use id::Id;
 
 pub type FuncId = Id;
@@ -49,22 +47,6 @@ pub struct ArrayValue {
     pub obj: FxHashMap<String, Value>,
 }
 
-#[macro_export]
-macro_rules! make_object {
-    ($($property_name:ident : $val:expr),*) => { {
-        Value::object(gc::new( make_hashmap!( $($property_name : $val),* ) ))
-    } };
-}
-
-#[macro_export]
-macro_rules! make_hashmap {
-    ($($property_name:ident : $val:expr),*) => { {
-        let mut map = FxHashMap::default();
-        $(map.insert(stringify!($property_name).to_string(), $val);)*
-        map
-    } };
-}
-
 impl Value {
     pub fn new(val: ValueBase) -> Value {
         Value {
@@ -99,8 +81,8 @@ impl Value {
         Value::new(ValueBase::Number(n))
     }
 
-    pub fn string(s: CString) -> Value {
-        Value::new(ValueBase::String(s))
+    pub fn string(s: String) -> Value {
+        Value::new(ValueBase::String(CString::new(s).unwrap()))
     }
 
     pub fn function(id: FuncId, iseq: ByteCode, callobj: CallObject) -> Value {
@@ -247,15 +229,12 @@ impl Value {
             match property {
                 // Character at the index 'n'
                 ValueBase::Number(n) if is_integer(n) => Value::string(
-                    CString::new(
-                        s.to_str()
-                            .unwrap()
-                            .chars()
-                            .nth(n as usize)
-                            .unwrap()
-                            .to_string(),
-                    )
-                    .unwrap(),
+                    s.to_str()
+                        .unwrap()
+                        .chars()
+                        .nth(n as usize)
+                        .unwrap()
+                        .to_string(),
                 ),
                 // Length of string. TODO: Is this implementation correct?
                 ValueBase::String(ref member) if member.to_str().unwrap() == "length" => {
@@ -664,4 +643,22 @@ pub fn obj_find_val(obj: &FxHashMap<String, Value>, key: &str) -> Value {
             _ => Value::undefined(),
         },
     }
+}
+
+// Macros (TODO: Separate files)
+
+#[macro_export]
+macro_rules! make_object {
+    ($($property_name:ident : $val:expr),*) => { {
+        Value::object(gc::new( make_hashmap!( $($property_name : $val),* ) ))
+    } };
+}
+
+#[macro_export]
+macro_rules! make_hashmap {
+    ($($property_name:ident : $val:expr),*) => { {
+        let mut map = FxHashMap::default();
+        $(map.insert(stringify!($property_name).to_string(), $val);)*
+        map
+    } };
 }

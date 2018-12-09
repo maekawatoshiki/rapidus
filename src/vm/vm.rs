@@ -360,6 +360,10 @@ impl VM {
 
         Ok(())
     }
+
+    pub fn set_return_value(&mut self, val: Value) {
+        self.state.stack.push(val);
+    }
 }
 
 macro_rules! get_int8 {
@@ -592,7 +596,7 @@ fn add(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
         | (ValueBase::Number(x), ValueBase::Bool(true)) => Value::number(x + 1.0),
         // TODO: We need the correct implementation.
         (ValueBase::Undefined, _) | (_, ValueBase::Undefined) => Value::number(::std::f64::NAN),
-        (l, r) => Value::string(CString::new(l.to_string() + r.to_string().as_str()).unwrap()),
+        (l, r) => Value::string(l.to_string() + r.to_string().as_str()),
     });
     Ok(())
 }
@@ -615,7 +619,7 @@ fn mul(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
     self_.state.stack.push(match (lhs.val, rhs.val) {
         (ValueBase::Number(l), ValueBase::Number(r)) => Value::number(l * r),
         (ValueBase::String(l), ValueBase::Number(r)) => {
-            Value::string(CString::new(l.to_str().unwrap().repeat(r as usize)).unwrap())
+            Value::string(l.to_str().unwrap().repeat(r as usize))
         }
         _ => return Err(RuntimeError::Unimplemented),
     });
