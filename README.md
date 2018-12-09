@@ -33,7 +33,7 @@ rustup override set nightly
 3. Install dependencies
   - LLVM 6.0
   - (Other packages as necessary...)
-  
+
 ```sh
 # e.g. Ubuntu or Debian
 apt-get install llvm-6.0
@@ -68,6 +68,111 @@ cargo run --release example/XXX.js
 I don't know.
 
 - ~~tips: If you are using macOS, you cannot use llvm installed with ``brew``. You should use macports or docker instead.~~ Now it works!
+
+## Use DLLs written in Rust
+
+**THIS FEATURE IS EXPERIMENTAL**
+
+
+
+1. Make a cargo project in the directory rapidus' directory is located
+
+```sh
+$ cargo new hello --lib
+$ ls
+rapidus hello
+```
+
+2. Edit ``Cargo.toml``
+
+```sh
+$ cd hello
+$ <YOUR EDITOR> Cargo.toml
+```
+
+```toml
+# Add the followings to Cargo.toml
+
+[dependencies]
+rapidus = { path = "../rapidus" }
+rustc-hash = "*"
+# other dependencies if you want...
+
+[lib]
+name = "hello"
+crate_type = ["cdylib"] # try 'dylib' if it doesn't work.
+```
+
+3. Edit ``src/lib.rs``
+
+```sh
+$ <YOUR EDITOR> src/lib.rs
+```
+
+```rust
+// src/lib.rs
+
+#[macro_use]
+extern crate rapidus;
+extern crate rustc_hash;
+use rand::random;
+use rapidus::{
+   gc,
+   vm::{callobj::CallObject, error::RuntimeError, value::*, vm::VM},
+};
+use rustc_hash::FxHashMap;
+use std::ffi::CString;
+
+#[no_mangle]
+fn initialize(vm: &mut VM, _: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
+    // make_object!() is useful
+    let module_exports = make_object!(
+        greet:   Value::default_builtin_function(greet),
+        message: Value::string(CString::new("hello").unwrap())
+    );
+
+    vm.state.stack.push(module_exports); // We have to return module.exports
+
+    Ok(())
+}
+
+#[no_mangle]
+fn greet(vm: &mut VM, _: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
+    println!("Hello World from Rust DLL!");
+
+    vm.state.stack.push(Value::undefined()); // Remember to return a value you want
+
+    Ok(())
+}
+```
+
+4. Let's build
+
+```sh
+$ cargo build # --release as necessary
+```
+
+5. Copy the generated DLL to rapidus' directory
+
+```sh
+$ cp ./target/debug/libhello.(so|dll|dylib) ../rapidus
+$ cd ../rapidus
+$ ls
+libhello.(so|dll|dylib) etc...
+```
+
+6. You're ready to use it from rapidus. Let's try from REPL.
+
+```sh
+$ cargo run
+> var mod = require('hello')
+> mod.greet()
+Hello World from Rust DLL!
+> mod.message
+'hello'
+```
+
+7. Now everything can be possible from Rust!
 
 ## Use Dockerfile
 
