@@ -233,7 +233,7 @@ pub fn require(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject) -> Result<(
     }
 
     fn find_file(file_name: &str) -> RequireFileKind {
-        let paths = vec!["#", "lib#.so"];
+        let paths = vec!["#", "lib#.so", "lib#.dylib"];
         match paths
             .iter()
             .find(|path| {
@@ -243,7 +243,8 @@ pub fn require(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject) -> Result<(
             .and_then(|path| Some(path.replace("#", file_name)))
         {
             Some(path) => {
-                if path.to_ascii_lowercase().ends_with(".so") {
+                let path = path.to_ascii_lowercase();
+                if path.ends_with(".so") || path.ends_with(".dylib") {
                     RequireFileKind::DLL(path)
                 } else {
                     RequireFileKind::Normal(path)
