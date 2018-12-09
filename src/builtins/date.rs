@@ -37,11 +37,7 @@ thread_local!(
             prototype.clone()
         );
 
-        unsafe {
-            if let Value { val: ValueBase::Object(obj), ..} = prototype {
-                (*obj).insert("constructor".to_string(), date.clone()); 
-            }
-        }
+        prototype.set_constructor(date.clone());
 
         date
     }

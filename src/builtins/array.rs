@@ -65,11 +65,7 @@ thread_local!(
             prototype.clone()
         );
 
-        unsafe {
-            if let Value { val: ValueBase::Array(arr), ..} = prototype {
-                (*arr).obj.insert("constructor".to_string(), array.clone()); 
-            }
-        }
+        prototype.set_constructor(array.clone());
 
         array
     }

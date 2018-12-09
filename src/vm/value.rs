@@ -52,9 +52,16 @@ pub struct ArrayValue {
 #[macro_export]
 macro_rules! make_object {
     ($($property_name:ident : $val:expr),*) => { {
+        Value::object(gc::new( make_hashmap!( $($property_name : $val),* ) ))
+    } };
+}
+
+#[macro_export]
+macro_rules! make_hashmap {
+    ($($property_name:ident : $val:expr),*) => { {
         let mut map = FxHashMap::default();
         $(map.insert(stringify!($property_name).to_string(), $val);)*
-        Value::object(gc::new(map))
+        map
     } };
 }
 
@@ -114,16 +121,6 @@ impl Value {
             }),
             callobj,
         ))));
-
-        // let v2 = val.clone();
-        // if let ValueBase::Function(box (_, _, ref mut obj, _)) = &mut val.val {
-        //     // TODO: Add constructor of this function itself (==Function). (not prototype.constructor)
-        //     unsafe {
-        //         if let ValueBase::Object(ref mut obj) = (**obj).get_mut("prototype").unwrap().val {
-        //             (**obj).insert("constructor".to_string(), v2);
-        //         }
-        //     }
-        // }
 
         val
     }
@@ -314,15 +311,17 @@ impl Value {
         };
 
         let property_of_arguments = || -> Value {
-            unsafe {
+            {
                 match property {
                     // Index
                     ValueBase::Number(n) if is_integer(n) && n >= 0.0 => callobjref
-                        .and_then(|co| Some((**co).get_arguments_nth_value(n as usize).unwrap()))
+                        .and_then(|co| unsafe {
+                            Some((**co).get_arguments_nth_value(n as usize).unwrap())
+                        })
                         .unwrap_or_else(|| Value::undefined()),
                     ValueBase::String(ref s) if s.to_str().unwrap() == "length" => {
                         let length = callobjref
-                            .and_then(|co| Some((**co).get_arguments_length()))
+                            .and_then(|co| unsafe { Some((**co).get_arguments_length()) })
                             .unwrap_or(0);
                         Value::number(length as f64)
                     }
@@ -331,19 +330,17 @@ impl Value {
             }
         };
 
-        unsafe {
-            match self.val {
-                ValueBase::Number(_) => property_of_number(),
-                ValueBase::String(ref s) => property_of_string(s),
-                ValueBase::BuiltinFunction(box (_, ref obj, _))
-                | ValueBase::Function(box (_, _, ref obj, _))
-                | ValueBase::Date(box (_, ref obj))
-                | ValueBase::Object(ref obj) => property_of_object(&**obj),
-                ValueBase::Array(ref ary) => property_of_array(&**ary),
-                ValueBase::Arguments => property_of_arguments(),
-                // TODO: Implement
-                _ => Value::undefined(),
-            }
+        match self.val {
+            ValueBase::Number(_) => property_of_number(),
+            ValueBase::String(ref s) => property_of_string(s),
+            ValueBase::BuiltinFunction(box (_, ref obj, _))
+            | ValueBase::Function(box (_, _, ref obj, _))
+            | ValueBase::Date(box (_, ref obj))
+            | ValueBase::Object(ref obj) => property_of_object(unsafe { &**obj }),
+            ValueBase::Array(ref ary) => property_of_array(unsafe { &**ary }),
+            ValueBase::Arguments => property_of_arguments(),
+            // TODO: Implement
+            _ => Value::undefined(),
         }
     }
 
@@ -420,6 +417,27 @@ impl Value {
             *n_ = n;
         }
     }
+
+    pub fn set_constructor(&self, constructor: Value) {
+        match self.val {
+            ValueBase::Function(box (_, _, obj, _))
+            | ValueBase::BuiltinFunction(box (_, obj, _))
+            | ValueBase::Date(box (_, obj))
+            | ValueBase::Object(obj) => unsafe {
+                (*obj).insert("constructor".to_string(), constructor);
+            },
+            ValueBase::Array(aryval) => unsafe {
+                (*aryval).obj.insert("constructor".to_string(), constructor);
+            },
+            ValueBase::Empty
+            | ValueBase::Null
+            | ValueBase::Undefined
+            | ValueBase::Bool(_)
+            | ValueBase::Number(_)
+            | ValueBase::String(_)
+            | ValueBase::Arguments => {}
+        }
+    }
 }
 
 impl ValueBase {
@@ -484,16 +502,14 @@ impl ValueBase {
             }
         }
 
-        unsafe {
-            match self {
-                ValueBase::Undefined => ::std::f64::NAN,
-                ValueBase::Bool(false) => 0.0,
-                ValueBase::Bool(true) => 1.0,
-                ValueBase::Number(n) => *n,
-                ValueBase::String(s) => str_to_num(s.to_str().unwrap()),
-                ValueBase::Array(ary) => ary_to_num(&**ary),
-                _ => ::std::f64::NAN,
-            }
+        match self {
+            ValueBase::Undefined => ::std::f64::NAN,
+            ValueBase::Bool(false) => 0.0,
+            ValueBase::Bool(true) => 1.0,
+            ValueBase::Number(n) => *n,
+            ValueBase::String(s) => str_to_num(s.to_str().unwrap()),
+            ValueBase::Array(ary) => ary_to_num(unsafe { &**ary }),
+            _ => ::std::f64::NAN,
         }
     }
 

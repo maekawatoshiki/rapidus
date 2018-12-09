@@ -51,14 +51,10 @@ thread_local!(
             obj, CallObject::new(Value::undefined()),
         ))));
 
-        unsafe {
-            if let Value { val: ValueBase::Function(box (_, _, obj, _)), .. } = prototype {
-                 (*obj).insert("constructor".to_string(), function.clone());
-            }
-        }
+        prototype.set_constructor(function.clone());
 
         unsafe {
-            (*obj).insert("__proto__".to_string(),prototype.clone());
+            (*obj).insert("__proto__".to_string(), prototype.clone());
         }
 
         function

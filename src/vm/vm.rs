@@ -49,22 +49,22 @@ impl VM {
     pub fn new(global_vals: CallObjectRef) -> VM {
         let jit = unsafe { TracingJit::new() };
 
+        let global_vals = unsafe { &mut *global_vals };
+
         // TODO: Support for 'require' is not enough.
-        unsafe {
-            (*global_vals).set_value(
-                "require".to_string(),
-                Value::builtin_function(builtin::require, CallObject::new(Value::undefined())),
-            );
+        global_vals.set_value(
+            "require".to_string(),
+            Value::builtin_function(builtin::require, CallObject::new(Value::undefined())),
+        );
 
-            let module_exports = Value::object(gc::new(FxHashMap::default()));
-            (*global_vals).set_value("module".to_string(), {
-                make_object!(exports: module_exports.clone())
-            });
-            (*global_vals).set_value("exports".to_string(), module_exports);
-        }
+        let module_exports = Value::object(gc::new(FxHashMap::default()));
+        global_vals.set_value("module".to_string(), {
+            make_object!(exports: module_exports.clone())
+        });
+        global_vals.set_value("exports".to_string(), module_exports);
 
         unsafe {
-            (*global_vals).set_value("console".to_string(), {
+            global_vals.set_value("console".to_string(), {
                 let mut map = FxHashMap::default();
                 map.insert(
                     "log".to_string(),
@@ -135,8 +135,8 @@ impl VM {
             });
         }
 
-        unsafe {
-            let llvm_process_stdout_write = LLVMAddFunction(
+        let llvm_process_stdout_write = unsafe {
+            LLVMAddFunction(
                 jit.module,
                 CString::new("process_stdout_write").unwrap().as_ptr(),
                 LLVMFunctionType(
@@ -147,142 +147,135 @@ impl VM {
                     1,
                     0,
                 ),
-            );
-            (*global_vals).set_value(
-                "process".to_string(),
-                make_object!(
-                    stdout:
-                        make_object!(write:
-                            Value::builtin_function_with_jit(
-                                builtin::process_stdout_write,
-                                BuiltinJITFuncInfo::Normal {
-                                    func: builtin::jit_process_stdout_write as *mut libc::c_void,
-                                    llvm_func: llvm_process_stdout_write,
-                                },
-                                CallObject::new(Value::undefined()),
-                            )
-                        )
-                ),
-            );
-        }
+            )
+        };
 
-        unsafe {
-            use builtins::array::ARRAY_OBJ;
-            (*global_vals).set_value("Array".to_string(), ARRAY_OBJ.with(|x| x.clone()));
-        }
-
-        unsafe {
-            use builtins::function::FUNCTION_OBJ;
-            (*global_vals).set_value("Function".to_string(), FUNCTION_OBJ.with(|x| x.clone()));
-        }
-
-        unsafe {
-            use builtins::date::DATE_OBJ;
-            (*global_vals).set_value("Date".to_string(), DATE_OBJ.with(|x| x.clone()));
-        }
-
-        unsafe {
-            (*global_vals).set_value(
-                "Math".to_string(),
-                make_object!(
-                    PI:     Value::number(::std::f64::consts::PI),
-                    abs:    Value::default_builtin_function(math::math_abs),
-                    acos:   Value::default_builtin_function(math::math_acos),
-                    acosh:  Value::default_builtin_function(math::math_acosh),
-                    asin:   Value::default_builtin_function(math::math_asin),
-                    asinh:  Value::default_builtin_function(math::math_asinh),
-                    atan:   Value::default_builtin_function(math::math_atan),
-                    atanh:  Value::default_builtin_function(math::math_atanh),
-                    atan2:  Value::default_builtin_function(math::math_atan2),
-                    cbrt:   Value::default_builtin_function(math::math_cbrt),
-                    ceil:   Value::default_builtin_function(math::math_ceil),
-                    clz32:  Value::default_builtin_function(math::math_clz32),
-                    cos:    Value::default_builtin_function(math::math_cos),
-                    cosh:   Value::default_builtin_function(math::math_cosh),
-                    exp:    Value::default_builtin_function(math::math_exp),
-                    expm1:  Value::default_builtin_function(math::math_expm1),
-                    fround: Value::default_builtin_function(math::math_fround),
-                    hypot:  Value::default_builtin_function(math::math_hypot),
-                    log:    Value::default_builtin_function(math::math_log),
-                    log1p:  Value::default_builtin_function(math::math_log1p),
-                    log10:  Value::default_builtin_function(math::math_log10),
-                    log2:   Value::default_builtin_function(math::math_log2),
-                    max:    Value::default_builtin_function(math::math_max),
-                    min:    Value::default_builtin_function(math::math_min),
-                    round:  Value::default_builtin_function(math::math_round),
-                    sign:   Value::default_builtin_function(math::math_sign),
-                    sin:    Value::default_builtin_function(math::math_sin),
-                    sinh:   Value::default_builtin_function(math::math_sinh),
-                    sqrt:   Value::default_builtin_function(math::math_sqrt),
-                    tan:    Value::default_builtin_function(math::math_tan),
-                    tanh:   Value::default_builtin_function(math::math_tanh),
-                    trunc:  Value::default_builtin_function(math::math_trunc),
-                    floor: {
-                        let llvm_func = LLVMAddFunction(
-                            jit.module,
-                            CString::new("jit_math_floor").unwrap().as_ptr(),
-                            LLVMFunctionType(
-                                LLVMDoubleTypeInContext(jit.context),
-                                vec![LLVMDoubleTypeInContext(jit.context)]
-                                    .as_mut_slice().as_mut_ptr(),
-                                1, 0
-                            )
-                        );
+        global_vals.set_value(
+            "process".to_string(),
+            make_object!(
+                stdout:
+                    make_object!(write:
                         Value::builtin_function_with_jit(
-                            math::math_floor,
+                            builtin::process_stdout_write,
                             BuiltinJITFuncInfo::Normal {
-                                func: math::jit_math_floor as *mut libc::c_void,
-                                llvm_func,
+                                func: builtin::jit_process_stdout_write as *mut libc::c_void,
+                                llvm_func: llvm_process_stdout_write,
                             },
                             CallObject::new(Value::undefined()),
                         )
-                    },
-                    random: {
-                        let llvm_func = LLVMAddFunction(
-                            jit.module,
-                            CString::new("jit_math_random").unwrap().as_ptr(),
-                            LLVMFunctionType(
-                                LLVMDoubleTypeInContext(jit.context),
-                                vec![].as_mut_slice().as_mut_ptr(),
-                                0,
-                                0,
-                            ),
-                        );
-                        Value::builtin_function_with_jit(
-                            math::math_random,
-                            BuiltinJITFuncInfo::Normal {
-                                func: math::jit_math_random as *mut libc::c_void,
-                                llvm_func                        },
-                            CallObject::new(Value::undefined()),
+                    )
+            ),
+        );
+
+        use builtins::array::ARRAY_OBJ;
+        (*global_vals).set_value("Array".to_string(), ARRAY_OBJ.with(|x| x.clone()));
+
+        use builtins::function::FUNCTION_OBJ;
+        (*global_vals).set_value("Function".to_string(), FUNCTION_OBJ.with(|x| x.clone()));
+
+        use builtins::date::DATE_OBJ;
+        (*global_vals).set_value("Date".to_string(), DATE_OBJ.with(|x| x.clone()));
+
+        global_vals.set_value(
+            "Math".to_string(),
+            make_object!(
+                PI:     Value::number(::std::f64::consts::PI),
+                abs:    Value::default_builtin_function(math::math_abs),
+                acos:   Value::default_builtin_function(math::math_acos),
+                acosh:  Value::default_builtin_function(math::math_acosh),
+                asin:   Value::default_builtin_function(math::math_asin),
+                asinh:  Value::default_builtin_function(math::math_asinh),
+                atan:   Value::default_builtin_function(math::math_atan),
+                atanh:  Value::default_builtin_function(math::math_atanh),
+                atan2:  Value::default_builtin_function(math::math_atan2),
+                cbrt:   Value::default_builtin_function(math::math_cbrt),
+                ceil:   Value::default_builtin_function(math::math_ceil),
+                clz32:  Value::default_builtin_function(math::math_clz32),
+                cos:    Value::default_builtin_function(math::math_cos),
+                cosh:   Value::default_builtin_function(math::math_cosh),
+                exp:    Value::default_builtin_function(math::math_exp),
+                expm1:  Value::default_builtin_function(math::math_expm1),
+                fround: Value::default_builtin_function(math::math_fround),
+                hypot:  Value::default_builtin_function(math::math_hypot),
+                log:    Value::default_builtin_function(math::math_log),
+                log1p:  Value::default_builtin_function(math::math_log1p),
+                log10:  Value::default_builtin_function(math::math_log10),
+                log2:   Value::default_builtin_function(math::math_log2),
+                max:    Value::default_builtin_function(math::math_max),
+                min:    Value::default_builtin_function(math::math_min),
+                round:  Value::default_builtin_function(math::math_round),
+                sign:   Value::default_builtin_function(math::math_sign),
+                sin:    Value::default_builtin_function(math::math_sin),
+                sinh:   Value::default_builtin_function(math::math_sinh),
+                sqrt:   Value::default_builtin_function(math::math_sqrt),
+                tan:    Value::default_builtin_function(math::math_tan),
+                tanh:   Value::default_builtin_function(math::math_tanh),
+                trunc:  Value::default_builtin_function(math::math_trunc),
+                floor: {
+                    let llvm_func = unsafe { LLVMAddFunction(
+                        jit.module,
+                        CString::new("jit_math_floor").unwrap().as_ptr(),
+                      LLVMFunctionType(
+                            LLVMDoubleTypeInContext(jit.context),
+                            vec![LLVMDoubleTypeInContext(jit.context)]
+                                .as_mut_slice().as_mut_ptr(),
+                            1, 0
                         )
-                    },
-                    pow: {
-                        let llvm_func = LLVMAddFunction(
-                            jit.module,
-                            CString::new("jit_math_pow").unwrap().as_ptr(),
-                            LLVMFunctionType(
+                    )};
+                    Value::builtin_function_with_jit(
+                        math::math_floor,
+                        BuiltinJITFuncInfo::Normal {
+                            func: math::jit_math_floor as *mut libc::c_void,
+                            llvm_func,
+                        },
+                        CallObject::new(Value::undefined()),
+                    )
+                },
+                random: {
+                    let llvm_func = unsafe { LLVMAddFunction(
+                        jit.module,
+                        CString::new("jit_math_random").unwrap().as_ptr(),
+                        LLVMFunctionType(
+                            LLVMDoubleTypeInContext(jit.context),
+                            vec![].as_mut_slice().as_mut_ptr(),
+                            0,
+                            0,
+                        ),
+                    )};
+                    Value::builtin_function_with_jit(
+                        math::math_random,
+                        BuiltinJITFuncInfo::Normal {
+                            func: math::jit_math_random as *mut libc::c_void,
+                            llvm_func                        },
+                        CallObject::new(Value::undefined()),
+                    )
+                },
+                pow: {
+                    let llvm_func = unsafe { LLVMAddFunction(
+                        jit.module,
+                        CString::new("jit_math_pow").unwrap().as_ptr(),
+                        LLVMFunctionType(
+                            LLVMDoubleTypeInContext(jit.context),
+                            vec![
                                 LLVMDoubleTypeInContext(jit.context),
-                                vec![
-                                    LLVMDoubleTypeInContext(jit.context),
-                                    LLVMDoubleTypeInContext(jit.context),
-                                ].as_mut_slice()
-                                    .as_mut_ptr(),
-                                2,
-                                0,
-                            ),
-                        );
-                        Value::builtin_function_with_jit(
-                            math::math_pow,
-                            BuiltinJITFuncInfo::Normal {
-                                func: math::jit_math_pow as *mut libc::c_void,
-                                llvm_func
-                            },
-                            CallObject::new(Value::undefined()),
-                        )
-                    }
-                ),
-            );
-        }
+                                LLVMDoubleTypeInContext(jit.context),
+                            ].as_mut_slice()
+                                .as_mut_ptr(),
+                            2,
+                            0,
+                        ),
+                    )};
+                    Value::builtin_function_with_jit(
+                        math::math_pow,
+                        BuiltinJITFuncInfo::Normal {
+                            func: math::jit_math_pow as *mut libc::c_void,
+                            llvm_func
+                        },
+                        CallObject::new(Value::undefined()),
+                    )
+                }
+            ),
+        );
 
         VM {
             jit: jit,
@@ -353,29 +346,16 @@ impl VM {
 
 impl VM {
     pub fn run(&mut self, iseq: ByteCode) -> Result<(), RuntimeError> {
-        // self.iseq = iseq;
-        // Unlock the mutex and start the profiler
-        // PROFILER
-        //     .lock()
-        //     .unwrap()
-        //     .start("./my-prof.profile")
-        //     .expect("Couldn't start");
-
         self.do_run(&iseq)
-
-        // Unwrap the mutex and stop the profiler
-        // PROFILER.lock().unwrap().stop().expect("Couldn't stop");
     }
 
     pub fn do_run(&mut self, iseq: &ByteCode) -> Result<(), RuntimeError> {
-        // let id = self.cur_func_id;
         loop {
             let code = iseq[self.state.pc as usize];
             self.op_table[code as usize](self, iseq)?;
             if code == VMInst::RETURN || code == VMInst::END {
                 break;
             }
-            // println!("stack trace: {:?} - {}", self.stack, *pc);
         }
 
         Ok(())
@@ -421,18 +401,12 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
 
     match callee.val.clone() {
         ValueBase::BuiltinFunction(box (x, obj, mut callobj)) => {
-            let new_this = {
-                let mut map = FxHashMap::default();
-                map.insert("__proto__".to_string(), unsafe {
-                    (*obj)
-                        .get("prototype")
-                        .unwrap_or(&Value::undefined())
-                        .clone()
-                });
-                gc::new(map)
-            };
-
-            *callobj.this = Value::object(new_this);
+            *callobj.this = make_object!(
+                __proto__: unsafe { &*obj }
+                                .get("prototype")
+                                .unwrap_or(&Value::undefined())
+                                .clone()
+            );
 
             // https://tc39.github.io/ecma262/#sec-date-constructor
             // > The Date constructor returns a String representing the current time (UTC) when
@@ -446,16 +420,12 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
         }
         ValueBase::Function(box (id, iseq, obj, mut callobj)) => {
             // similar code is used some times. should make it a function.
-            let new_this = {
-                let mut map = FxHashMap::default();
-                map.insert("__proto__".to_string(), unsafe {
-                    (*obj)
-                        .get("prototype")
-                        .unwrap_or(&Value::undefined())
-                        .clone()
-                });
-                gc::new(map)
-            };
+            let new_this = gc::new(make_hashmap!(
+                __proto__: unsafe { &*obj }
+                                .get("prototype")
+                                .unwrap_or(&Value::undefined())
+                                .clone()
+            ));
 
             callobj.clear_args_vals();
             callobj.vals = gc::new(unsafe { (*callobj.vals).clone() });
@@ -471,7 +441,6 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
 
             self_.do_run(&iseq)?;
 
-            let new_this = unsafe { (*(*self_.state.scope.pop().unwrap()).clone().this) };
             let ret = self_.state.stack.last_mut().unwrap();
             match &ret.val {
                 &ValueBase::Object(_)
@@ -479,7 +448,7 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
                 | &ValueBase::Date(_)
                 | &ValueBase::Function(_)
                 | &ValueBase::BuiltinFunction(_) => {}
-                _ => *ret = new_this,
+                _ => *ret = Value::object(new_this),
             };
         }
         c => {
