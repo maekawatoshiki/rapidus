@@ -450,6 +450,7 @@ impl ValueBase {
             ValueBase::String(s) => s.clone().into_string().unwrap(),
             ValueBase::Array(ary_val) => unsafe { (**ary_val).to_string() },
             ValueBase::Object(_) => "[object Object]".to_string(),
+            ValueBase::Date(box (time_val, _)) => time_val.to_rfc3339(),
             e => unimplemented!("{:?}", e),
         }
     }

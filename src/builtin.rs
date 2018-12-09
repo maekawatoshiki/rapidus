@@ -12,7 +12,7 @@ use vm::{
     callobj::CallObject,
     error::RuntimeError,
     value::{RawStringPtr, Value, ValueBase},
-    vm::VM,
+    vm::{Queue, VM},
 };
 use vm_codegen;
 
@@ -61,6 +61,31 @@ impl ::std::fmt::Debug for BuiltinFuncInfo {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         write!(f, "[BuiltinFunction]")
     }
+}
+
+pub fn set_timeout(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
+    use chrono::Utc;
+
+    let callback = args[0].clone();
+    let timeout = if let ValueBase::Number(millis) = &args[1].val {
+        *millis as i64
+    } else {
+        return Err(RuntimeError::Type(
+            "second argument must be number".to_string(),
+        ));
+    };
+
+    vm.queue.push_back(Queue::Timeout {
+        callback,
+        args: vec![],
+        now: Utc::now().timestamp_millis(),
+        timeout,
+    });
+
+    // TODO: ID
+    vm.state.stack.push(Value::undefined());
+
+    Ok(())
 }
 
 pub fn console_log(self_: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {

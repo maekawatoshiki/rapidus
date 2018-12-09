@@ -1,6 +1,8 @@
+use chrono::Utc;
 use libc;
 use llvm::core::*;
 use rustc_hash::FxHashMap;
+use std::collections::VecDeque;
 use std::ffi::CString;
 
 use super::{
@@ -15,12 +17,23 @@ use bytecode_gen::{ByteCode, VMInst};
 use gc;
 use jit::TracingJit;
 
+#[derive(Debug, Clone)]
+pub enum Queue {
+    Timeout {
+        callback: Value,
+        args: Vec<Value>,
+        now: i64,
+        timeout: i64,
+    },
+}
+
 pub struct VM {
     pub jit: TracingJit,
     pub state: VMState,
     pub const_table: ConstantTable,
     pub cur_func_id: FuncId, // id == 0: main
     pub op_table: [fn(&mut VM, &ByteCode) -> Result<(), RuntimeError>; 51],
+    pub queue: VecDeque<Queue>, // func, args, now, timeout
 }
 
 pub struct VMState {
@@ -167,14 +180,20 @@ impl VM {
             ),
         );
 
+        use builtin::set_timeout;
+        global_vals.set_value(
+            "setTimeout".to_string(),
+            Value::default_builtin_function(set_timeout),
+        );
+
         use builtins::array::ARRAY_OBJ;
-        (*global_vals).set_value("Array".to_string(), ARRAY_OBJ.with(|x| x.clone()));
+        global_vals.set_value("Array".to_string(), ARRAY_OBJ.with(|x| x.clone()));
 
         use builtins::function::FUNCTION_OBJ;
-        (*global_vals).set_value("Function".to_string(), FUNCTION_OBJ.with(|x| x.clone()));
+        global_vals.set_value("Function".to_string(), FUNCTION_OBJ.with(|x| x.clone()));
 
         use builtins::date::DATE_OBJ;
-        (*global_vals).set_value("Date".to_string(), DATE_OBJ.with(|x| x.clone()));
+        global_vals.set_value("Date".to_string(), DATE_OBJ.with(|x| x.clone()));
 
         global_vals.set_value(
             "Math".to_string(),
@@ -287,6 +306,7 @@ impl VM {
             },
             const_table: ConstantTable::new(),
             cur_func_id: 0, // 0 is main
+            queue: VecDeque::new(),
             op_table: [
                 end,
                 create_context,
@@ -346,7 +366,45 @@ impl VM {
 
 impl VM {
     pub fn run(&mut self, iseq: ByteCode) -> Result<(), RuntimeError> {
-        self.do_run(&iseq)
+        let res = self.do_run(&iseq);
+
+        loop {
+            if self.queue.len() == 0 {
+                break;
+            }
+
+            let now = Utc::now().timestamp_millis();
+
+            let mut mirror_queue = VecDeque::new();
+
+            while let Some(que) = self.queue.pop_front() {
+                match que {
+                    Queue::Timeout {
+                        ref callback,
+                        ref args,
+                        now: ref que_now,
+                        ref timeout,
+                    } if now - que_now > *timeout => {
+                        match callback.val {
+                            ValueBase::BuiltinFunction(box (ref info, _, ref callobj)) => {
+                                (info.func)(self, args, &callobj)?;
+                            }
+                            ValueBase::Function(box (id, ref iseq, _, ref callobj)) => {
+                                call_function(self, id, iseq, args, callobj.clone())?;
+                            }
+                            _ => unimplemented!(),
+                        };
+                    }
+                    _ => mirror_queue.push_back(que),
+                }
+            }
+
+            self.queue = mirror_queue;
+
+            ::std::thread::sleep(::std::time::Duration::from_millis(1));
+        }
+
+        res
     }
 
     pub fn do_run(&mut self, iseq: &ByteCode) -> Result<(), RuntimeError> {
