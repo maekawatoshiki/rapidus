@@ -18,7 +18,7 @@ use gc;
 use jit::TracingJit;
 
 #[derive(Debug, Clone)]
-pub enum Queue {
+pub enum Task {
     Timeout {
         callback: Value,
         args: Vec<Value>,
@@ -33,7 +33,7 @@ pub struct VM {
     pub const_table: ConstantTable,
     pub cur_func_id: FuncId, // id == 0: main
     pub op_table: [fn(&mut VM, &ByteCode) -> Result<(), RuntimeError>; 51],
-    pub queue: VecDeque<Queue>, // func, args, now, timeout
+    pub tasks: VecDeque<Task>,
 }
 
 pub struct VMState {
@@ -306,7 +306,7 @@ impl VM {
             },
             const_table: ConstantTable::new(),
             cur_func_id: 0, // 0 is main
-            queue: VecDeque::new(),
+            tasks: VecDeque::new(),
             op_table: [
                 end,
                 create_context,
@@ -369,22 +369,22 @@ impl VM {
         let res = self.do_run(&iseq);
 
         loop {
-            if self.queue.len() == 0 {
+            if self.tasks.len() == 0 {
                 break;
             }
 
             let now = Utc::now().timestamp_millis();
 
-            let mut mirror_queue = VecDeque::new();
+            let mut mirror_tasks = VecDeque::new();
 
-            while let Some(que) = self.queue.pop_front() {
-                match que {
-                    Queue::Timeout {
+            while let Some(task) = self.tasks.pop_front() {
+                match task {
+                    Task::Timeout {
                         ref callback,
                         ref args,
-                        now: ref que_now,
+                        now: ref task_now,
                         ref timeout,
-                    } if now - que_now > *timeout => {
+                    } if now - task_now > *timeout => {
                         match callback.val {
                             ValueBase::BuiltinFunction(box (ref info, _, ref callobj)) => {
                                 (info.func)(self, args, &callobj)?;
@@ -394,12 +394,13 @@ impl VM {
                             }
                             _ => unimplemented!(),
                         };
+                        self.state.stack.pop(); // return value is not used
                     }
-                    _ => mirror_queue.push_back(que),
+                    _ => mirror_tasks.push_back(task),
                 }
             }
 
-            self.queue = mirror_queue;
+            self.tasks = mirror_tasks;
 
             ::std::thread::sleep(::std::time::Duration::from_millis(1));
         }

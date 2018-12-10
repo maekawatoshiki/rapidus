@@ -12,7 +12,7 @@ use vm::{
     callobj::CallObject,
     error::RuntimeError,
     value::{RawStringPtr, Value, ValueBase},
-    vm::{Queue, VM},
+    vm::{Task, VM},
 };
 use vm_codegen;
 
@@ -75,7 +75,7 @@ pub fn set_timeout(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(),
         ));
     };
 
-    vm.queue.push_back(Queue::Timeout {
+    vm.tasks.push_back(Task::Timeout {
         callback,
         args: vec![],
         now: Utc::now().timestamp_millis(),
