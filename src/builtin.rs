@@ -7,6 +7,7 @@ use std::fs::OpenOptions;
 use std::io::prelude::*;
 use std::path;
 
+use id;
 use parser;
 use parser::Error::*;
 use vm::{
@@ -67,7 +68,7 @@ impl ::std::fmt::Debug for BuiltinFuncInfo {
 pub fn set_timeout(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
     if args.len() == 0 {
         return Err(RuntimeError::General(
-            "error: set_timeout() needs one argument at least".to_string(),
+            "error: setTimeout() needs one argument at least".to_string(),
         ));
     }
 
@@ -80,15 +81,15 @@ pub fn set_timeout(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(),
         ));
     };
 
-    vm.tasks.push_back(Task::Timeout {
+    let id = vm.task_mgr.add_timer(Task::Timeout {
+        id: 0,
         callback,
         args: vec![],
         now: Utc::now().timestamp_millis(),
         timeout,
     });
 
-    // TODO: ID
-    vm.state.stack.push(Value::undefined());
+    vm.state.stack.push(Value::number(id as f64));
 
     Ok(())
 }
@@ -96,7 +97,7 @@ pub fn set_timeout(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(),
 pub fn set_interval(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
     if args.len() == 0 {
         return Err(RuntimeError::General(
-            "error: set_timeout() needs one argument at least".to_string(),
+            "error: setInterval() needs one argument at least".to_string(),
         ));
     }
 
@@ -109,14 +110,36 @@ pub fn set_interval(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<()
         ));
     };
 
-    vm.tasks.push_back(Task::Interval {
+    let id = vm.task_mgr.add_timer(Task::Interval {
+        id: 0,
         callback,
         args: vec![],
         previous: Utc::now().timestamp_millis(),
         interval,
     });
 
-    // TODO: ID
+    vm.state.stack.push(Value::number(id as f64));
+
+    Ok(())
+}
+
+pub fn clear_timer(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
+    if args.len() == 0 {
+        return Err(RuntimeError::General(
+            "error: clearInterval() or clearTimer needs an argument".to_string(),
+        ));
+    }
+
+    let id = if let ValueBase::Number(millis) = &args[0].val {
+        *millis as id::Id
+    } else {
+        return Err(RuntimeError::Type(
+            "type error: first argument must be number".to_string(),
+        ));
+    };
+
+    vm.task_mgr.clear_timer(id);
+
     vm.state.stack.push(Value::undefined());
 
     Ok(())

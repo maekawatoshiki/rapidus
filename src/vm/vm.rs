@@ -15,6 +15,7 @@ use builtin::BuiltinJITFuncInfo;
 use builtins::math;
 use bytecode_gen::{ByteCode, VMInst};
 use gc;
+use id;
 use jit::TracingJit;
 
 pub struct VM {
@@ -23,7 +24,7 @@ pub struct VM {
     pub const_table: ConstantTable,
     pub cur_func_id: FuncId, // id == 0: main
     pub op_table: [fn(&mut VM, &ByteCode) -> Result<(), RuntimeError>; 51],
-    pub tasks: VecDeque<Task>,
+    pub task_mgr: TaskManager,
 }
 
 pub struct VMState {
@@ -34,20 +35,94 @@ pub struct VMState {
 }
 
 #[derive(Debug, Clone)]
+pub struct TaskManager {
+    id: id::IdGen,
+    tasks: VecDeque<Task>,
+    mirror_tasks: VecDeque<Task>,
+}
+
+pub type TimerID = id::Id;
+
+#[derive(Debug, Clone)]
 pub enum Task {
+    // TODO: Similar code should be one.
     Timeout {
-        // id:
+        id: TimerID,
         callback: Value,
         args: Vec<Value>,
         now: i64,
         timeout: i64,
     },
     Interval {
+        id: TimerID,
         callback: Value,
         args: Vec<Value>,
         previous: i64,
         interval: i64,
     },
+}
+
+impl Task {
+    pub fn get_timer_id(&self) -> Option<TimerID> {
+        match self {
+            Task::Timeout { id, .. } | Task::Interval { id, .. } => Some(*id),
+        }
+    }
+
+    pub fn get_timer_id_mut(&mut self) -> Option<&mut TimerID> {
+        match self {
+            Task::Timeout { ref mut id, .. } | Task::Interval { ref mut id, .. } => Some(id),
+        }
+    }
+}
+
+impl TaskManager {
+    pub fn new() -> Self {
+        TaskManager {
+            id: id::IdGen::new(),
+            tasks: VecDeque::new(),
+            mirror_tasks: VecDeque::new(),
+        }
+    }
+
+    pub fn add_timer(&mut self, mut task: Task) -> TimerID {
+        let id = self.id.gen_id();
+        *task.get_timer_id_mut().unwrap() = id;
+        self.tasks.push_back(task);
+        id
+    }
+
+    pub fn clear_timer(&mut self, id: TimerID) {
+        if let Some(idx) = self
+            .tasks
+            .iter()
+            .position(|task| task.get_timer_id() == Some(id))
+        {
+            self.tasks.remove(idx);
+        }
+
+        if let Some(idx) = self
+            .mirror_tasks
+            .iter()
+            .position(|task| task.get_timer_id() == Some(id))
+        {
+            self.mirror_tasks.remove(idx);
+        }
+    }
+
+    pub fn get_task(&mut self) -> Option<Task> {
+        match self.tasks.pop_front() {
+            Some(task) => Some(task),
+            None => {
+                self.tasks.append(&mut self.mirror_tasks);
+                None
+            }
+        }
+    }
+
+    pub fn retain_task(&mut self, task: Task) {
+        self.mirror_tasks.push_back(task)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -191,9 +266,20 @@ impl VM {
             "setTimeout".to_string(),
             Value::default_builtin_function(builtin::set_timeout),
         );
+
         global_vals.set_value(
             "setInterval".to_string(),
             Value::default_builtin_function(builtin::set_interval),
+        );
+
+        global_vals.set_value(
+            "clearInterval".to_string(),
+            Value::default_builtin_function(builtin::clear_timer),
+        );
+
+        global_vals.set_value(
+            "clearTimeout".to_string(),
+            Value::default_builtin_function(builtin::clear_timer),
         );
 
         use builtins::array::ARRAY_OBJ;
@@ -316,7 +402,7 @@ impl VM {
             },
             const_table: ConstantTable::new(),
             cur_func_id: 0, // 0 is main
-            tasks: VecDeque::new(),
+            task_mgr: TaskManager::new(),
             op_table: [
                 end,
                 create_context,
@@ -379,21 +465,20 @@ impl VM {
         let res = self.do_run(&iseq);
 
         loop {
-            if self.tasks.len() == 0 {
+            if self.task_mgr.tasks.len() == 0 {
                 break;
             }
 
             let now = Utc::now().timestamp_millis();
 
-            let mut mirror_tasks = VecDeque::new();
-
-            while let Some(task) = self.tasks.pop_front() {
+            while let Some(task) = self.task_mgr.get_task() {
                 match task {
                     Task::Timeout {
                         ref callback,
                         ref args,
                         now: ref task_now,
                         ref timeout,
+                        ..
                     } if now - task_now > *timeout => {
                         match callback.val {
                             ValueBase::BuiltinFunction(box (ref info, _, ref callobj)) => {
@@ -407,11 +492,12 @@ impl VM {
                         self.state.stack.pop(); // return value is not used
                     }
                     Task::Interval {
+                        id,
                         ref callback,
                         ref args,
-                        ref previous,
-                        ref interval,
-                    } if now - previous > *interval => {
+                        previous,
+                        interval,
+                    } if now - previous > interval => {
                         match callback.val {
                             ValueBase::BuiltinFunction(box (ref info, _, ref callobj)) => {
                                 (info.func)(self, args, &callobj)?;
@@ -423,18 +509,17 @@ impl VM {
                         };
                         self.state.stack.pop(); // return value is not used
 
-                        mirror_tasks.push_back(Task::Interval {
+                        self.task_mgr.retain_task(Task::Interval {
+                            id,
                             callback: callback.clone(),
                             args: args.clone(),
                             previous: Utc::now().timestamp_millis(),
-                            interval: *interval,
+                            interval,
                         })
                     }
-                    _ => mirror_tasks.push_back(task),
+                    _ => self.task_mgr.retain_task(task),
                 }
             }
-
-            self.tasks = mirror_tasks;
 
             ::std::thread::sleep(::std::time::Duration::from_millis(1));
         }
