@@ -55,7 +55,7 @@ impl CallObject {
         let params = self.params.clone();
 
         for (name, _) in params {
-            self.set_value_if_exist(name, Value::undefined());
+            self.set_value(name, Value::undefined());
         }
 
         self.arg_rest_vals.clear();
