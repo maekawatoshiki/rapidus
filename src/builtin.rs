@@ -1,3 +1,4 @@
+use chrono::Utc;
 use libc;
 use libloading;
 use llvm::prelude::LLVMValueRef;
@@ -64,14 +65,18 @@ impl ::std::fmt::Debug for BuiltinFuncInfo {
 }
 
 pub fn set_timeout(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
-    use chrono::Utc;
+    if args.len() == 0 {
+        return Err(RuntimeError::General(
+            "error: set_timeout() needs one argument at least".to_string(),
+        ));
+    }
 
     let callback = args[0].clone();
     let timeout = if let ValueBase::Number(millis) = &args[1].val {
         *millis as i64
     } else {
         return Err(RuntimeError::Type(
-            "second argument must be number".to_string(),
+            "type error: second argument must be number".to_string(),
         ));
     };
 
@@ -80,6 +85,35 @@ pub fn set_timeout(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(),
         args: vec![],
         now: Utc::now().timestamp_millis(),
         timeout,
+    });
+
+    // TODO: ID
+    vm.state.stack.push(Value::undefined());
+
+    Ok(())
+}
+
+pub fn set_interval(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
+    if args.len() == 0 {
+        return Err(RuntimeError::General(
+            "error: set_timeout() needs one argument at least".to_string(),
+        ));
+    }
+
+    let callback = args[0].clone();
+    let interval = if let ValueBase::Number(millis) = &args[1].val {
+        *millis as i64
+    } else {
+        return Err(RuntimeError::Type(
+            "type error: second argument must be number".to_string(),
+        ));
+    };
+
+    vm.tasks.push_back(Task::Interval {
+        callback,
+        args: vec![],
+        previous: Utc::now().timestamp_millis(),
+        interval,
     });
 
     // TODO: ID

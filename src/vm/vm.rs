@@ -17,16 +17,6 @@ use bytecode_gen::{ByteCode, VMInst};
 use gc;
 use jit::TracingJit;
 
-#[derive(Debug, Clone)]
-pub enum Task {
-    Timeout {
-        callback: Value,
-        args: Vec<Value>,
-        now: i64,
-        timeout: i64,
-    },
-}
-
 pub struct VM {
     pub jit: TracingJit,
     pub state: VMState,
@@ -41,6 +31,23 @@ pub struct VMState {
     pub scope: Vec<CallObjectRef>,
     pub pc: isize,
     pub history: Vec<(usize, isize, FuncId)>, // sp, return_pc
+}
+
+#[derive(Debug, Clone)]
+pub enum Task {
+    Timeout {
+        // id:
+        callback: Value,
+        args: Vec<Value>,
+        now: i64,
+        timeout: i64,
+    },
+    Interval {
+        callback: Value,
+        args: Vec<Value>,
+        previous: i64,
+        interval: i64,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -180,10 +187,13 @@ impl VM {
             ),
         );
 
-        use builtin::set_timeout;
         global_vals.set_value(
             "setTimeout".to_string(),
-            Value::default_builtin_function(set_timeout),
+            Value::default_builtin_function(builtin::set_timeout),
+        );
+        global_vals.set_value(
+            "setInterval".to_string(),
+            Value::default_builtin_function(builtin::set_interval),
         );
 
         use builtins::array::ARRAY_OBJ;
@@ -395,6 +405,30 @@ impl VM {
                             _ => unimplemented!(),
                         };
                         self.state.stack.pop(); // return value is not used
+                    }
+                    Task::Interval {
+                        ref callback,
+                        ref args,
+                        ref previous,
+                        ref interval,
+                    } if now - previous > *interval => {
+                        match callback.val {
+                            ValueBase::BuiltinFunction(box (ref info, _, ref callobj)) => {
+                                (info.func)(self, args, &callobj)?;
+                            }
+                            ValueBase::Function(box (id, ref iseq, _, ref callobj)) => {
+                                call_function(self, id, iseq, args, callobj.clone())?;
+                            }
+                            _ => unimplemented!(),
+                        };
+                        self.state.stack.pop(); // return value is not used
+
+                        mirror_tasks.push_back(Task::Interval {
+                            callback: callback.clone(),
+                            args: args.clone(),
+                            previous: Utc::now().timestamp_millis(),
+                            interval: *interval,
+                        })
                     }
                     _ => mirror_tasks.push_back(task),
                 }
