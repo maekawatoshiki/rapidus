@@ -149,6 +149,73 @@ pub fn clear_timer(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(),
     Ok(())
 }
 
+//////////////////////////////////////////////////////////////////////////
+
+use std::fs;
+use std::io::Read;
+use std::thread;
+
+use std::sync::Mutex;
+
+lazy_static! {
+    static ref FILE_READ: Mutex<Vec<Option<String>>> = Mutex::new(vec![]);
+}
+
+pub fn read_file(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
+    let (file_path, _options) = match args.len() {
+        0 => {
+            return Err(RuntimeError::General(
+                "error: readFileSync() needs one argument at least".to_string(),
+            ));
+        }
+        _ => {
+            let file_path = if let ValueBase::String(file_path) = &args[0].val {
+                file_path.to_str().unwrap()
+            } else {
+                return Err(RuntimeError::General(
+                    "error: file_path needs to be string".to_string(),
+                ));
+            };
+
+            (file_path.to_string(), "")
+        } // TODO: Options
+    };
+
+    let mut fr = FILE_READ.lock().unwrap();
+    let id = fr.len();
+    fr.push(None);
+
+    thread::spawn(move || {
+        let mut f = fs::File::open(file_path).unwrap();
+        let mut content = "".to_string();
+
+        f.read_to_string(&mut content).unwrap();
+
+        FILE_READ.lock().unwrap()[id] = Some(content);
+    });
+
+    vm.task_mgr.add_io(Task::Io {
+        check: read_file_check,
+        callback: args[1].clone(),
+        id,
+    });
+
+    vm.set_return_value(Value::undefined());
+
+    Ok(())
+}
+
+fn read_file_check(vm: &mut VM, callback: &Value, id: usize) -> Result<bool, RuntimeError> {
+    if let Some(ref content) = FILE_READ.lock().unwrap()[id] {
+        vm.call_function_simply(callback, &vec![Value::string(content.clone())])?;
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+
 pub fn console_log(self_: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
     let args_len = args.len();
     unsafe {

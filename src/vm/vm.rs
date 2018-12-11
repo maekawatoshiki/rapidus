@@ -190,6 +190,11 @@ impl VM {
             Value::default_builtin_function(builtin::clear_timer),
         );
 
+        global_vals.set_value(
+            "readFile".to_string(),
+            Value::default_builtin_function(builtin::read_file),
+        );
+
         use builtins::array::ARRAY_OBJ;
         global_vals.set_value("Array".to_string(), ARRAY_OBJ.with(|x| x.clone()));
 
@@ -412,6 +417,19 @@ impl VM {
                                 interval,
                             },
                         })
+                    }
+                    Task::Io {
+                        id,
+                        check,
+                        callback,
+                    } => {
+                        if !check(self, &callback, id)? {
+                            self.task_mgr.retain_task(Task::Io {
+                                callback,
+                                check,
+                                id,
+                            })
+                        }
                     }
                     _ => self.task_mgr.retain_task(task),
                 }

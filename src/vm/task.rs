@@ -1,11 +1,12 @@
 // use chrono::Utc;
-use super::value::Value;
+use super::{error::*, value::Value, vm::VM};
+use builtin::BuiltinFuncTy;
 use id;
 use std::collections::VecDeque;
 
 pub type TimerID = id::Id;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct TaskManager {
     id: id::IdGen,
     tasks: VecDeque<Task>,
@@ -18,7 +19,7 @@ pub enum TimerKind {
     Interval { previous: i64, interval: i64 },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum Task {
     Timer {
         kind: TimerKind,
@@ -26,19 +27,25 @@ pub enum Task {
         callback: Value,
         args: Vec<Value>,
     },
-    // TODO: Add I/O, microtasks...
+    Io {
+        check: fn(&mut VM, &Value, usize) -> Result<bool, RuntimeError>,
+        callback: Value,
+        id: usize,
+    }, // TODO: Add I/O, microtasks...
 }
 
 impl Task {
     pub fn get_timer_id(&self) -> Option<TimerID> {
         match self {
             Task::Timer { id, .. } => Some(*id),
+            Task::Io { .. } => None,
         }
     }
 
     pub fn get_timer_id_mut(&mut self) -> Option<&mut TimerID> {
         match self {
             Task::Timer { ref mut id, .. } => Some(id),
+            Task::Io { .. } => None,
         }
     }
 }
@@ -50,6 +57,10 @@ impl TaskManager {
             tasks: VecDeque::new(),
             mirror_tasks: VecDeque::new(),
         }
+    }
+
+    pub fn add_io(&mut self, task: Task) {
+        self.tasks.push_back(task)
     }
 
     pub fn add_timer(&mut self, mut task: Task) -> TimerID {
