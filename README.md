@@ -95,7 +95,6 @@ $ <YOUR EDITOR> Cargo.toml
 
 [dependencies]
 rapidus = { path = "../rapidus" }
-rustc-hash = "*"
 # other dependencies if you want...
 
 [lib]
@@ -114,24 +113,20 @@ $ <YOUR EDITOR> src/lib.rs
 
 #[macro_use]
 extern crate rapidus;
-extern crate rustc_hash;
-use rand::random;
 use rapidus::{
    gc,
    vm::{callobj::CallObject, error::RuntimeError, value::*, vm::VM},
 };
-use rustc_hash::FxHashMap;
-use std::ffi::CString;
 
 #[no_mangle]
 fn initialize(vm: &mut VM, _: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
     // make_object!() is useful
     let module_exports = make_object!(
         greet:   Value::default_builtin_function(greet),
-        message: Value::string(CString::new("hello").unwrap())
+        message: Value::string("hello".to_string())
     );
 
-    vm.state.stack.push(module_exports); // We have to return module.exports
+    vm.set_return_value(module_exports); // We have to return module.exports
 
     Ok(())
 }
@@ -140,7 +135,7 @@ fn initialize(vm: &mut VM, _: &Vec<Value>, _: &CallObject) -> Result<(), Runtime
 fn greet(vm: &mut VM, _: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
     println!("Hello World from Rust DLL!");
 
-    vm.state.stack.push(Value::undefined()); // Remember to return a value you want
+    vm.set_return_value(Value::undefined()); // Remember to return a value you want
 
     Ok(())
 }
