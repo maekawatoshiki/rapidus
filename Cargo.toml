@@ -16,6 +16,7 @@ rustc-hash = "*"
 rustyline = "*"
 libloading = "0.5"
 chrono = "0.4"
+lazy_static = "1.2.0"
 
 [profile.dev]
 codegen-units = 16
