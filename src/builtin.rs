@@ -7,14 +7,14 @@ use std::fs::OpenOptions;
 use std::io::prelude::*;
 use std::path;
 
-use id;
 use parser;
 use parser::Error::*;
 use vm::{
     callobj::CallObject,
     error::RuntimeError,
+    task::{Task, TimerID, TimerKind},
     value::{RawStringPtr, Value, ValueBase},
-    vm::{Task, VM},
+    vm::VM,
 };
 use vm_codegen;
 
@@ -81,12 +81,14 @@ pub fn set_timeout(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(),
         ));
     };
 
-    let id = vm.task_mgr.add_timer(Task::Timeout {
+    let id = vm.task_mgr.add_timer(Task::Timer {
+        kind: TimerKind::Timeout {
+            now: Utc::now().timestamp_millis(),
+            timeout,
+        },
         id: 0,
         callback,
         args: vec![],
-        now: Utc::now().timestamp_millis(),
-        timeout,
     });
 
     vm.state.stack.push(Value::number(id as f64));
@@ -110,12 +112,14 @@ pub fn set_interval(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<()
         ));
     };
 
-    let id = vm.task_mgr.add_timer(Task::Interval {
+    let id = vm.task_mgr.add_timer(Task::Timer {
+        kind: TimerKind::Interval {
+            previous: Utc::now().timestamp_millis(),
+            interval,
+        },
         id: 0,
         callback,
         args: vec![],
-        previous: Utc::now().timestamp_millis(),
-        interval,
     });
 
     vm.state.stack.push(Value::number(id as f64));
@@ -130,15 +134,15 @@ pub fn clear_timer(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(),
         ));
     }
 
-    let id = if let ValueBase::Number(millis) = &args[0].val {
-        *millis as id::Id
+    let timer_id = if let ValueBase::Number(id) = &args[0].val {
+        *id as TimerID
     } else {
         return Err(RuntimeError::Type(
             "type error: first argument must be number".to_string(),
         ));
     };
 
-    vm.task_mgr.clear_timer(id);
+    vm.task_mgr.clear_timer(timer_id);
 
     vm.state.stack.push(Value::undefined());
 

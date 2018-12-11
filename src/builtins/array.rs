@@ -3,7 +3,7 @@ use vm::{
     callobj::CallObject,
     error::RuntimeError,
     value::{ArrayValue, Value, ValueBase},
-    vm::{call_function, VM},
+    vm::VM,
 };
 
 use rustc_hash::FxHashMap;
@@ -174,18 +174,7 @@ pub fn array_prototype_map(
         args_for_callback[0] = array.elems[i].clone();
         args_for_callback[1].set_number_if_possible(i as f64);
 
-        match callback.val {
-            ValueBase::BuiltinFunction(box (ref info, _, ref callobj)) => {
-                // let mut callobj = callobj.clone();
-                // *callobj.this = arg_this;
-                (info.func)(vm, &args_for_callback, callobj)?;
-            }
-            ValueBase::Function(box (id, ref iseq, _, ref callobj)) => {
-                let mut callobj = callobj.clone();
-                call_function(vm, id, iseq, &args_for_callback, callobj).unwrap();
-            }
-            _ => vm.state.stack.push(Value::undefined()),
-        }
+        vm.call_function_simply(callback, &args_for_callback)?;
 
         let val = vm.state.stack.pop().unwrap();
         new_array.push(val);
