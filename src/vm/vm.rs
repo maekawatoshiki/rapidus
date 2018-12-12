@@ -385,6 +385,7 @@ impl VM {
             }
 
             let now = Utc::now().timestamp_millis();
+
             while let Some(task) = self.task_mgr.get_task() {
                 if let Some((id, content)) = builtin::check_read_file() {
                     fread_recv_data.insert(id, content);
@@ -444,6 +445,7 @@ impl VM {
                 }
             }
 
+            // TODO: recv_timeout( min(timers_interval_or_timeout) / 2or3 )
             thread::sleep(time::Duration::from_millis(1));
         }
 
