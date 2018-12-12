@@ -377,14 +377,19 @@ impl VM {
     pub fn run(&mut self, iseq: ByteCode) -> Result<(), RuntimeError> {
         let res = self.do_run(&iseq);
 
+        let mut fread_recv_data = FxHashMap::<usize, String>::default();
+
         loop {
             if self.task_mgr.no_tasks() {
                 break;
             }
 
             let now = Utc::now().timestamp_millis();
-
             while let Some(task) = self.task_mgr.get_task() {
+                if let Some((id, content)) = builtin::check_read_file() {
+                    fread_recv_data.insert(id, content);
+                }
+
                 match task {
                     Task::Timer {
                         ref callback,
@@ -419,13 +424,19 @@ impl VM {
                         })
                     }
                     Task::Io {
-                        kind: IoKind::Read { receiver },
+                        kind: IoKind::Read { id },
                         callback,
                     } => {
-                        if !builtin::read_file_callback(self, &callback, &receiver)? {
+                        if let Some(content) = fread_recv_data.remove(&id) {
+                            self.call_function_simply(
+                                &callback,
+                                &vec![Value::string(content.clone())],
+                            )?;
+                            self.state.stack.pop(); // return value is not used
+                        } else {
                             self.task_mgr.retain_task(Task::Io {
                                 callback,
-                                kind: IoKind::Read { receiver },
+                                kind: IoKind::Read { id },
                             })
                         }
                     }

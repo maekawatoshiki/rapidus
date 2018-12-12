@@ -6,6 +6,7 @@ use std::ffi::CString;
 use std::fs::OpenOptions;
 use std::path;
 
+use id;
 use parser;
 use parser::Error::*;
 use vm::{
@@ -153,7 +154,20 @@ pub fn clear_timer(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(),
 use std::fs;
 use std::io::Read;
 use std::sync::mpsc;
+use std::sync::Mutex;
 use std::thread;
+
+lazy_static! {
+    pub static ref FILE_READ: Mutex<(
+        // (id, content)
+        mpsc::Sender<(usize, String)>,
+        mpsc::Receiver<(usize, String)>
+    )> = { Mutex::new(mpsc::channel()) };
+}
+
+pub fn check_read_file() -> Option<(usize, String)> {
+    FILE_READ.lock().unwrap().1.try_recv().ok()
+}
 
 pub fn read_file(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
     let (file_path, callback) = match args.len() {
@@ -175,7 +189,7 @@ pub fn read_file(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), R
         }
     };
 
-    let (sender, receiver) = mpsc::channel();
+    let id = id::get_unique_id();
 
     thread::spawn(move || {
         let mut f = fs::File::open(file_path).unwrap();
@@ -183,30 +197,17 @@ pub fn read_file(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), R
 
         f.read_to_string(&mut content).unwrap();
 
-        sender.send(content).unwrap()
+        FILE_READ.lock().unwrap().0.send((id, content)).unwrap();
     });
 
     vm.task_mgr.add_io(Task::Io {
         callback,
-        kind: IoKind::Read { receiver },
+        kind: IoKind::Read { id },
     });
 
     vm.set_return_value(Value::undefined());
 
     Ok(())
-}
-
-pub fn read_file_callback(
-    vm: &mut VM,
-    callback: &Value,
-    receiver: &mpsc::Receiver<String>,
-) -> Result<bool, RuntimeError> {
-    if let Ok(ref content) = receiver.try_recv() {
-        vm.call_function_simply(callback, &vec![Value::string(content.clone())])?;
-        vm.state.stack.pop(); // return value is not used
-        return Ok(true);
-    }
-    Ok(false)
 }
 
 //////////////////////////////////////////////////////////////////////////

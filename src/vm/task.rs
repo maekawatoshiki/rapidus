@@ -1,8 +1,7 @@
 // use chrono::Utc;
-use super::{value::Value};
+use super::value::Value;
 use id;
 use std::collections::VecDeque;
-use std::sync::mpsc;
 
 pub type TimerID = id::Id;
 
@@ -19,7 +18,7 @@ pub enum TimerKind {
 }
 
 pub enum IoKind {
-    Read { receiver: mpsc::Receiver<String> },
+    Read { id: usize },
     Write,
 }
 
