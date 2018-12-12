@@ -4,7 +4,6 @@ use libloading;
 use llvm::prelude::LLVMValueRef;
 use std::ffi::CString;
 use std::fs::OpenOptions;
-use std::io::prelude::*;
 use std::path;
 
 use parser;
@@ -12,7 +11,7 @@ use parser::Error::*;
 use vm::{
     callobj::CallObject,
     error::RuntimeError,
-    task::{Task, TimerID, TimerKind},
+    task::{IoKind, Task, TimerID, TimerKind},
     value::{RawStringPtr, Value, ValueBase},
     vm::VM,
 };
@@ -153,22 +152,12 @@ pub fn clear_timer(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(),
 
 use std::fs;
 use std::io::Read;
+use std::sync::mpsc;
 use std::thread;
 
-use std::sync::Mutex;
-
-lazy_static! {
-    static ref FILE_READ: Mutex<Vec<Option<String>>> = Mutex::new(vec![]);
-}
-
 pub fn read_file(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
-    let (file_path, _options) = match args.len() {
-        0 => {
-            return Err(RuntimeError::General(
-                "error: readFileSync() needs one argument at least".to_string(),
-            ));
-        }
-        _ => {
+    let (file_path, callback) = match args.len() {
+        2 => {
             let file_path = if let ValueBase::String(file_path) = &args[0].val {
                 file_path.to_str().unwrap()
             } else {
@@ -177,13 +166,16 @@ pub fn read_file(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), R
                 ));
             };
 
-            (file_path.to_string(), "")
-        } // TODO: Options
+            (file_path.to_string(), args[1].clone())
+        }
+        _ => {
+            return Err(RuntimeError::General(
+                "error: readFile needs two arguments".to_string(),
+            ));
+        }
     };
 
-    let mut fr = FILE_READ.lock().unwrap();
-    let id = fr.len();
-    fr.push(None);
+    let (sender, receiver) = mpsc::channel();
 
     thread::spawn(move || {
         let mut f = fs::File::open(file_path).unwrap();
@@ -191,13 +183,12 @@ pub fn read_file(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), R
 
         f.read_to_string(&mut content).unwrap();
 
-        FILE_READ.lock().unwrap()[id] = Some(content);
+        sender.send(content).unwrap()
     });
 
     vm.task_mgr.add_io(Task::Io {
-        check: read_file_check,
-        callback: args[1].clone(),
-        id,
+        callback,
+        kind: IoKind::Read { receiver },
     });
 
     vm.set_return_value(Value::undefined());
@@ -205,13 +196,17 @@ pub fn read_file(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), R
     Ok(())
 }
 
-fn read_file_check(vm: &mut VM, callback: &Value, id: usize) -> Result<bool, RuntimeError> {
-    if let Some(ref content) = FILE_READ.lock().unwrap()[id] {
+pub fn read_file_callback(
+    vm: &mut VM,
+    callback: &Value,
+    receiver: &mpsc::Receiver<String>,
+) -> Result<bool, RuntimeError> {
+    if let Ok(ref content) = receiver.try_recv() {
         vm.call_function_simply(callback, &vec![Value::string(content.clone())])?;
-        Ok(true)
-    } else {
-        Ok(false)
+        vm.state.stack.pop(); // return value is not used
+        return Ok(true);
     }
+    Ok(false)
 }
 
 //////////////////////////////////////////////////////////////////////////

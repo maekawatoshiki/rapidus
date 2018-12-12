@@ -25,6 +25,5 @@ extern crate nix;
 extern crate rand;
 extern crate rustc_hash;
 extern crate rustyline;
-#[macro_use]
 extern crate lazy_static;
 // extern crate cpuprofiler;

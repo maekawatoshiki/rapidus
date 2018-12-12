@@ -7,7 +7,7 @@ use std::{ffi::CString, thread, time};
 use super::{
     callobj::{CallObject, CallObjectRef},
     error::*,
-    task::{Task, TaskManager, TimerKind},
+    task::{IoKind, Task, TaskManager, TimerKind},
     value::{ArrayValue, FuncId, Value, ValueBase},
 };
 use builtin;
@@ -419,15 +419,13 @@ impl VM {
                         })
                     }
                     Task::Io {
-                        id,
-                        check,
+                        kind: IoKind::Read { receiver },
                         callback,
                     } => {
-                        if !check(self, &callback, id)? {
+                        if !builtin::read_file_callback(self, &callback, &receiver)? {
                             self.task_mgr.retain_task(Task::Io {
                                 callback,
-                                check,
-                                id,
+                                kind: IoKind::Read { receiver },
                             })
                         }
                     }

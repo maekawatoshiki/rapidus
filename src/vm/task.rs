@@ -1,12 +1,11 @@
 // use chrono::Utc;
-use super::{error::*, value::Value, vm::VM};
-use builtin::BuiltinFuncTy;
+use super::{value::Value};
 use id;
 use std::collections::VecDeque;
+use std::sync::mpsc;
 
 pub type TimerID = id::Id;
 
-#[derive(Clone)]
 pub struct TaskManager {
     id: id::IdGen,
     tasks: VecDeque<Task>,
@@ -19,7 +18,11 @@ pub enum TimerKind {
     Interval { previous: i64, interval: i64 },
 }
 
-#[derive(Clone)]
+pub enum IoKind {
+    Read { receiver: mpsc::Receiver<String> },
+    Write,
+}
+
 pub enum Task {
     Timer {
         kind: TimerKind,
@@ -28,9 +31,8 @@ pub enum Task {
         args: Vec<Value>,
     },
     Io {
-        check: fn(&mut VM, &Value, usize) -> Result<bool, RuntimeError>,
+        kind: IoKind,
         callback: Value,
-        id: usize,
     }, // TODO: Add I/O, microtasks...
 }
 
