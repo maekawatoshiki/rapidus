@@ -185,6 +185,13 @@ fn repl() {
                 RuntimeError::Reference(msg)
                 | RuntimeError::Type(msg)
                 | RuntimeError::General(msg) => vm::error::runtime_error(msg.as_str()),
+                RuntimeError::Exception(val) => {
+                    vm::error::runtime_error("Uncaught exception");
+                    builtin::debug_print(&val, true);
+                    unsafe {
+                        libc::puts(b"\0".as_ptr() as *const i8);
+                    }
+                },
             }
             continue;
         }
@@ -296,6 +303,13 @@ fn run(file_name: &str) {
                     RuntimeError::Reference(msg)
                     | RuntimeError::Type(msg)
                     | RuntimeError::General(msg) => vm::error::runtime_error(msg.as_str()),
+                    RuntimeError::Exception(val) => {
+                        vm::error::runtime_error(&"Uncaught Exception".to_string());
+                        unsafe {
+                            builtin::debug_print(&val, true);
+                            libc::puts(b"\0".as_ptr() as *const i8);
+                        }
+                    }
                 }
             }
         }
