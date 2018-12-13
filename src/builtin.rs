@@ -7,6 +7,7 @@ use std::fs::OpenOptions;
 use std::io::prelude::*;
 use std::path;
 
+use lexer;
 use parser;
 use parser::Error::*;
 use vm::{
@@ -428,7 +429,16 @@ pub fn require(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject) -> Result<(
             let mut vm_codegen = vm_codegen::VMCodeGen::new();
             let mut iseq = vec![];
             vm_codegen.bytecode_gen.const_table = vm.const_table.clone();
-            vm_codegen.compile(&node, &mut iseq, false);
+
+            match vm_codegen.compile(&node, &mut iseq, false) {
+                Ok(()) => {}
+                Err(vm_codegen::Error::General { msg, token_pos }) => {
+                    parser.show_error_at(token_pos, lexer::ErrorMsgKind::Normal, msg.as_str());
+                    return Ok(());
+                }
+                Err(e) => panic!(e),
+            }
+
             vm.const_table = vm_codegen.bytecode_gen.const_table.clone();
 
             let mut vm = VM::new(vm_codegen.global_varmap);

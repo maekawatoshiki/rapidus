@@ -1,4 +1,4 @@
-use lexer;
+pub use lexer;
 use lexer::ErrorMsgKind;
 use node::{BinOp, FormalParameter, FormalParameters, Node, NodeBase, PropertyDefinition, UnaryOp};
 use token::{Keyword, Kind, Symbol, Token};
@@ -33,20 +33,21 @@ pub enum Error {
     Expect(usize, ErrorMsgKind, String),        // position, error msg kind, error msg
 }
 
-fn proper_error_msg_kind(self_: &Parser, tok_pos: usize) -> ErrorMsgKind {
-    let mut last_line = 0;
-    for (pos, line) in &self_.lexer.pos_line_list {
-        if tok_pos == *pos {
-            if last_line != *line {
-                return ErrorMsgKind::LastToken;
-            } else {
-                break;
-            }
-        }
-        last_line = *line;
-    }
-    ErrorMsgKind::Normal
-}
+// fn proper_error_msg_kind(self_: &Parser, tok_pos: usize) -> ErrorMsgKind {
+//     let mut last_line = 0;
+//     for (pos, line) in &self_.lexer.pos_line_list {
+//         if tok_pos == *pos {
+//             if last_line != *line {
+//                 println!("{}", last_line);
+//                 return ErrorMsgKind::LastToken;
+//             } else {
+//                 break;
+//             }
+//         }
+//         last_line = *line;
+//     }
+//     ErrorMsgKind::Normal
+// }
 
 #[derive(Clone, Debug)]
 pub struct Parser {
@@ -890,7 +891,7 @@ impl Parser {
             _ => {
                 return Err(Error::UnexpectedToken(
                     tok.pos,
-                    proper_error_msg_kind(self, tok.pos),
+                    ErrorMsgKind::Normal,
                     "unexpected token".to_string(),
                 ));
             }
