@@ -1,4 +1,5 @@
 use ansi_term::Colour;
+use vm::value;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum RuntimeError {
@@ -6,6 +7,7 @@ pub enum RuntimeError {
     Type(String),
     Reference(String),
     General(String),
+    Exception(value::Value),
     Unimplemented,
 }
 

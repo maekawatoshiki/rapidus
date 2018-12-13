@@ -22,7 +22,7 @@ pub struct VM {
     pub state: VMState,
     pub const_table: ConstantTable,
     pub cur_func_id: FuncId, // id == 0: main
-    pub op_table: [fn(&mut VM, &ByteCode) -> Result<(), RuntimeError>; 51],
+    pub op_table: [fn(&mut VM, &ByteCode) -> Result<(), RuntimeError>; 52],
     pub task_mgr: TaskManager,
 }
 
@@ -363,6 +363,7 @@ impl VM {
                 decl_var,
                 cond_op,
                 loop_start,
+                throw,
             ],
         }
     }
@@ -1018,16 +1019,29 @@ fn call(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
     Ok(())
 }
 
-fn return_(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
-    let len = self_.state.stack.len();
-    if let Some((previous_sp, return_pc, func_id)) = self_.state.history.pop() {
-        self_.state.stack.drain(previous_sp..len - 1);
-        self_.state.pc = return_pc;
-        self_.cur_func_id = func_id;
+fn unwind_state(vm: &mut VM){
+    let len = vm.state.stack.len();
+    if let Some((previous_sp, return_pc, func_id)) = vm.state.history.pop() {
+        vm.state.stack.drain(previous_sp..len - 1);
+        vm.state.pc = return_pc;
+        vm.cur_func_id = func_id;
     } else {
         unreachable!()
     }
+}
+
+fn return_(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+    unwind_state(self_);
     Ok(())
+}
+
+fn throw(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+    let val = self_.state.stack.last().unwrap().clone();
+    //TODO:
+    // if an exception was thrown in try clause, go to the corresponding catch clause.
+    // if in catch or finally clause, go to catch clause of outer try-catch statement.
+    // if not in try-catch statement, terminate vm with uncaught exception.
+    Err(RuntimeError::Exception(val))
 }
 
 fn double(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {

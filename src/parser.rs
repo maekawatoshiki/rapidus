@@ -231,6 +231,7 @@ impl Parser {
             Kind::Keyword(Keyword::Return) => self.read_return_statement(),
             Kind::Keyword(Keyword::Break) => self.read_break_statement(),
             Kind::Keyword(Keyword::Continue) => self.read_continue_statement(),
+            Kind::Keyword(Keyword::Throw) => self.read_throw_statement(),
             Kind::Symbol(Symbol::OpeningBrace) => self.read_block_statement(),
             Kind::Symbol(Symbol::Semicolon) => return Ok(Node::new(NodeBase::Nope, tok.pos)),
             _ => {
@@ -1029,6 +1030,31 @@ impl Parser {
         self.lexer.skip(Kind::Symbol(Symbol::Semicolon));
 
         Ok(Node::new(NodeBase::Return(Some(Box::new(expr))), pos))
+    }
+}
+
+impl Parser {
+    /// https://tc39.github.io/ecma262/#prod-ThrowStatement
+    fn read_throw_statement(&mut self) -> Result<Node, Error> {
+        token_start_pos!(pos, self.lexer);
+
+        // no LineTerminator here
+        if self.lexer.skip(Kind::LineTerminator) {
+            return Err(Error::General(pos, ErrorMsgKind::LastToken, "Illegal new line after throw".to_string()));
+        }
+
+        if self.lexer.skip(Kind::Symbol(Symbol::Semicolon)) {
+            return Err(Error::UnexpectedToken(pos + 1, ErrorMsgKind::Normal, "Unexpected token ;".to_string()));
+        }
+
+        if self.lexer.peek()?.kind == Kind::Symbol(Symbol::ClosingBrace) {
+            return Err(Error::UnexpectedToken(pos + 1, ErrorMsgKind::Normal, "Unexpected token }".to_string()));
+        }
+
+        let expr = self.read_expression()?;
+        self.lexer.skip(Kind::Symbol(Symbol::Semicolon));
+
+        Ok(Node::new(NodeBase::Throw(Box::new(expr)), pos))
     }
 }
 

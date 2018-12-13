@@ -128,6 +128,7 @@ impl VMCodeGen {
             &NodeBase::Return(ref val) => self.run_return(val, iseq)?,
             &NodeBase::Break(ref name) => self.run_break(name, iseq)?,
             &NodeBase::Continue(ref name) => self.run_continue(name, iseq)?,
+            &NodeBase::Throw(ref val) => self.run_throw(val, iseq)?,
             &NodeBase::New(ref expr) => self.run_new_expr(&*expr, iseq)?,
             &NodeBase::Object(ref properties) => self.run_object_literal(properties, iseq)?,
             &NodeBase::Array(ref properties) => self.run_array_literal(properties, iseq)?,
@@ -296,6 +297,17 @@ impl VMCodeGen {
         }
 
         self.bytecode_gen.gen_return(iseq);
+
+        Ok(())
+    }
+
+    pub fn run_throw(
+        &mut self,
+        val: &Node,
+        iseq: &mut ByteCode,
+    ) -> Result<(), Error> {
+        self.run(val, iseq, true)?;
+        self.bytecode_gen.gen_throw(iseq);
 
         Ok(())
     }
