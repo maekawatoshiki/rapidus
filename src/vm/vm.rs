@@ -1038,8 +1038,9 @@ fn return_(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
 fn throw(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
     let val = self_.state.stack.last().unwrap().clone();
     //TODO:
-    // if throw or exception happens in try, go to catch clause.
-    // 
+    // if an exception was thrown in try clause, go to the corresponding catch clause.
+    // if in catch or finally clause, go to catch clause of outer try-catch statement.
+    // if not in try-catch statement, terminate vm with uncaught exception.
     Err(RuntimeError::Exception(val))
 }
 
