@@ -24,6 +24,7 @@ macro_rules! expect {
     }};
 }
 
+// TODO: It's dirty. Make it simpler.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Error {
     NormalEOF,
@@ -31,6 +32,7 @@ pub enum Error {
     UnexpectedToken(usize, ErrorMsgKind, String), // position
     UnsupportedFeature(usize),                  // position
     Expect(usize, ErrorMsgKind, String),        // position, error msg kind, error msg
+    General(usize, ErrorMsgKind, String),
 }
 
 // fn proper_error_msg_kind(self_: &Parser, tok_pos: usize) -> ErrorMsgKind {
@@ -140,13 +142,17 @@ impl Parser {
         let mut items = vec![];
 
         loop {
-            if self
+            match self
                 .lexer
                 .skip_except_lineterminator(Kind::Symbol(Symbol::ClosingBrace))
             {
-                if break_when_closingbrase {
-                    break;
+                Ok(succ) => {
+                    if succ && break_when_closingbrase {
+                        break;
+                    }
                 }
+                Err(Error::NormalEOF) => {}
+                Err(e) => return Err(e),
             }
 
             if self.lexer.buf.is_empty() && self.lexer.eof() {
@@ -173,10 +179,14 @@ impl Parser {
                 Err(e) => return Err(e),
             }
 
-            while self
+            while match self
                 .lexer
                 .skip_except_lineterminator(Kind::Symbol(Symbol::Semicolon))
-            {}
+            {
+                Ok(succ) => succ,
+                Err(Error::NormalEOF) => false,
+                Err(e) => return Err(e),
+            } {}
         }
 
         Ok(Node::new(NodeBase::StatementList(items), pos))
@@ -229,8 +239,13 @@ impl Parser {
             }
         };
 
-        self.lexer
-            .skip_except_lineterminator(Kind::Symbol(Symbol::Semicolon));
+        match self
+            .lexer
+            .skip_except_lineterminator(Kind::Symbol(Symbol::Semicolon))
+        {
+            Ok(_) | Err(Error::NormalEOF) => {}
+            Err(e) => return Err(e),
+        }
 
         stmt
     }

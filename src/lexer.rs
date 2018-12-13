@@ -58,16 +58,16 @@ impl Lexer {
         }
     }
 
-    pub fn skip_except_lineterminator(&mut self, kind: Kind) -> bool {
+    pub fn skip_except_lineterminator(&mut self, kind: Kind) -> Result<bool, Error> {
         match self.next_except_lineterminator() {
             Ok(tok) => {
                 let success = tok.kind == kind;
                 if !success {
                     self.unget(&tok)
                 }
-                success
+                Ok(success)
             }
-            Err(_) => false,
+            Err(e) => Err(e),
         }
     }
 
@@ -206,7 +206,16 @@ impl Lexer {
         .as_str();
 
         let num = match kind {
-            NumLiteralKind::Dec => num_literal.parse().unwrap(),
+            NumLiteralKind::Dec => match num_literal.parse() {
+                Ok(ok) => ok,
+                Err(_) => {
+                    return Err(Error::General(
+                        pos,
+                        ErrorMsgKind::Normal,
+                        "error: invalid token".to_string(),
+                    ));
+                }
+            },
             NumLiteralKind::Hex => self.read_hex_num(num_literal.as_str()) as f64,
             NumLiteralKind::Oct | NumLiteralKind::OldOct => {
                 self.read_oct_num(num_literal.as_str()) as f64

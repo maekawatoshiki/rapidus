@@ -413,6 +413,7 @@ pub fn require(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject) -> Result<(
                 Ok(ok) => ok,
                 Err(NormalEOF) => unreachable!(),
                 Err(Expect(pos, kind, msg))
+                | Err(General(pos, kind, msg))
                 | Err(UnexpectedEOF(pos, kind, msg))
                 | Err(UnexpectedToken(pos, kind, msg)) => {
                     parser.show_error_at(pos, kind, msg.as_str());

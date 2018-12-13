@@ -83,6 +83,7 @@ impl VMCodeGen {
                     .gen_push_const(Value::string(s.clone()), iseq),
                 NodeBase::Number(n) => self.bytecode_gen.gen_push_number(n, iseq),
                 NodeBase::Boolean(b) => self.bytecode_gen.gen_push_bool(b, iseq),
+                // TODO
                 _ => unreachable!(),
             }
             return Ok(());
@@ -350,7 +351,9 @@ impl VMCodeGen {
 
 impl VMCodeGen {
     pub fn run_new_expr(&mut self, expr: &Node, iseq: &mut ByteCode) -> Result<(), Error> {
+        // TODO: Make sure ``expr`` is Call or Identifier
         self.run(expr, iseq, true)?;
+
         let len = iseq.len();
         if iseq[len - 1 - 4] == VMInst::CALL {
             iseq[len - 1 - 4] = VMInst::CONSTRUCT;
@@ -358,6 +361,7 @@ impl VMCodeGen {
             // TODO
             unreachable!()
         }
+
         Ok(())
     }
 }
