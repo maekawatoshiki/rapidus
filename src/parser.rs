@@ -1,7 +1,7 @@
 pub use lexer;
 use lexer::ErrorMsgKind;
 use node::{BinOp, FormalParameter, FormalParameters, Node, NodeBase, PropertyDefinition, UnaryOp};
-use token::{Keyword, Kind, Symbol, Token};
+use token::{Keyword, Kind, Symbol, Token, get_string_for_symbol};
 
 use ansi_term::Colour;
 
@@ -1034,14 +1034,14 @@ impl Parser {
     }
 }
 
-macro_rules! skip_opening_brace_or_error {
-    ($pos: ident, $lexer: expr) => {
-        if !$lexer.skip(Kind::Symbol(Symbol::OpeningBrace)) {
+macro_rules! skip_symbol_or_error {
+    ($pos: ident, $lexer: expr, $symbol: path) => {
+        if !$lexer.skip(Kind::Symbol($symbol)) {
             return Err(
                 Error::UnexpectedToken(
                     $pos,
                     ErrorMsgKind::Normal,
-                    "expected '{'.".to_string()
+                    format!("expected {}", get_string_for_symbol($symbol)),
                 )
             );
         };
@@ -1051,20 +1051,30 @@ macro_rules! skip_opening_brace_or_error {
 impl Parser {
     /// http://www.ecma-international.org/ecma-262/9.0/index.html#sec-try-statement
    fn read_try_statement(&mut self) -> Result<Node, Error> {
-
         token_start_pos!(pos, self.lexer);
-        skip_opening_brace_or_error!(pos, self.lexer);
+        skip_symbol_or_error!(pos, self.lexer, Symbol::OpeningBrace);
         let try = self.read_block_statement()?;
         let is_catch = self.lexer.skip(Kind::Keyword(Keyword::Catch));
-        let catch = if is_catch {
-            skip_opening_brace_or_error!(pos, self.lexer);
-            self.read_block_statement()?
+        let (catch, param) = if is_catch {
+            skip_symbol_or_error!(pos, self.lexer, Symbol::OpeningParen);
+            // TODO: should accept BindingPattern
+            let catch_param = match self.lexer.next()?.kind {
+                Kind::Identifier(s) => { Node::new(NodeBase::Identifier(s), pos) },
+                _ => {
+                    return Err(
+                        Error::UnexpectedToken(pos, ErrorMsgKind::Normal, "expected identifier.".to_string())
+                    )
+                }
+            };
+            skip_symbol_or_error!(pos, self.lexer, Symbol::ClosingParen);
+            skip_symbol_or_error!(pos, self.lexer, Symbol::OpeningBrace);
+            (self.read_block_statement()?, catch_param)
         } else {
-            Node::new(NodeBase::Nope, pos)
+            (Node::new(NodeBase::Nope, pos), Node::new(NodeBase::Nope, pos))
         };
         let is_finally = self.lexer.skip(Kind::Keyword(Keyword::Finally));
         let finally = if is_finally {
-            skip_opening_brace_or_error!(pos, self.lexer);
+            skip_symbol_or_error!(pos, self.lexer, Symbol::OpeningBrace);
             self.read_block_statement()?
         } else {
             Node::new(NodeBase::Nope, pos)
@@ -1074,6 +1084,7 @@ impl Parser {
             NodeBase::Try(
                 Box::new(try),
                 Box::new(catch),
+                Box::new(param),
                 Box::new(finally),
             ),
             pos,
@@ -2165,7 +2176,7 @@ fn throw() {
 }
 #[test]
 fn try_catch1() {
-    let mut parser = Parser::new("try {} catch {} finally{}".to_string());
+    let mut parser = Parser::new("try {} catch(e){} finally{}".to_string());
     assert_eq!(
         parser.parse_all().unwrap(),
         Node::new(
@@ -2176,19 +2187,25 @@ fn try_catch1() {
                             Box::new(
                                 Node::new(
                                     NodeBase::StatementList(vec![]),
-                                5
+                                    5
                                 )
                             ),
                             Box::new(
                                 Node::new(
                                     NodeBase::StatementList(vec![]),
-                                14
+                                    16
+                                )
+                            ),
+                            Box::new(
+                                Node::new(
+                                    NodeBase::Identifier("e".to_string()),
+                                    3
                                 )
                             ),
                             Box::new(
                                 Node::new(
                                     NodeBase::StatementList(vec![]),
-                                24
+                                26
                                 )
                             )
                         ),
@@ -2203,7 +2220,7 @@ fn try_catch1() {
 
 #[test]
 fn try_catch2() {
-    let mut parser = Parser::new("try {} catch {}".to_string());
+    let mut parser = Parser::new("try {} catch(e){}".to_string());
     assert_eq!(
         parser.parse_all().unwrap(),
         Node::new(
@@ -2214,13 +2231,19 @@ fn try_catch2() {
                             Box::new(
                                 Node::new(
                                     NodeBase::StatementList(vec![]),
-                                5
+                                    5
                                 )
                             ),
                             Box::new(
                                 Node::new(
                                     NodeBase::StatementList(vec![]),
-                                14
+                                    16
+                                )
+                            ),
+                            Box::new(
+                                Node::new(
+                                    NodeBase::Identifier("e".to_string()),
+                                    3
                                 )
                             ),
                             Box::new(Node::new(NodeBase::Nope, 3))
@@ -2247,14 +2270,20 @@ fn try_catch3() {
                             Box::new(
                                 Node::new(
                                     NodeBase::StatementList(vec![]),
-                                5
+                                    5
                                 )
                             ),
                             Box::new(Node::new(NodeBase::Nope, 3)),
                             Box::new(
                                 Node::new(
+                                    NodeBase::Nope,
+                                    3
+                                )
+                            ),
+                            Box::new(
+                                Node::new(
                                     NodeBase::StatementList(vec![]),
-                                16
+                                    16
                                 )
                             ),
                         ),

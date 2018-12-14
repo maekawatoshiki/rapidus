@@ -53,7 +53,7 @@ pub enum NodeBase {
     Label(String, Box<Node>),
     Break(Option<String>),
     Continue(Option<String>),
-    Try(Box<Node>, Box<Node>, Box<Node>), // Try, Catch, Finally
+    Try(Box<Node>, Box<Node>, Box<Node>, Box<Node>), // Try, Catch, Param, Finally
     Throw(Box<Node>),
     Array(Vec<Node>),
     Object(Vec<PropertyDefinition>),
@@ -115,7 +115,7 @@ impl Node {
             | NodeBase::Member(_, _)
             | NodeBase::Index(_, _)
             | NodeBase::Throw(_)
-            | NodeBase::Try(_,_,_) => false,
+            | NodeBase::Try(_,_,_,_) => false,
         }
     }
 }

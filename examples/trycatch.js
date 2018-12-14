@@ -2,7 +2,7 @@
 var a = 0
 try {
     a = 3
-} catch {
+} catch(e){
     a = 5
 } finally {
     a = 7
