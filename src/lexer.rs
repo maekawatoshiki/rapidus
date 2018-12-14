@@ -786,6 +786,17 @@ fn symbol() {
     );
     assert_eq!(lexer.next().unwrap().kind, Kind::Symbol(Symbol::AssignLOr,));
     assert_eq!(lexer.next().unwrap().kind, Kind::Symbol(Symbol::Hash,));
+
+    let mut lexer = Lexer::new("() {} [] , ; :".to_string());
+    assert_eq!(Kind::Symbol(Symbol::OpeningParen), lexer.next().unwrap().kind);
+    assert_eq!(Kind::Symbol(Symbol::ClosingParen), lexer.next().unwrap().kind);
+    assert_eq!(Kind::Symbol(Symbol::OpeningBrace), lexer.next().unwrap().kind);
+    assert_eq!(Kind::Symbol(Symbol::ClosingBrace), lexer.next().unwrap().kind);
+    assert_eq!(Kind::Symbol(Symbol::OpeningBoxBracket), lexer.next().unwrap().kind);
+    assert_eq!(Kind::Symbol(Symbol::ClosingBoxBracket), lexer.next().unwrap().kind);
+    assert_eq!(Kind::Symbol(Symbol::Comma), lexer.next().unwrap().kind);
+    assert_eq!(Kind::Symbol(Symbol::Semicolon), lexer.next().unwrap().kind);
+    assert_eq!(Kind::Symbol(Symbol::Colon), lexer.next().unwrap().kind);
 }
 
 #[test]
