@@ -231,6 +231,7 @@ impl Parser {
             Kind::Keyword(Keyword::Return) => self.read_return_statement(),
             Kind::Keyword(Keyword::Break) => self.read_break_statement(),
             Kind::Keyword(Keyword::Continue) => self.read_continue_statement(),
+            Kind::Keyword(Keyword::Try) => self.read_try_statement(),
             Kind::Keyword(Keyword::Throw) => self.read_throw_statement(),
             Kind::Symbol(Symbol::OpeningBrace) => self.read_block_statement(),
             Kind::Symbol(Symbol::Semicolon) => return Ok(Node::new(NodeBase::Nope, tok.pos)),
@@ -1030,6 +1031,49 @@ impl Parser {
         self.lexer.skip(Kind::Symbol(Symbol::Semicolon));
 
         Ok(Node::new(NodeBase::Return(Some(Box::new(expr))), pos))
+    }
+}
+
+impl Parser {
+   fn read_try_statement(&mut self) -> Result<Node, Error> {
+        token_start_pos!(pos, self.lexer);
+        if !self.lexer.skip(Kind::Symbol(Symbol::OpeningBrace)) {
+            return Err(
+                Error::UnexpectedToken( pos, ErrorMsgKind::Normal, "expected '{'.".to_string())
+            );
+        };
+        let try = self.read_block_statement()?;
+        let is_catch = self.lexer.skip(Kind::Keyword(Keyword::Catch));
+        let catch = if is_catch {
+            if !self.lexer.skip(Kind::Symbol(Symbol::OpeningBrace)) {
+                return Err(
+                    Error::UnexpectedToken( pos, ErrorMsgKind::Normal, "expected '{'.".to_string())
+                );
+            };
+            self.read_block_statement()?
+        } else {
+            Node::new(NodeBase::Nope, pos)
+        };
+        let is_finally = self.lexer.skip(Kind::Keyword(Keyword::Finally));
+        let finally = if is_finally {
+            if !self.lexer.skip(Kind::Symbol(Symbol::OpeningBrace)) {
+                return Err(
+                    Error::UnexpectedToken( pos, ErrorMsgKind::Normal, "expected '{'.".to_string())
+                );
+            };
+            self.read_block_statement()?
+        } else {
+            Node::new(NodeBase::Nope, pos)
+        };
+
+        Ok(Node::new(
+            NodeBase::Try(
+                Box::new(try),
+                Box::new(catch),
+                Box::new(finally),
+            ),
+            pos,
+        ))
     }
 }
 
@@ -2089,4 +2133,132 @@ fn asi2() {
             0
         )
     )
+}
+#[test]
+fn throw() {
+    let mut parser = Parser::new("throw 10".to_string());
+    assert_eq!(
+        parser.parse_all().unwrap(),
+        Node::new(
+            NodeBase::StatementList(
+                vec![
+                    Node::new(
+                        NodeBase::Throw(
+                            Box::new(
+                                Node::new(
+                                    NodeBase::Number(10.0),
+                                6
+                                )
+                            )
+                        ),
+                        5
+                    )
+                ]
+            ),
+            0
+        )
+    )
+}
+#[test]
+fn try_catch1() {
+    let mut parser = Parser::new("try {} catch {} finally{}".to_string());
+    assert_eq!(
+        parser.parse_all().unwrap(),
+        Node::new(
+            NodeBase::StatementList(
+                vec![
+                    Node::new(
+                        NodeBase::Try(
+                            Box::new(
+                                Node::new(
+                                    NodeBase::StatementList(vec![]),
+                                5
+                                )
+                            ),
+                            Box::new(
+                                Node::new(
+                                    NodeBase::StatementList(vec![]),
+                                14
+                                )
+                            ),
+                            Box::new(
+                                Node::new(
+                                    NodeBase::StatementList(vec![]),
+                                24
+                                )
+                            )
+                        ),
+                        3
+                    )
+                ]
+            ),
+            0
+        )
+    );
+}
+
+#[test]
+fn try_catch2() {
+    let mut parser = Parser::new("try {} catch {}".to_string());
+    assert_eq!(
+        parser.parse_all().unwrap(),
+        Node::new(
+            NodeBase::StatementList(
+                vec![
+                    Node::new(
+                        NodeBase::Try(
+                            Box::new(
+                                Node::new(
+                                    NodeBase::StatementList(vec![]),
+                                5
+                                )
+                            ),
+                            Box::new(
+                                Node::new(
+                                    NodeBase::StatementList(vec![]),
+                                14
+                                )
+                            ),
+                            Box::new(Node::new(NodeBase::Nope, 3))
+                        ),
+                        3
+                    )
+                ]
+            ),
+            0
+        )
+    );
+}
+
+#[test]
+fn try_catch3() {
+    let mut parser = Parser::new("try {} catch {}".to_string());
+    assert_eq!(
+        parser.parse_all().unwrap(),
+        Node::new(
+            NodeBase::StatementList(
+                vec![
+                    Node::new(
+                        NodeBase::Try(
+                            Box::new(
+                                Node::new(
+                                    NodeBase::StatementList(vec![]),
+                                5
+                                )
+                            ),
+                            Box::new(
+                                Node::new(
+                                    NodeBase::StatementList(vec![]),
+                                14
+                                )
+                            ),
+                            Box::new(Node::new(NodeBase::Nope, 3))
+                        ),
+                        3
+                    )
+                ]
+            ),
+            0
+        )
+    );
 }
