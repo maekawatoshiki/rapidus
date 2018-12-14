@@ -786,17 +786,19 @@ fn symbol() {
     );
     assert_eq!(lexer.next().unwrap().kind, Kind::Symbol(Symbol::AssignLOr,));
     assert_eq!(lexer.next().unwrap().kind, Kind::Symbol(Symbol::Hash,));
-
-    let mut lexer = Lexer::new("() {} [] , ; :".to_string());
-    assert_eq!(Kind::Symbol(Symbol::OpeningParen), lexer.next().unwrap().kind);
-    assert_eq!(Kind::Symbol(Symbol::ClosingParen), lexer.next().unwrap().kind);
-    assert_eq!(Kind::Symbol(Symbol::OpeningBrace), lexer.next().unwrap().kind);
-    assert_eq!(Kind::Symbol(Symbol::ClosingBrace), lexer.next().unwrap().kind);
-    assert_eq!(Kind::Symbol(Symbol::OpeningBoxBracket), lexer.next().unwrap().kind);
-    assert_eq!(Kind::Symbol(Symbol::ClosingBoxBracket), lexer.next().unwrap().kind);
-    assert_eq!(Kind::Symbol(Symbol::Comma), lexer.next().unwrap().kind);
-    assert_eq!(Kind::Symbol(Symbol::Semicolon), lexer.next().unwrap().kind);
-    assert_eq!(Kind::Symbol(Symbol::Colon), lexer.next().unwrap().kind);
+    use token::get_string_for_symbol;
+    assert_eq!(format!("{}{}{}{}{}{}{}{}{}",
+        get_string_for_symbol(Symbol::OpeningBrace),
+        get_string_for_symbol(Symbol::ClosingBrace),
+        get_string_for_symbol(Symbol::OpeningParen),
+        get_string_for_symbol(Symbol::ClosingParen),
+        get_string_for_symbol(Symbol::OpeningBoxBracket),
+        get_string_for_symbol(Symbol::ClosingBoxBracket),
+        get_string_for_symbol(Symbol::Comma),
+        get_string_for_symbol(Symbol::Colon),
+        get_string_for_symbol(Symbol::Semicolon)),
+        "{}()[],:;".to_string()
+    );
 }
 
 #[test]
