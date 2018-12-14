@@ -1034,33 +1034,37 @@ impl Parser {
     }
 }
 
-impl Parser {
-   fn read_try_statement(&mut self) -> Result<Node, Error> {
-        token_start_pos!(pos, self.lexer);
-        if !self.lexer.skip(Kind::Symbol(Symbol::OpeningBrace)) {
+macro_rules! skip_opening_brace_or_error {
+    ($pos: ident, $lexer: expr) => {
+        if !$lexer.skip(Kind::Symbol(Symbol::OpeningBrace)) {
             return Err(
-                Error::UnexpectedToken( pos, ErrorMsgKind::Normal, "expected '{'.".to_string())
+                Error::UnexpectedToken(
+                    $pos,
+                    ErrorMsgKind::Normal,
+                    "expected '{'.".to_string()
+                )
             );
         };
+    }
+}
+
+impl Parser {
+    /// http://www.ecma-international.org/ecma-262/9.0/index.html#sec-try-statement
+   fn read_try_statement(&mut self) -> Result<Node, Error> {
+
+        token_start_pos!(pos, self.lexer);
+        skip_opening_brace_or_error!(pos, self.lexer);
         let try = self.read_block_statement()?;
         let is_catch = self.lexer.skip(Kind::Keyword(Keyword::Catch));
         let catch = if is_catch {
-            if !self.lexer.skip(Kind::Symbol(Symbol::OpeningBrace)) {
-                return Err(
-                    Error::UnexpectedToken( pos, ErrorMsgKind::Normal, "expected '{'.".to_string())
-                );
-            };
+            skip_opening_brace_or_error!(pos, self.lexer);
             self.read_block_statement()?
         } else {
             Node::new(NodeBase::Nope, pos)
         };
         let is_finally = self.lexer.skip(Kind::Keyword(Keyword::Finally));
         let finally = if is_finally {
-            if !self.lexer.skip(Kind::Symbol(Symbol::OpeningBrace)) {
-                return Err(
-                    Error::UnexpectedToken( pos, ErrorMsgKind::Normal, "expected '{'.".to_string())
-                );
-            };
+            skip_opening_brace_or_error!(pos, self.lexer);
             self.read_block_statement()?
         } else {
             Node::new(NodeBase::Nope, pos)
@@ -2232,7 +2236,7 @@ fn try_catch2() {
 
 #[test]
 fn try_catch3() {
-    let mut parser = Parser::new("try {} catch {}".to_string());
+    let mut parser = Parser::new("try {} finally {}".to_string());
     assert_eq!(
         parser.parse_all().unwrap(),
         Node::new(
@@ -2246,13 +2250,13 @@ fn try_catch3() {
                                 5
                                 )
                             ),
+                            Box::new(Node::new(NodeBase::Nope, 3)),
                             Box::new(
                                 Node::new(
                                     NodeBase::StatementList(vec![]),
-                                14
+                                16
                                 )
                             ),
-                            Box::new(Node::new(NodeBase::Nope, 3))
                         ),
                         3
                     )
