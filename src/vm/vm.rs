@@ -1019,7 +1019,7 @@ fn call(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
     Ok(())
 }
 
-fn unwind_state(vm: &mut VM){
+fn unwind_state(vm: &mut VM) {
     let len = vm.state.stack.len();
     if let Some((previous_sp, return_pc, func_id)) = vm.state.history.pop() {
         vm.state.stack.drain(previous_sp..len - 1);

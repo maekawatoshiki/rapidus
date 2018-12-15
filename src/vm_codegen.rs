@@ -301,11 +301,7 @@ impl VMCodeGen {
         Ok(())
     }
 
-    pub fn run_throw(
-        &mut self,
-        val: &Node,
-        iseq: &mut ByteCode,
-    ) -> Result<(), Error> {
+    pub fn run_throw(&mut self, val: &Node, iseq: &mut ByteCode) -> Result<(), Error> {
         self.run(val, iseq, true)?;
         self.bytecode_gen.gen_throw(iseq);
 

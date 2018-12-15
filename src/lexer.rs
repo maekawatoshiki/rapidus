@@ -787,16 +787,19 @@ fn symbol() {
     assert_eq!(lexer.next().unwrap().kind, Kind::Symbol(Symbol::AssignLOr,));
     assert_eq!(lexer.next().unwrap().kind, Kind::Symbol(Symbol::Hash,));
     use token::get_string_for_symbol;
-    assert_eq!(format!("{}{}{}{}{}{}{}{}{}",
-        get_string_for_symbol(Symbol::OpeningBrace),
-        get_string_for_symbol(Symbol::ClosingBrace),
-        get_string_for_symbol(Symbol::OpeningParen),
-        get_string_for_symbol(Symbol::ClosingParen),
-        get_string_for_symbol(Symbol::OpeningBoxBracket),
-        get_string_for_symbol(Symbol::ClosingBoxBracket),
-        get_string_for_symbol(Symbol::Comma),
-        get_string_for_symbol(Symbol::Colon),
-        get_string_for_symbol(Symbol::Semicolon)),
+    assert_eq!(
+        format!(
+            "{}{}{}{}{}{}{}{}{}",
+            get_string_for_symbol(Symbol::OpeningBrace),
+            get_string_for_symbol(Symbol::ClosingBrace),
+            get_string_for_symbol(Symbol::OpeningParen),
+            get_string_for_symbol(Symbol::ClosingParen),
+            get_string_for_symbol(Symbol::OpeningBoxBracket),
+            get_string_for_symbol(Symbol::ClosingBoxBracket),
+            get_string_for_symbol(Symbol::Comma),
+            get_string_for_symbol(Symbol::Colon),
+            get_string_for_symbol(Symbol::Semicolon)
+        ),
         "{}()[],:;".to_string()
     );
 }

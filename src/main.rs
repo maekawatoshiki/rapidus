@@ -191,7 +191,7 @@ fn repl() {
                     unsafe {
                         libc::puts(b"\0".as_ptr() as *const i8);
                     }
-                },
+                }
             }
             continue;
         }

@@ -235,6 +235,6 @@ pub fn get_string_for_symbol(symbol: Symbol) -> String {
         Symbol::Comma => ",".to_string(),
         Symbol::Semicolon => ";".to_string(),
         Symbol::Colon => ":".to_string(),
-        _ => "???".to_string()
+        _ => "???".to_string(),
     }
 }

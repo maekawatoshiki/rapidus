@@ -115,7 +115,7 @@ impl Node {
             | NodeBase::Member(_, _)
             | NodeBase::Index(_, _)
             | NodeBase::Throw(_)
-            | NodeBase::Try(_,_,_,_) => false,
+            | NodeBase::Try(_, _, _, _) => false,
         }
     }
 }

@@ -1,7 +1,7 @@
 pub use lexer;
 use lexer::ErrorMsgKind;
 use node::{BinOp, FormalParameter, FormalParameters, Node, NodeBase, PropertyDefinition, UnaryOp};
-use token::{Keyword, Kind, Symbol, Token, get_string_for_symbol};
+use token::{get_string_for_symbol, Keyword, Kind, Symbol, Token};
 
 use ansi_term::Colour;
 
@@ -1037,20 +1037,18 @@ impl Parser {
 macro_rules! skip_symbol_or_error {
     ($pos: ident, $lexer: expr, $symbol: path) => {
         if !$lexer.skip(Kind::Symbol($symbol)) {
-            return Err(
-                Error::UnexpectedToken(
-                    $pos,
-                    ErrorMsgKind::Normal,
-                    format!("expected {}", get_string_for_symbol($symbol)),
-                )
-            );
+            return Err(Error::UnexpectedToken(
+                $pos,
+                ErrorMsgKind::Normal,
+                format!("expected {}", get_string_for_symbol($symbol)),
+            ));
         };
-    }
+    };
 }
 
 impl Parser {
     /// http://www.ecma-international.org/ecma-262/9.0/index.html#sec-try-statement
-   fn read_try_statement(&mut self) -> Result<Node, Error> {
+    fn read_try_statement(&mut self) -> Result<Node, Error> {
         token_start_pos!(pos, self.lexer);
         skip_symbol_or_error!(pos, self.lexer, Symbol::OpeningBrace);
         let try = self.read_block_statement()?;
@@ -1059,18 +1057,23 @@ impl Parser {
             skip_symbol_or_error!(pos, self.lexer, Symbol::OpeningParen);
             // TODO: should accept BindingPattern
             let catch_param = match self.lexer.next()?.kind {
-                Kind::Identifier(s) => { Node::new(NodeBase::Identifier(s), pos) },
+                Kind::Identifier(s) => Node::new(NodeBase::Identifier(s), pos),
                 _ => {
-                    return Err(
-                        Error::UnexpectedToken(pos, ErrorMsgKind::Normal, "expected identifier.".to_string())
-                    )
+                    return Err(Error::UnexpectedToken(
+                        pos,
+                        ErrorMsgKind::Normal,
+                        "expected identifier.".to_string(),
+                    ));
                 }
             };
             skip_symbol_or_error!(pos, self.lexer, Symbol::ClosingParen);
             skip_symbol_or_error!(pos, self.lexer, Symbol::OpeningBrace);
             (self.read_block_statement()?, catch_param)
         } else {
-            (Node::new(NodeBase::Nope, pos), Node::new(NodeBase::Nope, pos))
+            (
+                Node::new(NodeBase::Nope, pos),
+                Node::new(NodeBase::Nope, pos),
+            )
         };
         let is_finally = self.lexer.skip(Kind::Keyword(Keyword::Finally));
         let finally = if is_finally {
@@ -1099,15 +1102,27 @@ impl Parser {
 
         // no LineTerminator here
         if self.lexer.skip(Kind::LineTerminator) {
-            return Err(Error::General(pos, ErrorMsgKind::LastToken, "Illegal new line after throw".to_string()));
+            return Err(Error::General(
+                pos,
+                ErrorMsgKind::LastToken,
+                "Illegal new line after throw".to_string(),
+            ));
         }
 
         if self.lexer.skip(Kind::Symbol(Symbol::Semicolon)) {
-            return Err(Error::UnexpectedToken(pos + 1, ErrorMsgKind::Normal, "Unexpected token ;".to_string()));
+            return Err(Error::UnexpectedToken(
+                pos + 1,
+                ErrorMsgKind::Normal,
+                "Unexpected token ;".to_string(),
+            ));
         }
 
         if self.lexer.peek()?.kind == Kind::Symbol(Symbol::ClosingBrace) {
-            return Err(Error::UnexpectedToken(pos + 1, ErrorMsgKind::Normal, "Unexpected token }".to_string()));
+            return Err(Error::UnexpectedToken(
+                pos + 1,
+                ErrorMsgKind::Normal,
+                "Unexpected token }".to_string(),
+            ));
         }
 
         let expr = self.read_expression()?;
@@ -2155,21 +2170,10 @@ fn throw() {
     assert_eq!(
         parser.parse_all().unwrap(),
         Node::new(
-            NodeBase::StatementList(
-                vec![
-                    Node::new(
-                        NodeBase::Throw(
-                            Box::new(
-                                Node::new(
-                                    NodeBase::Number(10.0),
-                                6
-                                )
-                            )
-                        ),
-                        5
-                    )
-                ]
-            ),
+            NodeBase::StatementList(vec![Node::new(
+                NodeBase::Throw(Box::new(Node::new(NodeBase::Number(10.0), 6))),
+                5
+            )]),
             0
         )
     )
@@ -2180,39 +2184,15 @@ fn try_catch1() {
     assert_eq!(
         parser.parse_all().unwrap(),
         Node::new(
-            NodeBase::StatementList(
-                vec![
-                    Node::new(
-                        NodeBase::Try(
-                            Box::new(
-                                Node::new(
-                                    NodeBase::StatementList(vec![]),
-                                    5
-                                )
-                            ),
-                            Box::new(
-                                Node::new(
-                                    NodeBase::StatementList(vec![]),
-                                    16
-                                )
-                            ),
-                            Box::new(
-                                Node::new(
-                                    NodeBase::Identifier("e".to_string()),
-                                    3
-                                )
-                            ),
-                            Box::new(
-                                Node::new(
-                                    NodeBase::StatementList(vec![]),
-                                26
-                                )
-                            )
-                        ),
-                        3
-                    )
-                ]
-            ),
+            NodeBase::StatementList(vec![Node::new(
+                NodeBase::Try(
+                    Box::new(Node::new(NodeBase::StatementList(vec![]), 5)),
+                    Box::new(Node::new(NodeBase::StatementList(vec![]), 16)),
+                    Box::new(Node::new(NodeBase::Identifier("e".to_string()), 3)),
+                    Box::new(Node::new(NodeBase::StatementList(vec![]), 26))
+                ),
+                3
+            )]),
             0
         )
     );
@@ -2224,34 +2204,15 @@ fn try_catch2() {
     assert_eq!(
         parser.parse_all().unwrap(),
         Node::new(
-            NodeBase::StatementList(
-                vec![
-                    Node::new(
-                        NodeBase::Try(
-                            Box::new(
-                                Node::new(
-                                    NodeBase::StatementList(vec![]),
-                                    5
-                                )
-                            ),
-                            Box::new(
-                                Node::new(
-                                    NodeBase::StatementList(vec![]),
-                                    16
-                                )
-                            ),
-                            Box::new(
-                                Node::new(
-                                    NodeBase::Identifier("e".to_string()),
-                                    3
-                                )
-                            ),
-                            Box::new(Node::new(NodeBase::Nope, 3))
-                        ),
-                        3
-                    )
-                ]
-            ),
+            NodeBase::StatementList(vec![Node::new(
+                NodeBase::Try(
+                    Box::new(Node::new(NodeBase::StatementList(vec![]), 5)),
+                    Box::new(Node::new(NodeBase::StatementList(vec![]), 16)),
+                    Box::new(Node::new(NodeBase::Identifier("e".to_string()), 3)),
+                    Box::new(Node::new(NodeBase::Nope, 3))
+                ),
+                3
+            )]),
             0
         )
     );
@@ -2263,34 +2224,15 @@ fn try_catch3() {
     assert_eq!(
         parser.parse_all().unwrap(),
         Node::new(
-            NodeBase::StatementList(
-                vec![
-                    Node::new(
-                        NodeBase::Try(
-                            Box::new(
-                                Node::new(
-                                    NodeBase::StatementList(vec![]),
-                                    5
-                                )
-                            ),
-                            Box::new(Node::new(NodeBase::Nope, 3)),
-                            Box::new(
-                                Node::new(
-                                    NodeBase::Nope,
-                                    3
-                                )
-                            ),
-                            Box::new(
-                                Node::new(
-                                    NodeBase::StatementList(vec![]),
-                                    16
-                                )
-                            ),
-                        ),
-                        3
-                    )
-                ]
-            ),
+            NodeBase::StatementList(vec![Node::new(
+                NodeBase::Try(
+                    Box::new(Node::new(NodeBase::StatementList(vec![]), 5)),
+                    Box::new(Node::new(NodeBase::Nope, 3)),
+                    Box::new(Node::new(NodeBase::Nope, 3)),
+                    Box::new(Node::new(NodeBase::StatementList(vec![]), 16)),
+                ),
+                3
+            )]),
             0
         )
     );
