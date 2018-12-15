@@ -162,6 +162,13 @@ impl Value {
     }
 
     pub fn object(obj: *mut FxHashMap<String, Value>) -> Value {
+        unsafe {
+            use builtins::object;
+            (*obj).insert(
+                "__proto__".to_string(),
+                object::OBJECT_PROTOTYPE.with(|x| x.clone()),
+            );
+        }
         Value::new(ValueBase::Object(obj))
     }
 

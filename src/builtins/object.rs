@@ -10,9 +10,11 @@ use rustc_hash::FxHashMap;
 
 thread_local!(
     pub static OBJECT_PROTOTYPE: Value = {
-        make_object!(
-            __proto__: Value::null()
-        )
+        Value::new(ValueBase::Object(gc::new( {
+            make_hashmap!(
+                __proto__: Value::null()
+            )
+        })))
     };
 
     pub static OBJECT_OBJ: Value = {
