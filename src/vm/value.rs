@@ -57,10 +57,6 @@ impl Value {
         }
     }
 
-    pub fn to_string(&self) -> String {
-        self.val.to_string()
-    }
-
     pub fn empty() -> Value {
         Value::new(ValueBase::Empty)
     }
@@ -189,7 +185,7 @@ impl Value {
         Value::new(ValueBase::Arguments)
     }
 
-    pub fn get_property(&self, property: ValueBase, callobjref: Option<&CallObjectRef>) -> Value {
+    pub fn get_property(&self, property: Value, callobjref: Option<&CallObjectRef>) -> Value {
         let property_of_number = || -> Value {
             use builtins::number::NUMBER_PROTOTYPE;
             match obj_find_val(
@@ -233,7 +229,7 @@ impl Value {
         };
 
         let property_of_string = |s: &CString| -> Value {
-            match property {
+            match property.val {
                 // Character at the index 'n'
                 ValueBase::Number(n) if is_integer(n) => Value::string(
                     s.to_str()
@@ -277,7 +273,7 @@ impl Value {
                 }
             };
 
-            match property {
+            match property.val {
                 // Index
                 ValueBase::Number(n) if is_integer(n) && n >= 0.0 => get_by_idx(n as usize),
                 ValueBase::String(ref s) if s.to_str().unwrap() == "length" => {
@@ -298,7 +294,7 @@ impl Value {
 
         let property_of_arguments = || -> Value {
             {
-                match property {
+                match property.val {
                     // Index
                     ValueBase::Number(n) if is_integer(n) && n >= 0.0 => callobjref
                         .and_then(|co| unsafe {
@@ -423,6 +419,14 @@ impl Value {
             | ValueBase::String(_)
             | ValueBase::Arguments => {}
         }
+    }
+
+    pub fn to_string(&self) -> String {
+        self.val.to_string()
+    }
+
+    pub fn to_uint32(&self) -> f64 {
+        self.val.to_uint32()
     }
 }
 

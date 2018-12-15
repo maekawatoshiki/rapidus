@@ -23,7 +23,9 @@ thread_local!(
             object_new,
             None,
             CallObject::new(Value::undefined()),
-            make_hashmap!(),
+            make_hashmap!(
+                create: Value::default_builtin_function(object_create)
+            ),
             prototype.clone()
         );
 
@@ -53,70 +55,38 @@ pub fn object_new(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), 
         }
     }
 }
-//
-// pub fn function_prototype_apply(
-//     vm: &mut VM,
-//     args: &Vec<Value>,
-//     callobj: &CallObject,
-// ) -> Result<(), RuntimeError> {
-//     let callee = &*callobj.this;
-//     let arg_this = args[0].clone();
-//     let arg = match args[1].val {
-//         ValueBase::Array(aryval) => {
-//             let aryval = unsafe { &*aryval };
-//             let mut elems = vec![];
-//             for i in 0..aryval.length {
-//                 elems.push(aryval.elems[i].clone());
-//             }
-//             elems
-//         }
-//         ValueBase::Arguments => {
-//             let mut elems = vec![];
-//             let callobj = unsafe { &**vm.state.scope.last().unwrap() };
-//             let length = callobj.get_arguments_length();
-//             for i in 0..length {
-//                 elems.push(callobj.get_arguments_nth_value(i).unwrap());
-//             }
-//             elems
-//         }
-//         _ => vec![],
-//     };
-//
-//     match callee.val {
-//         ValueBase::BuiltinFunction(box (ref info, _, ref callobj)) => {
-//             let mut callobj = callobj.clone();
-//             *callobj.this = arg_this;
-//             (info.func)(vm, &arg, &callobj)?;
-//         }
-//         ValueBase::Function(box (id, ref iseq, _, ref callobj)) => {
-//             let mut callobj = callobj.clone();
-//             *callobj.this = arg_this;
-//             call_function(vm, id, iseq, &arg, callobj).unwrap();
-//         }
-//         _ => vm.state.stack.push(Value::undefined()),
-//     };
-//     Ok(())
-// }
-//
-// pub fn function_prototype_call(
-//     vm: &mut VM,
-//     args: &Vec<Value>,
-//     callobj: &CallObject,
-// ) -> Result<(), RuntimeError> {
-//     let callee = &*callobj.this;
-//     let arg_this = args[0].clone();
-//     match callee.val {
-//         ValueBase::BuiltinFunction(box (ref info, _, ref callobj)) => {
-//             let mut callobj = callobj.clone();
-//             *callobj.this = arg_this;
-//             (info.func)(vm, &args[1..].to_vec(), &callobj)?;
-//         }
-//         ValueBase::Function(box (id, ref iseq, _, ref callobj)) => {
-//             let mut callobj = callobj.clone();
-//             *callobj.this = arg_this;
-//             call_function(vm, id, iseq, &args[1..].to_vec(), callobj).unwrap();
-//         }
-//         _ => vm.state.stack.push(Value::undefined()),
-//     };
-//     Ok(())
-// }
+
+pub fn object_create(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
+    let maybe_obj = match args.len() {
+        0 => {
+            return Err(RuntimeError::General(
+                "Object.create needs one argument at least".to_string(),
+            ));
+        }
+        1 => &args[0],
+        // TODO: Implement the case when args.len() == 2
+        _ => return Err(RuntimeError::Unimplemented),
+    };
+
+    let obj = match maybe_obj.val {
+        ValueBase::Object(properties) => {
+            let properties = unsafe { &*properties };
+            let new_obj = make_object!();
+            let proto = new_obj.get_property(Value::string("__proto__".to_string()), None);
+            for (name, value) in properties {
+                proto.set_property(Value::string(name.to_string()), value.clone(), None)
+            }
+            new_obj
+        }
+        ValueBase::Null => make_object!(),
+        _ => {
+            return Err(RuntimeError::Type(
+                "type error: Object.create: 1st argument must be Object or null".to_string(),
+            ));
+        }
+    };
+
+    vm.set_return_value(obj);
+
+    Ok(())
+}

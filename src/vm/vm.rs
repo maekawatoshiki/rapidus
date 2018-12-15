@@ -923,7 +923,7 @@ fn get_member(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
     self_.state.pc += 1; // get_global
     let member = self_.state.stack.pop().unwrap();
     let parent = self_.state.stack.pop().unwrap();
-    let val = parent.get_property(member.val, Some(self_.state.scope.last().unwrap()));
+    let val = parent.get_property(member, Some(self_.state.scope.last().unwrap()));
     self_.state.stack.push(val);
     Ok(())
 }
