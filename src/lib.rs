@@ -2,6 +2,8 @@
 #![feature(if_while_or_patterns)]
 #![feature(repeat_generic_slice)]
 
+#[macro_use]
+pub mod vm;
 pub mod builtin;
 pub mod builtins;
 pub mod bytecode_gen;
@@ -12,7 +14,6 @@ pub mod lexer;
 pub mod node;
 pub mod parser;
 pub mod token;
-pub mod vm;
 pub mod vm_codegen;
 
 extern crate ansi_term;

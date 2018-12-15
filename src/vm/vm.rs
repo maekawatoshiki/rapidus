@@ -190,6 +190,9 @@ impl VM {
             Value::default_builtin_function(builtin::clear_timer),
         );
 
+        use builtins::object::OBJECT_OBJ;
+        global_vals.set_value("Object".to_string(), OBJECT_OBJ.with(|x| x.clone()));
+
         use builtins::array::ARRAY_OBJ;
         global_vals.set_value("Array".to_string(), ARRAY_OBJ.with(|x| x.clone()));
 

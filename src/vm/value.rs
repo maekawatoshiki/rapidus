@@ -658,6 +658,7 @@ macro_rules! make_object {
 #[macro_export]
 macro_rules! make_hashmap {
     ($($property_name:ident : $val:expr),*) => { {
+        #[allow(unused_mut)]
         let mut map = FxHashMap::default();
         $(map.insert(stringify!($property_name).to_string(), $val);)*
         map
