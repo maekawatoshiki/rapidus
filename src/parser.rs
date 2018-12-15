@@ -954,6 +954,14 @@ impl Parser {
                 break;
             }
 
+            if self.lexer.eof() {
+                return Err(Error::UnexpectedEOF(
+                    self.lexer.pos + 1, // TODO: Right?
+                    ErrorMsgKind::LastToken,
+                    "unexpected EOF. ']' may be needed".to_string(),
+                ));
+            }
+
             if let Ok(elem) = self.read_assignment_expression() {
                 elements.push(elem);
             }
