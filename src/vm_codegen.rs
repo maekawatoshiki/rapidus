@@ -129,6 +129,7 @@ impl VMCodeGen {
             &NodeBase::Break(ref name) => self.run_break(name, iseq)?,
             &NodeBase::Continue(ref name) => self.run_continue(name, iseq)?,
             &NodeBase::Throw(ref val) => self.run_throw(val, iseq)?,
+            &NodeBase::Try(ref try, ref catch, ref param, ref finally) => self.run_try(&*try, &*catch, &*param, &*finally, iseq)?,
             &NodeBase::New(ref expr) => self.run_new_expr(&*expr, iseq)?,
             &NodeBase::Object(ref properties) => self.run_object_literal(properties, iseq)?,
             &NodeBase::Array(ref properties) => self.run_array_literal(properties, iseq)?,
@@ -580,6 +581,45 @@ impl VMCodeGen {
 
         Ok(())
     }
+}
+impl VMCodeGen {
+    pub fn run_try(
+        &mut self,
+        try: &Node,
+        catch: &Node,
+        _param: &Node,
+        finally: &Node,
+        iseq: &mut ByteCode,
+    ) -> Result<(), Error> {
+        let enter_pos = iseq.len() as isize;
+        self.bytecode_gen.gen_enter_try(iseq);
+        self.run(try, iseq, false)?;
+        self.bytecode_gen.gen_jmp(0, iseq);
+        let catch_pos = iseq.len() as isize;
+        self.bytecode_gen.gen_catch(iseq);
+        self.run(catch, iseq, false)?;
+        let finally_pos = iseq.len() as isize;
+        self.bytecode_gen.gen_finally(iseq);
+        self.run(finally, iseq, false)?;
+        self.bytecode_gen.gen_leave_try(iseq);
+
+        self.bytecode_gen.replace_int32(
+            (catch_pos - enter_pos) as i32,
+            &mut iseq[enter_pos as usize + 1..enter_pos as usize + 5],
+        );
+        self.bytecode_gen.replace_int32(
+            (finally_pos - enter_pos) as i32,
+            &mut iseq[enter_pos as usize + 5..enter_pos as usize + 9],
+        );
+
+        self.bytecode_gen.replace_int32(
+            (finally_pos - catch_pos) as i32,
+            &mut iseq[catch_pos as usize - 4..catch_pos as usize],
+        );
+
+        Ok(())
+    }
+
 }
 
 impl VMCodeGen {

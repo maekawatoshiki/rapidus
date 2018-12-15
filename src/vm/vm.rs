@@ -22,7 +22,7 @@ pub struct VM {
     pub state: VMState,
     pub const_table: ConstantTable,
     pub cur_func_id: FuncId, // id == 0: main
-    pub op_table: [fn(&mut VM, &ByteCode) -> Result<(), RuntimeError>; 52],
+    pub op_table: [fn(&mut VM, &ByteCode) -> Result<(), RuntimeError>; 56],
     pub task_mgr: TaskManager,
 }
 
@@ -31,6 +31,14 @@ pub struct VMState {
     pub scope: Vec<CallObjectRef>,
     pub pc: isize,
     pub history: Vec<(usize, isize, FuncId)>, // sp, return_pc
+    pub trystate: TryState,
+}
+
+pub enum TryState {
+    Try(isize, isize),   //position of (CATCH, FINALLY)
+    Catch(isize),       //postion of (FINALLY)
+    Finally(Option<RuntimeError>),
+    None
 }
 
 #[derive(Debug, Clone)]
@@ -310,6 +318,7 @@ impl VM {
                 scope: vec![global_vals],
                 history: vec![(0, 0, 0)],
                 pc: 0isize,
+                trystate: TryState::None,
             },
             const_table: ConstantTable::new(),
             cur_func_id: 0, // 0 is main
@@ -367,6 +376,10 @@ impl VM {
                 cond_op,
                 loop_start,
                 throw,
+                enter_try,
+                leave_try,
+                catch,
+                finally,
             ],
         }
     }
@@ -428,9 +441,36 @@ impl VM {
     }
 
     pub fn do_run(&mut self, iseq: &ByteCode) -> Result<(), RuntimeError> {
+        self.state.trystate = TryState::None;
         loop {
             let code = iseq[self.state.pc as usize];
-            self.op_table[code as usize](self, iseq)?;
+            let res = self.op_table[code as usize](self, iseq);
+            match res {
+                Ok(_) => {},
+                Err(err) => {
+                    // should unwind exec stack!
+                    match self.state.trystate {
+                        TryState::None => {
+                            return Err(err);
+                        },
+                        TryState::Try(to_catch, to_finally) => {
+                            //println!("Err in TRY");
+                            self.state.pc = to_catch;
+                            self.state.trystate = TryState::Catch(to_finally);
+                        },
+                        TryState::Catch(to_finally) => {
+                            //println!("Err in CATCH");
+                            self.state.pc = to_finally;
+                            self.state.trystate = TryState::Finally(Some(err));
+                        },
+                        TryState::Finally(_) => {
+                            // when err2 was thrown in Finally(Some(err1)), err1 will gone.
+                            //println!("Err in FINALLY");
+                            return Err(err);
+                        },
+                    }
+                },
+            }
             if code == VMInst::RETURN || code == VMInst::END {
                 break;
             }
@@ -1045,6 +1085,51 @@ fn throw(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
     // if in catch or finally clause, go to catch clause of outer try-catch statement.
     // if not in try-catch statement, terminate vm with uncaught exception.
     Err(RuntimeError::Exception(val))
+}
+
+fn enter_try(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
+    //println!("[ENTER_TRY]");
+    let pc = self_.state.pc;
+    self_.state.pc += 1;
+    get_int32!(self_, iseq, to_catch, i32);
+    get_int32!(self_, iseq, to_finally, i32);
+    self_.state.trystate = TryState::Try(pc + to_catch as isize, pc + to_finally as isize);
+    Ok(())
+}
+
+fn leave_try(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+    //println!("[LEAVE_TRY]");
+    self_.state.pc += 1;
+    let res = match self_.state.trystate {
+        TryState::Finally(None) => Ok(()),
+        TryState::Finally(Some(ref err)) => Err(err.clone()),
+        _ => unreachable!("leave_try(): invalid trystate.")
+    };
+    self_.state.trystate = TryState::None;
+    res
+}
+
+fn catch(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+    //println!("[CATCH]");
+    self_.state.pc += 1;
+    match self_.state.trystate {
+        TryState::Catch(_) => {},
+        _ => unreachable!("catch(): invalid trystate.")
+    };
+    Ok(())}
+
+fn finally(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+    //println!("[FINALLY]");
+    self_.state.pc += 1;
+    match self_.state.trystate {
+        TryState::Finally(_) => {},
+        TryState::Try(_, _) | TryState::Catch(_) => {
+            // normal code path (no error)
+            self_.state.trystate = TryState::Finally(None);
+        },
+        _ => unreachable!("finally(): invalid trystate.")
+    };
+    Ok(())
 }
 
 fn double(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
