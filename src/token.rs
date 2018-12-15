@@ -223,3 +223,18 @@ pub fn convert_reserved_keyword(keyword: &str) -> Option<Keyword> {
         _ => None,
     }
 }
+
+pub fn get_string_for_symbol(symbol: Symbol) -> String {
+    match symbol {
+        Symbol::OpeningParen => "(".to_string(),
+        Symbol::ClosingParen => ")".to_string(),
+        Symbol::OpeningBrace => "{".to_string(),
+        Symbol::ClosingBrace => "}".to_string(),
+        Symbol::OpeningBoxBracket => "[".to_string(),
+        Symbol::ClosingBoxBracket => "]".to_string(),
+        Symbol::Comma => ",".to_string(),
+        Symbol::Semicolon => ";".to_string(),
+        Symbol::Colon => ":".to_string(),
+        _ => "???".to_string()
+    }
+}

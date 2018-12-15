@@ -1,7 +1,7 @@
 pub use lexer;
 use lexer::ErrorMsgKind;
 use node::{BinOp, FormalParameter, FormalParameters, Node, NodeBase, PropertyDefinition, UnaryOp};
-use token::{Keyword, Kind, Symbol, Token};
+use token::{Keyword, Kind, Symbol, Token, get_string_for_symbol};
 
 use ansi_term::Colour;
 
@@ -231,6 +231,7 @@ impl Parser {
             Kind::Keyword(Keyword::Return) => self.read_return_statement(),
             Kind::Keyword(Keyword::Break) => self.read_break_statement(),
             Kind::Keyword(Keyword::Continue) => self.read_continue_statement(),
+            Kind::Keyword(Keyword::Try) => self.read_try_statement(),
             Kind::Keyword(Keyword::Throw) => self.read_throw_statement(),
             Kind::Symbol(Symbol::OpeningBrace) => self.read_block_statement(),
             Kind::Symbol(Symbol::Semicolon) => return Ok(Node::new(NodeBase::Nope, tok.pos)),
@@ -1030,6 +1031,64 @@ impl Parser {
         self.lexer.skip(Kind::Symbol(Symbol::Semicolon));
 
         Ok(Node::new(NodeBase::Return(Some(Box::new(expr))), pos))
+    }
+}
+
+macro_rules! skip_symbol_or_error {
+    ($pos: ident, $lexer: expr, $symbol: path) => {
+        if !$lexer.skip(Kind::Symbol($symbol)) {
+            return Err(
+                Error::UnexpectedToken(
+                    $pos,
+                    ErrorMsgKind::Normal,
+                    format!("expected {}", get_string_for_symbol($symbol)),
+                )
+            );
+        };
+    }
+}
+
+impl Parser {
+    /// http://www.ecma-international.org/ecma-262/9.0/index.html#sec-try-statement
+   fn read_try_statement(&mut self) -> Result<Node, Error> {
+        token_start_pos!(pos, self.lexer);
+        skip_symbol_or_error!(pos, self.lexer, Symbol::OpeningBrace);
+        let try = self.read_block_statement()?;
+        let is_catch = self.lexer.skip(Kind::Keyword(Keyword::Catch));
+        let (catch, param) = if is_catch {
+            skip_symbol_or_error!(pos, self.lexer, Symbol::OpeningParen);
+            // TODO: should accept BindingPattern
+            let catch_param = match self.lexer.next()?.kind {
+                Kind::Identifier(s) => { Node::new(NodeBase::Identifier(s), pos) },
+                _ => {
+                    return Err(
+                        Error::UnexpectedToken(pos, ErrorMsgKind::Normal, "expected identifier.".to_string())
+                    )
+                }
+            };
+            skip_symbol_or_error!(pos, self.lexer, Symbol::ClosingParen);
+            skip_symbol_or_error!(pos, self.lexer, Symbol::OpeningBrace);
+            (self.read_block_statement()?, catch_param)
+        } else {
+            (Node::new(NodeBase::Nope, pos), Node::new(NodeBase::Nope, pos))
+        };
+        let is_finally = self.lexer.skip(Kind::Keyword(Keyword::Finally));
+        let finally = if is_finally {
+            skip_symbol_or_error!(pos, self.lexer, Symbol::OpeningBrace);
+            self.read_block_statement()?
+        } else {
+            Node::new(NodeBase::Nope, pos)
+        };
+
+        Ok(Node::new(
+            NodeBase::Try(
+                Box::new(try),
+                Box::new(catch),
+                Box::new(param),
+                Box::new(finally),
+            ),
+            pos,
+        ))
     }
 }
 
@@ -2089,4 +2148,150 @@ fn asi2() {
             0
         )
     )
+}
+#[test]
+fn throw() {
+    let mut parser = Parser::new("throw 10".to_string());
+    assert_eq!(
+        parser.parse_all().unwrap(),
+        Node::new(
+            NodeBase::StatementList(
+                vec![
+                    Node::new(
+                        NodeBase::Throw(
+                            Box::new(
+                                Node::new(
+                                    NodeBase::Number(10.0),
+                                6
+                                )
+                            )
+                        ),
+                        5
+                    )
+                ]
+            ),
+            0
+        )
+    )
+}
+#[test]
+fn try_catch1() {
+    let mut parser = Parser::new("try {} catch(e){} finally{}".to_string());
+    assert_eq!(
+        parser.parse_all().unwrap(),
+        Node::new(
+            NodeBase::StatementList(
+                vec![
+                    Node::new(
+                        NodeBase::Try(
+                            Box::new(
+                                Node::new(
+                                    NodeBase::StatementList(vec![]),
+                                    5
+                                )
+                            ),
+                            Box::new(
+                                Node::new(
+                                    NodeBase::StatementList(vec![]),
+                                    16
+                                )
+                            ),
+                            Box::new(
+                                Node::new(
+                                    NodeBase::Identifier("e".to_string()),
+                                    3
+                                )
+                            ),
+                            Box::new(
+                                Node::new(
+                                    NodeBase::StatementList(vec![]),
+                                26
+                                )
+                            )
+                        ),
+                        3
+                    )
+                ]
+            ),
+            0
+        )
+    );
+}
+
+#[test]
+fn try_catch2() {
+    let mut parser = Parser::new("try {} catch(e){}".to_string());
+    assert_eq!(
+        parser.parse_all().unwrap(),
+        Node::new(
+            NodeBase::StatementList(
+                vec![
+                    Node::new(
+                        NodeBase::Try(
+                            Box::new(
+                                Node::new(
+                                    NodeBase::StatementList(vec![]),
+                                    5
+                                )
+                            ),
+                            Box::new(
+                                Node::new(
+                                    NodeBase::StatementList(vec![]),
+                                    16
+                                )
+                            ),
+                            Box::new(
+                                Node::new(
+                                    NodeBase::Identifier("e".to_string()),
+                                    3
+                                )
+                            ),
+                            Box::new(Node::new(NodeBase::Nope, 3))
+                        ),
+                        3
+                    )
+                ]
+            ),
+            0
+        )
+    );
+}
+
+#[test]
+fn try_catch3() {
+    let mut parser = Parser::new("try {} finally {}".to_string());
+    assert_eq!(
+        parser.parse_all().unwrap(),
+        Node::new(
+            NodeBase::StatementList(
+                vec![
+                    Node::new(
+                        NodeBase::Try(
+                            Box::new(
+                                Node::new(
+                                    NodeBase::StatementList(vec![]),
+                                    5
+                                )
+                            ),
+                            Box::new(Node::new(NodeBase::Nope, 3)),
+                            Box::new(
+                                Node::new(
+                                    NodeBase::Nope,
+                                    3
+                                )
+                            ),
+                            Box::new(
+                                Node::new(
+                                    NodeBase::StatementList(vec![]),
+                                    16
+                                )
+                            ),
+                        ),
+                        3
+                    )
+                ]
+            ),
+            0
+        )
+    );
 }
