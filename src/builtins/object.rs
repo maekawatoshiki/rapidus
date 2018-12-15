@@ -1,5 +1,10 @@
 use gc;
-use vm::{callobj::CallObject, error::RuntimeError, value::Value, vm::VM};
+use vm::{
+    callobj::CallObject,
+    error::RuntimeError,
+    value::{Value, ValueBase},
+    vm::VM,
+};
 
 use rustc_hash::FxHashMap;
 
@@ -26,13 +31,25 @@ thread_local!(
     }
 );
 
+/// https://www.ecma-international.org/ecma-262/6.0/#sec-object-objects
 pub fn object_new(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
     if args.len() == 0 {
-        vm.set_return_value(make_object!(/* just an empty object */));
+        vm.set_return_value(make_object!());
         return Ok(());
     }
 
-    Err(RuntimeError::Unimplemented)
+    match &args[0].val {
+        ValueBase::Null | ValueBase::Undefined => {
+            vm.set_return_value(make_object!());
+            return Ok(());
+        }
+        ValueBase::Empty => unreachable!(),
+        _ => {
+            // TODO: Follow the specification
+            vm.set_return_value(args[0].clone());
+            return Ok(());
+        }
+    }
 }
 //
 // pub fn function_prototype_apply(
