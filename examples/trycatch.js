@@ -1,27 +1,38 @@
-function tcf() {
+function tcf(j) {
     for (i = 0; i < 7; i++) {
+        console.log("  i=" + i)
         try {
-            console.log("count is " + i)
-            console.log("try_before")
-            if (i >= 2) throw "thrown in try: count is " + i
-            console.log("try_after")
+            if (i >= 1) {
+                var str = "thrown in try: i=" + i
+                console.log("   ", str)
+                throw str
+            }
+            console.log("    try(inner)")
         } catch(e){
-            console.log("catch_before")
-            if (i === 3) throw "thrown in catch: count is " + i
-            console.log("catch_after")
+            if (i == 2 && j == 0) {
+                var str = "thrown in catch: i=" + i
+                console.log("   ", str)
+                throw str
+            }
+            console.log("    catch(inner)")
         } finally {
-            console.log("finally_before")
-            if (i === 4) throw "thrown in finally: count is " + i
-            console.log("finally_after")
+            if (i == 3) {
+                var str = "thrown in finally: i=" + i
+                console.log("   ", str)
+                throw str
+            }
+            console.log("    finally(inner)")
         }
     }
 }
-try {
-    tcf()
-} 
-catch
-(e) 
-{
-    console.log("ERROR!")
+for (j = 0; j < 2; j++) {
+    console.log("j=", j)
+    try {
+        tcf(j)
+        console.log("try(outer)")
+    }
+    catch(e) {
+        console.log("catch(outer)")
+    }
 }
-console.log("finished: count is " + i)
+console.log("finished: i=" + i)
