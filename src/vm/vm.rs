@@ -450,7 +450,6 @@ impl VM {
             let mut error: Option<RuntimeError> = None;
 
             if let Err(err) = res {
-                // should unwind exec stack!
                 let trystate = self.trystate_stack.last_mut().unwrap();
                 match trystate.clone() {
                     TryState::Try(to_catch, to_finally) => {
@@ -481,6 +480,9 @@ impl VM {
 
             if let Some(err) = error {
                 self.trystate_stack.pop().unwrap();
+                // must push return value to exec stack.
+                self.state.stack.push(Value::undefined());
+                unwind_state(self);
                 return Err(err);
             }
 
@@ -1025,7 +1027,6 @@ pub fn call_function(
     callobj.clear_args_vals();
     callobj.vals = gc::new(unsafe { (*callobj.vals).clone() });
     callobj.apply_arguments(args);
-
     self_.state.scope.push(gc::new(callobj));
 
     if args_all_numbers {
@@ -1050,15 +1051,14 @@ pub fn call_function(
         .push((self_.state.stack.len(), self_.state.pc, id));
     self_.state.pc = 0;
 
-    self_.do_run(iseq)?;
+    let res = self_.do_run(iseq);
 
     self_.state.scope.pop();
-
     self_
         .jit
         .record_function_return_type(id, self_.state.stack.last().unwrap());
 
-    Ok(())
+    res
 }
 
 fn call(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {

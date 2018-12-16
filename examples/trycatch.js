@@ -1,5 +1,5 @@
 function tcf(j) {
-  for (i = 0; i < 7; i++) {
+  for (var i = 0; i < 7; i++) {
     console.log("  i=" + i)
     var that = this
     try {
@@ -40,5 +40,3 @@ for (var j = 0; j < 2; j++) {
     console.log("catch(outer) error obj=", e, that === this)
   }
 }
-
-console.log("finished: i=" + i)
