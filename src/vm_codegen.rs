@@ -587,7 +587,7 @@ impl VMCodeGen {
         &mut self,
         try: &Node,
         catch: &Node,
-        _param: &Node,
+        param: &Node,
         finally: &Node,
         iseq: &mut ByteCode,
     ) -> Result<(), Error> {
@@ -595,12 +595,22 @@ impl VMCodeGen {
         self.bytecode_gen.gen_enter_try(iseq);
         self.run(try, iseq, false)?;
         self.bytecode_gen.gen_jmp(0, iseq);
+
         let catch_pos = iseq.len() as isize;
         self.bytecode_gen.gen_catch(iseq);
+        match &param.base {
+            NodeBase::Identifier(param_name) => {
+                self.bytecode_gen.gen_decl_var(&param_name, iseq);
+                self.bytecode_gen.gen_set_value(&param_name, iseq);
+            }
+            _ => unreachable!(),
+        }
         self.run(catch, iseq, false)?;
+
         let finally_pos = iseq.len() as isize;
         self.bytecode_gen.gen_finally(iseq);
         self.run(finally, iseq, false)?;
+
         self.bytecode_gen.gen_leave_try(iseq);
 
         self.bytecode_gen.replace_int32(

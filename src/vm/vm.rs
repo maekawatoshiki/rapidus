@@ -454,18 +454,26 @@ impl VM {
                 let trystate = self.trystate_stack.last_mut().unwrap();
                 match trystate.clone() {
                     TryState::Try(to_catch, to_finally) => {
-                        //println!("Err in TRY");
                         self.state.pc = to_catch;
+                        // push error object to exec stack.
+                        let err_obj = match err {
+                            RuntimeError::Exception(v) => v,
+                            RuntimeError::Type(s) => Value::string(s),
+                            RuntimeError::General(s) => Value::string(s),
+                            RuntimeError::Reference(s) => Value::string(s),
+                            RuntimeError::Unimplemented => Value::string("Unimplemented".to_string()),
+                            RuntimeError::Unknown => Value::string("Unknown".to_string()),
+                        };
+                        self.state.stack.push(err_obj);
                         *trystate = TryState::Catch(to_finally);
                     }
                     TryState::Catch(to_finally) => {
-                        //println!("Err in CATCH");
                         self.state.pc = to_finally;
                         *trystate = TryState::Finally(Some(err));
+                        self.state.scope.pop();
                     }
                     TryState::None | TryState::Finally(_) => {
                         // when err2 was thrown in Finally(Some(err1)), err1 will gone.
-                        //println!("Err in FINALLY");
                         error = Some(err);
                     }
                 };
@@ -1126,6 +1134,17 @@ fn catch(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
         TryState::Catch(_) => {}
         _ => unreachable!("catch(): invalid trystate."),
     };
+    let &base_callobj = self_.state.scope.last().unwrap();
+    let co = unsafe {(*base_callobj).clone()};
+    let mut callobj = CallObject::new(make_object!());
+    callobj.parent = Some(base_callobj);
+    callobj.params = co.params;
+    callobj.arg_rest_vals = co.arg_rest_vals;
+    callobj.this = co.this;
+
+    self_.state.scope.push(gc::new(callobj));
+    //println!("PUSH SCOPE");
+
     Ok(())
 }
 
@@ -1135,9 +1154,13 @@ fn finally(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
     let trystate = self_.trystate_stack.last_mut().unwrap();
     match trystate {
         TryState::Finally(_) => {}
-        TryState::Try(_, _) | TryState::Catch(_) => {
-            // normal code path (no error)
+        TryState::Try(_, _) => {
             *trystate = TryState::Finally(None);
+        }
+        TryState::Catch(_) => {
+            *trystate = TryState::Finally(None);
+            self_.state.scope.pop();
+            //println!("POP SCOPE");
         }
         _ => unreachable!("finally(): invalid trystate."),
     };
