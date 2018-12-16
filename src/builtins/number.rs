@@ -10,17 +10,9 @@ use rustc_hash::FxHashMap;
 
 thread_local!(
     pub static NUMBER_PROTOTYPE: *mut FxHashMap<String, Value> = {
-        let mut prototype = FxHashMap::default();
-
-        prototype.insert(
-            "toString".to_string(),
-            Value::builtin_function(
-                number_prototype_tostring,
-                CallObject::new(Value::new(ValueBase::Undefined)),
-            ),
-        );
-
-        gc::new(prototype)
+        gc::new(make_hashmap!(
+            toString: Value::default_builtin_function(number_prototype_tostring)
+        ))
     };
 );
 
