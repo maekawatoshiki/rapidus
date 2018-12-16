@@ -160,10 +160,18 @@ impl Value {
     pub fn object(obj: *mut FxHashMap<String, Value>) -> Value {
         unsafe {
             use builtins::object;
-            (*obj).insert(
-                "__proto__".to_string(),
-                object::OBJECT_PROTOTYPE.with(|x| x.clone()),
-            );
+            let proto = (*obj)
+                .entry("__proto__".to_string())
+                .or_insert(object::OBJECT_PROTOTYPE.with(|x| x.clone()));
+            for (name, value) in
+                if let ValueBase::Object(x) = object::OBJECT_PROTOTYPE.with(|x| x.clone()).val {
+                    &*x
+                } else {
+                    unreachable!()
+                }
+            {
+                proto.set_property(Value::string(name.to_string()), value.clone(), None);
+            }
         }
         Value::new(ValueBase::Object(obj))
     }

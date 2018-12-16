@@ -12,7 +12,7 @@ thread_local!(
     pub static OBJECT_PROTOTYPE: Value = {
         Value::new(ValueBase::Object(gc::new( {
             make_hashmap!(
-                __proto__: Value::null()
+                // __proto__: Value::null()
             )
         })))
     };

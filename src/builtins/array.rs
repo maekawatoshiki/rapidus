@@ -10,30 +10,10 @@ use rustc_hash::FxHashMap;
 
 thread_local!(
     pub static ARRAY_PROTOTYPE: Value = {
-        let mut prototype = FxHashMap::default();
-
-        prototype.insert(
-            "push".to_string(),
-            Value::builtin_function(
-                array_prototype_push,
-                CallObject::new(Value::new(ValueBase::Undefined)),
-            ),
-        );
-
-        prototype.insert(
-            "pop".to_string(),
-            Value::builtin_function(
-                array_prototype_pop,
-                CallObject::new(Value::new(ValueBase::Undefined)),
-            ),
-        );
-
-        prototype.insert(
-            "map".to_string(),
-            Value::builtin_function(
-                array_prototype_map,
-                CallObject::new(Value::new(ValueBase::Undefined)),
-            ),
+        let prototype = make_hashmap!(
+            push: Value::default_builtin_function(array_prototype_push),
+            pop:  Value::default_builtin_function(array_prototype_pop),
+            map:  Value::default_builtin_function(array_prototype_map)
         );
 
         // https://www.ecma-international.org/ecma-262/7.0/#sec-properties-of-the-array-prototype-object
@@ -97,11 +77,10 @@ pub fn array_new(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), R
         }
     }
 
-    vm.state
-        .stack
-        .push(Value::array(gc::new(ArrayValue::new(elems))));
+    vm.set_return_value(Value::array(gc::new(ArrayValue::new(elems))));
 
     gc::mark_and_sweep(&vm.state);
+
     Ok(())
 }
 
@@ -123,7 +102,8 @@ pub fn array_prototype_push(
 
     array.length += args.len();
 
-    vm.state.stack.push(Value::number(array.length as f64));
+    vm.set_return_value(Value::number(array.length as f64));
+
     Ok(())
 }
 
@@ -145,7 +125,8 @@ pub fn array_prototype_pop(
         return Ok(());
     }
 
-    vm.state.stack.push(Value::undefined());
+    vm.set_return_value(Value::undefined());
+
     Ok(())
 }
 
@@ -180,6 +161,7 @@ pub fn array_prototype_map(
         new_array.push(val);
     }
 
-    vm.state.stack.push(Value::array(gc::new(new_array)));
+    vm.set_return_value(Value::array(gc::new(new_array)));
+
     Ok(())
 }
