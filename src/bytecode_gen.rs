@@ -56,10 +56,14 @@ pub mod VMInst {
     pub const COND_OP: u8 = 0x31;
     pub const LOOP_START: u8 = 0x32;
     pub const THROW: u8 = 0x33;
+    pub const ENTER_TRY: u8 = 0x34;
+    pub const LEAVE_TRY: u8 = 0x35;
+    pub const CATCH: u8 = 0x36;
+    pub const FINALLY: u8 = 0x37;
 
     pub fn get_inst_size(inst: u8) -> Option<usize> {
         match inst {
-            CREATE_CONTEXT | THROW => Some(1),
+            CREATE_CONTEXT | THROW | LEAVE_TRY | CATCH | FINALLY => Some(1),
             CONSTRUCT | CREATE_OBJECT | PUSH_CONST | PUSH_INT32 | CREATE_ARRAY | JMP_IF_FALSE
             | DECL_VAR | LOOP_START | JMP | SET_VALUE | GET_VALUE | CALL => Some(5),
             PUSH_INT8 => Some(2),
@@ -67,6 +71,7 @@ pub mod VMInst {
             | PUSH_ARGUMENTS | NEG | POSI | GT | LE | GE | EQ | NE | GET_MEMBER | RETURN | SNE
             | ZFSHR | POP | DOUBLE | AND | COND_OP | OR | SEQ | SET_MEMBER
             | UPDATE_PARENT_SCOPE | PUSH_UNDEFINED | LAND | SHR | SHL | XOR | LOR => Some(1),
+            ENTER_TRY => Some(9),
             _ => None,
         }
     }
@@ -310,6 +315,24 @@ impl ByteCodeGen {
 
     pub fn gen_throw(&mut self, iseq: &mut ByteCode) {
         iseq.push(VMInst::THROW);
+    }
+
+    pub fn gen_enter_try(&mut self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::ENTER_TRY);
+        self.gen_int32(0, iseq);    // distance from ENTER_TRY to CATCH
+        self.gen_int32(0, iseq);    // distance from ENTER_TRY to FINALLY
+    }
+
+    pub fn gen_leave_try(&mut self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::LEAVE_TRY);
+    }
+
+    pub fn gen_catch(&mut self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::CATCH);
+    }
+
+    pub fn gen_finally(&mut self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::FINALLY);
     }
 
     // Utils
