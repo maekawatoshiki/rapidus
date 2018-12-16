@@ -1,4 +1,5 @@
 use builtin::{BuiltinFuncInfo, BuiltinFuncTy};
+use builtins::object;
 use gc;
 use vm::{
     callobj::CallObject,
@@ -20,16 +21,10 @@ thread_local!(
             ))))
         }
 
-        let mut prototype = FxHashMap::default();
-
-        prototype.insert(
-            "apply".to_string(),
-            builtin_function(function_prototype_apply),
-        );
-
-        prototype.insert(
-            "call".to_string(),
-            builtin_function(function_prototype_call),
+        let prototype = make_hashmap!(
+            apply:     builtin_function(function_prototype_apply),
+            call:      builtin_function(function_prototype_call),
+            __proto__: object::OBJECT_PROTOTYPE.with(|x| x.clone())
         );
 
         Value::new(

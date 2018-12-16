@@ -12,6 +12,24 @@ use bytecode_gen::ByteCode;
 pub use gc;
 use id::Id;
 
+// Macros (TODO: Separate files)
+#[macro_export]
+macro_rules! make_object {
+    ($($property_name:ident : $val:expr),*) => { {
+        Value::object(gc::new( make_hashmap!( $($property_name : $val),* ) ))
+    } };
+}
+
+#[macro_export]
+macro_rules! make_hashmap {
+    ($($property_name:ident : $val:expr),*) => { {
+        #[allow(unused_mut)]
+        let mut map = FxHashMap::default();
+        $(map.insert(stringify!($property_name).to_string(), $val);)*
+        map
+    } };
+}
+
 pub type FuncId = Id;
 
 pub type RawStringPtr = *mut libc::c_char;
@@ -82,15 +100,13 @@ impl Value {
     }
 
     pub fn function(id: FuncId, iseq: ByteCode, callobj: CallObject) -> Value {
+        let prototype = make_object!();
         let val = Value::new(ValueBase::Function(Box::new((
             id,
             iseq,
             gc::new({
                 let mut hm = FxHashMap::default();
-                hm.insert(
-                    "prototype".to_string(),
-                    Value::new(ValueBase::Object(gc::new(FxHashMap::default()))),
-                );
+                hm.insert("prototype".to_string(), prototype.clone());
                 hm.insert(
                     "__proto__".to_string(),
                     function::FUNCTION_PROTOTYPE.with(|x| x.clone()),
@@ -99,6 +115,8 @@ impl Value {
             }),
             callobj,
         ))));
+
+        prototype.set_constructor(val.clone());
 
         val
     }
@@ -113,7 +131,7 @@ impl Value {
             Some(builtin_jit_func_info),
             callobj,
             FxHashMap::default(),
-            Value::new(ValueBase::Object(gc::new(FxHashMap::default()))),
+            make_object!(),
         )
     }
 
@@ -123,7 +141,7 @@ impl Value {
             None,
             CallObject::new(Value::undefined()),
             FxHashMap::default(),
-            Value::new(ValueBase::Object(gc::new(FxHashMap::default()))),
+            make_object!(),
         )
     }
 
@@ -133,7 +151,7 @@ impl Value {
             None,
             callobj,
             FxHashMap::default(),
-            Value::new(ValueBase::Object(gc::new(FxHashMap::default()))),
+            make_object!(),
         )
     }
 
@@ -144,11 +162,11 @@ impl Value {
         mut obj: FxHashMap<String, Value>,
         prototype: Value,
     ) -> Value {
-        obj.insert("prototype".to_string(), prototype);
         obj.insert(
             "__proto__".to_string(),
             function::FUNCTION_PROTOTYPE.with(|x| x.clone()),
         );
+        obj.insert("prototype".to_string(), prototype);
 
         Value::new(ValueBase::BuiltinFunction(Box::new((
             BuiltinFuncInfo::new(func, builtin_jit_func_info),
@@ -160,18 +178,9 @@ impl Value {
     pub fn object(obj: *mut FxHashMap<String, Value>) -> Value {
         unsafe {
             use builtins::object;
-            let proto = (*obj)
+            (*obj)
                 .entry("__proto__".to_string())
                 .or_insert(object::OBJECT_PROTOTYPE.with(|x| x.clone()));
-            for (name, value) in
-                if let ValueBase::Object(x) = object::OBJECT_PROTOTYPE.with(|x| x.clone()).val {
-                    &*x
-                } else {
-                    unreachable!()
-                }
-            {
-                proto.set_property(Value::string(name.to_string()), value.clone(), None);
-            }
         }
         Value::new(ValueBase::Object(obj))
     }
@@ -602,8 +611,13 @@ impl ValueBase {
             (ValueBase::Number(l), ValueBase::Number(r)) => Ok(l == r),
             (ValueBase::String(l), ValueBase::String(r)) => Ok(l == r),
             (ValueBase::Object(l), ValueBase::Object(r)) => Ok(l == r),
-            (ValueBase::Function(l), ValueBase::Function(r)) => Ok(l == r),
-            (ValueBase::BuiltinFunction(l), ValueBase::BuiltinFunction(r)) => Ok(l == r),
+            (ValueBase::Function(box (l1, _, l2, _)), ValueBase::Function(box (r1, _, r2, _))) => {
+                Ok(l1 == r1 && l2 == r2)
+            }
+            (
+                ValueBase::BuiltinFunction(box (l1, l2, _)),
+                ValueBase::BuiltinFunction(box (r1, r2, _)),
+            ) => Ok(l1 == r1 && l2 == r2),
             (ValueBase::Array(l), ValueBase::Array(r)) => Ok(l == r),
             (ValueBase::Arguments, ValueBase::Arguments) => return Err(RuntimeError::Unimplemented),
             _ => Ok(false),
@@ -663,23 +677,4 @@ pub fn obj_find_val(obj: &FxHashMap<String, Value>, key: &str) -> Value {
             _ => Value::undefined(),
         },
     }
-}
-
-// Macros (TODO: Separate files)
-
-#[macro_export]
-macro_rules! make_object {
-    ($($property_name:ident : $val:expr),*) => { {
-        Value::object(gc::new( make_hashmap!( $($property_name : $val),* ) ))
-    } };
-}
-
-#[macro_export]
-macro_rules! make_hashmap {
-    ($($property_name:ident : $val:expr),*) => { {
-        #[allow(unused_mut)]
-        let mut map = FxHashMap::default();
-        $(map.insert(stringify!($property_name).to_string(), $val);)*
-        map
-    } };
 }
