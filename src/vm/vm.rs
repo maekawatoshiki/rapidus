@@ -603,8 +603,9 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
                 .push((self_.state.stack.len(), self_.state.pc, id));
             self_.state.pc = 0;
 
-            self_.do_run(&iseq)?;
+            let res = self_.do_run(&iseq);
 
+            self_.state.scope.pop();
             let ret = self_.state.stack.last_mut().unwrap();
             match &ret.val {
                 &ValueBase::Object(_)
@@ -614,6 +615,7 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
                 | &ValueBase::BuiltinFunction(_) => {}
                 _ => *ret = Value::object(new_this),
             };
+            return res;
         }
         c => {
             return Err(RuntimeError::Type(format!(
