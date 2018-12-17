@@ -34,7 +34,7 @@ pub struct VMState {
     pub history: Vec<(usize, isize, FuncId)>, // sp, return_pc
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum TryState {
     Try(isize, isize), //position of (CATCH, FINALLY)
     Catch(isize),      //postion of (FINALLY)
@@ -460,7 +460,9 @@ impl VM {
                             RuntimeError::Type(s) => Value::string(s),
                             RuntimeError::General(s) => Value::string(s),
                             RuntimeError::Reference(s) => Value::string(s),
-                            RuntimeError::Unimplemented => Value::string("Unimplemented".to_string()),
+                            RuntimeError::Unimplemented => {
+                                Value::string("Unimplemented".to_string())
+                            }
                             RuntimeError::Unknown => Value::string("Unknown".to_string()),
                         };
                         self.state.stack.push(err_obj);
@@ -479,6 +481,10 @@ impl VM {
             }
 
             if let Some(err) = error {
+                match self.trystate_stack.pop().unwrap() {
+                    TryState::Finally(_) => {}
+                    x => self.trystate_stack.push(x),
+                }
                 self.trystate_stack.pop().unwrap();
                 // must push return value to exec stack.
                 self.state.stack.push(Value::undefined());
@@ -1108,21 +1114,26 @@ fn enter_try(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
     self_.state.pc += 1;
     get_int32!(self_, iseq, to_catch, isize);
     get_int32!(self_, iseq, to_finally, isize);
-    let trystate = self_.trystate_stack.last_mut().unwrap();
-    *trystate = TryState::Try(pc + to_catch, pc + to_finally);
+    self_
+        .trystate_stack
+        .push(TryState::Try(pc + to_catch, pc + to_finally));
     Ok(())
 }
 
 fn leave_try(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
     //println!("[LEAVE_TRY]");
+
     self_.state.pc += 1;
-    let trystate = self_.trystate_stack.last_mut().unwrap();
+    let trystate = self_.trystate_stack.pop().unwrap();
     let res = match trystate {
         TryState::Finally(None) => Ok(()),
         TryState::Finally(Some(ref err)) => Err(err.clone()),
-        _ => unreachable!("leave_try(): invalid trystate."),
+        e => {
+            println!("aa: {:?}", e);
+            Ok(())
+        }
     };
-    *trystate = TryState::None;
+
     res
 }
 
@@ -1135,7 +1146,7 @@ fn catch(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
         _ => unreachable!("catch(): invalid trystate."),
     };
     let &base_callobj = self_.state.scope.last().unwrap();
-    let co = unsafe {(*base_callobj).clone()};
+    let co = unsafe { (*base_callobj).clone() };
     let mut callobj = CallObject::new(make_object!());
     callobj.parent = Some(base_callobj);
     callobj.params = co.params;
