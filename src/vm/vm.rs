@@ -605,6 +605,7 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
 
             self_.do_run(&iseq)?;
 
+            self_.state.scope.pop();
             let ret = self_.state.stack.last_mut().unwrap();
             match &ret.val {
                 &ValueBase::Object(_)
