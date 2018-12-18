@@ -4,12 +4,13 @@ use std::collections::hash_map::Entry;
 use super::error::RuntimeError;
 use super::value::{ArrayValue, Value, ValueBase};
 use gc;
+use gc::GcType;
 
-pub type CallObjectRef = *mut CallObject;
+pub type CallObjectRef = GcType<CallObject>;
 
 #[derive(Clone, Debug)]
 pub struct CallObject {
-    pub vals: *mut FxHashMap<String, Value>,
+    pub vals: GcType<FxHashMap<String, Value>>,
     pub params: Vec<(String, bool)>, // (name, rest param?)
     pub arg_rest_vals: Vec<Value>,
     pub this: Box<Value>,

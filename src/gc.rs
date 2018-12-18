@@ -15,6 +15,8 @@ thread_local!(pub static GC_MEM: RefCell<FxHashSet<GcPtr>> = {
     RefCell::new(FxHashSet::default())
 });
 
+pub type GcType<T> = *mut T;
+
 #[derive(Clone, Debug, Eq)]
 pub struct GcPtr(*mut Gc);
 

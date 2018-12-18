@@ -1,4 +1,5 @@
 use gc;
+use gc::GcType;
 use vm::{
     callobj::CallObject,
     error::RuntimeError,
@@ -9,7 +10,7 @@ use vm::{
 use rustc_hash::FxHashMap;
 
 thread_local!(
-    pub static NUMBER_PROTOTYPE: *mut FxHashMap<String, Value> = {
+    pub static NUMBER_PROTOTYPE: GcType<FxHashMap<String, Value>> = {
         gc::new(make_hashmap!(
             toString: Value::default_builtin_function(number_prototype_tostring)
         ))

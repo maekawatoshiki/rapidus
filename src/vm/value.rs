@@ -10,6 +10,7 @@ use builtin::{BuiltinFuncInfo, BuiltinFuncTy, BuiltinJITFuncInfo};
 use builtins::function;
 use bytecode_gen::ByteCode;
 pub use gc;
+use gc::GcType;
 use id::Id;
 
 // Macros (TODO: Separate files)
@@ -42,6 +43,7 @@ pub struct Value {
     pub configurable: bool,
 }
 
+// Now 16 bytes
 #[derive(Clone, Debug, PartialEq)]
 pub enum ValueBase {
     Empty,
@@ -49,12 +51,25 @@ pub enum ValueBase {
     Undefined,
     Bool(bool),
     Number(f64),
-    String(CString), // TODO: Using CString is good for JIT. However, we need better one instead.
-    Function(Box<(FuncId, ByteCode, *mut FxHashMap<String, Value>, CallObject)>),
-    BuiltinFunction(Box<(BuiltinFuncInfo, *mut FxHashMap<String, Value>, CallObject)>), // id(==0:unknown)
-    Object(*mut FxHashMap<String, Value>), // Object(FxHashMap<String, Value>),
-    Array(*mut ArrayValue),
-    Date(Box<(DateTime<Utc>, *mut FxHashMap<String, Value>)>),
+    String(Box<CString>), // TODO: Using CString is good for JIT. However, we need better one instead.
+    Function(
+        Box<(
+            FuncId,
+            ByteCode,
+            GcType<FxHashMap<String, Value>>,
+            CallObject,
+        )>,
+    ),
+    BuiltinFunction(
+        Box<(
+            BuiltinFuncInfo,
+            GcType<FxHashMap<String, Value>>,
+            CallObject,
+        )>,
+    ), // id(==0:unknown)
+    Object(GcType<FxHashMap<String, Value>>), // Object(FxHashMap<String, Value>),
+    Array(GcType<ArrayValue>),
+    Date(Box<(DateTime<Utc>, GcType<FxHashMap<String, Value>>)>),
     Arguments, // TODO: Should have CallObject
 }
 
@@ -96,7 +111,7 @@ impl Value {
     }
 
     pub fn string(s: String) -> Value {
-        Value::new(ValueBase::String(CString::new(s).unwrap()))
+        Value::new(ValueBase::String(Box::new(CString::new(s).unwrap())))
     }
 
     pub fn function(id: FuncId, iseq: ByteCode, callobj: CallObject) -> Value {
@@ -175,7 +190,7 @@ impl Value {
         ))))
     }
 
-    pub fn object(obj: *mut FxHashMap<String, Value>) -> Value {
+    pub fn object(obj: GcType<FxHashMap<String, Value>>) -> Value {
         unsafe {
             use builtins::object;
             (*obj)
@@ -185,7 +200,7 @@ impl Value {
         Value::new(ValueBase::Object(obj))
     }
 
-    pub fn array(ary: *mut ArrayValue) -> Value {
+    pub fn array(ary: GcType<ArrayValue>) -> Value {
         Value::new(ValueBase::Array(ary))
     }
 
