@@ -60,12 +60,17 @@ pub mod VMInst {
     pub const LEAVE_TRY: u8 = 0x35;
     pub const CATCH: u8 = 0x36;
     pub const FINALLY: u8 = 0x37;
+    pub const RETURN_TRY: u8 = 0x38;
+    pub const PUSH_SCOPE: u8 = 0x39;
+    pub const POP_SCOPE: u8 = 0x3a;
 
     pub fn get_inst_size(inst: u8) -> Option<usize> {
         match inst {
-            CREATE_CONTEXT | THROW | LEAVE_TRY | CATCH | FINALLY => Some(1),
+            CREATE_CONTEXT | THROW | LEAVE_TRY | CATCH | FINALLY | POP_SCOPE | PUSH_SCOPE => {
+                Some(1)
+            }
             CONSTRUCT | CREATE_OBJECT | PUSH_CONST | PUSH_INT32 | CREATE_ARRAY | JMP_IF_FALSE
-            | DECL_VAR | LOOP_START | JMP | SET_VALUE | GET_VALUE | CALL => Some(5),
+            | RETURN_TRY | DECL_VAR | LOOP_START | JMP | SET_VALUE | GET_VALUE | CALL => Some(5),
             PUSH_INT8 => Some(2),
             PUSH_FALSE | END | PUSH_TRUE | PUSH_THIS | ADD | SUB | MUL | DIV | REM | LT
             | PUSH_ARGUMENTS | NEG | POSI | GT | LE | GE | EQ | NE | GET_MEMBER | RETURN | SNE
@@ -282,6 +287,19 @@ impl ByteCodeGen {
         iseq.push(VMInst::RETURN);
     }
 
+    pub fn gen_return_try(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::RETURN_TRY);
+        self.gen_int32(0, iseq);
+    }
+
+    pub fn gen_push_scope(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::PUSH_SCOPE);
+    }
+
+    pub fn gen_pop_scope(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::POP_SCOPE);
+    }
+
     pub fn gen_update_parent_scope(&self, iseq: &mut ByteCode) {
         iseq.push(VMInst::UPDATE_PARENT_SCOPE);
     }
@@ -319,8 +337,8 @@ impl ByteCodeGen {
 
     pub fn gen_enter_try(&mut self, iseq: &mut ByteCode) {
         iseq.push(VMInst::ENTER_TRY);
-        self.gen_int32(0, iseq);    // distance from ENTER_TRY to CATCH
-        self.gen_int32(0, iseq);    // distance from ENTER_TRY to FINALLY
+        self.gen_int32(0, iseq); // distance from ENTER_TRY to CATCH
+        self.gen_int32(0, iseq); // distance from ENTER_TRY to FINALLY
     }
 
     pub fn gen_leave_try(&mut self, iseq: &mut ByteCode) {

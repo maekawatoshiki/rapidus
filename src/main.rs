@@ -192,6 +192,7 @@ fn repl() {
                         libc::puts(b"\0".as_ptr() as *const i8);
                     }
                 }
+                _ => panic!(),
             }
             continue;
         }
@@ -310,6 +311,7 @@ fn run(file_name: &str) {
                             libc::puts(b"\0".as_ptr() as *const i8);
                         }
                     }
+                    _ => panic!(),
                 }
             }
         }
