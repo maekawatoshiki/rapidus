@@ -25,6 +25,7 @@ pub struct VM {
     pub cur_func_id: FuncId, // id == 0: main
     pub op_table: [fn(&mut VM, &ByteCode) -> Result<bool, RuntimeError>; 59],
     pub task_mgr: TaskManager,
+    pub global_vals: CallObjectRef,
 }
 
 pub struct VMState {
@@ -209,6 +210,9 @@ impl VM {
         use builtins::object::OBJECT_OBJ;
         global_vals.set_value("Object".to_string(), OBJECT_OBJ.with(|x| x.clone()));
 
+        use builtins::error;
+        global_vals.set_value("Error".to_string(), error::init());
+
         use builtins::array::ARRAY_OBJ;
         global_vals.set_value("Array".to_string(), ARRAY_OBJ.with(|x| x.clone()));
 
@@ -392,6 +396,7 @@ impl VM {
                 push_scope,
                 pop_scope,
             ],
+            global_vals: global_vals,
         }
     }
 }

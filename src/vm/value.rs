@@ -80,6 +80,12 @@ pub struct ArrayValue {
     pub obj: FxHashMap<String, Value>,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct StrValuePair {
+    pub name: &'static str,
+    pub value: Value,
+}
+
 impl Value {
     pub fn new(val: ValueBase) -> Value {
         Value {
@@ -188,6 +194,37 @@ impl Value {
             gc::new(obj),
             callobj,
         ))))
+    }
+
+    pub fn builtin_function_from_nvp(
+        func: BuiltinFuncTy,
+        svp: &Vec<(&'static str, Value)>,
+        prototype: Value,
+    ) -> Value {
+        let mut map = FxHashMap::default();
+        for p in svp {
+            map.insert(p.clone().0.to_string(), p.clone().1);
+        }
+        Value::builtin_function_with_obj_and_prototype(
+            func,
+            None,
+            CallObject::new(Value::undefined()),
+            map,
+            prototype,
+        )
+    }
+
+    pub fn object_from_nvp(svp: &Vec<(&'static str, Value)>) -> Value {
+        let mut map = FxHashMap::default();
+        for p in svp {
+            map.insert(p.clone().0.to_string(), p.clone().1);
+        }
+        use builtins::object;
+        map.insert(
+            "__proto__".to_string(),
+            object::OBJECT_PROTOTYPE.with(|x| x.clone()),
+        );
+        Value::new(ValueBase::Object(gc::new(map)))
     }
 
     pub fn object(obj: GcType<FxHashMap<String, Value>>) -> Value {
