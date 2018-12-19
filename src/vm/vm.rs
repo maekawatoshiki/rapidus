@@ -13,7 +13,7 @@ use super::{
 use builtin;
 use builtin::BuiltinJITFuncInfo;
 use builtins::math;
-use bytecode_gen::{ByteCode, VMInst};
+use bytecode_gen::ByteCode;
 use gc;
 use jit::TracingJit;
 
@@ -23,7 +23,7 @@ pub struct VM {
     pub trystate_stack: Vec<TryState>,
     pub const_table: ConstantTable,
     pub cur_func_id: FuncId, // id == 0: main
-    pub op_table: [fn(&mut VM, &ByteCode) -> Result<(), RuntimeError>; 59],
+    pub op_table: [fn(&mut VM, &ByteCode) -> Result<bool, RuntimeError>; 59],
     pub task_mgr: TaskManager,
 }
 
@@ -41,7 +41,7 @@ pub enum TryReturn {
     None,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum TryState {
     Try(isize, isize, TryReturn), //position of (CATCH, FINALLY)
     Catch(isize, TryReturn),      //postion of (FINALLY)
@@ -397,7 +397,7 @@ impl VM {
 }
 
 impl VM {
-    pub fn run(&mut self, iseq: ByteCode) -> Result<(), RuntimeError> {
+    pub fn run(&mut self, iseq: ByteCode) -> Result<bool, RuntimeError> {
         let res = self.do_run(&iseq);
 
         loop {
@@ -451,19 +451,19 @@ impl VM {
         res
     }
 
-    fn do_run(&mut self, iseq: &ByteCode) -> Result<(), RuntimeError> {
+    fn do_run(&mut self, iseq: &ByteCode) -> Result<bool, RuntimeError> {
         self.trystate_stack.push(TryState::None);
 
         loop {
             let code = iseq[self.state.pc as usize];
             let res = self.op_table[code as usize](self, iseq);
+
+            if res == Ok(false) {
+                break;
+            }
+
             let mut error: Option<RuntimeError> = None;
-
             if let Err(err) = res {
-                if err == RuntimeError::Return {
-                    break;
-                }
-
                 let trystate = self.trystate_stack.last_mut().unwrap();
                 match trystate.clone() {
                     TryState::Try(to_catch, to_finally, ret) => {
@@ -490,7 +490,6 @@ impl VM {
                         self.state.scope.pop();
                     }
                     TryState::None | TryState::Finally(_) => {
-                        // when err2 was thrown in Finally(Some(err1)), err1 will gone.
                         error = Some(err);
                     }
                 };
@@ -507,15 +506,11 @@ impl VM {
                 unwind_state(self);
                 return Err(err);
             }
-
-            if code == VMInst::RETURN || code == VMInst::END {
-                break;
-            }
         }
 
         self.trystate_stack.pop().unwrap();
 
-        Ok(())
+        Ok(true)
     }
 
     pub fn set_return_value(&mut self, val: Value) {
@@ -526,10 +521,11 @@ impl VM {
         &mut self,
         callee: &Value,
         args: &Vec<Value>,
-    ) -> Result<(), RuntimeError> {
+    ) -> Result<bool, RuntimeError> {
         match callee.val {
             ValueBase::BuiltinFunction(box (ref info, _, ref callobj)) => {
-                (info.func)(self, args, &callobj)
+                (info.func)(self, args, &callobj)?;
+                return Ok(true);
             }
             ValueBase::Function(box (id, ref iseq, _, ref callobj)) => {
                 call_function(self, id, iseq, args, callobj.clone())
@@ -559,16 +555,16 @@ macro_rules! get_int32 {
     };
 }
 
-fn end(_self: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
-    Ok(())
+fn end(_self: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+    Ok(false)
 }
 
-fn create_context(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn create_context(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // create_context
-    Ok(())
+    Ok(true)
 }
 
-fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // construct
     get_int32!(self_, iseq, argc, usize);
 
@@ -641,10 +637,10 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
         }
     };
 
-    Ok(())
+    Ok(true)
 }
 
-fn create_object(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn create_object(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // create_object
     get_int32!(self_, iseq, len, usize);
 
@@ -663,10 +659,10 @@ fn create_object(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
 
     gc::mark_and_sweep(&self_.state);
 
-    Ok(())
+    Ok(true)
 }
 
-fn create_array(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn create_array(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // create_array
     get_int32!(self_, iseq, len, usize);
 
@@ -683,86 +679,86 @@ fn create_array(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
 
     gc::mark_and_sweep(&self_.state);
 
-    Ok(())
+    Ok(true)
 }
 
-fn push_int8(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn push_int8(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // push_int
     get_int8!(self_, iseq, n, i8);
     self_.state.stack.push(Value::number(n as f64));
-    Ok(())
+    Ok(true)
 }
 
-fn push_int32(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn push_int32(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // push_int
     get_int32!(self_, iseq, n, i32);
     self_.state.stack.push(Value::number(n as f64));
-    Ok(())
+    Ok(true)
 }
 
-fn push_false(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn push_false(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // push_false
     self_.state.stack.push(Value::bool(false));
-    Ok(())
+    Ok(true)
 }
 
-fn push_true(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn push_true(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // push_true
     self_.state.stack.push(Value::bool(true));
-    Ok(())
+    Ok(true)
 }
 
-fn push_const(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn push_const(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // push_const
     get_int32!(self_, iseq, n, usize);
     self_.state.stack.push(self_.const_table.value[n].clone());
-    Ok(())
+    Ok(true)
 }
 
-fn push_this(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn push_this(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // push_this
     let this = unsafe { *(**self_.state.scope.last().unwrap()).this.clone() };
     self_.state.stack.push(this);
-    Ok(())
+    Ok(true)
 }
 
-fn push_arguments(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn push_arguments(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // push_arguments
     self_.state.stack.push(Value::arguments());
-    Ok(())
+    Ok(true)
 }
 
-fn push_undefined(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn push_undefined(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // push_defined
     self_.state.stack.push(Value::undefined());
-    Ok(())
+    Ok(true)
 }
 
-fn lnot(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn lnot(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // lnot
     let expr = self_.state.stack.last_mut().unwrap();
     expr.val = ValueBase::Bool(!expr.val.to_boolean());
-    Ok(())
+    Ok(true)
 }
 
-fn posi(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn posi(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // posi
     let expr = self_.state.stack.last_mut().unwrap();
     expr.val = ValueBase::Number(expr.val.to_number());
-    Ok(())
+    Ok(true)
 }
 
-fn neg(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn neg(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // neg
     let expr = self_.state.stack.last_mut().unwrap();
     match &mut expr.val {
         &mut ValueBase::Number(ref mut n) => *n = -*n,
         _ => return Err(RuntimeError::Unimplemented),
     };
-    Ok(())
+    Ok(true)
 }
 
-fn add(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn add(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // $name
     let rhs = self_.state.stack.pop().unwrap();
     let lhs = self_.state.stack.pop().unwrap();
@@ -776,10 +772,10 @@ fn add(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
         (ValueBase::Undefined, _) | (_, ValueBase::Undefined) => Value::number(::std::f64::NAN),
         (l, r) => Value::string(l.to_string() + r.to_string().as_str()),
     });
-    Ok(())
+    Ok(true)
 }
 
-fn sub(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn sub(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // $name
     let rhs = self_.state.stack.pop().unwrap();
     let lhs = self_.state.stack.pop().unwrap();
@@ -787,10 +783,10 @@ fn sub(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
         (ValueBase::Number(l), ValueBase::Number(r)) => Value::number(l - r),
         _ => return Err(RuntimeError::Unimplemented),
     });
-    Ok(())
+    Ok(true)
 }
 
-fn mul(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn mul(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // $name
     let rhs = self_.state.stack.pop().unwrap();
     let lhs = self_.state.stack.pop().unwrap();
@@ -801,10 +797,10 @@ fn mul(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
         }
         _ => return Err(RuntimeError::Unimplemented),
     });
-    Ok(())
+    Ok(true)
 }
 
-fn div(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn div(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // $name
     let rhs = self_.state.stack.pop().unwrap();
     let lhs = self_.state.stack.pop().unwrap();
@@ -812,10 +808,10 @@ fn div(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
         (ValueBase::Number(l), ValueBase::Number(r)) => Value::number(l / r),
         _ => return Err(RuntimeError::Unimplemented),
     });
-    Ok(())
+    Ok(true)
 }
 
-fn rem(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn rem(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // $name
     let rhs = self_.state.stack.pop().unwrap();
     let lhs = self_.state.stack.pop().unwrap();
@@ -823,10 +819,10 @@ fn rem(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
         (ValueBase::Number(l), ValueBase::Number(r)) => Value::number((l as i64 % r as i64) as f64),
         _ => return Err(RuntimeError::Unimplemented),
     });
-    Ok(())
+    Ok(true)
 }
 
-fn lt(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn lt(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // $name
     let rhs = self_.state.stack.pop().unwrap();
     let lhs = self_.state.stack.pop().unwrap();
@@ -835,10 +831,10 @@ fn lt(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
         (ValueBase::String(l), ValueBase::String(r)) => Value::bool(l < r),
         _ => return Err(RuntimeError::Unimplemented),
     });
-    Ok(())
+    Ok(true)
 }
 
-fn gt(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn gt(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // $name
     let rhs = self_.state.stack.pop().unwrap();
     let lhs = self_.state.stack.pop().unwrap();
@@ -847,10 +843,10 @@ fn gt(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
         (ValueBase::String(l), ValueBase::String(r)) => Value::bool(l > r),
         _ => return Err(RuntimeError::Unimplemented),
     });
-    Ok(())
+    Ok(true)
 }
 
-fn le(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn le(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // $name
     let rhs = self_.state.stack.pop().unwrap();
     let lhs = self_.state.stack.pop().unwrap();
@@ -859,10 +855,10 @@ fn le(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
         (ValueBase::String(l), ValueBase::String(r)) => Value::bool(l <= r),
         _ => return Err(RuntimeError::Unimplemented),
     });
-    Ok(())
+    Ok(true)
 }
 
-fn ge(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn ge(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // $name
     let rhs = self_.state.stack.pop().unwrap();
     let lhs = self_.state.stack.pop().unwrap();
@@ -871,11 +867,11 @@ fn ge(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
         (ValueBase::String(l), ValueBase::String(r)) => Value::bool(l >= r),
         _ => return Err(RuntimeError::Unimplemented),
     });
-    Ok(())
+    Ok(true)
 }
 
 // TODO: Need more precise implemention
-fn eq(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn eq(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // $name
     let rhs = self_.state.stack.pop().unwrap();
     let lhs = self_.state.stack.pop().unwrap();
@@ -883,11 +879,11 @@ fn eq(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
         .state
         .stack
         .push(Value::bool(lhs.val.abstract_equal(rhs.val)?));
-    Ok(())
+    Ok(true)
 }
 
 // TODO: Need more precise implemention
-fn ne(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn ne(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // $name
     let rhs = self_.state.stack.pop().unwrap();
     let lhs = self_.state.stack.pop().unwrap();
@@ -895,11 +891,11 @@ fn ne(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
         .state
         .stack
         .push(Value::bool(lhs.val.abstract_equal(rhs.val)?));
-    Ok(())
+    Ok(true)
 }
 
 // TODO: Need more precise implemention
-fn seq(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn seq(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // $name
     let rhs = self_.state.stack.pop().unwrap();
     let lhs = self_.state.stack.pop().unwrap();
@@ -907,11 +903,11 @@ fn seq(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
         .state
         .stack
         .push(Value::bool(lhs.val.strict_equal(rhs.val)?));
-    Ok(())
+    Ok(true)
 }
 
 // TODO: Need more precise implemention
-fn sne(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn sne(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // $name
     let rhs = self_.state.stack.pop().unwrap();
     let lhs = self_.state.stack.pop().unwrap();
@@ -919,10 +915,10 @@ fn sne(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
         .state
         .stack
         .push(Value::bool(!lhs.val.strict_equal(rhs.val)?));
-    Ok(())
+    Ok(true)
 }
 
-fn and(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn and(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // $name
     let rhs = self_.state.stack.pop().unwrap();
     let lhs = self_.state.stack.pop().unwrap();
@@ -932,10 +928,10 @@ fn and(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
         }
         _ => return Err(RuntimeError::Unimplemented),
     });
-    Ok(())
+    Ok(true)
 }
 
-fn or(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn or(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // $name
     let rhs = self_.state.stack.pop().unwrap();
     let lhs = self_.state.stack.pop().unwrap();
@@ -945,10 +941,10 @@ fn or(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
         }
         _ => return Err(RuntimeError::Unimplemented),
     });
-    Ok(())
+    Ok(true)
 }
 
-fn xor(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn xor(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // $name
     let rhs = self_.state.stack.pop().unwrap();
     let lhs = self_.state.stack.pop().unwrap();
@@ -958,10 +954,10 @@ fn xor(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
         }
         _ => return Err(RuntimeError::Unimplemented),
     });
-    Ok(())
+    Ok(true)
 }
 
-fn shl(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn shl(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // $name
     let rhs = self_.state.stack.pop().unwrap();
     let lhs = self_.state.stack.pop().unwrap();
@@ -971,10 +967,10 @@ fn shl(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
         }
         _ => return Err(RuntimeError::Unimplemented),
     });
-    Ok(())
+    Ok(true)
 }
 
-fn shr(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn shr(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // $name
     let rhs = self_.state.stack.pop().unwrap();
     let lhs = self_.state.stack.pop().unwrap();
@@ -984,10 +980,10 @@ fn shr(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
         }
         _ => return Err(RuntimeError::Unimplemented),
     });
-    Ok(())
+    Ok(true)
 }
 
-fn zfshr(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn zfshr(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // $name
     let rhs = self_.state.stack.pop().unwrap();
     let lhs = self_.state.stack.pop().unwrap();
@@ -997,42 +993,42 @@ fn zfshr(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
         }
         _ => return Err(RuntimeError::Unimplemented),
     });
-    Ok(())
+    Ok(true)
 }
 
-fn get_member(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn get_member(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // get_global
     let member = self_.state.stack.pop().unwrap();
     let parent = self_.state.stack.pop().unwrap();
     let val = parent.get_property(member, Some(self_.state.scope.last().unwrap()));
     self_.state.stack.push(val);
-    Ok(())
+    Ok(true)
 }
 
-fn set_member(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn set_member(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // get_global
     let member = self_.state.stack.pop().unwrap();
     let parent = self_.state.stack.pop().unwrap();
     let val = self_.state.stack.pop().unwrap();
     parent.set_property(member, val, Some(self_.state.scope.last().unwrap()));
-    Ok(())
+    Ok(true)
 }
 
-fn jmp(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn jmp(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // jmp
     get_int32!(self_, iseq, dst, i32);
     self_.state.pc += dst as isize;
-    Ok(())
+    Ok(true)
 }
 
-fn jmp_if_false(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn jmp_if_false(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // jmp_if_false
     get_int32!(self_, iseq, dst, i32);
     let cond = self_.state.stack.pop().unwrap();
     if let ValueBase::Bool(false) = cond.val {
         self_.state.pc += dst as isize
     }
-    Ok(())
+    Ok(true)
 }
 
 pub fn call_function(
@@ -1041,7 +1037,7 @@ pub fn call_function(
     iseq: &ByteCode,
     args: &Vec<Value>,
     mut callobj: CallObject,
-) -> Result<(), RuntimeError> {
+) -> Result<bool, RuntimeError> {
     let argc = args.len();
     let args_all_numbers = args.iter().all(|Value { val, .. }| match val {
         ValueBase::Number(_) => true,
@@ -1065,7 +1061,7 @@ pub fn call_function(
                 .stack
                 .push(unsafe { self_.jit.run_llvm_func(id, f, &args) });
             self_.state.scope.pop();
-            return Ok(());
+            return Ok(true);
         }
     }
 
@@ -1085,7 +1081,7 @@ pub fn call_function(
     res
 }
 
-fn call(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn call(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // Call
     get_int32!(self_, iseq, argc, usize);
 
@@ -1098,7 +1094,7 @@ fn call(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
 
     self_.call_function_simply(&callee, &args)?;
 
-    Ok(())
+    Ok(true)
 }
 
 fn unwind_state(vm: &mut VM) {
@@ -1112,12 +1108,12 @@ fn unwind_state(vm: &mut VM) {
     }
 }
 
-fn return_(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn return_(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     unwind_state(self_);
-    Ok(())
+    Ok(false)
 }
 
-fn throw(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn throw(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     let val = self_.state.stack.last().unwrap().clone();
     //TODO:
     // if an exception was thrown in try clause, go to the corresponding catch clause.
@@ -1126,7 +1122,7 @@ fn throw(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
     Err(RuntimeError::Exception(val))
 }
 
-fn enter_try(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn enter_try(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
     let pc = self_.state.pc;
     self_.state.pc += 1;
     get_int32!(self_, iseq, to_catch, isize);
@@ -1136,42 +1132,40 @@ fn enter_try(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
         pc + to_finally,
         TryReturn::None,
     ));
-    Ok(())
+    Ok(true)
 }
 
-fn leave_try(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn leave_try(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+    fn finally_return(self_: &mut VM, return_val: Value) -> Result<bool, RuntimeError> {
+        if self_.trystate_stack.len() == 0 || self_.trystate_stack.last() == Some(&TryState::None) {
+            self_.state.stack.push(return_val);
+            unwind_state(self_);
+            return Ok(false);
+        }
+
+        let trystate = self_.trystate_stack.last_mut().unwrap();
+        match trystate.clone() {
+            TryState::Try(_, to_finally, _) | TryState::Catch(to_finally, _) => {
+                self_.state.pc = to_finally;
+                *trystate = TryState::Finally(TryReturn::Value(return_val));
+            }
+            TryState::Finally(ref mut ret) => *ret = TryReturn::Value(return_val),
+            _ => unreachable!(),
+        };
+
+        Ok(true)
+    };
+
     self_.state.pc += 1;
     let trystate = self_.trystate_stack.pop().unwrap();
     match trystate {
-        TryState::Finally(TryReturn::Value(val)) => {
-            let mut finally_return = false;
-
-            {
-                let trystate = self_.trystate_stack.last_mut();
-                match trystate {
-                    Some(TryState::Finally(_))
-                    | Some(TryState::Try(_, _, _))
-                    | Some(TryState::Catch(_, _)) => {
-                        *trystate.unwrap() = TryState::Finally(TryReturn::Value(val.clone()));
-                    }
-                    _ => finally_return = true,
-                };
-            }
-
-            if finally_return {
-                self_.state.stack.push(val);
-                unwind_state(self_);
-                return Err(RuntimeError::Return);
-            }
-
-            Ok(())
-        }
+        TryState::Finally(TryReturn::Value(val)) => finally_return(self_, val),
         TryState::Finally(TryReturn::Error(err)) => Err(err.clone()),
-        _ => Ok(()),
+        _ => Ok(true),
     }
 }
 
-fn catch(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn catch(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1;
     let trystate = self_.trystate_stack.last_mut().unwrap();
     match trystate {
@@ -1179,10 +1173,10 @@ fn catch(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
         _ => unreachable!("catch(): invalid trystate."),
     };
 
-    Ok(())
+    Ok(true)
 }
 
-fn finally(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn finally(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1;
     let trystate = self_.trystate_stack.last_mut().unwrap();
     match trystate.clone() {
@@ -1195,10 +1189,10 @@ fn finally(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
         }
         _ => unreachable!("finally(): invalid trystate."),
     };
-    Ok(())
+    Ok(true)
 }
 
-fn return_try(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn return_try(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
     let pc = self_.state.pc;
     self_.state.pc += 1;
     get_int32!(self_, iseq, to_finally, isize);
@@ -1212,10 +1206,10 @@ fn return_try(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
         _ => unreachable!(),
     };
     self_.state.pc = pc + to_finally;
-    Ok(())
+    Ok(true)
 }
 
-fn push_scope(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn push_scope(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1;
     let &base_callobj = self_.state.scope.last().unwrap();
     let co = unsafe { (*base_callobj).clone() };
@@ -1225,41 +1219,41 @@ fn push_scope(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
     callobj.arg_rest_vals = co.arg_rest_vals;
     callobj.this = co.this;
     self_.state.scope.push(gc::new(callobj));
-    Ok(())
+    Ok(true)
 }
 
-fn pop_scope(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn pop_scope(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1;
     self_.state.scope.pop();
-    Ok(())
+    Ok(true)
 }
 
-fn double(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn double(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // double
     let stack_top_val = self_.state.stack.last().unwrap().clone();
     self_.state.stack.push(stack_top_val);
-    Ok(())
+    Ok(true)
 }
 
-fn pop(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn pop(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // double
     self_.state.stack.pop();
-    Ok(())
+    Ok(true)
 }
 
 // 'land' and 'lor' are for JIT compiler. Nope for VM.
 
-fn land(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn land(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // land
-    Ok(())
+    Ok(true)
 }
 
-fn lor(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn lor(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // lor
-    Ok(())
+    Ok(true)
 }
 
-fn update_parent_scope(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn update_parent_scope(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1;
     if let Some(Value {
         val: ValueBase::Function(box (_, _, _, ref mut callobj)),
@@ -1268,19 +1262,19 @@ fn update_parent_scope(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeEr
     {
         callobj.parent = Some(self_.state.scope.last().unwrap().clone());
     }
-    Ok(())
+    Ok(true)
 }
 
-fn get_value(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn get_value(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1;
     get_int32!(self_, iseq, name_id, usize);
     let name = &self_.const_table.string[name_id];
     let val = unsafe { (**self_.state.scope.last().unwrap()).get_value(name)? };
     self_.state.stack.push(val);
-    Ok(())
+    Ok(true)
 }
 
-fn set_value(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn set_value(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1;
     get_int32!(self_, iseq, name_id, usize);
     let name = self_.const_table.string[name_id].clone();
@@ -1297,24 +1291,24 @@ fn set_value(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
 
     unsafe { (**self_.state.scope.last().unwrap()).set_value_if_exist(name, val) };
 
-    Ok(())
+    Ok(true)
 }
 
-fn decl_var(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn decl_var(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1;
     get_int32!(self_, iseq, name_id, usize);
     let name = self_.const_table.string[name_id].clone();
     unsafe { (**self_.state.scope.last().unwrap()).set_value(name, Value::undefined()) };
-    Ok(())
+    Ok(true)
 }
 
 // 'cond_op' is for JIT compiler. Nope for VM.
-fn cond_op(self_: &mut VM, _iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn cond_op(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1;
-    Ok(())
+    Ok(true)
 }
 
-fn loop_start(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
+fn loop_start(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
     let loop_start = self_.state.pc as usize;
 
     self_.state.pc += 1;
@@ -1336,5 +1330,5 @@ fn loop_start(self_: &mut VM, iseq: &ByteCode) -> Result<(), RuntimeError> {
         self_.state.pc = pc;
     }
 
-    Ok(())
+    Ok(true)
 }

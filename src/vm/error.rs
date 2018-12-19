@@ -9,7 +9,6 @@ pub enum RuntimeError {
     General(String),
     Exception(value::Value),
     Unimplemented,
-    Return
 }
 
 pub fn runtime_error(msg: &str) {
