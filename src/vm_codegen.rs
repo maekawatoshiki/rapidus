@@ -648,6 +648,7 @@ impl VMCodeGen {
 
         let catch_pos = iseq.len() as isize;
         self.bytecode_gen.gen_catch(iseq);
+        self.bytecode_gen.gen_push_scope(iseq);
         match &param.base {
             NodeBase::Identifier(param_name) => {
                 self.bytecode_gen.gen_decl_var(&param_name, iseq);
@@ -660,7 +661,7 @@ impl VMCodeGen {
         self.level.push(Level::Catch {
             return_instr_pos: vec![],
         });
-        self.bytecode_gen.gen_push_scope(iseq);
+
         self.run(catch, iseq, false)?;
         self.bytecode_gen.gen_pop_scope(iseq);
         let catch_ = self.level.pop().unwrap();
