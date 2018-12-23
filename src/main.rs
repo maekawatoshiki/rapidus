@@ -116,9 +116,9 @@ fn main() {
 
 fn repl() {
     // TODO: REFINE CODE!!!!
-
     let mut vm_codegen = vm_codegen::VMCodeGen::new();
-    let mut vm = vm::vm::VM::new(vm_codegen.global_varmap);
+    let global = vm_codegen.global_varmap;
+    let mut vm = vm::vm::VM::new(global);
 
     let mut rl = rustyline::Editor::<()>::new();
 
@@ -173,8 +173,13 @@ fn repl() {
                 return;
             }
             Err(e) => panic!(e),
-        }
-
+        };
+        //bytecode_gen::show(&iseq);
+        println!(
+            "stack:{} history:{}",
+            vm.state.stack.len(),
+            vm.state.history.len()
+        );
         vm.const_table = vm_codegen.bytecode_gen.const_table.clone();
         vm.state.pc = 0;
 
@@ -198,6 +203,7 @@ fn repl() {
 
         // Show the evaluated result
         if let Some(value) = vm.state.stack.pop() {
+            //println!("{}", value.to_string());
             unsafe {
                 builtin::debug_print(&value, true);
                 libc::puts(b"\0".as_ptr() as *const i8);

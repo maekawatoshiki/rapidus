@@ -4,15 +4,14 @@ thread_local! {
     pub static ERROR_PROTOTYPE: Value = {
         Value::object_from_nvp(&vec![
             ("message", Value::string("".to_string())),
-            ("name", Value::string("".to_string())),
+            ("name", Value::string("Error".to_string())),
         ])
     }
 }
 
 pub fn init() -> Value {
     let prototype = ERROR_PROTOTYPE.with(|x| x.clone());
-    let obj =
-        Value::builtin_function_from_nvp(new, &vec![("", Value::undefined())], prototype.clone());
+    let obj = Value::builtin_constructor_from_nvp(new, &mut vec![], Some(prototype.clone()));
     prototype.set_constructor(obj.clone());
 
     obj
@@ -26,7 +25,7 @@ fn new(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeErro
     let prototype = ERROR_PROTOTYPE.with(|x| x.clone());
     let obj = Value::object_from_nvp(&vec![
         ("message", Value::string(message)),
-        ("name", Value::string("".to_string())),
+        ("name", Value::string("Error".to_string())),
         ("__proto__", prototype),
     ]);
     vm.set_return_value(obj);

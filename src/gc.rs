@@ -5,7 +5,7 @@ use std::mem;
 use std::sync::atomic::{self, AtomicUsize};
 use vm::{
     callobj::CallObject,
-    value::{ArrayValue, Value, ValueBase},
+    value::{ArrayValue, Property, Value},
     vm::VMState,
 };
 
@@ -47,45 +47,45 @@ impl Gc for Value {
     }
 
     fn trace(&self, marked: &mut FxHashSet<GcPtr>) {
-        match self.val {
-            ValueBase::Empty
-            | ValueBase::Null
-            | ValueBase::Undefined
-            | ValueBase::Bool(_)
-            | ValueBase::Number(_)
-            | ValueBase::String(_)
-            | ValueBase::Date(_) => {}
-            ValueBase::Function(box (_, _, ref obj, ref c)) => {
+        match self {
+            Value::Empty
+            | Value::Null
+            | Value::Undefined
+            | Value::Bool(_)
+            | Value::Number(_)
+            | Value::String(_)
+            | Value::Date(_) => {}
+            Value::Function(box (_, _, ref obj, ref c)) => {
                 not_marked_then(*obj, marked, |obj, marked| unsafe {
                     (*obj).trace(marked);
                 });
                 c.trace(marked);
             }
             // Never trace _xxx
-            ValueBase::BuiltinFunction(box (_, _x, ref c)) => c.trace(marked),
-            ValueBase::Object(ref obj) => {
+            Value::BuiltinFunction(box (_, _x, ref c)) => c.trace(marked),
+            Value::Object(ref obj) => {
                 not_marked_then(*obj, marked, |obj, marked| unsafe {
                     (*obj).trace(marked);
                 });
             }
-            ValueBase::Array(ref a) => {
+            Value::Array(ref a) => {
                 not_marked_then(*a, marked, |a, marked| unsafe {
                     (*a).trace(marked);
                 });
             }
-            ValueBase::Arguments => {}
+            Value::Arguments => {}
         }
     }
 }
 
-impl Gc for FxHashMap<String, Value> {
+impl Gc for FxHashMap<String, Property> {
     fn free(&self) {
         mem::drop(self);
     }
 
     fn trace(&self, marked: &mut FxHashSet<GcPtr>) {
-        for (_, val) in self {
-            val.trace(marked);
+        for (_, prop) in self {
+            prop.val.trace(marked);
         }
     }
 }
@@ -119,11 +119,11 @@ impl Gc for ArrayValue {
     }
 
     fn trace(&self, marked: &mut FxHashSet<GcPtr>) {
-        for val in &self.elems {
-            val.trace(marked)
+        for prop in &self.elems {
+            prop.val.trace(marked)
         }
-        for (_, val) in &self.obj {
-            val.trace(marked)
+        for (_, prop) in unsafe { (*self.obj).iter() } {
+            prop.val.trace(marked)
         }
     }
 }

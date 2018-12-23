@@ -1,10 +1,5 @@
 use gc;
-use vm::{
-    callobj::CallObject,
-    error::RuntimeError,
-    value::{Value, ValueBase},
-    vm::VM,
-};
+use vm::{callobj::CallObject, error::RuntimeError, value::Value, vm::VM};
 
 use chrono::Utc;
 use rustc_hash::FxHashMap;
@@ -20,20 +15,17 @@ thread_local!(
 
     pub static DATE_OBJ: Value = {
         let prototype = DATE_PROTOTYPE.with(|x| x.clone());
-        let date = Value::builtin_function_with_obj_and_prototype(
+        let date = Value::builtin_function(
             date,
             None,
-            CallObject::new(Value::undefined()),
-            {
-                let mut obj = FxHashMap::default();
-
+            &mut vec![
                 // TODO: Add methods
-                obj.insert("now".to_string(), Value::builtin_function(date_now,
-                    CallObject::new(Value::new(ValueBase::Undefined))));
-
-                obj
-            },
-            prototype.clone()
+                (
+                    "now",
+                    Value::default_builtin_function(date_now),
+                )
+            ],
+            Some(prototype.clone())
         );
 
         prototype.set_constructor(date.clone());

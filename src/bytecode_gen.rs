@@ -412,7 +412,8 @@ pub fn show(code: &ByteCode) {
                 i += 5
             }
             VMInst::PUSH_INT8 => {
-                println!("PushInt8");
+                let int8 = code[i + 1] as i32;
+                println!("PushInt8:{}", int8);
                 i += 2
             }
             VMInst::PUSH_INT32 => {

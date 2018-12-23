@@ -14,7 +14,7 @@ use vm::{
     callobj::CallObject,
     error::RuntimeError,
     task::{Task, TimerID, TimerKind},
-    value::{RawStringPtr, Value, ValueBase},
+    value::{Property, RawStringPtr, Value},
     vm::VM,
 };
 use vm_codegen;
@@ -74,7 +74,7 @@ pub fn set_timeout(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(),
     }
 
     let callback = args[0].clone();
-    let timeout = if let ValueBase::Number(millis) = &args[1].val {
+    let timeout = if let Value::Number(millis) = &args[1] {
         *millis as i64
     } else {
         return Err(RuntimeError::Type(
@@ -105,7 +105,7 @@ pub fn set_interval(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<()
     }
 
     let callback = args[0].clone();
-    let interval = if let ValueBase::Number(millis) = &args[1].val {
+    let interval = if let Value::Number(millis) = &args[1] {
         *millis as i64
     } else {
         return Err(RuntimeError::Type(
@@ -135,7 +135,7 @@ pub fn clear_timer(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(),
         ));
     }
 
-    let timer_id = if let ValueBase::Number(id) = &args[0].val {
+    let timer_id = if let Value::Number(id) = &args[0] {
         *id as TimerID
     } else {
         return Err(RuntimeError::Type(
@@ -184,59 +184,60 @@ pub fn process_stdout_write(
 }
 
 pub fn debug_print(val: &Value, nest: bool) {
-    unsafe fn show_obj(sorted_key_val: Vec<(&String, &Value)>) {
-        for (i, (key, val)) in sorted_key_val.iter().enumerate() {
-            libc::printf(
-                "'%s'\0".as_ptr() as RawStringPtr,
-                CString::new(key.as_str()).unwrap().into_raw(),
-            );
-            libc::printf(": \0".as_ptr() as RawStringPtr);
-            debug_print(&val, true);
-            libc::printf(if i != sorted_key_val.len() - 1 {
-                ", \0".as_ptr() as RawStringPtr
-            } else {
-                " \0".as_ptr() as RawStringPtr
-            });
+    fn show_obj(sorted_key_val: Vec<(&String, &Property)>) {
+        for (i, tupple) in sorted_key_val.iter().enumerate() {
+            unsafe {
+                libc::printf(
+                    "'%s'\0".as_ptr() as RawStringPtr,
+                    CString::new(tupple.0.as_str()).unwrap().into_raw(),
+                );
+                libc::printf(": \0".as_ptr() as RawStringPtr);
+                debug_print(&tupple.1.val, true);
+                libc::printf(if i != sorted_key_val.len() - 1 {
+                    ", \0".as_ptr() as RawStringPtr
+                } else {
+                    " \0".as_ptr() as RawStringPtr
+                });
+            }
         }
     }
 
     unsafe {
-        match val.val {
-            ValueBase::Empty | ValueBase::Arguments => {
+        match val {
+            Value::Empty | Value::Arguments => {
                 libc::printf("'Unsupported. Sorry.'\0".as_ptr() as RawStringPtr);
             }
-            ValueBase::Null => {
+            Value::Null => {
                 libc::printf(b"null\0".as_ptr() as RawStringPtr);
             }
-            ValueBase::Undefined => {
+            Value::Undefined => {
                 libc::printf(b"undefined\0".as_ptr() as RawStringPtr);
             }
-            ValueBase::Bool(true) => {
+            Value::Bool(true) => {
                 libc::printf(b"true\0".as_ptr() as RawStringPtr);
             }
-            ValueBase::Bool(false) => {
+            Value::Bool(false) => {
                 libc::printf(b"false\0".as_ptr() as RawStringPtr);
             }
-            ValueBase::Number(n) => {
+            Value::Number(n) => {
                 if n.is_nan() {
                     libc::printf("NaN\0".as_ptr() as RawStringPtr);
                 } else if n.is_infinite() {
                     libc::printf("Infinity\0".as_ptr() as RawStringPtr);
                 } else {
-                    libc::printf("%.15g\0".as_ptr() as RawStringPtr, n);
+                    libc::printf("%.15g\0".as_ptr() as RawStringPtr, *n);
                 }
             }
-            ValueBase::String(ref s) => {
+            Value::String(ref s) => {
                 libc::printf(
                     if nest { "'%s'\0" } else { "%s\0" }.as_ptr() as RawStringPtr,
                     s.as_ptr(),
                 );
             }
-            ValueBase::Object(ref values) => {
+            Value::Object(ref map) => {
                 libc::printf("{ \0".as_ptr() as RawStringPtr);
 
-                let key_val = &**values;
-                let mut sorted_key_val = key_val.iter().collect::<Vec<(&String, &Value)>>();
+                let mut sorted_key_val = (&**map).iter().collect::<Vec<(&String, &Property)>>();
                 sorted_key_val.sort_by(|(key1, _), (key2, _)| key1.as_str().cmp(key2.as_str()));
                 sorted_key_val.retain(|(ref key, _)| key != &"__proto__");
 
@@ -244,7 +245,7 @@ pub fn debug_print(val: &Value, nest: bool) {
 
                 libc::printf("}\0".as_ptr() as RawStringPtr);
             }
-            ValueBase::Array(ref values) => {
+            Value::Array(ref values) => {
                 libc::printf("[ \0".as_ptr() as RawStringPtr);
                 let arr = &*(*values);
                 let elems = &arr.elems;
@@ -252,13 +253,13 @@ pub fn debug_print(val: &Value, nest: bool) {
                 let mut i = 0;
 
                 let key_val = &arr.obj;
-                let mut sorted_key_val = key_val.iter().collect::<Vec<(&String, &Value)>>();
+                let mut sorted_key_val = (&**key_val).iter().collect::<Vec<(&String, &Property)>>();
                 sorted_key_val.sort_by(|(key1, _), (key2, _)| key1.as_str().cmp(key2.as_str()));
                 sorted_key_val.retain(|(ref key, _)| key != &"__proto__");
 
                 while i < arr.length {
                     let mut empty_elems = 0;
-                    while i < arr.length && ValueBase::Empty == elems[i].val {
+                    while i < arr.length && Value::Empty == elems[i].val {
                         empty_elems += 1;
                         i += 1;
                     }
@@ -281,7 +282,7 @@ pub fn debug_print(val: &Value, nest: bool) {
                         }
                     }
 
-                    debug_print(&elems[i], true);
+                    debug_print(&elems[i].val, true);
                     libc::printf(
                         if is_last_idx(i) && sorted_key_val.len() == 0 {
                             " \0"
@@ -298,10 +299,10 @@ pub fn debug_print(val: &Value, nest: bool) {
 
                 libc::printf("]\0".as_ptr() as RawStringPtr);
             }
-            ValueBase::Function(_) | ValueBase::BuiltinFunction(_) => {
+            Value::Function(_) | Value::BuiltinFunction(_) => {
                 libc::printf("[Function]\0".as_ptr() as RawStringPtr);
             }
-            ValueBase::Date(box (time_val, _)) => {
+            Value::Date(box (time_val, _)) => {
                 // TODO: Date needs toString() ?
                 libc::printf(
                     "%s\0".as_ptr() as RawStringPtr,
@@ -347,8 +348,8 @@ pub fn require(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject) -> Result<(
         ));
     }
 
-    let file_name = match args[0].val {
-        ValueBase::String(ref s) => s.to_str().unwrap().clone(),
+    let file_name = match args[0] {
+        Value::String(ref s) => s.to_str().unwrap().clone(),
         _ => {
             return Err(RuntimeError::Type(
                 "type error: require(ARGUMENT MUST BE STRING)".to_string(),

@@ -2,7 +2,7 @@ use rustc_hash::FxHashMap;
 use std::collections::hash_map::Entry;
 
 use super::error::RuntimeError;
-use super::value::{ArrayValue, Value, ValueBase};
+use super::value::{PropMap, Property, Value};
 use gc;
 use gc::GcType;
 
@@ -10,7 +10,7 @@ pub type CallObjectRef = GcType<CallObject>;
 
 #[derive(Clone, Debug)]
 pub struct CallObject {
-    pub vals: GcType<FxHashMap<String, Value>>,
+    pub vals: PropMap,
     pub params: Vec<(String, bool)>, // (name, rest param?)
     pub arg_rest_vals: Vec<Value>,
     pub this: Box<Value>,
@@ -43,11 +43,11 @@ impl CallObject {
             vals: vals.clone(),
             params: vec![],
             arg_rest_vals: vec![],
-            this: Box::new(Value::new(ValueBase::Undefined)),
+            this: Box::new(Value::Undefined),
             parent: None,
         });
         unsafe {
-            *(*callobj).this = Value::new(ValueBase::Object(vals));
+            *(*callobj).this = Value::Object(vals);
         }
         callobj
     }
@@ -81,10 +81,7 @@ impl CallObject {
         }
 
         if let Some(rest_param_name) = rest_param_name {
-            self.set_value(
-                rest_param_name,
-                Value::array(gc::new(ArrayValue::new(rest_args))),
-            );
+            self.set_value(rest_param_name, Value::array_from_elems(rest_args));
         } else {
             for arg in rest_args {
                 self.arg_rest_vals.push(arg);
@@ -94,18 +91,18 @@ impl CallObject {
 
     pub fn set_value(&mut self, name: String, val: Value) {
         unsafe {
-            (*self.vals).insert(name, val);
+            (*self.vals).insert(name, Property::new(val));
         }
     }
 
     pub fn set_value_if_exist(&mut self, name: String, val: Value) {
         unsafe {
             match (*self.vals).entry(name.clone()) {
-                Entry::Occupied(ref mut v) => *v.get_mut() = val,
+                Entry::Occupied(ref mut v) => *v.get_mut() = Property::new(val),
                 Entry::Vacant(v) => {
                     match self.parent {
                         Some(ref parent) => return (**parent).set_value_if_exist(name, val),
-                        None => v.insert(val),
+                        None => v.insert(Property::new(val)),
                     };
                 }
             }
@@ -114,8 +111,8 @@ impl CallObject {
 
     pub fn get_value(&self, name: &String) -> Result<Value, RuntimeError> {
         unsafe {
-            if let Some(val) = (*self.vals).get(name) {
-                return Ok(val.clone());
+            if let Some(prop) = (*self.vals).get(name) {
+                return Ok(prop.val.clone());
             }
             match self.parent {
                 Some(ref parent) => (**parent).get_value(name),
@@ -135,7 +132,7 @@ impl CallObject {
 
         let n = n - self.params.len();
         if n >= self.arg_rest_vals.len() {
-            return Ok(Value::new(ValueBase::Undefined));
+            return Ok(Value::Undefined);
         }
         Ok(self.arg_rest_vals[n].clone())
     }
