@@ -27,6 +27,7 @@ pub struct VM {
     pub op_table: [fn(&mut VM, &ByteCode) -> Result<bool, RuntimeError>; 59],
     pub task_mgr: TaskManager,
     pub is_debug: bool,
+    pub jit_on: bool,
 }
 
 pub struct VMState {
@@ -199,6 +200,11 @@ impl VM {
             Value::default_builtin_function(builtin::clear_timer),
         );
 
+        global_vals.set_value(
+            "__enableJit".to_string(),
+            Value::default_builtin_function(builtin::enable_jit),
+        );
+
         global_vals.set_value("Object".to_string(), builtins::object::init());
         global_vals.set_value("Error".to_string(), builtins::error::init());
         global_vals.set_value("Array".to_string(), builtins::object::init());
@@ -220,6 +226,7 @@ impl VM {
             cur_func_id: 0, // 0 is main
             task_mgr: TaskManager::new(),
             is_debug: false,
+            jit_on: true,
             op_table: [
                 end,
                 create_context,
@@ -490,7 +497,7 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
             *callobj.this = Value::object_from_nvp(&vec![("__proto__", unsafe {
                 (**obj)
                     .get("prototype")
-                    .unwrap_or(&Property::new(Value::undefined()))
+                    .unwrap_or(&Value::Undefined.to_property())
                     .val
                     .clone()
             })]);
@@ -952,7 +959,7 @@ pub fn call_function(
     callobj.apply_arguments(args);
     self_.state.scope.push(gc::new(callobj));
 
-    if args_all_numbers {
+    if args_all_numbers && self_.jit_on {
         let scope = (*self_.state.scope.last().unwrap()).clone();
         if let Some(f) = unsafe {
             self_
@@ -972,10 +979,11 @@ pub fn call_function(
     let res = self_.do_run(iseq);
 
     self_.state.scope.pop();
-    self_
-        .jit
-        .record_function_return_type(id, self_.state.stack.last().unwrap());
-
+    if self_.jit_on {
+        self_
+            .jit
+            .record_function_return_type(id, self_.state.stack.last().unwrap());
+    };
     res
 }
 
@@ -1194,17 +1202,19 @@ fn loop_start(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
 
     let id = self_.cur_func_id;
 
-    if let Some(pc) = unsafe {
-        self_.jit.can_loop_jit(
-            id,
-            &iseq,
-            &self_.const_table,
-            &mut self_.state,
-            loop_start,
-            loop_end,
-        )
-    } {
-        self_.state.pc = pc;
+    if self_.jit_on {
+        if let Some(pc) = unsafe {
+            self_.jit.can_loop_jit(
+                id,
+                &iseq,
+                &self_.const_table,
+                &mut self_.state,
+                loop_start,
+                loop_end,
+            )
+        } {
+            self_.state.pc = pc;
+        }
     }
 
     Ok(true)

@@ -179,7 +179,22 @@ pub fn process_stdout_write(
             }
         }
     }
-    vm.state.stack.push(Value::undefined());
+    vm.set_return_value(Value::Undefined);
+    Ok(())
+}
+
+pub fn enable_jit(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
+    let args_len = args.len();
+    if args_len == 0 {
+        return Err(RuntimeError::General(
+            "error: enable_jit() needs one argument".to_string(),
+        ));
+    };
+    match args[0] {
+        Value::Bool(b) => vm.jit_on = b,
+        _ => {}
+    };
+    vm.set_return_value(Value::Undefined);
     Ok(())
 }
 
