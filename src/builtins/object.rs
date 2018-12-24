@@ -13,7 +13,7 @@ thread_local!(
             object_new,
             None,
             &mut vec![("create", Value::default_builtin_function(object_create))],
-            None,//Some(prototype.clone())
+            Some(prototype.clone()),
         );
 
         prototype.set_constructor(object.clone());

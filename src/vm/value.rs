@@ -110,13 +110,10 @@ impl Value {
         let val = Value::Function(Box::new((
             id,
             iseq,
-            Value::propmap_from_nvp(&vec![
-                ("prototype", prototype.clone()),
-                (
-                    "__proto__",
-                    function::FUNCTION_PROTOTYPE.with(|x| x.clone()),
-                ),
-            ]),
+            Value::propmap_from_nvp(&make_nvp!(
+                prototype:  prototype.clone(),
+                __proto__:  function::FUNCTION_PROTOTYPE.with(|x| x.clone())
+            )),
             callobj,
         )));
 
@@ -142,12 +139,6 @@ impl Value {
         nvp: &mut Vec<(&'static str, Value)>,
         prototype: Option<Value>,
     ) -> Value {
-        /*
-        nvp.push((
-            "__proto__",
-            function::FUNCTION_PROTOTYPE.with(|x| x.clone()),
-        ));
-        */
         if let Some(prototype) = prototype {
             nvp.push(("prototype", prototype));
         }
@@ -656,21 +647,28 @@ fn is_integer(f: f64) -> bool {
 /// get <key> property of <val> object.
 /// if the property does not exists, trace the prototype chain.
 /// return Value::Undefined for primitives.
+/// BuiltinFunction.__proto__ === FUNCTION_PROTOTYPE
 ///
 pub fn obj_find_val(val: Value, key: &str) -> Value {
-    let map = match val {
-        Value::Function(box (_, _, map, _))
-        | Value::BuiltinFunction(box (_, map, _))
-        | Value::Date(box (_, map))
-        | Value::Object(map) => map,
-        Value::Array(aryval) => unsafe { (*aryval).obj },
+    let (map, is_builtin_func) = match val {
+        Value::BuiltinFunction(box (_, map, _)) => (map, true),
+        Value::Function(box (_, _, map, _)) | Value::Date(box (_, map)) | Value::Object(map) => {
+            (map, false)
+        }
+        Value::Array(aryval) => (unsafe { (*aryval).obj }, false),
         _ => return Value::Undefined,
     };
     unsafe {
         match (*map).get(key) {
             Some(prop) => prop.val.clone(),
+            None if is_builtin_func && key == "__proto__" => {
+                return function::FUNCTION_PROTOTYPE.with(|x| x.clone());
+            }
             None => match (*map).get("__proto__") {
                 Some(prop) => obj_find_val(prop.val.clone(), key),
+                None if is_builtin_func => {
+                    obj_find_val(function::FUNCTION_PROTOTYPE.with(|x| x.clone()), key)
+                }
                 _ => return Value::Undefined,
             },
         }
