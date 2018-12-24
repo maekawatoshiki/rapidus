@@ -2,7 +2,9 @@ use vm::{callobj::CallObject, error::RuntimeError, value::Value, vm::VM};
 
 thread_local!(
     pub static OBJECT_PROTOTYPE: Value = {
-        Value::Object(Value::propmap_from_nvp(&vec![]))
+        Value::Object(Value::propmap_from_nvp(&make_nvp!(
+            __proto__:  Value::Null
+        )))
     };
 
     pub static OBJECT_OBJ: Value = {

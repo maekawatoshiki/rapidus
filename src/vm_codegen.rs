@@ -205,6 +205,7 @@ impl VMCodeGen {
         iseq.splice(1..1, section_callobj_set);
     }
 
+    /// function name(params...) { body }
     pub fn run_function_decl(
         &mut self,
         name: &String,

@@ -1,17 +1,16 @@
 #![macro_use]
 
-use chrono::{DateTime, Utc};
-pub use rustc_hash::FxHashMap;
-use std::ffi::CString;
-
 use super::callobj::{CallObject, CallObjectRef};
 use super::error::*;
 use builtin::{BuiltinFuncInfo, BuiltinFuncTy, BuiltinJITFuncInfo};
 use builtins::function;
 use bytecode_gen::ByteCode;
+use chrono::{DateTime, Utc};
 pub use gc;
 use gc::GcType;
 use id::Id;
+pub use rustc_hash::FxHashMap;
+use std::ffi::CString;
 
 pub type FuncId = Id;
 
@@ -76,6 +75,7 @@ impl Property {
 }
 
 impl Value {
+    /// convert to Property.
     pub fn to_property(&self) -> Property {
         Property::new(self.clone())
     }
@@ -104,9 +104,7 @@ impl Value {
         Value::String(Box::new(CString::new(s).unwrap()))
     }
 
-    ///
     /// make JS function object.
-    ///
     pub fn function(id: FuncId, iseq: ByteCode, callobj: CallObject) -> Value {
         let prototype = Value::object_from_nvp(&vec![]);
         let val = Value::Function(Box::new((
@@ -655,8 +653,8 @@ fn is_integer(f: f64) -> bool {
 }
 
 ///
-/// get "key" property of "val" object.
-/// if not exists, trace the prototype chain.
+/// get <key> property of <val> object.
+/// if the property does not exists, trace the prototype chain.
 /// return Value::Undefined for primitives.
 ///
 pub fn obj_find_val(val: Value, key: &str) -> Value {
@@ -666,14 +664,14 @@ pub fn obj_find_val(val: Value, key: &str) -> Value {
         | Value::Date(box (_, map))
         | Value::Object(map) => map,
         Value::Array(aryval) => unsafe { (*aryval).obj },
-        _ => return Value::undefined(),
+        _ => return Value::Undefined,
     };
     unsafe {
         match (*map).get(key) {
             Some(prop) => prop.val.clone(),
             None => match (*map).get("__proto__") {
-                Some(_) => obj_find_val(val, key),
-                _ => return Value::undefined(),
+                Some(prop) => obj_find_val(prop.val.clone(), key),
+                _ => return Value::Undefined,
             },
         }
     }

@@ -8,7 +8,9 @@ use vm::{
 
 thread_local! {
     pub static FUNCTION_PROTOTYPE: Value = {
-        let nvp = make_nvp!(
+        let nvp = &make_nvp!(
+            length:     Value::Number(0f64),
+            name:       Value::string("".to_string()),
             apply:      Value::default_builtin_function(prototype_apply),
             call:       Value::default_builtin_function(prototype_call),
             __proto__:  object::OBJECT_PROTOTYPE.with(|x| x.clone())
@@ -21,8 +23,11 @@ thread_local! {
 
 pub fn init() -> Value {
     let prototype = FUNCTION_PROTOTYPE.with(|x| x.clone());
-    //Value::insert_propmap(prototype, svp: &Vec<(&'static str, Value)>)
-    let obj = Value::builtin_constructor_from_nvp(new, &mut vec![], Some(prototype.clone()));
+    // Function constructor
+    let mut nvp = &mut make_nvp!(
+        length: Value::Number(1f64)
+    );
+    let obj = Value::builtin_constructor_from_nvp(new, &mut nvp, Some(prototype.clone()));
     prototype.set_constructor(obj.clone());
 
     obj
