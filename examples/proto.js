@@ -14,3 +14,7 @@ greens.show();
 
 var james = new James();
 james.show();
+// while ((james === null) == false) {
+//   console.log(james.__proto__, james.__proto__.constructor === Person, james.__proto__.constructor === Object)
+//   james = james.__proto__
+// }

@@ -13,6 +13,14 @@ pub enum Error {
 }
 
 #[derive(Clone, Debug)]
+pub enum Level {
+    Function,
+    Try { return_instr_pos: Vec<isize> },
+    Catch { return_instr_pos: Vec<isize> },
+    Finally,
+}
+
+#[derive(Clone, Debug)]
 pub struct Jumps {
     global: JumpToGlobalLabel,
     local: Vec<JumpFromLoop>,
@@ -43,6 +51,7 @@ pub struct VMCodeGen {
     pub func_header_info: Vec<Vec<FunctionHeaderInst>>,
     pub bytecode_gen: ByteCodeGen,
     pub labels: Jumps,
+    pub level: Vec<Level>,
 }
 
 impl VMCodeGen {
@@ -53,6 +62,7 @@ impl VMCodeGen {
             func_header_info: vec![vec![]],
             bytecode_gen: ByteCodeGen::new(),
             labels: Jumps::new(),
+            level: vec![],
         }
     }
 }
@@ -129,7 +139,9 @@ impl VMCodeGen {
             &NodeBase::Break(ref name) => self.run_break(name, iseq)?,
             &NodeBase::Continue(ref name) => self.run_continue(name, iseq)?,
             &NodeBase::Throw(ref val) => self.run_throw(val, iseq)?,
-            &NodeBase::Try(ref try, ref catch, ref param, ref finally) => self.run_try(&*try, &*catch, &*param, &*finally, iseq)?,
+            &NodeBase::Try(ref try, ref catch, ref param, ref finally) => {
+                self.run_try(&*try, &*catch, &*param, &*finally, iseq)?
+            }
             &NodeBase::New(ref expr) => self.run_new_expr(&*expr, iseq)?,
             &NodeBase::Object(ref properties) => self.run_object_literal(properties, iseq)?,
             &NodeBase::Array(ref properties) => self.run_array_literal(properties, iseq)?,
@@ -193,6 +205,7 @@ impl VMCodeGen {
         iseq.splice(1..1, section_callobj_set);
     }
 
+    /// function name(params...) { body }
     pub fn run_function_decl(
         &mut self,
         name: &String,
@@ -206,7 +219,11 @@ impl VMCodeGen {
 
         self.bytecode_gen.gen_create_context(&mut func_iseq);
 
+        self.level.push(Level::Function);
+
         self.run(body, &mut func_iseq, false)?;
+
+        self.level.pop();
 
         if !body.definitely_returns() {
             self.bytecode_gen.gen_push_undefined(&mut func_iseq);
@@ -255,7 +272,11 @@ impl VMCodeGen {
 
         self.bytecode_gen.gen_create_context(&mut func_iseq);
 
+        self.level.push(Level::Function);
+
         self.run(body, &mut func_iseq, false)?;
+
+        self.level.pop();
 
         if !body.definitely_returns() {
             self.bytecode_gen.gen_push_undefined(&mut func_iseq);
@@ -297,7 +318,33 @@ impl VMCodeGen {
             self.bytecode_gen.gen_push_undefined(iseq);
         }
 
-        self.bytecode_gen.gen_return(iseq);
+        if self.level.len() == 0 {
+            self.bytecode_gen.gen_return(iseq);
+        } else {
+            for level in self.level.iter_mut().rev() {
+                match level {
+                    Level::Catch { .. } => {
+                        self.bytecode_gen.gen_pop_scope(iseq);
+                    }
+                    Level::Function => break,
+                    _ => {}
+                }
+            }
+            match self.level.last_mut().unwrap() {
+                Level::Catch {
+                    ref mut return_instr_pos,
+                }
+                | Level::Try {
+                    ref mut return_instr_pos,
+                } => {
+                    return_instr_pos.push(iseq.len() as isize);
+                    self.bytecode_gen.gen_return_try(iseq);
+                }
+                _ => {
+                    self.bytecode_gen.gen_return(iseq);
+                }
+            }
+        }
 
         Ok(())
     }
@@ -593,23 +640,38 @@ impl VMCodeGen {
     ) -> Result<(), Error> {
         let enter_pos = iseq.len() as isize;
         self.bytecode_gen.gen_enter_try(iseq);
+        self.level.push(Level::Try {
+            return_instr_pos: vec![],
+        });
         self.run(try, iseq, false)?;
+        let try_ = self.level.pop().unwrap();
         self.bytecode_gen.gen_jmp(0, iseq);
 
         let catch_pos = iseq.len() as isize;
         self.bytecode_gen.gen_catch(iseq);
+        self.bytecode_gen.gen_push_scope(iseq);
         match &param.base {
             NodeBase::Identifier(param_name) => {
                 self.bytecode_gen.gen_decl_var(&param_name, iseq);
                 self.bytecode_gen.gen_set_value(&param_name, iseq);
             }
-            _ => unreachable!(),
+            _ => {
+                self.bytecode_gen.gen_pop(iseq);
+            }
         }
+        self.level.push(Level::Catch {
+            return_instr_pos: vec![],
+        });
+
         self.run(catch, iseq, false)?;
+        self.bytecode_gen.gen_pop_scope(iseq);
+        let catch_ = self.level.pop().unwrap();
 
         let finally_pos = iseq.len() as isize;
         self.bytecode_gen.gen_finally(iseq);
+        self.level.push(Level::Finally);
         self.run(finally, iseq, false)?;
+        self.level.pop();
 
         self.bytecode_gen.gen_leave_try(iseq);
 
@@ -627,9 +689,11 @@ impl VMCodeGen {
             &mut iseq[catch_pos as usize - 4..catch_pos as usize],
         );
 
+        try_.set_finally(finally_pos, &mut self.bytecode_gen, iseq);
+        catch_.set_finally(finally_pos, &mut self.bytecode_gen, iseq);
+
         Ok(())
     }
-
 }
 
 impl VMCodeGen {
@@ -952,6 +1016,24 @@ impl VMCodeGen {
         self.bytecode_gen.gen_get_value(name, iseq);
 
         Ok(())
+    }
+}
+
+// Level
+
+impl Level {
+    pub fn set_finally(self, finally_pos: isize, gen: &mut ByteCodeGen, iseq: &mut ByteCode) {
+        match self {
+            Level::Try { return_instr_pos } | Level::Catch { return_instr_pos } => {
+                for instr_pos in return_instr_pos {
+                    gen.replace_int32(
+                        (finally_pos - instr_pos) as i32,
+                        &mut iseq[instr_pos as usize + 1..instr_pos as usize + 5],
+                    );
+                }
+            }
+            _ => {}
+        }
     }
 }
 

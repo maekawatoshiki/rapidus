@@ -46,7 +46,7 @@ fn main() {
     let file_name = match app_matches.value_of("file") {
         Some(file_name) => file_name,
         None => {
-            repl();
+            repl(app_matches.is_present("debug"));
             return;
         }
     };
@@ -114,11 +114,11 @@ fn main() {
     // vm_codegen::test();
 }
 
-fn repl() {
+fn repl(debug: bool) {
     // TODO: REFINE CODE!!!!
-
     let mut vm_codegen = vm_codegen::VMCodeGen::new();
-    let mut vm = vm::vm::VM::new(vm_codegen.global_varmap);
+    let global = vm_codegen.global_varmap;
+    let mut vm = vm::vm::VM::new(global);
 
     let mut rl = rustyline::Editor::<()>::new();
 
@@ -173,39 +173,57 @@ fn repl() {
                 return;
             }
             Err(e) => panic!(e),
-        }
-
+        };
         vm.const_table = vm_codegen.bytecode_gen.const_table.clone();
         vm.state.pc = 0;
-
-        if let Err(e) = vm.run(iseq) {
-            match e {
-                RuntimeError::Unknown => vm::error::runtime_error("unknown error occurred"),
-                RuntimeError::Unimplemented => vm::error::runtime_error("unimplemented feature"),
-                RuntimeError::Reference(msg)
-                | RuntimeError::Type(msg)
-                | RuntimeError::General(msg) => vm::error::runtime_error(msg.as_str()),
-                RuntimeError::Exception(val) => {
-                    vm::error::runtime_error("Uncaught exception");
-                    builtin::debug_print(&val, true);
+        vm.is_debug = debug;
+        let res = vm.run(iseq);
+        if vm.state.stack.len() != 1 {
+            println!(
+                "Warning: stack length is {} (should be 1)",
+                vm.state.stack.len()
+            );
+        };
+        if vm.state.history.len() != 1 {
+            println!(
+                "Warning: history length is {} (should be 1)",
+                vm.state.history.len()
+            );
+        };
+        match res {
+            Err(e) => {
+                match e {
+                    RuntimeError::Unknown => vm::error::runtime_error("unknown error occurred"),
+                    RuntimeError::Unimplemented => {
+                        vm::error::runtime_error("unimplemented feature")
+                    }
+                    RuntimeError::Reference(msg)
+                    | RuntimeError::Type(msg)
+                    | RuntimeError::General(msg) => vm::error::runtime_error(msg.as_str()),
+                    RuntimeError::Exception(val) => {
+                        vm::error::runtime_error("Uncaught exception");
+                        builtin::debug_print(&val, true);
+                        unsafe {
+                            libc::puts(b"\0".as_ptr() as *const i8);
+                        }
+                    }
+                }
+                vm.state.stack.pop();
+            }
+            _ => {
+                // Show the evaluated result
+                if let Some(value) = vm.state.stack.pop() {
+                    //println!("{}", value.to_string());
                     unsafe {
+                        builtin::debug_print(&value, true);
                         libc::puts(b"\0".as_ptr() as *const i8);
                     }
                 }
             }
-            continue;
-        }
-
-        // Show the evaluated result
-        if let Some(value) = vm.state.stack.pop() {
-            unsafe {
-                builtin::debug_print(&value, true);
-                libc::puts(b"\0".as_ptr() as *const i8);
-            }
         }
 
         vm_codegen.bytecode_gen.const_table = vm.const_table.clone();
-        vm.state.stack.clear();
+        //vm.state.stack.clear();
     }
 }
 

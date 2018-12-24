@@ -1060,7 +1060,9 @@ impl Parser {
         token_start_pos!(pos, self.lexer);
         skip_symbol_or_error!(pos, self.lexer, Symbol::OpeningBrace);
         let try = self.read_block_statement()?;
-        let is_catch = self.lexer.skip_except_lineterminator(Kind::Keyword(Keyword::Catch))?;
+        let is_catch = self
+            .lexer
+            .skip_except_lineterminator(Kind::Keyword(Keyword::Catch))?;
         let (catch, param) = if is_catch {
             skip_symbol_or_error!(pos, self.lexer, Symbol::OpeningParen);
             // TODO: should accept BindingPattern

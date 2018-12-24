@@ -1,43 +1,26 @@
 #![macro_use]
 
-use chrono::{DateTime, Utc};
-pub use rustc_hash::FxHashMap;
-use std::ffi::CString;
-
 use super::callobj::{CallObject, CallObjectRef};
 use super::error::*;
 use builtin::{BuiltinFuncInfo, BuiltinFuncTy, BuiltinJITFuncInfo};
 use builtins::function;
 use bytecode_gen::ByteCode;
+use chrono::{DateTime, Utc};
 pub use gc;
 use gc::GcType;
 use id::Id;
-
-// Macros (TODO: Separate files)
-#[macro_export]
-macro_rules! make_object {
-    ($($property_name:ident : $val:expr),*) => { {
-        Value::object(gc::new( make_hashmap!( $($property_name : $val),* ) ))
-    } };
-}
-
-#[macro_export]
-macro_rules! make_hashmap {
-    ($($property_name:ident : $val:expr),*) => { {
-        #[allow(unused_mut)]
-        let mut map = FxHashMap::default();
-        $(map.insert(stringify!($property_name).to_string(), $val);)*
-        map
-    } };
-}
+pub use rustc_hash::FxHashMap;
+use std::ffi::CString;
 
 pub type FuncId = Id;
 
 pub type RawStringPtr = *mut libc::c_char;
 
+pub type PropMap = GcType<FxHashMap<String, Property>>;
+
 #[derive(Clone, Debug, PartialEq)]
-pub struct Value {
-    pub val: ValueBase,
+pub struct Property {
+    pub val: Value,
     pub writable: bool,
     pub enumerable: bool,
     pub configurable: bool,
@@ -45,91 +28,94 @@ pub struct Value {
 
 // Now 16 bytes
 #[derive(Clone, Debug, PartialEq)]
-pub enum ValueBase {
+pub enum Value {
     Empty,
     Null,
     Undefined,
     Bool(bool),
     Number(f64),
     String(Box<CString>), // TODO: Using CString is good for JIT. However, we need better one instead.
-    Function(
-        Box<(
-            FuncId,
-            ByteCode,
-            GcType<FxHashMap<String, Value>>,
-            CallObject,
-        )>,
-    ),
-    BuiltinFunction(
-        Box<(
-            BuiltinFuncInfo,
-            GcType<FxHashMap<String, Value>>,
-            CallObject,
-        )>,
-    ), // id(==0:unknown)
-    Object(GcType<FxHashMap<String, Value>>), // Object(FxHashMap<String, Value>),
+    Function(Box<(FuncId, ByteCode, PropMap, CallObject)>),
+    BuiltinFunction(Box<(BuiltinFuncInfo, PropMap, CallObject)>), // id(==0:unknown)
+    Object(PropMap), // Object(FxHashMap<String, Value>),
     Array(GcType<ArrayValue>),
-    Date(Box<(DateTime<Utc>, GcType<FxHashMap<String, Value>>)>),
+    Date(Box<(DateTime<Utc>, PropMap)>),
     Arguments, // TODO: Should have CallObject
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ArrayValue {
-    pub elems: Vec<Value>,
+    pub elems: Vec<Property>,
     pub length: usize,
-    pub obj: FxHashMap<String, Value>,
+    pub obj: PropMap,
 }
 
-impl Value {
-    pub fn new(val: ValueBase) -> Value {
-        Value {
+#[derive(Clone, Debug, PartialEq)]
+pub struct StrValuePair {
+    pub name: &'static str,
+    pub value: Value,
+}
+
+#[macro_export]
+macro_rules! make_nvp {
+    ($($property_name:ident : $val:expr),*) => {
+        vec![ $((stringify!($property_name), $val)),* ]
+    };
+}
+
+impl Property {
+    pub fn new(val: Value) -> Property {
+        Property {
             val: val,
             writable: true,
             enumerable: true,
             configurable: true,
         }
     }
+}
+
+impl Value {
+    /// convert to Property.
+    pub fn to_property(&self) -> Property {
+        Property::new(self.clone())
+    }
 
     pub fn empty() -> Value {
-        Value::new(ValueBase::Empty)
+        Value::Empty
     }
 
     pub fn null() -> Value {
-        Value::new(ValueBase::Null)
+        Value::Null
     }
 
     pub fn undefined() -> Value {
-        Value::new(ValueBase::Undefined)
+        Value::Undefined
     }
 
     pub fn bool(b: bool) -> Value {
-        Value::new(ValueBase::Bool(b))
+        Value::Bool(b)
     }
 
     pub fn number(n: f64) -> Value {
-        Value::new(ValueBase::Number(n))
+        Value::Number(n)
     }
 
     pub fn string(s: String) -> Value {
-        Value::new(ValueBase::String(Box::new(CString::new(s).unwrap())))
+        Value::String(Box::new(CString::new(s).unwrap()))
     }
 
+    /// make JS function object.
     pub fn function(id: FuncId, iseq: ByteCode, callobj: CallObject) -> Value {
-        let prototype = make_object!();
-        let val = Value::new(ValueBase::Function(Box::new((
+        let prototype = Value::object_from_nvp(&vec![]);
+        let val = Value::Function(Box::new((
             id,
             iseq,
-            gc::new({
-                let mut hm = FxHashMap::default();
-                hm.insert("prototype".to_string(), prototype.clone());
-                hm.insert(
-                    "__proto__".to_string(),
-                    function::FUNCTION_PROTOTYPE.with(|x| x.clone()),
-                );
-                hm
-            }),
+            Value::propmap_from_nvp(&make_nvp!(
+                prototype:  prototype.clone(),
+                __proto__:  function::FUNCTION_PROTOTYPE.with(|x| x.clone())
+            )),
             callobj,
-        ))));
+        )));
 
         prototype.set_constructor(val.clone());
 
@@ -139,131 +125,118 @@ impl Value {
     pub fn builtin_function_with_jit(
         func: BuiltinFuncTy,
         builtin_jit_func_info: BuiltinJITFuncInfo,
-        callobj: CallObject,
     ) -> Value {
-        Value::builtin_function_with_obj_and_prototype(
-            func,
-            Some(builtin_jit_func_info),
-            callobj,
-            FxHashMap::default(),
-            make_object!(),
-        )
+        Value::builtin_function(func, Some(builtin_jit_func_info), &mut vec![], None)
     }
 
     pub fn default_builtin_function(func: BuiltinFuncTy) -> Value {
-        Value::builtin_function_with_obj_and_prototype(
-            func,
-            None,
-            CallObject::new(Value::undefined()),
-            FxHashMap::default(),
-            make_object!(),
-        )
+        Value::builtin_function(func, None, &mut vec![], None)
     }
 
-    pub fn builtin_function(func: BuiltinFuncTy, callobj: CallObject) -> Value {
-        Value::builtin_function_with_obj_and_prototype(
-            func,
-            None,
-            callobj,
-            FxHashMap::default(),
-            make_object!(),
-        )
-    }
-
-    pub fn builtin_function_with_obj_and_prototype(
+    pub fn builtin_function(
         func: BuiltinFuncTy,
         builtin_jit_func_info: Option<BuiltinJITFuncInfo>,
-        callobj: CallObject,
-        mut obj: FxHashMap<String, Value>,
-        prototype: Value,
+        nvp: &mut Vec<(&'static str, Value)>,
+        prototype: Option<Value>,
     ) -> Value {
-        obj.insert(
-            "__proto__".to_string(),
-            function::FUNCTION_PROTOTYPE.with(|x| x.clone()),
-        );
-        obj.insert("prototype".to_string(), prototype);
-
-        Value::new(ValueBase::BuiltinFunction(Box::new((
-            BuiltinFuncInfo::new(func, builtin_jit_func_info),
-            gc::new(obj),
-            callobj,
-        ))))
-    }
-
-    pub fn object(obj: GcType<FxHashMap<String, Value>>) -> Value {
-        unsafe {
-            use builtins::object;
-            (*obj)
-                .entry("__proto__".to_string())
-                .or_insert(object::OBJECT_PROTOTYPE.with(|x| x.clone()));
+        if let Some(prototype) = prototype {
+            nvp.push(("prototype", prototype));
         }
-        Value::new(ValueBase::Object(obj))
+        let map = Value::propmap_from_nvp(nvp);
+        Value::BuiltinFunction(Box::new((
+            BuiltinFuncInfo::new(func, builtin_jit_func_info),
+            map,
+            CallObject::new(Value::undefined()),
+        )))
     }
 
-    pub fn array(ary: GcType<ArrayValue>) -> Value {
-        Value::new(ValueBase::Array(ary))
+    pub fn builtin_constructor_from_nvp(
+        func: BuiltinFuncTy,
+        nvp: &mut Vec<(&'static str, Value)>,
+        prototype: Option<Value>,
+    ) -> Value {
+        Value::builtin_function(func, None, nvp, prototype)
+    }
+
+    ///
+    /// make new propmap from nvp.
+    ///  
+    pub fn propmap_from_nvp(svp: &Vec<(&'static str, Value)>) -> PropMap {
+        let mut map = FxHashMap::default();
+        for p in svp {
+            map.insert(p.0.to_string(), p.1.to_property());
+        }
+        gc::new(map)
+    }
+
+    pub fn insert_propmap(map: PropMap, svp: &Vec<(&'static str, Value)>) {
+        unsafe {
+            for p in svp {
+                (*map).insert(p.0.to_string(), p.1.to_property());
+            }
+        }
+    }
+
+    pub fn object(map: PropMap) -> Value {
+        use builtins::object;
+        unsafe {
+            (*map)
+                .entry("__proto__".to_string())
+                .or_insert(object::OBJECT_PROTOTYPE.with(|x| x.clone()).to_property());
+            Value::Object(map)
+        }
+    }
+
+    ///
+    /// make new object from nvp.
+    ///
+    pub fn object_from_nvp(nvp: &Vec<(&'static str, Value)>) -> Value {
+        let map = Value::propmap_from_nvp(&nvp);
+        Value::object(map)
+    }
+
+    pub fn array(map: PropMap) -> Value {
+        let mut ary = ArrayValue::new(vec![]);
+        ary.obj = map;
+        Value::Array(gc::new(ary))
+    }
+
+    pub fn array_from_elems(elms: Vec<Value>) -> Value {
+        let ary = ArrayValue::new(elms);
+        Value::Array(gc::new(ary))
     }
 
     pub fn date(time_val: DateTime<Utc>) -> Value {
         use builtins::date::DATE_PROTOTYPE;
-        Value::new(ValueBase::Date(Box::new((time_val, {
+        Value::Date(Box::new((time_val, {
             let mut hm = FxHashMap::default();
-            hm.insert("__proto__".to_string(), DATE_PROTOTYPE.with(|x| x.clone()));
+            hm.insert(
+                "__proto__".to_string(),
+                Property::new(DATE_PROTOTYPE.with(|x| x.clone())),
+            );
             gc::new(hm)
-        }))))
+        })))
     }
 
     pub fn arguments() -> Value {
-        Value::new(ValueBase::Arguments)
+        Value::Arguments
     }
 
     pub fn get_property(&self, property: Value, callobjref: Option<&CallObjectRef>) -> Value {
         let property_of_number = || -> Value {
             use builtins::number::NUMBER_PROTOTYPE;
-            match obj_find_val(
-                NUMBER_PROTOTYPE.with(|x| unsafe { &**x }),
-                property.to_string().as_str(),
-            )
-            .val
-            {
-                ValueBase::Function(box (id, iseq, map2, mut callobj)) => {
-                    Value::new(ValueBase::Function(Box::new((id, iseq, map2, {
-                        *callobj.this = self.clone();
-                        callobj
-                    }))))
-                }
-                ValueBase::BuiltinFunction(box (id, obj, mut callobj)) => {
-                    Value::new(ValueBase::BuiltinFunction(Box::new((id, obj, {
-                        *callobj.this = self.clone();
-                        callobj
-                    }))))
-                }
-                val => Value::new(val),
-            }
+            let val = NUMBER_PROTOTYPE.with(|x| x.clone());
+            set_this(obj_find_val(val, property.to_string().as_str()), self)
         };
 
-        let property_of_simple = |obj: &FxHashMap<String, Value>| -> Value {
-            match obj_find_val(obj, property.to_string().as_str()).val {
-                ValueBase::Function(box (id, iseq, map2, mut callobj)) => {
-                    Value::new(ValueBase::Function(Box::new((id, iseq, map2, {
-                        *callobj.this = self.clone();
-                        callobj
-                    }))))
-                }
-                ValueBase::BuiltinFunction(box (id, obj, mut callobj)) => {
-                    Value::new(ValueBase::BuiltinFunction(Box::new((id, obj, {
-                        *callobj.this = self.clone();
-                        callobj
-                    }))))
-                }
-                val => Value::new(val),
-            }
+        let property_of_object = |obj: Value| -> Value {
+            set_this(obj_find_val(obj, property.to_string().as_str()), self)
         };
 
         let property_of_string = |s: &CString| -> Value {
-            match property.val {
+            match property {
                 // Character at the index 'n'
-                ValueBase::Number(n) if is_integer(n) => Value::string(
+                Value::Number(n) if is_integer(n) => Value::string(
                     s.to_str()
                         .unwrap()
                         .chars()
@@ -272,68 +245,69 @@ impl Value {
                         .to_string(),
                 ),
                 // Length of string. TODO: Is this implementation correct?
-                ValueBase::String(ref member) if member.to_str().unwrap() == "length" => {
-                    Value::number(
-                        s.to_str()
-                            .unwrap()
-                            .chars()
-                            .fold(0, |x, c| x + c.len_utf16()) as f64,
-                    )
-                }
+                Value::String(ref member) if member.to_str().unwrap() == "length" => Value::number(
+                    s.to_str()
+                        .unwrap()
+                        .chars()
+                        .fold(0, |x, c| x + c.len_utf16()) as f64,
+                ),
                 // TODO: Support all features.
                 _ => Value::undefined(),
             }
         };
 
-        let property_of_object =
-            |properties: &FxHashMap<String, Value>| -> Value { property_of_simple(properties) };
-
-        let property_of_array = |ary: &ArrayValue| -> Value {
+        let property_of_array = |obj: &Value| -> Value {
             let get_by_idx = |n: usize| -> Value {
-                let arr = &ary.elems;
+                if let Value::Array(ref arrval) = obj {
+                    unsafe {
+                        let arr = &(**arrval).elems;
+                        if n >= (**arrval).length {
+                            return Value::undefined();
+                        }
 
-                if n >= ary.length {
-                    return Value::undefined();
-                }
-
-                match arr[n] {
-                    Value {
-                        val: ValueBase::Empty,
-                        ..
-                    } => Value::undefined(),
-                    ref other => other.clone(),
+                        match arr[n].val {
+                            Value::Empty => Value::undefined(),
+                            ref other => other.clone(),
+                        }
+                    }
+                } else {
+                    unreachable!("get_property(): Value is not an array.");
                 }
             };
 
-            match property.val {
+            match property {
                 // Index
-                ValueBase::Number(n) if is_integer(n) && n >= 0.0 => get_by_idx(n as usize),
-                ValueBase::String(ref s) if s.to_str().unwrap() == "length" => {
-                    Value::number(ary.length as f64)
+                Value::Number(n) if is_integer(n) && n >= 0.0 => get_by_idx(n as usize),
+                Value::String(ref s) if s.to_str().unwrap() == "length" => {
+                    if let Value::Array(ref arrval) = obj {
+                        unsafe { Value::number((**arrval).length as f64) }
+                    } else {
+                        unreachable!("get_property(): Value is not an array.");
+                    }
                 }
-                ValueBase::String(ref s) => {
+                Value::String(ref s) => {
                     // https://www.ecma-international.org/ecma-262/9.0/index.html#sec-array-exotic-objects
                     let num = property.to_uint32();
                     if Value::number(num).to_string() == s.to_str().unwrap() {
                         get_by_idx(num as usize)
                     } else {
-                        property_of_simple(&ary.obj)
+                        obj_find_val(obj.clone(), &property.to_string())
                     }
                 }
-                _ => property_of_simple(&ary.obj),
+                _ => obj_find_val(obj.clone(), &property.to_string()),
             }
         };
 
         let property_of_arguments = || -> Value {
             {
-                match property.val {
+                match property {
                     // Index
-                    ValueBase::Number(n) if is_integer(n) && n >= 0.0 => callobjref
+                    Value::Number(n) if is_integer(n) && n >= 0.0 => callobjref
                         .and_then(|co| unsafe {
                             Some((**co).get_arguments_nth_value(n as usize).unwrap())
                         })
                         .unwrap_or_else(|| Value::undefined()),
-                    ValueBase::String(ref s) if s.to_str().unwrap() == "length" => {
+                    Value::String(ref s) if s.to_str().unwrap() == "length" => {
                         let length = callobjref
                             .and_then(|co| unsafe { Some((**co).get_arguments_length()) })
                             .unwrap_or(0);
@@ -344,78 +318,75 @@ impl Value {
             }
         };
 
-        match self.val {
-            ValueBase::Number(_) => property_of_number(),
-            ValueBase::String(ref s) => property_of_string(s),
-            ValueBase::BuiltinFunction(box (_, ref obj, _))
-            | ValueBase::Function(box (_, _, ref obj, _))
-            | ValueBase::Date(box (_, ref obj))
-            | ValueBase::Object(ref obj) => property_of_object(unsafe { &**obj }),
-            ValueBase::Array(ref ary) => property_of_array(unsafe { &**ary }),
-            ValueBase::Arguments => property_of_arguments(),
+        match self {
+            Value::Number(_) => property_of_number(),
+            Value::String(ref s) => property_of_string(s),
+            Value::BuiltinFunction(_) | Value::Function(_) | Value::Date(_) | Value::Object(_) => {
+                property_of_object(self.clone())
+            }
+            Value::Array(_) => property_of_array(&*self),
+            Value::Arguments => property_of_arguments(),
             // TODO: Implement
             _ => Value::undefined(),
         }
     }
 
     pub fn set_property(&self, property: Value, value: Value, callobjref: Option<&CallObjectRef>) {
-        fn set_by_idx(map: &mut ArrayValue, n: usize, val: Value) {
-            if n >= map.length as usize {
-                map.length = n + 1;
-                while map.elems.len() < n + 1 {
-                    map.elems.push(Value::empty());
+        fn set_by_idx(ary: &mut ArrayValue, n: usize, val: Value) {
+            if n >= ary.length as usize {
+                ary.length = n + 1;
+                while ary.elems.len() < n + 1 {
+                    ary.elems.push(Value::empty().to_property());
                 }
             }
-            map.elems[n] = val;
+            ary.elems[n] = val.to_property();
         };
 
-        match self.val {
-            ValueBase::Object(map)
-            | ValueBase::Date(box (_, map))
-            | ValueBase::Function(box (_, _, map, _))
-            | ValueBase::BuiltinFunction(box (_, map, _)) => unsafe {
-                *(*map)
+        match self {
+            Value::Object(map)
+            | Value::Date(box (_, map))
+            | Value::Function(box (_, _, map, _))
+            | Value::BuiltinFunction(box (_, map, _)) => unsafe {
+                let refval = (**map)
                     .entry(property.to_string())
-                    .or_insert_with(|| Value::undefined()) = value;
+                    .or_insert_with(|| Value::undefined().to_property());
+                *refval = value.to_property();
             },
-            ValueBase::Array(map) => {
-                let mut map = unsafe { &mut *map };
-
-                match property.val {
+            Value::Array(ref aryval) => {
+                match property {
                     // Index
-                    ValueBase::Number(n) if is_integer(n) && n >= 0.0 => {
-                        set_by_idx(map, n as usize, value)
-                    }
-                    ValueBase::String(ref s) if s.to_str().unwrap() == "length" => {
-                        match value.val {
-                            ValueBase::Number(n) if is_integer(n) && n >= 0.0 => {
-                                map.length = n as usize;
-                                while map.elems.len() < n as usize + 1 {
-                                    map.elems.push(Value::empty());
-                                }
+                    Value::Number(n) if is_integer(n) && n >= 0.0 => unsafe {
+                        set_by_idx(&mut **aryval, n as usize, value)
+                    },
+                    Value::String(ref s) if s.to_str().unwrap() == "length" => match value {
+                        Value::Number(n) if is_integer(n) && n >= 0.0 => unsafe {
+                            (**aryval).length = n as usize;
+                            while (**aryval).elems.len() < n as usize + 1 {
+                                (**aryval).elems.push(Value::empty().to_property());
                             }
-                            _ => {}
-                        }
-                    }
+                        },
+                        _ => {}
+                    },
                     // https://www.ecma-international.org/ecma-262/9.0/index.html#sec-array-exotic-objects
-                    ValueBase::String(ref s)
-                        if Value::number(property.val.to_uint32()).to_string()
+                    Value::String(ref s)
+                        if Value::number(property.to_uint32()).to_string()
                             == s.to_str().unwrap() =>
                     {
-                        let num = property.val.to_uint32();
-                        set_by_idx(map, num as usize, value)
+                        let num = property.to_uint32();
+                        unsafe { set_by_idx(&mut **aryval, num as usize, value) }
                     }
-                    _ => {
-                        *map.obj
+                    _ => unsafe {
+                        let refval = (*(**aryval).obj)
                             .entry(property.to_string())
-                            .or_insert_with(|| Value::undefined()) = value
-                    }
+                            .or_insert_with(|| Value::undefined().to_property());
+                        *refval = value.to_property();
+                    },
                 }
             }
-            ValueBase::Arguments => {
-                match property.val {
+            Value::Arguments => {
+                match property {
                     // Index
-                    ValueBase::Number(n) if n - n.floor() == 0.0 => unsafe {
+                    Value::Number(n) if n - n.floor() == 0.0 => unsafe {
                         (**callobjref.unwrap()).set_arguments_nth_value(n as usize, value);
                     },
                     // TODO: 'length'
@@ -427,53 +398,45 @@ impl Value {
     }
 
     pub fn set_number_if_possible(&mut self, n: f64) {
-        if let ValueBase::Number(ref mut n_) = self.val {
+        if let Value::Number(ref mut n_) = self {
             *n_ = n;
         }
     }
 
     pub fn set_constructor(&self, constructor: Value) {
-        match self.val {
-            ValueBase::Function(box (_, _, obj, _))
-            | ValueBase::BuiltinFunction(box (_, obj, _))
-            | ValueBase::Date(box (_, obj))
-            | ValueBase::Object(obj) => unsafe {
-                (*obj).insert("constructor".to_string(), constructor);
+        match self {
+            Value::Function(box (_, _, obj, _))
+            | Value::BuiltinFunction(box (_, obj, _))
+            | Value::Date(box (_, obj))
+            | Value::Object(obj) => unsafe {
+                (**obj).insert("constructor".to_string(), constructor.to_property());
             },
-            ValueBase::Array(aryval) => unsafe {
-                (*aryval).obj.insert("constructor".to_string(), constructor);
+            Value::Array(aryval) => unsafe {
+                (*((**aryval).obj)).insert("constructor".to_string(), constructor.to_property());
             },
-            ValueBase::Empty
-            | ValueBase::Null
-            | ValueBase::Undefined
-            | ValueBase::Bool(_)
-            | ValueBase::Number(_)
-            | ValueBase::String(_)
-            | ValueBase::Arguments => {}
+            Value::Empty
+            | Value::Null
+            | Value::Undefined
+            | Value::Bool(_)
+            | Value::Number(_)
+            | Value::String(_)
+            | Value::Arguments => {}
         }
-    }
-
-    pub fn to_string(&self) -> String {
-        self.val.to_string()
-    }
-
-    pub fn to_uint32(&self) -> f64 {
-        self.val.to_uint32()
     }
 }
 
-impl ValueBase {
+impl Value {
     pub fn to_string(&self) -> String {
         match self {
-            ValueBase::Undefined => "undefined".to_string(),
-            ValueBase::Bool(b) => {
+            Value::Undefined => "undefined".to_string(),
+            Value::Bool(b) => {
                 if *b {
                     "true".to_string()
                 } else {
                     "false".to_string()
                 }
             }
-            ValueBase::Number(n) => {
+            Value::Number(n) => {
                 if n.is_nan() {
                     return "NaN".to_string();
                 }
@@ -490,11 +453,15 @@ impl ValueBase {
                 //  ref. https://tc39.github.io/ecma262/#sec-tostring-applied-to-the-number-type
                 format!("{}", *n)
             }
-            ValueBase::String(s) => s.clone().into_string().unwrap(),
-            ValueBase::Array(ary_val) => unsafe { (**ary_val).to_string() },
-            ValueBase::Object(_) => "[object Object]".to_string(),
-            ValueBase::Date(box (time_val, _)) => time_val.to_rfc3339(),
-            e => unimplemented!("{:?}", e),
+            Value::String(s) => s.clone().into_string().unwrap(),
+            Value::Array(ary_val) => unsafe { (**ary_val).to_string() },
+            Value::Object(_) => "[object Object]".to_string(),
+            Value::Date(box (time_val, _)) => time_val.to_rfc3339(),
+            Value::Function(_) => "[Function]".to_string(),
+            Value::BuiltinFunction(_) => "[BuiltinFunc]".to_string(),
+            Value::Null => "null".to_string(),
+            Value::Empty => "empty".to_string(),
+            _ => "NOT IMPLEMENTED".to_string(),
         }
     }
 
@@ -518,7 +485,7 @@ impl ValueBase {
                 0 => 0.0,
                 // TODO: FIX!!!
                 1 => match ary.elems[0].val {
-                    ValueBase::Bool(_) => ::std::f64::NAN,
+                    Value::Bool(_) => ::std::f64::NAN,
                     ref otherwise => otherwise.to_number(),
                 },
                 _ => ::std::f64::NAN,
@@ -526,12 +493,12 @@ impl ValueBase {
         }
 
         match self {
-            ValueBase::Undefined => ::std::f64::NAN,
-            ValueBase::Bool(false) => 0.0,
-            ValueBase::Bool(true) => 1.0,
-            ValueBase::Number(n) => *n,
-            ValueBase::String(s) => str_to_num(s.to_str().unwrap()),
-            ValueBase::Array(ary) => ary_to_num(unsafe { &**ary }),
+            Value::Undefined => ::std::f64::NAN,
+            Value::Bool(false) => 0.0,
+            Value::Bool(true) => 1.0,
+            Value::Number(n) => *n,
+            Value::String(s) => str_to_num(s.to_str().unwrap()),
+            Value::Array(ary) => ary_to_num(unsafe { &**ary }),
             _ => ::std::f64::NAN,
         }
     }
@@ -561,51 +528,47 @@ impl ValueBase {
     // TODO: Need a correct implementation!
     pub fn to_boolean(&self) -> bool {
         match self {
-            ValueBase::Undefined => false,
-            ValueBase::Bool(b) => *b,
-            ValueBase::Number(n) if *n == 0.0 || n.is_nan() => false,
-            ValueBase::Number(_) => true,
-            ValueBase::String(s) if s.to_str().unwrap().len() == 0 => false,
-            ValueBase::String(_) => true,
-            ValueBase::Array(_) => true,
-            ValueBase::Object(_) => true,
+            Value::Undefined => false,
+            Value::Bool(b) => *b,
+            Value::Number(n) if *n == 0.0 || n.is_nan() => false,
+            Value::Number(_) => true,
+            Value::String(s) if s.to_str().unwrap().len() == 0 => false,
+            Value::String(_) => true,
+            Value::Array(_) => true,
+            Value::Object(_) => true,
             _ => false,
         }
     }
 }
 
-impl ValueBase {
-    pub fn type_equal(&self, other: &ValueBase) -> bool {
+impl Value {
+    pub fn type_equal(&self, other: &Value) -> bool {
         match (self, other) {
-            (&ValueBase::Empty, ValueBase::Empty)
-            | (&ValueBase::Null, ValueBase::Null)
-            | (&ValueBase::Undefined, ValueBase::Undefined)
-            | (&ValueBase::Bool(_), ValueBase::Bool(_))
-            | (&ValueBase::Number(_), ValueBase::Number(_))
-            | (&ValueBase::String(_), ValueBase::String(_))
-            | (&ValueBase::Object(_), ValueBase::Object(_))
-            | (&ValueBase::Function(_), ValueBase::Function(_))
-            | (&ValueBase::BuiltinFunction(_), ValueBase::BuiltinFunction(_))
-            | (ValueBase::Array(_), ValueBase::Array(_))
-            | (ValueBase::Arguments, ValueBase::Arguments) => true,
+            (&Value::Empty, Value::Empty)
+            | (&Value::Null, Value::Null)
+            | (&Value::Undefined, Value::Undefined)
+            | (&Value::Bool(_), Value::Bool(_))
+            | (&Value::Number(_), Value::Number(_))
+            | (&Value::String(_), Value::String(_))
+            | (&Value::Object(_), Value::Object(_))
+            | (&Value::Function(_), Value::Function(_))
+            | (&Value::BuiltinFunction(_), Value::BuiltinFunction(_))
+            | (Value::Array(_), Value::Array(_))
+            | (Value::Arguments, Value::Arguments) => true,
             _ => false,
         }
     }
     // https://tc39.github.io/ecma262/#sec-abstract-equality-comparison
-    pub fn abstract_equal(self, other: ValueBase) -> Result<bool, RuntimeError> {
+    pub fn abstract_equal(self, other: Value) -> Result<bool, RuntimeError> {
         if self.type_equal(&other) {
             return self.strict_equal(other);
         }
 
         match (&self, &other) {
-            (&ValueBase::Number(l), &ValueBase::String(_)) => Ok(l == other.to_number()),
-            (&ValueBase::String(_), &ValueBase::Number(r)) => Ok(self.to_number() == r),
-            (&ValueBase::Bool(_), _) => {
-                Ok(ValueBase::Number(self.to_number()).abstract_equal(other)?)
-            }
-            (_, &ValueBase::Bool(_)) => {
-                Ok(ValueBase::Number(other.to_number()).abstract_equal(self)?)
-            }
+            (&Value::Number(l), &Value::String(_)) => Ok(l == other.to_number()),
+            (&Value::String(_), &Value::Number(r)) => Ok(self.to_number() == r),
+            (&Value::Bool(_), _) => Ok(Value::Number(self.to_number()).abstract_equal(other)?),
+            (_, &Value::Bool(_)) => Ok(Value::Number(other.to_number()).abstract_equal(self)?),
             // TODO: Implement the following cases:
             //  8. If Type(x) is either String, Number, or Symbol and Type(y) is Object,
             //      return the result of the comparison x == ToPrimitive(y).
@@ -616,25 +579,24 @@ impl ValueBase {
     }
 
     // https://tc39.github.io/ecma262/#sec-strict-equality-comparison
-    pub fn strict_equal(self, other: ValueBase) -> Result<bool, RuntimeError> {
+    pub fn strict_equal(self, other: Value) -> Result<bool, RuntimeError> {
         match (self, other) {
-            (ValueBase::Empty, ValueBase::Empty) => unreachable!(),
-            (ValueBase::Null, ValueBase::Null) => Ok(true),
-            (ValueBase::Undefined, ValueBase::Undefined) => Ok(true),
-            (ValueBase::Bool(l), ValueBase::Bool(r)) => Ok(l == r),
-            (ValueBase::Number(l), ValueBase::Number(r)) if l.is_nan() || r.is_nan() => Ok(false),
-            (ValueBase::Number(l), ValueBase::Number(r)) => Ok(l == r),
-            (ValueBase::String(l), ValueBase::String(r)) => Ok(l == r),
-            (ValueBase::Object(l), ValueBase::Object(r)) => Ok(l == r),
-            (ValueBase::Function(box (l1, _, l2, _)), ValueBase::Function(box (r1, _, r2, _))) => {
+            (Value::Empty, Value::Empty) => unreachable!(),
+            (Value::Null, Value::Null) => Ok(true),
+            (Value::Undefined, Value::Undefined) => Ok(true),
+            (Value::Bool(l), Value::Bool(r)) => Ok(l == r),
+            (Value::Number(l), Value::Number(r)) if l.is_nan() || r.is_nan() => Ok(false),
+            (Value::Number(l), Value::Number(r)) => Ok(l == r),
+            (Value::String(l), Value::String(r)) => Ok(l == r),
+            (Value::Object(l), Value::Object(r)) => Ok(l == r),
+            (Value::Function(box (l1, _, l2, _)), Value::Function(box (r1, _, r2, _))) => {
                 Ok(l1 == r1 && l2 == r2)
             }
-            (
-                ValueBase::BuiltinFunction(box (l1, l2, _)),
-                ValueBase::BuiltinFunction(box (r1, r2, _)),
-            ) => Ok(l1 == r1 && l2 == r2),
-            (ValueBase::Array(l), ValueBase::Array(r)) => Ok(l == r),
-            (ValueBase::Arguments, ValueBase::Arguments) => return Err(RuntimeError::Unimplemented),
+            (Value::BuiltinFunction(box (l1, l2, _)), Value::BuiltinFunction(box (r1, r2, _))) => {
+                Ok(l1 == r1 && l2 == r2)
+            }
+            (Value::Array(l), Value::Array(r)) => Ok(l == r),
+            (Value::Arguments, Value::Arguments) => return Err(RuntimeError::Unimplemented),
             _ => Ok(false),
         }
     }
@@ -644,13 +606,16 @@ impl ArrayValue {
     pub fn new(arr: Vec<Value>) -> ArrayValue {
         let len = arr.len();
         ArrayValue {
-            elems: arr,
+            elems: arr.iter().map(|x| x.to_property()).collect(),
             length: len,
             obj: {
                 use builtins::array::ARRAY_PROTOTYPE;
                 let mut hm = FxHashMap::default();
-                hm.insert("__proto__".to_string(), ARRAY_PROTOTYPE.with(|x| x.clone()));
-                hm
+                hm.insert(
+                    "__proto__".to_string(),
+                    Property::new(ARRAY_PROTOTYPE.with(|x| x.clone())),
+                );
+                gc::new(hm)
             },
         }
     }
@@ -658,15 +623,15 @@ impl ArrayValue {
     pub fn to_string(&self) -> String {
         self.elems[0..self.length]
             .iter()
-            .fold("".to_string(), |acc, val| {
-                acc + val.to_string().as_str() + ","
+            .fold("".to_string(), |acc, prop| {
+                acc + prop.val.to_string().as_str() + ","
             })
             .trim_right_matches(",")
             .to_string()
     }
 
     pub fn push(&mut self, val: Value) {
-        self.elems.push(val);
+        self.elems.push(Property::new(val));
         self.length += 1;
     }
 }
@@ -678,18 +643,56 @@ fn is_integer(f: f64) -> bool {
     f - f.floor() == 0.0
 }
 
-pub fn obj_find_val(obj: &FxHashMap<String, Value>, key: &str) -> Value {
-    match obj.get(key) {
-        Some(addr) => addr.clone(),
-        None => match obj.get("__proto__") {
-            Some(val) => match val.val {
-                ValueBase::Function(box (_, _, obj, _))
-                | ValueBase::BuiltinFunction(box (_, obj, _))
-                | ValueBase::Object(obj) => unsafe { obj_find_val(&*obj, key) },
-                ValueBase::Array(aryval) => unsafe { obj_find_val(&(*aryval).obj, key) },
-                _ => Value::undefined(),
+///
+/// get <key> property of <val> object.
+/// if the property does not exists, trace the prototype chain.
+/// return Value::Undefined for primitives.
+/// BuiltinFunction.__proto__ === FUNCTION_PROTOTYPE
+///
+pub fn obj_find_val(val: Value, key: &str) -> Value {
+    let (map, is_builtin_func) = match val {
+        Value::BuiltinFunction(box (_, map, _)) => (map, true),
+        Value::Function(box (_, _, map, _)) | Value::Date(box (_, map)) | Value::Object(map) => {
+            (map, false)
+        }
+        Value::Array(aryval) => (unsafe { (*aryval).obj }, false),
+        _ => return Value::Undefined,
+    };
+    unsafe {
+        match (*map).get(key) {
+            Some(prop) => prop.val.clone(),
+            None if is_builtin_func && key == "__proto__" => {
+                return function::FUNCTION_PROTOTYPE.with(|x| x.clone());
+            }
+            None => match (*map).get("__proto__") {
+                Some(prop) => obj_find_val(prop.val.clone(), key),
+                None if is_builtin_func => {
+                    obj_find_val(function::FUNCTION_PROTOTYPE.with(|x| x.clone()), key)
+                }
+                _ => return Value::Undefined,
             },
-            _ => Value::undefined(),
-        },
+        }
+    }
+}
+
+///
+/// if val is Function or BuiltinFunction, clone val and set this for callobj.this.
+/// otherwise, do nothing.
+///
+pub fn set_this(val: Value, this: &Value) -> Value {
+    match val.clone() {
+        Value::Function(box (id, iseq, map, mut callobj)) => {
+            Value::Function(Box::new((id, iseq, map, {
+                *callobj.this = this.clone();
+                callobj
+            })))
+        }
+        Value::BuiltinFunction(box (id, obj, mut callobj)) => {
+            Value::BuiltinFunction(Box::new((id, obj, {
+                *callobj.this = this.clone();
+                callobj
+            })))
+        }
+        val => val,
     }
 }

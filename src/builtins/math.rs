@@ -1,20 +1,123 @@
+//use libc;
+use builtin::BuiltinJITFuncInfo;
+use jit::TracingJit;
+use llvm::core::*;
 use rand::random;
-use vm::{
-    callobj::CallObject,
-    error::RuntimeError,
-    value::{Value, ValueBase},
-    vm::VM,
-};
+use std::ffi::CString;
+use vm::{callobj::CallObject, error::RuntimeError, value::Value, vm::VM};
+
+pub fn init(jit: TracingJit) -> Value {
+    Value::object_from_nvp(&make_nvp!(
+        PI:     Value::number(::std::f64::consts::PI),
+        abs:    Value::default_builtin_function(math_abs),
+        acos:   Value::default_builtin_function(math_acos),
+        acosh:  Value::default_builtin_function(math_acosh),
+        asin:   Value::default_builtin_function(math_asin),
+        asinh:  Value::default_builtin_function(math_asinh),
+        atan:   Value::default_builtin_function(math_atan),
+        atanh:  Value::default_builtin_function(math_atanh),
+        atan2:  Value::default_builtin_function(math_atan2),
+        cbrt:   Value::default_builtin_function(math_cbrt),
+        ceil:   Value::default_builtin_function(math_ceil),
+        clz32:  Value::default_builtin_function(math_clz32),
+        cos:    Value::default_builtin_function(math_cos),
+        cosh:   Value::default_builtin_function(math_cosh),
+        exp:    Value::default_builtin_function(math_exp),
+        expm1:  Value::default_builtin_function(math_expm1),
+        fround: Value::default_builtin_function(math_fround),
+        hypot:  Value::default_builtin_function(math_hypot),
+        log:    Value::default_builtin_function(math_log),
+        log1p:  Value::default_builtin_function(math_log1p),
+        log10:  Value::default_builtin_function(math_log10),
+        log2:   Value::default_builtin_function(math_log2),
+        max:    Value::default_builtin_function(math_max),
+        min:    Value::default_builtin_function(math_min),
+        round:  Value::default_builtin_function(math_round),
+        sign:   Value::default_builtin_function(math_sign),
+        sin:    Value::default_builtin_function(math_sin),
+        sinh:   Value::default_builtin_function(math_sinh),
+        sqrt:   Value::default_builtin_function(math_sqrt),
+        tan:    Value::default_builtin_function(math_tan),
+        tanh:   Value::default_builtin_function(math_tanh),
+        trunc:  Value::default_builtin_function(math_trunc),
+        floor:  {
+            let llvm_func = unsafe {
+                LLVMAddFunction(
+                    jit.module,
+                    CString::new("jit_math_floor").unwrap().as_ptr(),
+                    LLVMFunctionType(
+                        LLVMDoubleTypeInContext(jit.context),
+                        vec![LLVMDoubleTypeInContext(jit.context)]
+                            .as_mut_slice()
+                            .as_mut_ptr(),
+                        1,
+                        0,
+                    ),
+                )
+            };
+            Value::builtin_function_with_jit(
+                math_floor,
+                BuiltinJITFuncInfo::Normal {
+                    func: jit_math_floor as *mut libc::c_void,
+                    llvm_func,
+                },
+            )
+        },
+        random: {
+            let llvm_func = unsafe {
+                LLVMAddFunction(
+                    jit.module,
+                    CString::new("jit_math_random").unwrap().as_ptr(),
+                    LLVMFunctionType(
+                        LLVMDoubleTypeInContext(jit.context),
+                        vec![].as_mut_slice().as_mut_ptr(),
+                        0,
+                        0,
+                    ),
+                )
+            };
+            Value::builtin_function_with_jit(
+                math_random,
+                BuiltinJITFuncInfo::Normal {
+                    func: jit_math_random as *mut libc::c_void,
+                    llvm_func,
+                },
+            )
+        },
+        pow:    {
+            let llvm_func = unsafe {
+                LLVMAddFunction(
+                    jit.module,
+                    CString::new("jit_math_pow").unwrap().as_ptr(),
+                    LLVMFunctionType(
+                        LLVMDoubleTypeInContext(jit.context),
+                        vec![
+                            LLVMDoubleTypeInContext(jit.context),
+                            LLVMDoubleTypeInContext(jit.context),
+                        ]
+                            .as_mut_slice()
+                            .as_mut_ptr(),
+                        2,
+                        0,
+                    ),
+                )
+            };
+            Value::builtin_function_with_jit(
+                math_pow,
+                BuiltinJITFuncInfo::Normal {
+                    func: jit_math_pow as *mut libc::c_void,
+                    llvm_func,
+                },
+            )
+                }
+    ))
+}
 
 macro_rules! simple_math {
     ($name:ident, $f:ident) => {
         #[allow(unused_variables)]
-        pub fn $name(
-            vm: &mut VM,
-            args: &Vec<Value>,
-            callobj: &CallObject,
-        ) -> Result<(), RuntimeError> {
-            if let ValueBase::Number(n) = args[0].val {
+        fn $name(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject) -> Result<(), RuntimeError> {
+            if let Value::Number(n) = args[0] {
                 vm.state.stack.push(Value::number(n.$f()));
                 return Ok(());
             }
@@ -33,9 +136,9 @@ simple_math!(math_asinh, asinh);
 simple_math!(math_atan, atan);
 simple_math!(math_atanh, atanh);
 
-pub fn math_atan2(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
-    if let ValueBase::Number(n1) = args[0].val {
-        if let ValueBase::Number(n2) = args[1].val {
+fn math_atan2(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
+    if let Value::Number(n1) = args[0] {
+        if let Value::Number(n2) = args[1] {
             vm.state.stack.push(Value::number(n1.atan2(n2)));
             return Ok(());
         }
@@ -46,8 +149,8 @@ pub fn math_atan2(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), 
 simple_math!(math_cbrt, cbrt);
 simple_math!(math_ceil, ceil);
 
-pub fn math_clz32(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
-    if let ValueBase::Number(n) = args[0].val {
+fn math_clz32(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
+    if let Value::Number(n) = args[0] {
         vm.state.stack.push(Value::number(if n == 0.0 {
             32.0
         } else {
@@ -67,10 +170,10 @@ simple_math!(math_exp, exp);
 simple_math!(math_expm1, exp_m1);
 simple_math!(math_fround, round);
 
-pub fn math_hypot(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
+fn math_hypot(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
     let mut sum2 = 0.0;
     for n in args {
-        if let ValueBase::Number(n) = n.val {
+        if let Value::Number(n) = n {
             sum2 += n * n;
         }
     }
@@ -78,8 +181,8 @@ pub fn math_hypot(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), 
 ;    Ok(())
 }
 
-pub fn math_log(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
-    if let ValueBase::Number(n1) = args[0].val {
+fn math_log(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
+    if let Value::Number(n1) = args[0] {
         vm.state
             .stack
             .push(Value::number(n1.log(::std::f64::consts::E)));
@@ -89,8 +192,8 @@ pub fn math_log(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), Ru
     Ok(())
 }
 
-pub fn math_log1p(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
-    if let ValueBase::Number(n1) = args[0].val {
+fn math_log1p(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
+    if let Value::Number(n1) = args[0] {
         vm.state
             .stack
             .push(Value::number(n1.log(1.0 + ::std::f64::consts::E)));
@@ -103,16 +206,16 @@ pub fn math_log1p(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), 
 simple_math!(math_log10, log10);
 simple_math!(math_log2, log2);
 
-pub fn math_max(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
-    let mut max = if let ValueBase::Number(n) = args[0].val {
+fn math_max(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
+    let mut max = if let Value::Number(n) = args[0] {
         n
     } else {
         0.0
     };
     for n in args[1..].iter() {
-        if let ValueBase::Number(n) = n.val {
-            if n > max {
-                max = n;
+        if let Value::Number(n) = n {
+            if n > &max {
+                max = *n;
             }
         }
     }
@@ -120,16 +223,16 @@ pub fn math_max(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), Ru
     Ok(())
 }
 
-pub fn math_min(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
-    let mut min = if let ValueBase::Number(n) = args[0].val {
+fn math_min(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
+    let mut min = if let Value::Number(n) = args[0] {
         n
     } else {
         0.0
     };
     for n in args[1..].iter() {
-        if let ValueBase::Number(n) = n.val {
-            if n < min {
-                min = n;
+        if let Value::Number(n) = n {
+            if n < &min {
+                min = *n;
             }
         }
     }
@@ -139,8 +242,8 @@ pub fn math_min(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), Ru
 
 simple_math!(math_round, round);
 
-pub fn math_sign(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
-    if let ValueBase::Number(n) = args[0].val {
+fn math_sign(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
+    if let Value::Number(n) = args[0] {
         vm.state.stack.push(Value::number(if n == 0.0 {
             n
         } else if n > 0.0 {
@@ -161,14 +264,14 @@ simple_math!(math_tan, tan);
 simple_math!(math_tanh, tanh);
 simple_math!(math_trunc, trunc);
 
-pub fn math_random(vm: &mut VM, _: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
+fn math_random(vm: &mut VM, _: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
     vm.state.stack.push(Value::number(random::<f64>()));
     Ok(())
 }
 
-pub fn math_pow(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
-    if let ValueBase::Number(f1) = args[0].val {
-        if let ValueBase::Number(f2) = args[1].val {
+fn math_pow(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
+    if let Value::Number(f1) = args[0] {
+        if let Value::Number(f2) = args[1] {
             vm.state.stack.push(Value::number(f1.powf(f2)));
             return Ok(());
         }
