@@ -13,6 +13,7 @@ use super::{
 use builtin;
 use builtin::BuiltinJITFuncInfo;
 use builtins;
+//use bytecode_gen;
 use bytecode_gen::ByteCode;
 use gc;
 use jit::TracingJit;
@@ -356,9 +357,11 @@ impl VM {
 
         loop {
             let code = iseq[self.state.pc as usize];
+            //bytecode_gen::show_inst(iseq, self.state.pc as usize);
             let res = self.op_table[code as usize](self, iseq);
 
             if res == Ok(false) {
+                // END or RETURN or throw occurs outer try-catch.
                 break;
             }
 
@@ -454,7 +457,9 @@ macro_rules! get_int32 {
     };
 }
 
-fn end(_self: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn end(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+    self_.state.stack.push(Value::Undefined);
+    unwind_state(self_);
     Ok(false)
 }
 
@@ -994,13 +999,13 @@ fn call(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
 }
 
 fn unwind_state(vm: &mut VM) {
-    let len = vm.state.stack.len();
+    //let len = vm.state.stack.len();
     if let Some((previous_sp, return_pc, func_id)) = vm.state.history.pop() {
-        vm.state.stack.drain(previous_sp..len - 1);
+        vm.state.stack.truncate(previous_sp + 1);
         vm.state.pc = return_pc;
         vm.cur_func_id = func_id;
     } else {
-        unreachable!()
+        unreachable!("history stack exhaust.")
     }
 }
 
@@ -1011,10 +1016,6 @@ fn return_(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
 
 fn throw(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     let val = self_.state.stack.last().unwrap().clone();
-    //TODO:
-    // if an exception was thrown in try clause, go to the corresponding catch clause.
-    // if in catch or finally clause, go to catch clause of outer try-catch statement.
-    // if not in try-catch statement, terminate vm with uncaught exception.
     Err(RuntimeError::Exception(val))
 }
 

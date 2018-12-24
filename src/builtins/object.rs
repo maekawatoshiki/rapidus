@@ -12,7 +12,7 @@ thread_local!(
         let object = Value::builtin_function(
             object_new,
             None,
-            &mut vec![/*("create", Value::default_builtin_function(object_create))*/],
+            &mut vec![("create", Value::default_builtin_function(object_create))],
             None,//Some(prototype.clone())
         );
 

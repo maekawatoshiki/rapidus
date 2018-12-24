@@ -174,44 +174,56 @@ fn repl() {
             }
             Err(e) => panic!(e),
         };
-        //bytecode_gen::show(&iseq);
-        println!(
-            "stack:{} history:{}",
-            vm.state.stack.len(),
-            vm.state.history.len()
-        );
         vm.const_table = vm_codegen.bytecode_gen.const_table.clone();
         vm.state.pc = 0;
-
-        if let Err(e) = vm.run(iseq) {
-            match e {
-                RuntimeError::Unknown => vm::error::runtime_error("unknown error occurred"),
-                RuntimeError::Unimplemented => vm::error::runtime_error("unimplemented feature"),
-                RuntimeError::Reference(msg)
-                | RuntimeError::Type(msg)
-                | RuntimeError::General(msg) => vm::error::runtime_error(msg.as_str()),
-                RuntimeError::Exception(val) => {
-                    vm::error::runtime_error("Uncaught exception");
-                    builtin::debug_print(&val, true);
+        vm.state.history.push((0, 0, 0));
+        let res = vm.run(iseq);
+        if vm.state.stack.len() != 1 {
+            println!(
+                "Warning: stack length is {} (should be 1)",
+                vm.state.stack.len()
+            );
+        };
+        if vm.state.history.len() != 1 {
+            println!(
+                "Warning: history length is {} (should be 1)",
+                vm.state.history.len()
+            );
+        };
+        match res {
+            Err(e) => {
+                match e {
+                    RuntimeError::Unknown => vm::error::runtime_error("unknown error occurred"),
+                    RuntimeError::Unimplemented => {
+                        vm::error::runtime_error("unimplemented feature")
+                    }
+                    RuntimeError::Reference(msg)
+                    | RuntimeError::Type(msg)
+                    | RuntimeError::General(msg) => vm::error::runtime_error(msg.as_str()),
+                    RuntimeError::Exception(val) => {
+                        vm::error::runtime_error("Uncaught exception");
+                        builtin::debug_print(&val, true);
+                        unsafe {
+                            libc::puts(b"\0".as_ptr() as *const i8);
+                        }
+                    }
+                }
+                vm.state.stack.pop();
+            }
+            _ => {
+                // Show the evaluated result
+                if let Some(value) = vm.state.stack.pop() {
+                    //println!("{}", value.to_string());
                     unsafe {
+                        builtin::debug_print(&value, true);
                         libc::puts(b"\0".as_ptr() as *const i8);
                     }
                 }
             }
-            continue;
-        }
-
-        // Show the evaluated result
-        if let Some(value) = vm.state.stack.pop() {
-            //println!("{}", value.to_string());
-            unsafe {
-                builtin::debug_print(&value, true);
-                libc::puts(b"\0".as_ptr() as *const i8);
-            }
         }
 
         vm_codegen.bytecode_gen.const_table = vm.const_table.clone();
-        vm.state.stack.clear();
+        //vm.state.stack.clear();
     }
 }
 

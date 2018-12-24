@@ -393,192 +393,196 @@ pub fn slice_to_int32(iseq: &[u8]) -> i32 {
 pub fn show(code: &ByteCode) {
     let mut i = 0;
     while i < code.len() {
-        print!("{:04x} ", i);
-        match code[i] {
-            VMInst::END => {
-                println!("End");
-            }
-            VMInst::CREATE_CONTEXT => {
-                println!("CreateContext");
-            }
-            VMInst::CONSTRUCT => {
-                println!("Construct");
-            }
-            VMInst::CREATE_OBJECT => {
-                println!("CreateObject");
-            }
-            VMInst::CREATE_ARRAY => {
-                println!("CreateArray");
-            }
-            VMInst::PUSH_INT8 => {
-                let int8 = code[i + 1] as i32;
-                println!("PushInt8:{}", int8);
-            }
-            VMInst::PUSH_INT32 => {
-                println!("PushInt32");
-            }
-            VMInst::PUSH_FALSE => {
-                println!("PushFalse");
-            }
-            VMInst::PUSH_TRUE => {
-                println!("PushTrue");
-            }
-            VMInst::PUSH_CONST => {
-                println!("PushConst");
-            }
-            VMInst::PUSH_THIS => {
-                println!("PushThis");
-            }
-            VMInst::PUSH_ARGUMENTS => {
-                println!("PushArguments");
-            }
-            VMInst::PUSH_UNDEFINED => {
-                println!("PushUndefined");
-            }
-            VMInst::LNOT => {
-                println!("LogNot");
-            }
-            VMInst::POSI => {
-                println!("Posi");
-            }
-            VMInst::NEG => {
-                println!("Neg");
-            }
-            VMInst::ADD => {
-                println!("Add");
-            }
-            VMInst::SUB => {
-                println!("Sub");
-            }
-            VMInst::MUL => {
-                println!("Mul");
-            }
-            VMInst::DIV => {
-                println!("Div");
-            }
-            VMInst::REM => {
-                println!("Rem");
-            }
-            VMInst::LT => {
-                println!("Lt");
-            }
-            VMInst::GT => {
-                println!("Gt");
-            }
-            VMInst::LE => {
-                println!("Le");
-            }
-            VMInst::GE => {
-                println!("Ge");
-            }
-            VMInst::EQ => {
-                println!("Eq");
-            }
-            VMInst::NE => {
-                println!("Ne");
-            }
-            VMInst::SEQ => {
-                println!("SEq");
-            }
-            VMInst::SNE => {
-                println!("SNeg");
-            }
-            VMInst::AND => {
-                println!("And");
-            }
-            VMInst::OR => {
-                println!("Or");
-            }
-            VMInst::XOR => {
-                println!("Xor");
-            }
-            VMInst::SHL => {
-                println!("Shift-L");
-            }
-            VMInst::SHR => {
-                println!("Shift-R");
-            }
-            VMInst::ZFSHR => {
-                println!("ZeroFill-Shift-R");
-            }
-            VMInst::GET_MEMBER => {
-                println!("GetMember");
-            }
-            VMInst::SET_MEMBER => {
-                println!("SetMember");
-            }
-            VMInst::JMP_IF_FALSE => {
-                println!("JmpIfFalse");
-            }
-            VMInst::JMP => {
-                println!("Jmp");
-            }
-            VMInst::CALL => {
-                println!("Call");
-            }
-            VMInst::RETURN => {
-                println!("Return");
-            }
-            VMInst::DOUBLE => {
-                println!("Double");
-            }
-            VMInst::POP => {
-                println!("Pop");
-            }
-            VMInst::LAND => {
-                println!("LogAnd");
-            }
-            VMInst::LOR => {
-                println!("LogOr");
-            }
-            VMInst::UPDATE_PARENT_SCOPE => {
-                println!("UpdateParentScope");
-            }
-            VMInst::GET_VALUE => {
-                println!("GetValue");
-            }
-            VMInst::SET_VALUE => {
-                println!("SetValue");
-            }
-            VMInst::DECL_VAR => {
-                println!("DeclVar");
-            }
-            VMInst::COND_OP => {
-                println!("CondOp");
-            }
-            VMInst::LOOP_START => {
-                println!("LoopStart");
-            }
-            VMInst::THROW => {
-                println!("Throw");
-            }
-            VMInst::ENTER_TRY => {
-                println!("EnterTry");
-            }
-            VMInst::LEAVE_TRY => {
-                println!("LeaveTry");
-            }
-            VMInst::CATCH => {
-                println!("Catch");
-            }
-            VMInst::FINALLY => {
-                println!("Finally");
-            }
-            VMInst::RETURN_TRY => {
-                println!("ReturnTry");
-            }
-            VMInst::PUSH_SCOPE => {
-                println!("PushScope");
-            }
-            VMInst::POP_SCOPE => {
-                println!("PopScope");
-            }
-            _ => unreachable!("sorry. need to implement more opcodes"),
-        }
+        show_inst(code, i);
         i = i + if let Some(size) = VMInst::get_inst_size(code[i]) {
             size
         } else {
             unreachable!("inst_size not defined.");
         };
+    }
+}
+
+pub fn show_inst(code: &ByteCode, i: usize) {
+    print!("{:04x} ", i);
+    match code[i] {
+        VMInst::END => {
+            println!("End");
+        }
+        VMInst::CREATE_CONTEXT => {
+            println!("CreateContext");
+        }
+        VMInst::CONSTRUCT => {
+            println!("Construct");
+        }
+        VMInst::CREATE_OBJECT => {
+            println!("CreateObject");
+        }
+        VMInst::CREATE_ARRAY => {
+            println!("CreateArray");
+        }
+        VMInst::PUSH_INT8 => {
+            let int8 = code[i + 1] as i32;
+            println!("PushInt8:{}", int8);
+        }
+        VMInst::PUSH_INT32 => {
+            println!("PushInt32");
+        }
+        VMInst::PUSH_FALSE => {
+            println!("PushFalse");
+        }
+        VMInst::PUSH_TRUE => {
+            println!("PushTrue");
+        }
+        VMInst::PUSH_CONST => {
+            println!("PushConst");
+        }
+        VMInst::PUSH_THIS => {
+            println!("PushThis");
+        }
+        VMInst::PUSH_ARGUMENTS => {
+            println!("PushArguments");
+        }
+        VMInst::PUSH_UNDEFINED => {
+            println!("PushUndefined");
+        }
+        VMInst::LNOT => {
+            println!("LogNot");
+        }
+        VMInst::POSI => {
+            println!("Posi");
+        }
+        VMInst::NEG => {
+            println!("Neg");
+        }
+        VMInst::ADD => {
+            println!("Add");
+        }
+        VMInst::SUB => {
+            println!("Sub");
+        }
+        VMInst::MUL => {
+            println!("Mul");
+        }
+        VMInst::DIV => {
+            println!("Div");
+        }
+        VMInst::REM => {
+            println!("Rem");
+        }
+        VMInst::LT => {
+            println!("Lt");
+        }
+        VMInst::GT => {
+            println!("Gt");
+        }
+        VMInst::LE => {
+            println!("Le");
+        }
+        VMInst::GE => {
+            println!("Ge");
+        }
+        VMInst::EQ => {
+            println!("Eq");
+        }
+        VMInst::NE => {
+            println!("Ne");
+        }
+        VMInst::SEQ => {
+            println!("SEq");
+        }
+        VMInst::SNE => {
+            println!("SNeg");
+        }
+        VMInst::AND => {
+            println!("And");
+        }
+        VMInst::OR => {
+            println!("Or");
+        }
+        VMInst::XOR => {
+            println!("Xor");
+        }
+        VMInst::SHL => {
+            println!("Shift-L");
+        }
+        VMInst::SHR => {
+            println!("Shift-R");
+        }
+        VMInst::ZFSHR => {
+            println!("ZeroFill-Shift-R");
+        }
+        VMInst::GET_MEMBER => {
+            println!("GetMember");
+        }
+        VMInst::SET_MEMBER => {
+            println!("SetMember");
+        }
+        VMInst::JMP_IF_FALSE => {
+            println!("JmpIfFalse");
+        }
+        VMInst::JMP => {
+            println!("Jmp");
+        }
+        VMInst::CALL => {
+            println!("Call");
+        }
+        VMInst::RETURN => {
+            println!("Return");
+        }
+        VMInst::DOUBLE => {
+            println!("Double");
+        }
+        VMInst::POP => {
+            println!("Pop");
+        }
+        VMInst::LAND => {
+            println!("LogAnd");
+        }
+        VMInst::LOR => {
+            println!("LogOr");
+        }
+        VMInst::UPDATE_PARENT_SCOPE => {
+            println!("UpdateParentScope");
+        }
+        VMInst::GET_VALUE => {
+            println!("GetValue");
+        }
+        VMInst::SET_VALUE => {
+            println!("SetValue");
+        }
+        VMInst::DECL_VAR => {
+            println!("DeclVar");
+        }
+        VMInst::COND_OP => {
+            println!("CondOp");
+        }
+        VMInst::LOOP_START => {
+            println!("LoopStart");
+        }
+        VMInst::THROW => {
+            println!("Throw");
+        }
+        VMInst::ENTER_TRY => {
+            println!("EnterTry");
+        }
+        VMInst::LEAVE_TRY => {
+            println!("LeaveTry");
+        }
+        VMInst::CATCH => {
+            println!("Catch");
+        }
+        VMInst::FINALLY => {
+            println!("Finally");
+        }
+        VMInst::RETURN_TRY => {
+            println!("ReturnTry");
+        }
+        VMInst::PUSH_SCOPE => {
+            println!("PushScope");
+        }
+        VMInst::POP_SCOPE => {
+            println!("PopScope");
+        }
+        _ => unreachable!("sorry. need to implement more opcodes"),
     }
 }
