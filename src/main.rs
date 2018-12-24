@@ -46,7 +46,7 @@ fn main() {
     let file_name = match app_matches.value_of("file") {
         Some(file_name) => file_name,
         None => {
-            repl();
+            repl(app_matches.is_present("debug"));
             return;
         }
     };
@@ -114,7 +114,7 @@ fn main() {
     // vm_codegen::test();
 }
 
-fn repl() {
+fn repl(debug: bool) {
     // TODO: REFINE CODE!!!!
     let mut vm_codegen = vm_codegen::VMCodeGen::new();
     let global = vm_codegen.global_varmap;
@@ -176,7 +176,7 @@ fn repl() {
         };
         vm.const_table = vm_codegen.bytecode_gen.const_table.clone();
         vm.state.pc = 0;
-        vm.state.history.push((0, 0, 0));
+        vm.is_debug = debug;
         let res = vm.run(iseq);
         if vm.state.stack.len() != 1 {
             println!(

@@ -13,7 +13,7 @@ use super::{
 use builtin;
 use builtin::BuiltinJITFuncInfo;
 use builtins;
-//use bytecode_gen;
+use bytecode_gen;
 use bytecode_gen::ByteCode;
 use gc;
 use jit::TracingJit;
@@ -26,13 +26,14 @@ pub struct VM {
     pub cur_func_id: FuncId, // id == 0: main
     pub op_table: [fn(&mut VM, &ByteCode) -> Result<bool, RuntimeError>; 59],
     pub task_mgr: TaskManager,
+    pub is_debug: bool,
 }
 
 pub struct VMState {
     pub stack: Vec<Value>,
     pub scope: Vec<CallObjectRef>,
     pub pc: isize,
-    pub history: Vec<(usize, isize, FuncId)>, // sp, return_pc
+    pub history: Vec<(usize, isize)>, // sp, return_pc
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -225,13 +226,14 @@ impl VM {
             state: VMState {
                 stack: { Vec::with_capacity(128) },
                 scope: vec![global_vals],
-                history: vec![(0, 0, 0)],
+                history: vec![(0, 0)],
                 pc: 0isize,
             },
             trystate_stack: vec![TryState::None],
             const_table: ConstantTable::new(),
             cur_func_id: 0, // 0 is main
             task_mgr: TaskManager::new(),
+            is_debug: false,
             op_table: [
                 end,
                 create_context,
@@ -299,6 +301,7 @@ impl VM {
 
 impl VM {
     pub fn run(&mut self, iseq: ByteCode) -> Result<bool, RuntimeError> {
+        self.store_state();
         let res = self.do_run(&iseq);
 
         loop {
@@ -352,12 +355,30 @@ impl VM {
         res
     }
 
+    fn store_state(&mut self) {
+        self.state
+            .history
+            .push((self.state.stack.len(), self.state.pc));
+        self.state.pc = 0;
+    }
+
+    fn restore_state(&mut self) {
+        if let Some((previous_sp, return_pc)) = self.state.history.pop() {
+            self.state.stack.truncate(previous_sp + 1);
+            self.state.pc = return_pc;
+        } else {
+            unreachable!("history stack exhaust.")
+        }
+    }
+
     fn do_run(&mut self, iseq: &ByteCode) -> Result<bool, RuntimeError> {
         self.trystate_stack.push(TryState::None);
 
         loop {
             let code = iseq[self.state.pc as usize];
-            //bytecode_gen::show_inst(iseq, self.state.pc as usize);
+            if self.is_debug {
+                bytecode_gen::show_inst(iseq, self.state.pc as usize);
+            }
             let res = self.op_table[code as usize](self, iseq);
 
             if res == Ok(false) {
@@ -405,13 +426,13 @@ impl VM {
                 self.trystate_stack.pop().unwrap();
                 // must push return value to exec stack.
                 self.state.stack.push(Value::undefined());
-                unwind_state(self);
+                self.restore_state();
                 return Err(err);
             }
         }
 
         self.trystate_stack.pop().unwrap();
-
+        self.restore_state();
         Ok(true)
     }
 
@@ -459,7 +480,6 @@ macro_rules! get_int32 {
 
 fn end(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.stack.push(Value::Undefined);
-    unwind_state(self_);
     Ok(false)
 }
 
@@ -499,7 +519,7 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
                 x.func
             })(self_, &args, &callobj)?;
         }
-        Value::Function(box (id, iseq, obj, mut callobj)) => {
+        Value::Function(box (_id, iseq, obj, mut callobj)) => {
             // similar code is used some times. should make it a function.
             let new_this = unsafe {
                 Value::object_from_nvp(&vec![(
@@ -517,11 +537,7 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
 
             *callobj.this = new_this.clone();
             self_.state.scope.push(gc::new(callobj));
-            self_
-                .state
-                .history
-                .push((self_.state.stack.len(), self_.state.pc, id));
-            self_.state.pc = 0;
+            self_.store_state();
 
             let res = self_.do_run(&iseq);
 
@@ -965,12 +981,7 @@ pub fn call_function(
             return Ok(true);
         }
     }
-
-    self_
-        .state
-        .history
-        .push((self_.state.stack.len(), self_.state.pc, id));
-    self_.state.pc = 0;
+    self_.store_state();
 
     let res = self_.do_run(iseq);
 
@@ -998,19 +1009,7 @@ fn call(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
     Ok(true)
 }
 
-fn unwind_state(vm: &mut VM) {
-    //let len = vm.state.stack.len();
-    if let Some((previous_sp, return_pc, func_id)) = vm.state.history.pop() {
-        vm.state.stack.truncate(previous_sp + 1);
-        vm.state.pc = return_pc;
-        vm.cur_func_id = func_id;
-    } else {
-        unreachable!("history stack exhaust.")
-    }
-}
-
-fn return_(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
-    unwind_state(self_);
+fn return_(_self: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     Ok(false)
 }
 
@@ -1036,7 +1035,6 @@ fn leave_try(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     fn finally_return(self_: &mut VM, return_val: Value) -> Result<bool, RuntimeError> {
         if self_.trystate_stack.len() == 0 || self_.trystate_stack.last() == Some(&TryState::None) {
             self_.state.stack.push(return_val);
-            unwind_state(self_);
             return Ok(false);
         }
 
