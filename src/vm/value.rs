@@ -158,20 +158,19 @@ impl Value {
         Value::builtin_function(func, None, nvp, prototype)
     }
 
-    ///
-    /// make new propmap from nvp.
-    ///  
-    pub fn propmap_from_nvp(svp: &Vec<(&'static str, Value)>) -> PropMap {
+    /// make new property map (PropMap) from nvp.
+    pub fn propmap_from_nvp(nvp: &Vec<(&'static str, Value)>) -> PropMap {
         let mut map = FxHashMap::default();
-        for p in svp {
+        for p in nvp {
             map.insert(p.0.to_string(), p.1.to_property());
         }
         gc::new(map)
     }
 
-    pub fn insert_propmap(map: PropMap, svp: &Vec<(&'static str, Value)>) {
+    /// register name-value pairs to property map.
+    pub fn insert_propmap(map: PropMap, nvp: &Vec<(&'static str, Value)>) {
         unsafe {
-            for p in svp {
+            for p in nvp {
                 (*map).insert(p.0.to_string(), p.1.to_property());
             }
         }
@@ -187,9 +186,7 @@ impl Value {
         }
     }
 
-    ///
     /// make new object from nvp.
-    ///
     pub fn object_from_nvp(nvp: &Vec<(&'static str, Value)>) -> Value {
         let map = Value::propmap_from_nvp(&nvp);
         Value::object(map)
@@ -201,6 +198,7 @@ impl Value {
         Value::Array(gc::new(ary))
     }
 
+    /// make new array from elements.
     pub fn array_from_elems(elms: Vec<Value>) -> Value {
         let ary = ArrayValue::new(elms);
         Value::Array(gc::new(ary))
@@ -291,7 +289,7 @@ impl Value {
                     if Value::number(num).to_string() == s.to_str().unwrap() {
                         get_by_idx(num as usize)
                     } else {
-                        obj_find_val(obj.clone(), &property.to_string())
+                        set_this(obj_find_val(obj.clone(), &property.to_string()), self)
                     }
                 }
                 _ => obj_find_val(obj.clone(), &property.to_string()),
@@ -610,12 +608,10 @@ impl ArrayValue {
             length: len,
             obj: {
                 use builtins::array::ARRAY_PROTOTYPE;
-                let mut hm = FxHashMap::default();
-                hm.insert(
-                    "__proto__".to_string(),
-                    Property::new(ARRAY_PROTOTYPE.with(|x| x.clone())),
+                let nvp = make_nvp!(
+                    __proto__:  ARRAY_PROTOTYPE.with(|x| x.clone())
                 );
-                gc::new(hm)
+                Value::propmap_from_nvp(&nvp)
             },
         }
     }

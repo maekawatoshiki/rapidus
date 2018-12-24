@@ -8,48 +8,46 @@ use vm::{
 
 thread_local!(
     pub static ARRAY_PROTOTYPE: Value = {
-        let obj = Value::propmap_from_nvp(&vec![
-            ("push", Value::default_builtin_function(array_prototype_push)),
-            ("pop", Value::default_builtin_function(array_prototype_pop)),
-            ("map", Value::default_builtin_function(array_prototype_map))
-        ]);
+        let map = Value::propmap_from_nvp(&make_nvp!(
+            // https://www.ecma-international.org/ecma-262/7.0/#sec-properties-of-the-array-prototype-object
+            // TODO: precise implementation
+            push: Value::default_builtin_function(prototype_push),
+            pop: Value::default_builtin_function(prototype_pop),
+            map: Value::default_builtin_function(prototype_map)
+        ));
 
-        // https://www.ecma-international.org/ecma-262/7.0/#sec-properties-of-the-array-prototype-object
-        // TODO: precise implementation
         Value::Array(gc::new(ArrayValue {
             elems: vec![],
             length: 0,
-            obj: obj
+            obj: map,
         }))
     };
-
-    pub static ARRAY_OBJ: Value = {
-        let prototype = ARRAY_PROTOTYPE.with(|x| x.clone());
-        let array = Value::builtin_function(
-            array_new,
-            None,
-            &mut vec![
-                // TODO: Add:
-                //          - Array.from()
-                //          - Array.isArray()
-                //          - Array.observe()
-                //          - Array.of()
-                //          etc...
-            ],
-            Some(prototype.clone())
-        );
-
-        prototype.set_constructor(array.clone());
-
-        array
-    }
 );
+pub fn init() -> Value {
+    let prototype = ARRAY_PROTOTYPE.with(|x| x.clone());
+    let array = Value::builtin_function(
+        new,
+        None,
+        &mut vec![
+            // TODO: Add:
+            //          - Array.from()
+            //          - Array.isArray()
+            //          - Array.observe()
+            //          - Array.of()
+            //          etc...
+        ],
+        Some(prototype.clone()),
+    );
+    prototype.set_constructor(array.clone());
 
-pub fn array_new(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
+    array
+}
+
+fn new(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
     let args_len = args.len();
 
     if args_len == 0 {
-        vm.state.stack.push(Value::array_from_elems(vec![]));
+        vm.set_return_value(Value::array_from_elems(vec![]));
         gc::mark_and_sweep(&vm.state);
         return Ok(());
     }
@@ -70,13 +68,12 @@ pub fn array_new(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), R
     }
 
     vm.set_return_value(Value::array_from_elems(elems));
-
     gc::mark_and_sweep(&vm.state);
 
     Ok(())
 }
 
-pub fn array_prototype_push(
+fn prototype_push(
     vm: &mut VM,
     args: &Vec<Value>,
     callobj: &CallObject,
@@ -84,7 +81,8 @@ pub fn array_prototype_push(
     let array = if let Value::Array(array) = *callobj.this {
         unsafe { &mut *array }
     } else {
-        vm.state.stack.push(Value::undefined());
+        println!("fail");
+        vm.set_return_value(Value::Undefined);
         return Err(RuntimeError::Unknown);
     };
 
@@ -99,7 +97,7 @@ pub fn array_prototype_push(
     Ok(())
 }
 
-pub fn array_prototype_pop(
+fn prototype_pop(
     vm: &mut VM,
     _args: &Vec<Value>,
     callobj: &CallObject,
@@ -107,22 +105,22 @@ pub fn array_prototype_pop(
     let array = if let Value::Array(array) = *callobj.this {
         unsafe { &mut *array }
     } else {
-        vm.state.stack.push(Value::undefined());
+        vm.set_return_value(Value::Undefined);
         return Err(RuntimeError::Unknown);
     };
 
     if let Some(prop) = array.elems.pop() {
         array.length -= 1;
-        vm.state.stack.push(prop.val);
+        vm.set_return_value(prop.val);
         return Ok(());
     }
 
-    vm.set_return_value(Value::undefined());
+    vm.set_return_value(Value::Undefined);
 
     Ok(())
 }
 
-pub fn array_prototype_map(
+pub fn prototype_map(
     vm: &mut VM,
     args: &Vec<Value>,
     callobj: &CallObject,

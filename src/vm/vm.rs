@@ -84,73 +84,66 @@ impl VM {
 
         unsafe {
             global_vals.set_value("console".to_string(), {
-                let mut map = FxHashMap::default();
-                map.insert(
-                    "log".to_string(),
-                    Value::builtin_function_with_jit(
-                        builtin::console_log,
-                        BuiltinJITFuncInfo::ConsoleLog {
-                            bool: (
-                                builtin::jit_console_log_bool as *mut libc::c_void,
-                                LLVMAddFunction(
-                                    jit.module,
-                                    CString::new("jit_console_log_bool").unwrap().as_ptr(),
-                                    LLVMFunctionType(
-                                        LLVMVoidType(),
-                                        vec![LLVMInt1TypeInContext(jit.context)]
-                                            .as_mut_slice()
-                                            .as_mut_ptr(),
-                                        1,
-                                        0,
-                                    ),
-                                ),
-                            ),
-                            f64: (
-                                builtin::jit_console_log_f64 as *mut libc::c_void,
-                                LLVMAddFunction(
-                                    jit.module,
-                                    CString::new("jit_console_log_f64").unwrap().as_ptr(),
-                                    LLVMFunctionType(
-                                        LLVMVoidType(),
-                                        vec![LLVMDoubleTypeInContext(jit.context)]
-                                            .as_mut_slice()
-                                            .as_mut_ptr(),
-                                        1,
-                                        0,
-                                    ),
-                                ),
-                            ),
-                            string: (
-                                builtin::jit_console_log_string as *mut libc::c_void,
-                                LLVMAddFunction(
-                                    jit.module,
-                                    CString::new("jit_console_log_string").unwrap().as_ptr(),
-                                    LLVMFunctionType(
-                                        LLVMVoidType(),
-                                        vec![LLVMPointerType(
-                                            LLVMInt8TypeInContext(jit.context),
-                                            0,
-                                        )]
+                let func_log = Value::builtin_function_with_jit(
+                    builtin::console_log,
+                    BuiltinJITFuncInfo::ConsoleLog {
+                        bool: (
+                            builtin::jit_console_log_bool as *mut libc::c_void,
+                            LLVMAddFunction(
+                                jit.module,
+                                CString::new("jit_console_log_bool").unwrap().as_ptr(),
+                                LLVMFunctionType(
+                                    LLVMVoidType(),
+                                    vec![LLVMInt1TypeInContext(jit.context)]
                                         .as_mut_slice()
                                         .as_mut_ptr(),
-                                        1,
-                                        0,
-                                    ),
+                                    1,
+                                    0,
                                 ),
                             ),
-                            newline: (
-                                builtin::jit_console_log_newline as *mut libc::c_void,
-                                LLVMAddFunction(
-                                    jit.module,
-                                    CString::new("jit_console_log_newline").unwrap().as_ptr(),
-                                    LLVMFunctionType(LLVMVoidType(), vec![].as_mut_ptr(), 0, 0),
+                        ),
+                        f64: (
+                            builtin::jit_console_log_f64 as *mut libc::c_void,
+                            LLVMAddFunction(
+                                jit.module,
+                                CString::new("jit_console_log_f64").unwrap().as_ptr(),
+                                LLVMFunctionType(
+                                    LLVMVoidType(),
+                                    vec![LLVMDoubleTypeInContext(jit.context)]
+                                        .as_mut_slice()
+                                        .as_mut_ptr(),
+                                    1,
+                                    0,
                                 ),
                             ),
-                        },
-                    )
-                    .to_property(),
+                        ),
+                        string: (
+                            builtin::jit_console_log_string as *mut libc::c_void,
+                            LLVMAddFunction(
+                                jit.module,
+                                CString::new("jit_console_log_string").unwrap().as_ptr(),
+                                LLVMFunctionType(
+                                    LLVMVoidType(),
+                                    vec![LLVMPointerType(LLVMInt8TypeInContext(jit.context), 0)]
+                                        .as_mut_slice()
+                                        .as_mut_ptr(),
+                                    1,
+                                    0,
+                                ),
+                            ),
+                        ),
+                        newline: (
+                            builtin::jit_console_log_newline as *mut libc::c_void,
+                            LLVMAddFunction(
+                                jit.module,
+                                CString::new("jit_console_log_newline").unwrap().as_ptr(),
+                                LLVMFunctionType(LLVMVoidType(), vec![].as_mut_ptr(), 0, 0),
+                            ),
+                        ),
+                    },
                 );
-                Value::object(gc::new(map))
+                let nvp = make_nvp!(log: func_log);
+                Value::object_from_nvp(&nvp)
             });
         }
 
@@ -206,19 +199,12 @@ impl VM {
             Value::default_builtin_function(builtin::clear_timer),
         );
 
-        use builtins::object::OBJECT_OBJ;
-        global_vals.set_value("Object".to_string(), OBJECT_OBJ.with(|x| x.clone()));
-
+        global_vals.set_value("Object".to_string(), builtins::object::init());
         global_vals.set_value("Error".to_string(), builtins::error::init());
-
-        use builtins::array::ARRAY_OBJ;
-        global_vals.set_value("Array".to_string(), ARRAY_OBJ.with(|x| x.clone()));
-
+        global_vals.set_value("Array".to_string(), builtins::object::init());
         global_vals.set_value("Function".to_string(), builtins::function::init());
-
         use builtins::date::DATE_OBJ;
         global_vals.set_value("Date".to_string(), DATE_OBJ.with(|x| x.clone()));
-
         global_vals.set_value("Math".to_string(), builtins::math::init(jit.clone()));
 
         VM {

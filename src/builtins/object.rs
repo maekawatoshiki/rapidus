@@ -1,29 +1,26 @@
 use vm::{callobj::CallObject, error::RuntimeError, value::Value, vm::VM};
 
 thread_local!(
-    pub static OBJECT_PROTOTYPE: Value = {
-        Value::Object(Value::propmap_from_nvp(&make_nvp!(
-            __proto__:  Value::Null
-        )))
-    };
-
-    pub static OBJECT_OBJ: Value = {
-        let prototype = OBJECT_PROTOTYPE.with(|x| x.clone());
-        let object = Value::builtin_function(
-            object_new,
-            None,
-            &mut vec![("create", Value::default_builtin_function(object_create))],
-            Some(prototype.clone()),
-        );
-
-        prototype.set_constructor(object.clone());
-
-        object
-    }
+    pub static OBJECT_PROTOTYPE: Value =
+        { Value::Object(Value::propmap_from_nvp(&make_nvp!(__proto__: Value::Null))) };
 );
 
+pub fn init() -> Value {
+    let prototype = OBJECT_PROTOTYPE.with(|x| x.clone());
+    // Object constructor
+    let obj = Value::builtin_function(
+        new,
+        None,
+        &mut make_nvp!(create: Value::default_builtin_function(create)),
+        Some(prototype.clone()),
+    );
+    prototype.set_constructor(obj.clone());
+
+    obj
+}
+
 /// https://www.ecma-international.org/ecma-262/6.0/#sec-object-objects
-pub fn object_new(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
+fn new(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
     if args.len() == 0 {
         vm.set_return_value(Value::object_from_nvp(&vec![]));
         return Ok(());
@@ -43,7 +40,7 @@ pub fn object_new(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), 
     }
 }
 
-pub fn object_create(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
+fn create(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
     let maybe_obj = match args.len() {
         0 => {
             return Err(RuntimeError::General(
