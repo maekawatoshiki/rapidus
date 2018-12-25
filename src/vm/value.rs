@@ -16,6 +16,7 @@ pub type FuncId = Id;
 
 pub type RawStringPtr = *mut libc::c_char;
 
+pub type NVP = (String, Property);
 pub type PropMap = GcType<FxHashMap<String, Property>>;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -50,16 +51,17 @@ pub struct ArrayValue {
     pub obj: PropMap,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct StrValuePair {
-    pub name: &'static str,
-    pub value: Value,
-}
-
 #[macro_export]
 macro_rules! make_nvp {
     ($($property_name:ident : $val:expr),*) => {
-        vec![ $((stringify!($property_name), $val)),* ]
+        vec![ $((stringify!($property_name).to_string(), Property::new($val))),* ]
+    };
+}
+
+#[macro_export]
+macro_rules! make_object {
+    ($($property_name:ident : $val:expr),*) => {
+        Value::object_from_nvp(&make_nvp!($($property_name: $val),*))
     };
 }
 
@@ -82,22 +84,6 @@ impl Value {
 
     pub fn empty() -> Value {
         Value::Empty
-    }
-
-    pub fn null() -> Value {
-        Value::Null
-    }
-
-    pub fn undefined() -> Value {
-        Value::Undefined
-    }
-
-    pub fn bool(b: bool) -> Value {
-        Value::Bool(b)
-    }
-
-    pub fn number(n: f64) -> Value {
-        Value::Number(n)
     }
 
     pub fn string(s: String) -> Value {
@@ -136,33 +122,33 @@ impl Value {
     pub fn builtin_function(
         func: BuiltinFuncTy,
         builtin_jit_func_info: Option<BuiltinJITFuncInfo>,
-        nvp: &mut Vec<(&'static str, Value)>,
+        nvp: &mut Vec<NVP>,
         prototype: Option<Value>,
     ) -> Value {
         if let Some(prototype) = prototype {
-            nvp.push(("prototype", prototype));
+            nvp.push(("prototype".to_string(), Property::new(prototype)));
         }
         let map = Value::propmap_from_nvp(nvp);
         Value::BuiltinFunction(Box::new((
             BuiltinFuncInfo::new(func, builtin_jit_func_info),
             map,
-            CallObject::new(Value::undefined()),
+            CallObject::new(Value::Undefined),
         )))
     }
 
     pub fn builtin_constructor_from_nvp(
         func: BuiltinFuncTy,
-        nvp: &mut Vec<(&'static str, Value)>,
+        nvp: &mut Vec<NVP>,
         prototype: Option<Value>,
     ) -> Value {
         Value::builtin_function(func, None, nvp, prototype)
     }
 
     /// make new property map (PropMap) from nvp.
-    pub fn propmap_from_nvp(nvp: &Vec<(&'static str, Value)>) -> PropMap {
+    pub fn propmap_from_nvp(nvp: &Vec<NVP>) -> PropMap {
         let mut map = FxHashMap::default();
         for p in nvp {
-            map.insert(p.0.to_string(), p.1.to_property());
+            map.insert(p.0.clone(), p.1.clone());
         }
         gc::new(map)
     }
@@ -187,7 +173,7 @@ impl Value {
     }
 
     /// make new object from nvp.
-    pub fn object_from_nvp(nvp: &Vec<(&'static str, Value)>) -> Value {
+    pub fn object_from_nvp(nvp: &Vec<NVP>) -> Value {
         let map = Value::propmap_from_nvp(&nvp);
         Value::object(map)
     }
@@ -243,14 +229,14 @@ impl Value {
                         .to_string(),
                 ),
                 // Length of string. TODO: Is this implementation correct?
-                Value::String(ref member) if member.to_str().unwrap() == "length" => Value::number(
+                Value::String(ref member) if member.to_str().unwrap() == "length" => Value::Number(
                     s.to_str()
                         .unwrap()
                         .chars()
                         .fold(0, |x, c| x + c.len_utf16()) as f64,
                 ),
                 // TODO: Support all features.
-                _ => Value::undefined(),
+                _ => Value::Undefined,
             }
         };
 
@@ -260,11 +246,11 @@ impl Value {
                     unsafe {
                         let arr = &(**arrval).elems;
                         if n >= (**arrval).length {
-                            return Value::undefined();
+                            return Value::Undefined;
                         }
 
                         match arr[n].val {
-                            Value::Empty => Value::undefined(),
+                            Value::Empty => Value::Undefined,
                             ref other => other.clone(),
                         }
                     }
@@ -278,7 +264,7 @@ impl Value {
                 Value::Number(n) if is_integer(n) && n >= 0.0 => get_by_idx(n as usize),
                 Value::String(ref s) if s.to_str().unwrap() == "length" => {
                     if let Value::Array(ref arrval) = obj {
-                        unsafe { Value::number((**arrval).length as f64) }
+                        unsafe { Value::Number((**arrval).length as f64) }
                     } else {
                         unreachable!("get_property(): Value is not an array.");
                     }
@@ -286,7 +272,7 @@ impl Value {
                 Value::String(ref s) => {
                     // https://www.ecma-international.org/ecma-262/9.0/index.html#sec-array-exotic-objects
                     let num = property.to_uint32();
-                    if Value::number(num).to_string() == s.to_str().unwrap() {
+                    if Value::Number(num).to_string() == s.to_str().unwrap() {
                         get_by_idx(num as usize)
                     } else {
                         set_this(obj_find_val(obj.clone(), &property.to_string()), self)
@@ -304,14 +290,14 @@ impl Value {
                         .and_then(|co| unsafe {
                             Some((**co).get_arguments_nth_value(n as usize).unwrap())
                         })
-                        .unwrap_or_else(|| Value::undefined()),
+                        .unwrap_or_else(|| Value::Undefined),
                     Value::String(ref s) if s.to_str().unwrap() == "length" => {
                         let length = callobjref
                             .and_then(|co| unsafe { Some((**co).get_arguments_length()) })
                             .unwrap_or(0);
-                        Value::number(length as f64)
+                        Value::Number(length as f64)
                     }
-                    _ => Value::undefined(),
+                    _ => Value::Undefined,
                 }
             }
         };
@@ -325,7 +311,7 @@ impl Value {
             Value::Array(_) => property_of_array(&*self),
             Value::Arguments => property_of_arguments(),
             // TODO: Implement
-            _ => Value::undefined(),
+            _ => Value::Undefined,
         }
     }
 
@@ -347,7 +333,7 @@ impl Value {
             | Value::BuiltinFunction(box (_, map, _)) => unsafe {
                 let refval = (**map)
                     .entry(property.to_string())
-                    .or_insert_with(|| Value::undefined().to_property());
+                    .or_insert_with(|| Value::Undefined.to_property());
                 *refval = value.to_property();
             },
             Value::Array(ref aryval) => {
@@ -367,7 +353,7 @@ impl Value {
                     },
                     // https://www.ecma-international.org/ecma-262/9.0/index.html#sec-array-exotic-objects
                     Value::String(ref s)
-                        if Value::number(property.to_uint32()).to_string()
+                        if Value::Number(property.to_uint32()).to_string()
                             == s.to_str().unwrap() =>
                     {
                         let num = property.to_uint32();
@@ -376,7 +362,7 @@ impl Value {
                     _ => unsafe {
                         let refval = (*(**aryval).obj)
                             .entry(property.to_string())
-                            .or_insert_with(|| Value::undefined().to_property());
+                            .or_insert_with(|| Value::Undefined.to_property());
                         *refval = value.to_property();
                     },
                 }
@@ -643,7 +629,7 @@ fn is_integer(f: f64) -> bool {
 /// get <key> property of <val> object.
 /// if the property does not exists, trace the prototype chain.
 /// return Value::Undefined for primitives.
-/// BuiltinFunction.__proto__ === FUNCTION_PROTOTYPE
+/// handle as BuiltinFunction.__proto__ === FUNCTION_PROTOTYPE
 ///
 pub fn obj_find_val(val: Value, key: &str) -> Value {
     let (map, is_builtin_func) = match val {

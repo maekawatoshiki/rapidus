@@ -1610,7 +1610,7 @@ impl TracingJit {
         // So, all I can do is this:
         // TODO: MAX_FUNCTION_PARAMS is too small?
         match func_ret_ty {
-            &ValueType::Number => vm::value::Value::number(match llvm_args.len() {
+            &ValueType::Number => vm::value::Value::Number(match llvm_args.len() {
                 0 => transmute::<fn(), fn() -> f64>(f)(),
                 1 => transmute::<fn(), fn(f64) -> f64>(f)(*llvm_args[0]),
                 2 => transmute::<fn(), fn(f64, f64) -> f64>(f)(*llvm_args[0], *llvm_args[1]),
@@ -1621,7 +1621,7 @@ impl TracingJit {
                 ),
                 _ => unimplemented!("should be implemented.."),
             }),
-            &ValueType::Bool => vm::value::Value::bool(match llvm_args.len() {
+            &ValueType::Bool => vm::value::Value::Bool(match llvm_args.len() {
                 0 => transmute::<fn(), fn() -> bool>(f)(),
                 1 => transmute::<fn(), fn(f64) -> bool>(f)(*llvm_args[0]),
                 2 => transmute::<fn(), fn(f64, f64) -> bool>(f)(*llvm_args[0], *llvm_args[1]),
@@ -1666,8 +1666,8 @@ pub unsafe fn run_loop_llvm_func(
         (*scope).set_value_if_exist(
             name,
             match ty {
-                ValueType::Number => vm::value::Value::number(*(args_of_local_vars[i] as *mut f64)),
-                ValueType::Bool => vm::value::Value::bool(*(args_of_local_vars[i] as *mut bool)),
+                ValueType::Number => vm::value::Value::Number(*(args_of_local_vars[i] as *mut f64)),
+                ValueType::Bool => vm::value::Value::Bool(*(args_of_local_vars[i] as *mut bool)),
                 _ => unimplemented!(),
             },
         );

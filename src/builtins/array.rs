@@ -1,10 +1,5 @@
 use gc;
-use vm::{
-    callobj::CallObject,
-    error::RuntimeError,
-    value::{ArrayValue, Value},
-    vm::VM,
-};
+use vm::{callobj::CallObject, error::RuntimeError, value::*, vm::VM};
 
 thread_local!(
     pub static ARRAY_PROTOTYPE: Value = {
@@ -92,7 +87,7 @@ fn prototype_push(
 
     array.length += args.len();
 
-    vm.set_return_value(Value::number(array.length as f64));
+    vm.set_return_value(Value::Number(array.length as f64));
 
     Ok(())
 }
@@ -128,7 +123,7 @@ pub fn prototype_map(
     let array = if let Value::Array(array) = *callobj.this {
         unsafe { &mut *array }
     } else {
-        vm.state.stack.push(Value::undefined());
+        vm.state.stack.push(Value::Undefined);
         return Err(RuntimeError::Unknown);
     };
 
@@ -136,8 +131,8 @@ pub fn prototype_map(
     let callback = &args[0];
 
     let mut args_for_callback = vec![
-        Value::undefined(),
-        Value::number(0.0),
+        Value::Undefined,
+        Value::Number(0.0),
         /* array itself = */ (*callobj.this).clone(),
     ];
 

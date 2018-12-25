@@ -92,7 +92,7 @@ pub fn set_timeout(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(),
         args: vec![],
     });
 
-    vm.state.stack.push(Value::number(id as f64));
+    vm.state.stack.push(Value::Number(id as f64));
 
     Ok(())
 }
@@ -123,7 +123,7 @@ pub fn set_interval(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<()
         args: vec![],
     });
 
-    vm.state.stack.push(Value::number(id as f64));
+    vm.state.stack.push(Value::Number(id as f64));
 
     Ok(())
 }
@@ -145,7 +145,7 @@ pub fn clear_timer(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(),
 
     vm.task_mgr.clear_timer(timer_id);
 
-    vm.state.stack.push(Value::undefined());
+    vm.state.stack.push(Value::Undefined);
 
     Ok(())
 }
@@ -161,7 +161,7 @@ pub fn console_log(self_: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<
         }
         libc::puts(b"\0".as_ptr() as RawStringPtr);
     }
-    self_.state.stack.push(Value::undefined());
+    self_.state.stack.push(Value::Undefined);
     Ok(())
 }
 
@@ -433,12 +433,12 @@ pub fn require(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject) -> Result<(
                 | Err(UnexpectedEOF(pos, kind, msg))
                 | Err(UnexpectedToken(pos, kind, msg)) => {
                     parser.show_error_at(pos, kind, msg.as_str());
-                    vm.state.stack.push(Value::undefined());
+                    vm.state.stack.push(Value::Undefined);
                     return Ok(());
                 }
                 Err(UnsupportedFeature(pos)) => {
                     parser.enhanced_show_error_at(pos, "unsupported feature");
-                    vm.state.stack.push(Value::undefined());
+                    vm.state.stack.push(Value::Undefined);
                     return Ok(());
                 }
             };

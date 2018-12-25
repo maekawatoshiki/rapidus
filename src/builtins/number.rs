@@ -1,11 +1,10 @@
-use vm::{callobj::CallObject, error::RuntimeError, value::Value, vm::VM};
+use vm::{callobj::CallObject, error::RuntimeError, value::*, vm::VM};
 
 thread_local!(
     pub static NUMBER_PROTOTYPE: Value = {
-        Value::object_from_nvp(&vec![(
-            "toString",
-            Value::default_builtin_function(number_prototype_tostring),
-        )])
+        Value::object_from_nvp(&make_nvp!(
+            toString: Value::default_builtin_function(number_prototype_tostring)
+        ))
     };
 );
 
@@ -17,7 +16,7 @@ pub fn number_prototype_tostring(
     let number = if let Value::Number(num) = *callobj.this {
         num
     } else {
-        vm.set_return_value(Value::undefined());
+        vm.set_return_value(Value::Undefined);
         return Ok(());
     };
 

@@ -4,11 +4,12 @@ use jit::TracingJit;
 use llvm::core::*;
 use rand::random;
 use std::ffi::CString;
-use vm::{callobj::CallObject, error::RuntimeError, value::Value, vm::VM};
+use vm::value::*;
+use vm::{callobj::CallObject, error::RuntimeError, vm::VM};
 
 pub fn init(jit: TracingJit) -> Value {
     Value::object_from_nvp(&make_nvp!(
-        PI:     Value::number(::std::f64::consts::PI),
+        PI:     Value::Number(::std::f64::consts::PI),
         abs:    Value::default_builtin_function(math_abs),
         acos:   Value::default_builtin_function(math_acos),
         acosh:  Value::default_builtin_function(math_acosh),
@@ -118,10 +119,10 @@ macro_rules! simple_math {
         #[allow(unused_variables)]
         fn $name(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject) -> Result<(), RuntimeError> {
             if let Value::Number(n) = args[0] {
-                vm.state.stack.push(Value::number(n.$f()));
+                vm.state.stack.push(Value::Number(n.$f()));
                 return Ok(());
             }
-            vm.state.stack.push(Value::undefined());
+            vm.state.stack.push(Value::Undefined);
             Ok(())
         }
     };
@@ -139,10 +140,10 @@ simple_math!(math_atanh, atanh);
 fn math_atan2(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
     if let Value::Number(n1) = args[0] {
         if let Value::Number(n2) = args[1] {
-            vm.state.stack.push(Value::number(n1.atan2(n2)));
+            vm.state.stack.push(Value::Number(n1.atan2(n2)));
             return Ok(());
         }
-        vm.state.stack.push(Value::undefined())
+        vm.state.stack.push(Value::Undefined)
     }
     Ok(())
 }
@@ -151,7 +152,7 @@ simple_math!(math_ceil, ceil);
 
 fn math_clz32(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
     if let Value::Number(n) = args[0] {
-        vm.state.stack.push(Value::number(if n == 0.0 {
+        vm.state.stack.push(Value::Number(if n == 0.0 {
             32.0
         } else {
             // TODO: >> ? >>> ?
@@ -161,7 +162,7 @@ fn math_clz32(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), Runt
         }));
         return Ok(());
     }
-    vm.state.stack.push(Value::undefined());
+    vm.state.stack.push(Value::Undefined);
     Ok(())
 }
 simple_math!(math_cos, cos);
@@ -177,7 +178,7 @@ fn math_hypot(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), Runt
             sum2 += n * n;
         }
     }
-    vm.state.stack.push(Value::number(sum2.sqrt()));
+    vm.state.stack.push(Value::Number(sum2.sqrt()));
 ;    Ok(())
 }
 
@@ -185,10 +186,10 @@ fn math_log(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), Runtim
     if let Value::Number(n1) = args[0] {
         vm.state
             .stack
-            .push(Value::number(n1.log(::std::f64::consts::E)));
+            .push(Value::Number(n1.log(::std::f64::consts::E)));
         return Ok(());
     }
-    vm.state.stack.push(Value::undefined());
+    vm.state.stack.push(Value::Undefined);
     Ok(())
 }
 
@@ -196,10 +197,10 @@ fn math_log1p(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), Runt
     if let Value::Number(n1) = args[0] {
         vm.state
             .stack
-            .push(Value::number(n1.log(1.0 + ::std::f64::consts::E)));
+            .push(Value::Number(n1.log(1.0 + ::std::f64::consts::E)));
         return Ok(());
     }
-    vm.state.stack.push(Value::undefined());
+    vm.state.stack.push(Value::Undefined);
     Ok(())
 }
 
@@ -219,7 +220,7 @@ fn math_max(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), Runtim
             }
         }
     }
-    vm.state.stack.push(Value::number(max));
+    vm.state.stack.push(Value::Number(max));
     Ok(())
 }
 
@@ -236,7 +237,7 @@ fn math_min(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), Runtim
             }
         }
     }
-    vm.state.stack.push(Value::number(min));
+    vm.state.stack.push(Value::Number(min));
     Ok(())
 }
 
@@ -244,7 +245,7 @@ simple_math!(math_round, round);
 
 fn math_sign(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
     if let Value::Number(n) = args[0] {
-        vm.state.stack.push(Value::number(if n == 0.0 {
+        vm.state.stack.push(Value::Number(if n == 0.0 {
             n
         } else if n > 0.0 {
             1.0
@@ -253,7 +254,7 @@ fn math_sign(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), Runti
         }));
         return Ok(());
     }
-    vm.state.stack.push(Value::undefined());
+    vm.state.stack.push(Value::Undefined);
     Ok(())
 }
 
@@ -265,18 +266,18 @@ simple_math!(math_tanh, tanh);
 simple_math!(math_trunc, trunc);
 
 fn math_random(vm: &mut VM, _: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
-    vm.state.stack.push(Value::number(random::<f64>()));
+    vm.state.stack.push(Value::Number(random::<f64>()));
     Ok(())
 }
 
 fn math_pow(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
     if let Value::Number(f1) = args[0] {
         if let Value::Number(f2) = args[1] {
-            vm.state.stack.push(Value::number(f1.powf(f2)));
+            vm.state.stack.push(Value::Number(f1.powf(f2)));
             return Ok(());
         }
     }
-    vm.state.stack.push(Value::undefined());
+    vm.state.stack.push(Value::Undefined);
     Ok(())
 }
 

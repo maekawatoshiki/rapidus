@@ -142,7 +142,7 @@ impl ByteCodeGen {
             }
         }
 
-        self.gen_push_const(Value::number(n), iseq)
+        self.gen_push_const(Value::Number(n), iseq)
     }
 
     pub fn gen_push_bool(&self, b: bool, iseq: &mut ByteCode) {

@@ -2,22 +2,23 @@ use builtins::object;
 use vm::{
     callobj::CallObject,
     error::RuntimeError,
-    value::Value,
+    value::{Property, Value},
     vm::{call_function, VM},
 };
 
 thread_local! {
     pub static FUNCTION_PROTOTYPE: Value = {
-        let nvp = &make_nvp!(
+        let map = Value::propmap_from_nvp(&make_nvp!(
             length:     Value::Number(0f64),
             name:       Value::string("".to_string()),
             apply:      Value::default_builtin_function(prototype_apply),
             call:       Value::default_builtin_function(prototype_call),
             __proto__:  object::OBJECT_PROTOTYPE.with(|x| x.clone())
-        );
+        ));
 
         Value::Function(
-             Box::new((0, vec![], Value::propmap_from_nvp(&nvp), CallObject::new(Value::undefined()))))
+             Box::new((0, vec![], map, CallObject::new(Value::Undefined)))
+        )
     };
 }
 
@@ -76,7 +77,7 @@ fn prototype_apply(
             *callobj.this = arg_this;
             call_function(vm, *id, iseq, &arg, callobj).unwrap();
         }
-        _ => vm.state.stack.push(Value::undefined()),
+        _ => vm.state.stack.push(Value::Undefined),
     };
     Ok(())
 }
@@ -99,7 +100,7 @@ fn prototype_call(
             *callobj.this = arg_this;
             call_function(vm, *id, iseq, &args[1..].to_vec(), callobj).unwrap();
         }
-        _ => vm.state.stack.push(Value::undefined()),
+        _ => vm.state.stack.push(Value::Undefined),
     };
     Ok(())
 }

@@ -1,4 +1,4 @@
-use vm::{callobj::CallObject, error::RuntimeError, value::Value, vm::VM};
+use vm::{callobj::CallObject, error::RuntimeError, value::*, vm::VM};
 
 thread_local!(
     pub static OBJECT_PROTOTYPE: Value =
@@ -54,7 +54,6 @@ fn create(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeE
 
     let obj = match maybe_obj {
         Value::Object(map) => {
-            //let properties = unsafe { &*properties };
             let new_obj = Value::object_from_nvp(&vec![]);
             let proto = new_obj.get_property(Value::string("__proto__".to_string()), None);
             for (name, prop) in unsafe { (**map).iter() } {
