@@ -18,7 +18,7 @@ A toy JavaScript engine (now aiming for ES5)
 
 1. Install Rust
 
-  Run the command below and follow the onscreen instructions.
+  Run the command below and follow the onscreen instructions. 
 
 ```sh
 curl https://sh.rustup.rs -sSf | sh
@@ -67,7 +67,7 @@ cargo run --release example/XXX.js
 
 I don't know.
 
-- ~~tips: If you are using macOS, you cannot use llvm installed with `"brew"`. You should use macports or docker instead.~~ Now it works!
+- ~~tips: If you are using macOS, you cannot use llvm installed with ``brew``. You should use macports or docker instead.~~ Now it works!
 
 ## Use DLLs written in Rust
 
