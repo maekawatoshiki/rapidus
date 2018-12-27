@@ -16,7 +16,7 @@ pub type FuncId = Id;
 
 pub type RawStringPtr = *mut libc::c_char;
 
-pub type NVP = (String, Property);
+pub type NamePropPair = (String, Property);
 pub type PropMap = GcType<FxHashMap<String, Property>>;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -52,7 +52,7 @@ pub struct ArrayValue {
 }
 
 #[macro_export]
-macro_rules! make_nvp {
+macro_rules! make_npp {
     ($($property_name:ident : $val:expr),*) => {
         vec![ $((stringify!($property_name).to_string(), Property::new($val))),* ]
     };
@@ -61,7 +61,7 @@ macro_rules! make_nvp {
 #[macro_export]
 macro_rules! make_object {
     ($($property_name:ident : $val:expr),*) => {
-        Value::object_from_nvp(&make_nvp!($($property_name: $val),*))
+        Value::object_from_npp(&make_npp!($($property_name: $val),*))
     };
 }
 
@@ -92,11 +92,11 @@ impl Value {
 
     /// make JS function object.
     pub fn function(id: FuncId, iseq: ByteCode, callobj: CallObject) -> Value {
-        let prototype = Value::object_from_nvp(&vec![]);
+        let prototype = Value::object_from_npp(&vec![]);
         let val = Value::Function(Box::new((
             id,
             iseq,
-            Value::propmap_from_nvp(&make_nvp!(
+            Value::propmap_from_npp(&make_npp!(
                 prototype:  prototype.clone(),
                 __proto__:  function::FUNCTION_PROTOTYPE.with(|x| x.clone())
             )),
@@ -122,13 +122,13 @@ impl Value {
     pub fn builtin_function(
         func: BuiltinFuncTy,
         builtin_jit_func_info: Option<BuiltinJITFuncInfo>,
-        nvp: &mut Vec<NVP>,
+        npp: &mut Vec<NamePropPair>,
         prototype: Option<Value>,
     ) -> Value {
         if let Some(prototype) = prototype {
-            nvp.push(("prototype".to_string(), Property::new(prototype)));
+            npp.push(("prototype".to_string(), Property::new(prototype)));
         }
-        let map = Value::propmap_from_nvp(nvp);
+        let map = Value::propmap_from_npp(npp);
         Value::BuiltinFunction(Box::new((
             BuiltinFuncInfo::new(func, builtin_jit_func_info),
             map,
@@ -136,27 +136,27 @@ impl Value {
         )))
     }
 
-    pub fn builtin_constructor_from_nvp(
+    pub fn builtin_constructor_from_npp(
         func: BuiltinFuncTy,
-        nvp: &mut Vec<NVP>,
+        npp: &mut Vec<NamePropPair>,
         prototype: Option<Value>,
     ) -> Value {
-        Value::builtin_function(func, None, nvp, prototype)
+        Value::builtin_function(func, None, npp, prototype)
     }
 
-    /// make new property map (PropMap) from nvp.
-    pub fn propmap_from_nvp(nvp: &Vec<NVP>) -> PropMap {
+    /// make new property map (PropMap) from npp.
+    pub fn propmap_from_npp(npp: &Vec<NamePropPair>) -> PropMap {
         let mut map = FxHashMap::default();
-        for p in nvp {
+        for p in npp {
             map.insert(p.0.clone(), p.1.clone());
         }
         gc::new(map)
     }
 
     /// register name-value pairs to property map.
-    pub fn insert_propmap(map: PropMap, nvp: &Vec<(&'static str, Value)>) {
+    pub fn insert_propmap(map: PropMap, npp: &Vec<(&'static str, Value)>) {
         unsafe {
-            for p in nvp {
+            for p in npp {
                 (*map).insert(p.0.to_string(), p.1.to_property());
             }
         }
@@ -172,9 +172,9 @@ impl Value {
         }
     }
 
-    /// make new object from nvp.
-    pub fn object_from_nvp(nvp: &Vec<NVP>) -> Value {
-        let map = Value::propmap_from_nvp(&nvp);
+    /// make new object from npp.
+    pub fn object_from_npp(npp: &Vec<NamePropPair>) -> Value {
+        let map = Value::propmap_from_npp(&npp);
         Value::object(map)
     }
 
@@ -594,10 +594,10 @@ impl ArrayValue {
             length: len,
             obj: {
                 use builtins::array::ARRAY_PROTOTYPE;
-                let nvp = make_nvp!(
+                let npp = make_npp!(
                     __proto__:  ARRAY_PROTOTYPE.with(|x| x.clone())
                 );
-                Value::propmap_from_nvp(&nvp)
+                Value::propmap_from_npp(&npp)
             },
         }
     }

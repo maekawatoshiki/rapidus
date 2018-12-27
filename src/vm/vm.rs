@@ -100,9 +100,9 @@ impl VM {
 
         let module_exports = Value::object(gc::new(FxHashMap::default()));
         global_vals.set_value("module".to_string(), {
-            Value::object_from_nvp(&make_nvp!(
+            make_object!(
                 exports:    module_exports.clone()
-            ))
+            )
         });
         global_vals.set_value("exports".to_string(), module_exports);
 
@@ -166,8 +166,8 @@ impl VM {
                         ),
                     },
                 );
-                let nvp = make_nvp!(log: func_log);
-                Value::object_from_nvp(&nvp)
+                let npp = make_npp!(log: func_log);
+                Value::object_from_npp(&npp)
             });
         }
 
@@ -188,10 +188,10 @@ impl VM {
 
         global_vals.set_value(
             "process".to_string(),
-            Value::object_from_nvp(&make_nvp!(
+            make_object!(
                 stdout:
-                    Value::object_from_nvp(
-                        &make_nvp!(
+                    Value::object_from_npp(
+                        &make_npp!(
                              write:  Value::builtin_function_with_jit(
                                  builtin::process_stdout_write,
                                  BuiltinJITFuncInfo::Normal {
@@ -201,7 +201,7 @@ impl VM {
                              )
                          ),
                     )
-            )),
+            ),
         );
 
         global_vals.set_value(
@@ -552,7 +552,7 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
 
     match callee.clone() {
         Value::BuiltinFunction(box (x, obj, mut callobj)) => {
-            *callobj.this = Value::object_from_nvp(&vec![(
+            *callobj.this = Value::object_from_npp(&vec![(
                 "__proto__".to_string(),
                 Property::new(unsafe {
                     (*obj)
@@ -576,7 +576,7 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
         Value::Function(box (_id, iseq, obj, mut callobj)) => {
             // similar code is used some times. should make it a function.
             let new_this = unsafe {
-                Value::object_from_nvp(&vec![(
+                Value::object_from_npp(&vec![(
                     "__proto__".to_string(),
                     Property::new(
                         (*obj)
@@ -623,7 +623,7 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
 fn create_object(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // create_object
     get_int32!(self_, iseq, len, usize);
-    let mut nvp = vec![];
+    let mut npp = vec![];
     for _ in 0..len {
         let name = if let Value::String(name) = self_.state.stack.pop().unwrap() {
             name.into_string().unwrap()
@@ -631,10 +631,10 @@ fn create_object(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> 
             unreachable!()
         };
         let val = self_.state.stack.pop().unwrap();
-        nvp.push((name, Property::new(val.clone())));
+        npp.push((name, Property::new(val.clone())));
     }
 
-    self_.state.stack.push(Value::object_from_nvp(&nvp));
+    self_.state.stack.push(Value::object_from_npp(&npp));
 
     gc::mark_and_sweep(&self_.state);
 
@@ -1164,7 +1164,7 @@ fn push_scope(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1;
     let &base_callobj = self_.state.scope.last().unwrap();
     let co = unsafe { (*base_callobj).clone() };
-    let mut callobj = CallObject::new(Value::object_from_nvp(&vec![]));
+    let mut callobj = CallObject::new(Value::object_from_npp(&vec![]));
     callobj.parent = Some(base_callobj);
     callobj.params = co.params;
     callobj.arg_rest_vals = co.arg_rest_vals;

@@ -1,11 +1,8 @@
 use vm::{callobj::CallObject, error::RuntimeError, value::*, vm::VM};
 
 thread_local!(
-    pub static NUMBER_PROTOTYPE: Value = {
-        Value::object_from_nvp(&make_nvp!(
-            toString: Value::default_builtin_function(number_prototype_tostring)
-        ))
-    };
+    pub static NUMBER_PROTOTYPE: Value =
+        { make_object!(toString: Value::default_builtin_function(number_prototype_tostring)) };
 );
 
 pub fn number_prototype_tostring(

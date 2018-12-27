@@ -8,7 +8,7 @@ use vm::value::*;
 use vm::{callobj::CallObject, error::RuntimeError, vm::VM};
 
 pub fn init(jit: TracingJit) -> Value {
-    Value::object_from_nvp(&make_nvp!(
+    make_object!(
         PI:     Value::Number(::std::f64::consts::PI),
         abs:    Value::default_builtin_function(math_abs),
         acos:   Value::default_builtin_function(math_acos),
@@ -111,7 +111,7 @@ pub fn init(jit: TracingJit) -> Value {
                 },
             )
                 }
-    ))
+    )
 }
 
 macro_rules! simple_math {

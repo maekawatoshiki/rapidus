@@ -5,8 +5,7 @@ use chrono::Utc;
 
 thread_local!(
     pub static DATE_PROTOTYPE: Value = {
-        Value::Object(
-            Value::propmap_from_nvp(&make_nvp!())
+        make_object!(
             // TODO: Add methods
         )
     };
@@ -16,7 +15,7 @@ thread_local!(
         let date = Value::builtin_function(
             date,
             None,
-            &mut make_nvp!(
+            &mut make_npp!(
                 // TODO: Add methods
                 now:    Value::default_builtin_function(date_now)
             ),

@@ -6,11 +6,11 @@
 
 A toy JavaScript engine (now aiming for ES5)
 
-# Features
+# Features 
 
 - Small
 - Partly support for Tracing-JIT compiling
-- Simple REPL
+- Simple REPL 
 
 # Building from Source
 
@@ -18,7 +18,7 @@ A toy JavaScript engine (now aiming for ES5)
 
 1. Install Rust
 
-Run the command below and follow the onscreen instructions.
+  Run the command below and follow the onscreen instructions.
 
 ```sh
 curl https://sh.rustup.rs -sSf | sh
@@ -31,16 +31,15 @@ rustup override set nightly
 ```
 
 3. Install dependencies
-
-- LLVM 6.0
-- (Other packages as necessary...)
+  - LLVM 6.0
+  - (Other packages as necessary...)
 
 ```sh
 # e.g. Ubuntu or Debian
 apt-get install llvm-6.0
 ```
 
-4. Test
+4. Test 
 
 ```sh
 cargo test
@@ -68,11 +67,13 @@ cargo run --release example/XXX.js
 
 I don't know.
 
-- ~~tips: If you are using macOS, you cannot use llvm installed with `brew`. You should use macports or docker instead.~~ Now it works!
+- ~~tips: If you are using macOS, you cannot use llvm installed with `"brew"`. You should use macports or docker instead.~~ Now it works!
 
 ## Use DLLs written in Rust
 
 **THIS FEATURE IS EXPERIMENTAL**
+
+
 
 1. Make a cargo project in the directory rapidus' directory is located
 
@@ -82,7 +83,7 @@ $ ls
 rapidus hello
 ```
 
-2. Edit `Cargo.toml`
+2. Edit ``Cargo.toml``
 
 ```sh
 $ cd hello
@@ -101,7 +102,7 @@ name = "hello"
 crate_type = ["cdylib"] # try 'dylib' if it doesn't work.
 ```
 
-3. Edit `src/lib.rs`
+3. Edit ``src/lib.rs``
 
 ```sh
 $ <YOUR EDITOR> src/lib.rs
@@ -122,7 +123,7 @@ fn initialize(vm: &mut VM, _: &Vec<Value>, _: &CallObject) -> Result<(), Runtime
     // make_object!() is useful
     let module_exports = make_object!(
         greet:   Value::default_builtin_function(greet),
-        message: Value::string("hello".to_string())
+        message: Value::String("hello".to_string())
     );
 
     vm.set_return_value(module_exports); // We have to return module.exports

@@ -3,7 +3,7 @@ use vm::{callobj::CallObject, error::RuntimeError, value::*, vm::VM};
 
 thread_local!(
     pub static ARRAY_PROTOTYPE: Value = {
-        let map = Value::propmap_from_nvp(&make_nvp!(
+        let map = Value::propmap_from_npp(&make_npp!(
             // https://www.ecma-international.org/ecma-262/7.0/#sec-properties-of-the-array-prototype-object
             // TODO: precise implementation
             push: Value::default_builtin_function(prototype_push),
