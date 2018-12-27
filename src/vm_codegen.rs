@@ -9,7 +9,7 @@ use vm::{
 #[derive(Clone, Debug)]
 pub enum Error {
     General { msg: String, token_pos: usize },
-    Unimplemented { msg: String },
+    Unimplemented { msg: String, token_pos: usize },
 }
 
 #[derive(Clone, Debug)]
@@ -744,6 +744,7 @@ impl VMCodeGen {
             op => {
                 return Err(Error::Unimplemented {
                     msg: format!("error: unary operator '{:?}' is unimplemented", op),
+                    token_pos: expr.pos,
                 });
             }
         }

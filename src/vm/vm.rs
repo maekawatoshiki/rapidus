@@ -44,12 +44,33 @@ pub enum TryReturn {
     None,
 }
 
+impl TryReturn {
+    pub fn to_string(&self) -> String {
+        match self {
+            TryReturn::Value(val) => val.to_string(),
+            TryReturn::Error(err) => err.to_value().to_string(),
+            TryReturn::None => "None".to_string(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum TryState {
     Try(isize, isize, TryReturn), //position of (CATCH, FINALLY)
     Catch(isize, TryReturn),      //postion of (FINALLY)
     Finally(TryReturn),
     None,
+}
+
+impl TryState {
+    pub fn to_string(&self) -> (String, String) {
+        match &self {
+            TryState::None => ("None".to_string(), "".to_string()),
+            TryState::Try(_, _, tryreturn) => ("Try".to_string(), tryreturn.to_string()),
+            TryState::Catch(_, tryreturn) => ("Catch".to_string(), tryreturn.to_string()),
+            TryState::Finally(tryreturn) => ("Finally".to_string(), tryreturn.to_string()),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -297,6 +318,18 @@ impl VM {
 
 impl VM {
     pub fn run(&mut self, iseq: ByteCode) -> Result<bool, RuntimeError> {
+        if self.is_debug {
+            println!(
+                " {:<8} {:<8} {:<5} {:<5} {:<16} {:<4} {}",
+                "tryst".to_string(),
+                "tryret".to_string(),
+                "scope".to_string(),
+                "stack".to_string(),
+                "  top".to_string(),
+                "PC".to_string(),
+                "INST".to_string(),
+            );
+        }
         //self.store_state();
         let res = self.do_run(&iseq);
 
@@ -362,10 +395,21 @@ impl VM {
     /// pop vm.state.history
     fn restore_state(&mut self) {
         if let Some((previous_sp, return_pc)) = self.state.history.pop() {
-            self.state.stack.truncate(previous_sp + 1);
+            if self.is_debug {
+                print!("stack trace:");
+                for v in &self.state.stack {
+                    print!("[{}]", v.to_string());
+                }
+                println!();
+            }
+            let top = self.state.stack.pop();
+            self.state.stack.truncate(previous_sp);
+            if let Some(top) = top {
+                self.state.stack.push(top);
+            }
             self.state.pc = return_pc;
         } else {
-            unreachable!("history stack exhaust.")
+            unreachable!("history stack abnormaly exhaust.")
         }
     }
 
@@ -377,7 +421,21 @@ impl VM {
         loop {
             let code = iseq[self.state.pc as usize];
             if self.is_debug {
+                let emptystack = Value::string("EMPTY".to_string());
+                let trystate = self.trystate_stack.last().unwrap();
+                let scopelen = self.state.scope.len();
+                let stacklen = self.state.stack.len();
+                let stacktop = self.state.stack.last().unwrap_or(&emptystack);
+                print!(
+                    " {:<8} {:<8} {:<5} {:<5} {:<16}",
+                    trystate.to_string().0,
+                    trystate.to_string().1,
+                    scopelen,
+                    stacklen,
+                    stacktop.to_string()
+                );
                 bytecode_gen::show_inst(iseq, self.state.pc as usize);
+                println!();
             }
             match self.op_table[code as usize](self, iseq) {
                 Ok(true) => {
@@ -472,8 +530,7 @@ macro_rules! get_int32 {
     };
 }
 
-fn end(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
-    self_.state.stack.push(Value::Undefined);
+fn end(_self: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     Ok(false)
 }
 
@@ -1013,7 +1070,7 @@ fn return_(_self: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
 }
 
 fn throw(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
-    let val = self_.state.stack.last().unwrap().clone();
+    let val = self_.state.stack.pop().unwrap().clone();
     Err(RuntimeError::Exception(val))
 }
 

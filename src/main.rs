@@ -7,7 +7,6 @@ use rapidus::vm;
 use rapidus::vm_codegen;
 
 use parser::Error::*;
-use vm::error::RuntimeError;
 
 extern crate libc;
 
@@ -40,20 +39,25 @@ fn main() {
                 .help("Show useful information for debugging")
                 .long("debug"),
         )
+        .arg(
+            Arg::with_name("trace")
+                .help("Trace bytecode execution for debugging")
+                .long("trace"),
+        )
         .arg(Arg::with_name("file").help("Input file name").index(1));
     let app_matches = app.clone().get_matches();
 
     let file_name = match app_matches.value_of("file") {
         Some(file_name) => file_name,
         None => {
-            repl(app_matches.is_present("debug"));
+            repl(app_matches.is_present("trace"));
             return;
         }
     };
 
     // Normally run the given code
     if !app_matches.is_present("debug") {
-        run(file_name);
+        run(file_name, app_matches.is_present("trace"));
         return;
     }
 
@@ -114,7 +118,7 @@ fn main() {
     // vm_codegen::test();
 }
 
-fn repl(debug: bool) {
+fn repl(trace: bool) {
     // TODO: REFINE CODE!!!!
     let mut vm_codegen = vm_codegen::VMCodeGen::new();
     let global = vm_codegen.global_varmap;
@@ -170,19 +174,19 @@ fn repl(debug: bool) {
             Ok(()) => {}
             Err(vm_codegen::Error::General { msg, token_pos }) => {
                 parser.show_error_at(token_pos, lexer::ErrorMsgKind::Normal, msg.as_str());
-                return;
+                continue;
             }
-            Err(e) => panic!(e),
+            Err(vm_codegen::Error::Unimplemented { msg, token_pos }) => {
+                parser.show_error_at(token_pos, lexer::ErrorMsgKind::LastToken, msg.as_str());
+                continue;
+            }
         };
         vm.const_table = vm_codegen.bytecode_gen.const_table.clone();
         vm.state.pc = 0;
-        vm.is_debug = debug;
+        vm.is_debug = trace;
         let res = vm.run(iseq);
-        if vm.state.stack.len() != 1 {
-            println!(
-                "Warning: stack length is {} (should be 1)",
-                vm.state.stack.len()
-            );
+        if vm.state.stack.len() == 0 {
+            vm.state.stack.push(vm::value::Value::Undefined);
         };
         if vm.state.history.len() != 1 {
             println!(
@@ -192,22 +196,7 @@ fn repl(debug: bool) {
         };
         match res {
             Err(e) => {
-                match e {
-                    RuntimeError::Unknown => vm::error::runtime_error("unknown error occurred"),
-                    RuntimeError::Unimplemented => {
-                        vm::error::runtime_error("unimplemented feature")
-                    }
-                    RuntimeError::Reference(msg)
-                    | RuntimeError::Type(msg)
-                    | RuntimeError::General(msg) => vm::error::runtime_error(msg.as_str()),
-                    RuntimeError::Exception(val) => {
-                        vm::error::runtime_error("Uncaught exception");
-                        builtin::debug_print(&val, true);
-                        unsafe {
-                            libc::puts(b"\0".as_ptr() as *const i8);
-                        }
-                    }
-                }
+                e.show_error_message();
                 vm.state.stack.pop();
             }
             _ => {
@@ -227,7 +216,7 @@ fn repl(debug: bool) {
     }
 }
 
-fn run(file_name: &str) {
+fn run(file_name: &str, trace: bool) {
     match fork() {
         Ok(ForkResult::Parent { child, .. }) => {
             match waitpid(child, None) {
@@ -311,24 +300,10 @@ fn run(file_name: &str) {
 
             let mut vm = vm::vm::VM::new(vm_codegen.global_varmap);
             vm.const_table = vm_codegen.bytecode_gen.const_table;
+            vm.is_debug = trace;
 
             if let Err(e) = vm.run(iseq) {
-                match e {
-                    RuntimeError::Unknown => vm::error::runtime_error("unknown error occurred"),
-                    RuntimeError::Unimplemented => {
-                        vm::error::runtime_error("unimplemented feature")
-                    }
-                    RuntimeError::Reference(msg)
-                    | RuntimeError::Type(msg)
-                    | RuntimeError::General(msg) => vm::error::runtime_error(msg.as_str()),
-                    RuntimeError::Exception(val) => {
-                        vm::error::runtime_error(&"Uncaught Exception".to_string());
-                        unsafe {
-                            builtin::debug_print(&val, true);
-                            libc::puts(b"\0".as_ptr() as *const i8);
-                        }
-                    }
-                }
+                e.show_error_message();
             }
         }
         Err(e) => panic!("Rapidus Internal Error: fork failed: {:?}", e),

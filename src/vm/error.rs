@@ -23,6 +23,23 @@ impl RuntimeError {
             RuntimeError::Unknown => Value::string("Unknown".to_string()),
         }
     }
+
+    pub fn show_error_message(&self) {
+        match self {
+            RuntimeError::Unknown => runtime_error("unknown error occurred"),
+            RuntimeError::Unimplemented => runtime_error("unimplemented feature"),
+            RuntimeError::Reference(msg) | RuntimeError::Type(msg) | RuntimeError::General(msg) => {
+                runtime_error(msg.as_str())
+            }
+            RuntimeError::Exception(val) => {
+                runtime_error("Uncaught Exception");
+                unsafe {
+                    super::super::builtin::debug_print(&val, true);
+                    libc::puts(b"\0".as_ptr() as *const i8);
+                }
+            }
+        }
+    }
 }
 
 pub fn runtime_error(msg: &str) {
