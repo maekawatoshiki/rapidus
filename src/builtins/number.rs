@@ -1,20 +1,8 @@
-use gc;
-use gc::GcType;
-use vm::{
-    callobj::CallObject,
-    error::RuntimeError,
-    value::{Value, ValueBase},
-    vm::VM,
-};
-
-use rustc_hash::FxHashMap;
+use vm::{callobj::CallObject, error::RuntimeError, value::*, vm::VM};
 
 thread_local!(
-    pub static NUMBER_PROTOTYPE: GcType<FxHashMap<String, Value>> = {
-        gc::new(make_hashmap!(
-            toString: Value::default_builtin_function(number_prototype_tostring)
-        ))
-    };
+    pub static NUMBER_PROTOTYPE: Value =
+        { make_object!(toString: Value::default_builtin_function(number_prototype_tostring)) };
 );
 
 pub fn number_prototype_tostring(
@@ -22,15 +10,15 @@ pub fn number_prototype_tostring(
     args: &Vec<Value>,
     callobj: &CallObject,
 ) -> Result<(), RuntimeError> {
-    let number = if let ValueBase::Number(num) = callobj.this.val {
+    let number = if let Value::Number(num) = *callobj.this {
         num
     } else {
-        vm.set_return_value(Value::undefined());
+        vm.set_return_value(Value::Undefined);
         return Ok(());
     };
 
     let base = match args.get(0) {
-        Some(Value { val, .. }) => {
+        Some(val) => {
             let num = val.to_number();
             if num - num.floor() == 0.0 && 2.0 <= num && num <= 36.0 {
                 num as usize

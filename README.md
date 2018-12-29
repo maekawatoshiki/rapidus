@@ -123,7 +123,7 @@ fn initialize(vm: &mut VM, _: &Vec<Value>, _: &CallObject) -> Result<(), Runtime
     // make_object!() is useful
     let module_exports = make_object!(
         greet:   Value::default_builtin_function(greet),
-        message: Value::string("hello".to_string())
+        message: Value::String("hello".to_string())
     );
 
     vm.set_return_value(module_exports); // We have to return module.exports
@@ -135,7 +135,7 @@ fn initialize(vm: &mut VM, _: &Vec<Value>, _: &CallObject) -> Result<(), Runtime
 fn greet(vm: &mut VM, _: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
     println!("Hello World from Rust DLL!");
 
-    vm.set_return_value(Value::undefined()); // Remember to return a value you want
+    vm.set_return_value(Value::Undefined); // Remember to return a value you want
 
     Ok(())
 }

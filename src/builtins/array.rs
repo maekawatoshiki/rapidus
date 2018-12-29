@@ -1,71 +1,58 @@
+use builtins::object::*;
 use gc;
-use vm::{
-    callobj::CallObject,
-    error::RuntimeError,
-    value::{ArrayValue, Value, ValueBase},
-    vm::VM,
-};
-
-use rustc_hash::FxHashMap;
+use vm::{callobj::CallObject, error::RuntimeError, value::*, vm::VM};
 
 thread_local!(
     pub static ARRAY_PROTOTYPE: Value = {
-        let prototype = make_hashmap!(
-            push: Value::default_builtin_function(array_prototype_push),
-            pop:  Value::default_builtin_function(array_prototype_pop),
-            map:  Value::default_builtin_function(array_prototype_map)
-        );
+        let map = Value::propmap_from_npp(&make_npp!(
+            // https://www.ecma-international.org/ecma-262/7.0/#sec-properties-of-the-array-prototype-object
+            // TODO: precise implementation
+            push: Value::default_builtin_function(prototype_push),
+            pop: Value::default_builtin_function(prototype_pop),
+            map: Value::default_builtin_function(prototype_map),
+            __proto__: OBJECT_PROTOTYPE.with(|x| x.clone())
+        ));
 
-        // https://www.ecma-international.org/ecma-262/7.0/#sec-properties-of-the-array-prototype-object
-        // TODO: precise implementation
-        Value::new(ValueBase::Array(gc::new(ArrayValue {
+        Value::Array(gc::new(ArrayValue {
             elems: vec![],
             length: 0,
-            obj: prototype
-        })))
+            obj: map,
+        }))
     };
-
-    pub static ARRAY_OBJ: Value = {
-        let prototype = ARRAY_PROTOTYPE.with(|x| x.clone());
-        let array = Value::builtin_function_with_obj_and_prototype(
-            array_new,
-            None,
-            CallObject::new(Value::undefined()),
-            {
-                let mut obj = FxHashMap::default();
-
-                // TODO: Add:
-                //          - Array.from()
-                //          - Array.isArray()
-                //          - Array.observe()
-                //          - Array.of()
-                //          etc...
-                obj
-            },
-            prototype.clone()
-        );
-
-        prototype.set_constructor(array.clone());
-
-        array
-    }
 );
+pub fn init() -> Value {
+    let prototype = ARRAY_PROTOTYPE.with(|x| x.clone());
+    let array = Value::builtin_function(
+        new,
+        None,
+        &mut vec![
+            // TODO: Add:
+            //          - Array.from()
+            //          - Array.isArray()
+            //          - Array.observe()
+            //          - Array.of()
+            //          etc...
+        ],
+        Some(prototype.clone()),
+    );
+    prototype.set_constructor(array.clone());
 
-pub fn array_new(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
+    array
+}
+
+fn new(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
     let args_len = args.len();
 
     if args_len == 0 {
-        vm.state
-            .stack
-            .push(Value::array(gc::new(ArrayValue::new(vec![]))));
+        vm.set_return_value(Value::array_from_elems(vec![]));
         gc::mark_and_sweep(&vm.state);
         return Ok(());
     }
 
     let mut elems = vec![];
 
-    match args[0].val {
-        ValueBase::Number(length) if args_len == 1 => {
+    match args[0] {
+        Value::Number(length) if args_len == 1 => {
             for _ in 0..length as usize {
                 elems.push(Value::empty());
             }
@@ -77,82 +64,82 @@ pub fn array_new(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), R
         }
     }
 
-    vm.set_return_value(Value::array(gc::new(ArrayValue::new(elems))));
-
+    vm.set_return_value(Value::array_from_elems(elems));
     gc::mark_and_sweep(&vm.state);
 
     Ok(())
 }
 
-pub fn array_prototype_push(
+fn prototype_push(
     vm: &mut VM,
     args: &Vec<Value>,
     callobj: &CallObject,
 ) -> Result<(), RuntimeError> {
-    let array = if let ValueBase::Array(ref array) = callobj.this.val {
-        unsafe { &mut **array }
+    let array = if let Value::Array(array) = *callobj.this {
+        unsafe { &mut *array }
     } else {
-        vm.state.stack.push(Value::undefined());
+        println!("fail");
+        vm.set_return_value(Value::Undefined);
         return Err(RuntimeError::Unknown);
     };
 
     for val in args {
-        array.elems.push(val.clone());
+        array.elems.push(val.to_property());
     }
 
     array.length += args.len();
 
-    vm.set_return_value(Value::number(array.length as f64));
+    vm.set_return_value(Value::Number(array.length as f64));
 
     Ok(())
 }
 
-pub fn array_prototype_pop(
+fn prototype_pop(
     vm: &mut VM,
     _args: &Vec<Value>,
     callobj: &CallObject,
 ) -> Result<(), RuntimeError> {
-    let array = if let ValueBase::Array(ref array) = callobj.this.val {
-        unsafe { &mut **array }
+    let array = if let Value::Array(array) = *callobj.this {
+        unsafe { &mut *array }
     } else {
-        vm.state.stack.push(Value::undefined());
+        vm.set_return_value(Value::Undefined);
         return Err(RuntimeError::Unknown);
     };
 
-    if let Some(val) = array.elems.pop() {
+    if let Some(prop) = array.elems.pop() {
         array.length -= 1;
-        vm.state.stack.push(val);
+        vm.set_return_value(prop.val);
         return Ok(());
     }
 
-    vm.set_return_value(Value::undefined());
+    vm.set_return_value(Value::Undefined);
 
     Ok(())
 }
 
-pub fn array_prototype_map(
+pub fn prototype_map(
     vm: &mut VM,
     args: &Vec<Value>,
     callobj: &CallObject,
 ) -> Result<(), RuntimeError> {
-    let array = if let ValueBase::Array(ref array) = callobj.this.val {
-        unsafe { &mut **array }
+    let array = if let Value::Array(array) = *callobj.this {
+        unsafe { &mut *array }
     } else {
-        vm.state.stack.push(Value::undefined());
+        vm.state.stack.push(Value::Undefined);
         return Err(RuntimeError::Unknown);
     };
 
-    let mut new_array = ArrayValue::new(vec![]);
+    let mut new_array = vec![];
     let callback = &args[0];
 
     let mut args_for_callback = vec![
-        Value::undefined(),
-        Value::number(0.0),
+        Value::Undefined,
+        Value::Number(0.0),
         /* array itself = */ (*callobj.this).clone(),
     ];
 
     for i in 0..array.length {
-        args_for_callback[0] = array.elems[i].clone();
+        args_for_callback[0] = array.elems[i].val.clone();
         args_for_callback[1].set_number_if_possible(i as f64);
 
         vm.call_function_simply(callback, &args_for_callback)?;
@@ -161,7 +148,7 @@ pub fn array_prototype_map(
         new_array.push(val);
     }
 
-    vm.set_return_value(Value::array(gc::new(new_array)));
+    vm.set_return_value(Value::array_from_elems(new_array));
 
     Ok(())
 }
