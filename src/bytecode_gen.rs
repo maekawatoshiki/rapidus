@@ -397,10 +397,10 @@ pub fn read_int32(iseq: &ByteCode, pc: usize) -> u32 {
         + (iseq[pc as usize + 0] as u32)
 }
 
-pub fn show(code: &ByteCode) {
+pub fn show(code: &ByteCode, const_table: &ConstantTable) {
     let mut i = 0;
     while i < code.len() {
-        show_inst(code, i);
+        show_inst(code, i, const_table);
         println!();
         i = i + if let Some(size) = VMInst::get_inst_size(code[i]) {
             size
@@ -410,7 +410,7 @@ pub fn show(code: &ByteCode) {
     }
 }
 
-pub fn show_inst(code: &ByteCode, i: usize) {
+pub fn show_inst(code: &ByteCode, i: usize, const_table: &ConstantTable) {
     print!("{:04x} ", i);
     match code[i] {
         VMInst::END => {
@@ -447,8 +447,8 @@ pub fn show_inst(code: &ByteCode, i: usize) {
         }
         VMInst::PUSH_CONST => {
             let int32 = read_int32(code, i + 1);
-            //let value = vm.const_table.value[int32].clone();
-            print!("PushConst {}", int32);
+            let value = &const_table.value[int32 as usize];
+            print!("PushConst {}", value.format(1));
         }
         VMInst::PUSH_THIS => {
             print!("PushThis");
@@ -559,16 +559,22 @@ pub fn show_inst(code: &ByteCode, i: usize) {
             print!("LogOr");
         }
         VMInst::UPDATE_PARENT_SCOPE => {
-            print!("UpdatePaScope");
+            print!("UpdateParentScope");
         }
         VMInst::GET_VALUE => {
-            print!("GetValue");
+            let int32 = read_int32(code, i + 1);
+            let name = &const_table.string[int32 as usize];
+            print!("GetValue '{}'", name);
         }
         VMInst::SET_VALUE => {
-            print!("SetValue");
+            let int32 = read_int32(code, i + 1);
+            let name = &const_table.string[int32 as usize];
+            print!("SetValue '{}'", name);
         }
         VMInst::DECL_VAR => {
-            print!("DeclVar");
+            let int32 = read_int32(code, i + 1);
+            let name = &const_table.string[int32 as usize];
+            print!("DeclVar '{}'", name);
         }
         VMInst::COND_OP => {
             print!("CondOp");

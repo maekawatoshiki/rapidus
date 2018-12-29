@@ -407,6 +407,27 @@ impl Value {
             | Value::Arguments => {}
         }
     }
+
+    pub fn set_property_with_name(&self, name: String, val: Value) {
+        match self {
+            Value::Function(box (_, _, obj, _))
+            | Value::BuiltinFunction(box (_, obj, _))
+            | Value::Date(box (_, obj))
+            | Value::Object(obj) => unsafe {
+                (**obj).insert(name, val.to_property());
+            },
+            Value::Array(aryval) => unsafe {
+                (*((**aryval).obj)).insert(name.to_string(), val.to_property());
+            },
+            Value::Empty
+            | Value::Null
+            | Value::Undefined
+            | Value::Bool(_)
+            | Value::Number(_)
+            | Value::String(_)
+            | Value::Arguments => {}
+        }
+    }
 }
 
 impl Value {
@@ -521,6 +542,48 @@ impl Value {
             Value::Array(_) => true,
             Value::Object(_) => true,
             _ => false,
+        }
+    }
+
+    // generate pretty print string for the object, specifying trace depth.
+    pub fn format(&self, depth: i32) -> String {
+        match self {
+            Value::Undefined | Value::Bool(_) | Value::Number(_) | Value::Null | Value::Empty => {
+                self.to_string()
+            }
+            Value::String(_) => format!("'{}'", self.to_string()),
+            Value::Array(aryval) => match depth {
+                0 => "[Array]".to_string(),
+                depth => {
+                    let aryval = unsafe { &**aryval };
+                    let str = aryval.elems[0..aryval.length]
+                        .iter()
+                        .fold("".to_string(), |acc, prop| {
+                            acc + prop.val.format(depth - 1).as_str() + ","
+                        })
+                        .trim_right_matches(",")
+                        .to_string();
+                    format!("[{}]", str)
+                }
+            },
+            Value::Object(map) => match depth {
+                0 => "[Object]".to_string(),
+                depth => {
+                    let map = unsafe { &**map };
+                    let str = map
+                        .iter()
+                        .fold("".to_string(), |acc, nvp| {
+                            acc + nvp.0 + ":" + nvp.1.val.format(depth - 1).as_str() + ","
+                        })
+                        .trim_right_matches(",")
+                        .to_string();
+                    format!("{{{}}}", str)
+                }
+            },
+            Value::Date(_) => "[Date]".to_string(),
+            Value::Function(_) => "[Function]".to_string(),
+            Value::BuiltinFunction(_) => "[BuiltinFunc]".to_string(),
+            Value::Arguments => "arguments".to_string(),
         }
     }
 }

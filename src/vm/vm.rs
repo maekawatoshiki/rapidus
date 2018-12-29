@@ -231,8 +231,8 @@ impl VM {
 
         global_vals.set_value("Object".to_string(), builtins::object::init());
         global_vals.set_value("Error".to_string(), builtins::error::init());
-        global_vals.set_value("Array".to_string(), builtins::object::init());
         global_vals.set_value("Function".to_string(), builtins::function::init());
+        global_vals.set_value("Array".to_string(), builtins::object::init());
         use builtins::date::DATE_OBJ;
         global_vals.set_value("Date".to_string(), DATE_OBJ.with(|x| x.clone()));
         global_vals.set_value("Math".to_string(), builtins::math::init(jit.clone()));
@@ -396,9 +396,13 @@ impl VM {
     fn restore_state(&mut self) {
         if let Some((previous_sp, return_pc)) = self.state.history.pop() {
             if self.is_debug {
-                print!("stack trace:");
-                for v in &self.state.stack {
-                    print!("[{}]", v.to_string());
+                print!("stack trace: ");
+                for (n, v) in self.state.stack.iter().enumerate() {
+                    if n == 0 {
+                        print!("{}", v.format(1));
+                    } else {
+                        print!(" | {}", v.format(1));
+                    }
                 }
                 println!();
             }
@@ -421,20 +425,22 @@ impl VM {
         loop {
             let code = iseq[self.state.pc as usize];
             if self.is_debug {
-                let emptystack = Value::string("EMPTY".to_string());
                 let trystate = self.trystate_stack.last().unwrap();
                 let scopelen = self.state.scope.len();
                 let stacklen = self.state.stack.len();
-                let stacktop = self.state.stack.last().unwrap_or(&emptystack);
+                let stacktop = self.state.stack.last();
                 print!(
-                    " {:<8} {:<8} {:<5} {:<5} {:<16}",
+                    " {:<8} {:<8} {:<5} {:<5} {:<16} ",
                     trystate.to_string().0,
                     trystate.to_string().1,
                     scopelen,
                     stacklen,
-                    stacktop.to_string()
+                    match stacktop {
+                        Some(val) => val.format(0),
+                        None => "".to_string(),
+                    },
                 );
-                bytecode_gen::show_inst(iseq, self.state.pc as usize);
+                bytecode_gen::show_inst(iseq, self.state.pc as usize, &self.const_table);
                 println!();
             }
             match self.op_table[code as usize](self, iseq) {

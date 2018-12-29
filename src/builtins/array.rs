@@ -1,3 +1,4 @@
+use builtins::object::*;
 use gc;
 use vm::{callobj::CallObject, error::RuntimeError, value::*, vm::VM};
 
@@ -8,7 +9,8 @@ thread_local!(
             // TODO: precise implementation
             push: Value::default_builtin_function(prototype_push),
             pop: Value::default_builtin_function(prototype_pop),
-            map: Value::default_builtin_function(prototype_map)
+            map: Value::default_builtin_function(prototype_map),
+            __proto__: OBJECT_PROTOTYPE.with(|x| x.clone())
         ));
 
         Value::Array(gc::new(ArrayValue {

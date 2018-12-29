@@ -107,7 +107,7 @@ fn main() {
     let mut iseq = vec![];
     vm_codegen.compile(&node, &mut iseq, false).unwrap();
 
-    bytecode_gen::show(&iseq);
+    bytecode_gen::show(&iseq, &vm_codegen.bytecode_gen.const_table);
 
     // println!("Result:");
     // let mut vm = vm::VM::new();

@@ -3,7 +3,7 @@
 ### 1.Value構造体
 
 - 従来の `Value`, `ValueBase` 構造体をそれぞれ `Property`, `Value` 構造体へ変更した。
-writable, configurable などの属性は Property のメンバとなる。
+writable, configurable などの属性は `Property` のメンバとなる。
 - Valueは`to_property(&self)`で`Property`に変換できる。
 - 識別子とProperyのタプルとして`NamePropPair`, プロパティのmapとして`PropMap`を定義した。
 
@@ -67,7 +67,6 @@ let map: PropMap = Value::propmap_from_npp(&make_npp!(
 - コマンドラインから `--trace` オプションをつけて実行するとバイトコード実行・スタックの状態をトレースするようにした（REPL でも使用可）。
 
 - 左から順に `trystate_stack` のスタックトップの `TryState` および `TryReturn`, `state.scope` の要素数、`state.stack` の要素数、`stack` スタックトップの `Value`, プログラムカウンタ、VM インストラクションを表示する。
-`stack` の要素数が 0 の時は EMPTY と表示する。
 
 - また、PUSH_INT や JMP、CALL など引数を持つ一部のインストラクションについては引数も表示するようにした。
 
@@ -76,61 +75,44 @@ let map: PropMap = Value::propmap_from_npp(&make_npp!(
 
 ```
 $ cargo run -- --trace
-    Finished dev [unoptimized + debuginfo] target(s) in 0.23s
-     Running `target/debug/rapidus --trace`
-> try { throw 123 } catch(e) { return 1 } finally { throw 45 }
+> try { throw 123 } catch(e) { return 1 } finally { console.log(12) }
  tryst    tryret   scope stack   top            PC   INST
- None              1     0     EMPTY           0000 CreateContext
- None              1     0     EMPTY           0001 EnterTry
- Try      None     1     0     EMPTY           000a PushInt8 123
- Try      None     1     1     123             000c Throw
- Catch    None     1     1     123             0012 Catch
- Catch    None     1     1     123             0013 PushScope
- Catch    None     2     1     123             0014 DeclVar
- Catch    None     2     1     123             0019 SetValue
- Catch    None     2     0     EMPTY           001e PushInt8 1
- Catch    None     2     1     1               0020 PopScope
- Catch    None     1     1     1               0021 ReturnTry
- Finally  1        1     0     EMPTY           0027 Finally
- Finally  1        1     0     EMPTY           0028 PushInt8 45
- Finally  1        1     1     45              002a Throw
-stack trace:[undefined]
-runtime error: Uncaught Exception
-45
+ None              1     0                      0000 CreateContext
+ None              1     0                      0001 EnterTry
+ Try      None     1     0                      000a PushInt8 123
+ Try      None     1     1     123              000c Throw
+ Catch    None     1     1     123              0012 Catch
+ Catch    None     1     1     123              0013 PushScope
+ Catch    None     2     1     123              0014 DeclVar 'e'
+ Catch    None     2     1     123              0019 SetValue 'e'
+ Catch    None     2     0                      001e PushInt8 1
+ Catch    None     2     1     1                0020 PopScope
+ Catch    None     1     1     1                0021 ReturnTry
+ Finally  1        1     0                      0027 Finally
+ Finally  1        1     0                      0028 PushInt8 12
+ Finally  1        1     1     12               002a GetValue 'console'
+ Finally  1        1     2     [Object]         002f PushConst 'log'
+ Finally  1        1     3     'log'            0034 GetMember
+ Finally  1        1     2     [BuiltinFunc]    0035 Call 1 params
+12
+ Finally  1        1     1     undefined        003a Pop
+ Finally  1        1     0                      003b LeaveTry
+stack trace: 1
+1
 ```
-
 ```
-$ cargo run -- --trace
-    Finished dev [unoptimized + debuginfo] target(s) in 0.96s
-     Running `target/debug/rapidus --trace`
-> 1;2;3;4;5
+> 1;2;true;"elem";[1,2,"wow"]
  tryst    tryret   scope stack   top            PC   INST
- None              1     0     EMPTY           0000 CreateContext
- None              1     0     EMPTY           0001 PushInt8 1
- None              1     1     1               0003 PushInt8 2
- None              1     2     2               0005 PushInt8 3
- None              1     3     3               0007 PushInt8 4
- None              1     4     4               0009 PushInt8 5
- None              1     5     5               000b End
-stack trace:[1][2][3][4][5]
-5
-```
-```
-$ cargo run -- --trace
-    Finished dev [unoptimized + debuginfo] target(s) in 1.17s
-     Running `target/debug/rapidus --trace`
-> if (true) { var a = [1,2,3] }
- tryst    tryret   scope stack   top            PC   INST
- None              1     0     EMPTY           0000 CreateContext
- None              1     0     EMPTY           0001 DeclVar
- None              1     0     EMPTY           0006 PushTrue
- None              1     1     true            0007 JmpIfFalse 001c
- None              1     0     EMPTY           000c PushInt8 3
- None              1     1     3               000e PushInt8 2
- None              1     2     2               0010 PushInt8 1
- None              1     3     1               0012 CreateArray 3 params
- None              1     1     1,2,3           0017 SetValue
- None              1     0     EMPTY           001c End
-stack trace:
-undefined
+ None              1     0                      0000 CreateContext
+ None              1     0                      0001 PushInt8 1
+ None              1     1     1                0003 PushInt8 2
+ None              1     2     2                0005 PushTrue
+ None              1     3     true             0006 PushConst 'elem'
+ None              1     4     'elem'           000b PushConst 'wow'
+ None              1     5     'wow'            0010 PushInt8 2
+ None              1     6     2                0012 PushInt8 1
+ None              1     7     1                0014 CreateArray 3 params
+ None              1     5     [Array]          0019 End
+stack trace: 1 | 2 | true | 'elem' | [1,2,'wow']
+[ 1, 2, 'wow' ]
 ```
