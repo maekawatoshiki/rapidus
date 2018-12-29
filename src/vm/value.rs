@@ -90,7 +90,7 @@ impl Value {
         Value::String(Box::new(CString::new(s).unwrap()))
     }
 
-    /// make JS function object.
+    /// generate JS function object.
     pub fn function(id: FuncId, iseq: ByteCode, callobj: CallObject) -> Value {
         let prototype = Value::object_from_npp(&vec![]);
         let val = Value::Function(Box::new((
@@ -108,6 +108,7 @@ impl Value {
         val
     }
 
+    /// generate builtin function with JIT, blank PropMap and no prototype.
     pub fn builtin_function_with_jit(
         func: BuiltinFuncTy,
         builtin_jit_func_info: BuiltinJITFuncInfo,
@@ -115,10 +116,12 @@ impl Value {
         Value::builtin_function(func, Some(builtin_jit_func_info), &mut vec![], None)
     }
 
+    /// generate builtin function with blank PropMap and no prototype.
     pub fn default_builtin_function(func: BuiltinFuncTy) -> Value {
         Value::builtin_function(func, None, &mut vec![], None)
     }
 
+    /// generate builtin function with JIT from NamePropPair and prototype.
     pub fn builtin_function(
         func: BuiltinFuncTy,
         builtin_jit_func_info: Option<BuiltinJITFuncInfo>,
@@ -134,14 +137,6 @@ impl Value {
             map,
             CallObject::new(Value::Undefined),
         )))
-    }
-
-    pub fn builtin_constructor_from_npp(
-        func: BuiltinFuncTy,
-        npp: &mut Vec<NamePropPair>,
-        prototype: Option<Value>,
-    ) -> Value {
-        Value::builtin_function(func, None, npp, prototype)
     }
 
     /// make new property map (PropMap) from npp.
