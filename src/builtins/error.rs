@@ -11,7 +11,7 @@ thread_local! {
 
 pub fn init() -> Value {
     let prototype = ERROR_PROTOTYPE.with(|x| x.clone());
-    let obj = Value::builtin_constructor_from_npp(new, &mut vec![], Some(prototype.clone()));
+    let obj = Value::builtin_function(new, None, &mut vec![], Some(prototype.clone()));
     prototype.set_constructor(obj.clone());
 
     obj

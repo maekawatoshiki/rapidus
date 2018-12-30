@@ -28,7 +28,7 @@ pub fn init() -> Value {
     let mut npp = &mut make_npp!(
         length: Value::Number(1f64)
     );
-    let obj = Value::builtin_constructor_from_npp(new, &mut npp, Some(prototype.clone()));
+    let obj = Value::builtin_function(new, None, &mut npp, Some(prototype.clone()));
     prototype.set_constructor(obj.clone());
 
     obj

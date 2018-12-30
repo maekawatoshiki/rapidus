@@ -232,7 +232,7 @@ impl VM {
         global_vals.set_value("Object".to_string(), builtins::object::init());
         global_vals.set_value("Error".to_string(), builtins::error::init());
         global_vals.set_value("Function".to_string(), builtins::function::init());
-        global_vals.set_value("Array".to_string(), builtins::object::init());
+        global_vals.set_value("Array".to_string(), builtins::array::init());
         use builtins::date::DATE_OBJ;
         global_vals.set_value("Date".to_string(), DATE_OBJ.with(|x| x.clone()));
         global_vals.set_value("Math".to_string(), builtins::math::init(jit.clone()));

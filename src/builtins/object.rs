@@ -3,7 +3,9 @@ use vm::{callobj::CallObject, error::RuntimeError, value::*, vm::VM};
 thread_local!(
     pub static OBJECT_PROTOTYPE: Value =
         // can not use Value::object_from_npp() here.
-        { Value::Object(Value::propmap_from_npp(&make_npp!(__proto__: Value::Null))) };
+        { Value::Object(Value::propmap_from_npp(&make_npp!(
+            __proto__: Value::Null
+        ))) };
 );
 
 pub fn init() -> Value {
