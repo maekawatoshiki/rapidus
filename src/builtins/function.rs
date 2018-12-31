@@ -2,7 +2,7 @@ use builtins::object;
 use vm::{
     callobj::CallObject,
     error::RuntimeError,
-    value::{Property, Value},
+    value::*,
     vm::{call_function, VM},
 };
 
@@ -15,10 +15,15 @@ thread_local! {
             call:       Value::default_builtin_function(prototype_call),
             __proto__:  object::OBJECT_PROTOTYPE.with(|x| x.clone())
         ));
-
-        Value::Function(
-             Box::new((0, vec![], map, CallObject::new(Value::Undefined)))
-        )
+        let mut co = CallObject::new(Value::Undefined, None);
+        let kind = ObjectKind::Function(
+            Box::new((
+                FuncInfo::new(0,vec![],vec![]),
+                co.clone()
+            ))
+        );
+        co.func = Some(kind.clone());
+        Value::Object(map, kind)
     };
 }
 
@@ -46,7 +51,7 @@ fn prototype_apply(
     let callee = &*callobj.this;
     let arg_this = args[0].clone();
     let arg = match args[1] {
-        Value::Array(aryval) => {
+        Value::Object(_, ObjectKind::Array(aryval)) => {
             let aryval = unsafe { &*aryval };
             let mut elems = vec![];
             for i in 0..aryval.length {
@@ -54,7 +59,7 @@ fn prototype_apply(
             }
             elems
         }
-        Value::Arguments => {
+        Value::Object(_, ObjectKind::Arguments) => {
             let mut elems = vec![];
             let callobj = unsafe { &**vm.state.scope.last().unwrap() };
             let length = callobj.get_arguments_length();
@@ -67,15 +72,15 @@ fn prototype_apply(
     };
 
     match callee {
-        Value::BuiltinFunction(box (ref info, _, ref callobj)) => {
+        Value::Object(_, ObjectKind::BuiltinFunction(box (ref info, ref callobj))) => {
             let mut callobj = callobj.clone();
             *callobj.this = arg_this;
             (info.func)(vm, &arg, &callobj)?;
         }
-        Value::Function(box (id, ref iseq, _, ref callobj)) => {
+        Value::Object(_, ObjectKind::Function(box (func_info, ref callobj))) => {
             let mut callobj = callobj.clone();
             *callobj.this = arg_this;
-            call_function(vm, *id, iseq, &arg, callobj).unwrap();
+            call_function(vm, func_info.clone(), &mut callobj, &arg).unwrap();
         }
         _ => vm.state.stack.push(Value::Undefined),
     };
@@ -90,15 +95,15 @@ fn prototype_call(
     let callee = &*callobj.this;
     let arg_this = args[0].clone();
     match callee {
-        Value::BuiltinFunction(box (ref info, _, ref callobj)) => {
+        Value::Object(_, ObjectKind::BuiltinFunction(box (ref info, ref callobj))) => {
             let mut callobj = callobj.clone();
             *callobj.this = arg_this;
             (info.func)(vm, &args[1..].to_vec(), &callobj)?;
         }
-        Value::Function(box (id, ref iseq, _, ref callobj)) => {
+        Value::Object(_, ObjectKind::Function(box (func_info, ref callobj))) => {
             let mut callobj = callobj.clone();
             *callobj.this = arg_this;
-            call_function(vm, *id, iseq, &args[1..].to_vec(), callobj).unwrap();
+            call_function(vm, func_info.clone(), &mut callobj, &args[1..].to_vec()).unwrap();
         }
         _ => vm.state.stack.push(Value::Undefined),
     };

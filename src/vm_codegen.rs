@@ -214,7 +214,8 @@ impl VMCodeGen {
     ) -> Result<(), Error> {
         self.func_header_info.push(vec![]);
 
-        let mut new_callobj = CallObject::new(unsafe { Value::object((*self.global_varmap).vals) });
+        let mut new_callobj =
+            CallObject::new(unsafe { Value::object((*self.global_varmap).vals) }, None);
         let mut func_iseq = vec![];
 
         self.bytecode_gen.gen_create_context(&mut func_iseq);
@@ -230,7 +231,7 @@ impl VMCodeGen {
             self.bytecode_gen.gen_return(&mut func_iseq);
         }
 
-        new_callobj.params = params
+        let params = params
             .clone()
             .iter()
             .map(
@@ -244,7 +245,12 @@ impl VMCodeGen {
 
         self.set_function_header(&mut func_iseq);
 
-        let val = Value::function(id::get_unique_id(), func_iseq.clone(), new_callobj);
+        let val = Value::function(
+            id::get_unique_id(),
+            func_iseq.clone(),
+            params,
+            &mut new_callobj,
+        );
 
         self.func_header_info.pop();
 
@@ -266,7 +272,8 @@ impl VMCodeGen {
     ) -> Result<(), Error> {
         self.func_header_info.push(vec![]);
 
-        let mut new_callobj = CallObject::new(unsafe { Value::object((*self.global_varmap).vals) });
+        let mut new_callobj =
+            CallObject::new(unsafe { Value::object((*self.global_varmap).vals) }, None);
 
         let mut func_iseq = vec![];
 
@@ -283,7 +290,7 @@ impl VMCodeGen {
             self.bytecode_gen.gen_return(&mut func_iseq);
         }
 
-        new_callobj.params = params
+        let params = params
             .clone()
             .iter()
             .map(
@@ -297,7 +304,12 @@ impl VMCodeGen {
 
         self.set_function_header(&mut func_iseq);
 
-        let val = Value::function(id::get_unique_id(), func_iseq.clone(), new_callobj);
+        let val = Value::function(
+            id::get_unique_id(),
+            func_iseq.clone(),
+            params,
+            &mut new_callobj,
+        );
 
         self.bytecode_gen.gen_push_const(val, iseq);
         self.bytecode_gen.gen_update_parent_scope(iseq);

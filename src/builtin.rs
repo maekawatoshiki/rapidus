@@ -14,7 +14,7 @@ use vm::{
     callobj::CallObject,
     error::RuntimeError,
     task::{Task, TimerID, TimerKind},
-    value::{Property, RawStringPtr, Value},
+    value::{ObjectKind, Property, RawStringPtr, Value},
     vm::VM,
 };
 use vm_codegen;
@@ -219,7 +219,7 @@ pub fn debug_print(val: &Value, nest: bool) {
 
     unsafe {
         match val {
-            Value::Empty | Value::Arguments => {
+            Value::Empty | Value::Object(_, ObjectKind::Arguments) => {
                 libc::printf("'Unsupported. Sorry.'\0".as_ptr() as RawStringPtr);
             }
             Value::Null => {
@@ -249,7 +249,7 @@ pub fn debug_print(val: &Value, nest: bool) {
                     s.as_ptr(),
                 );
             }
-            Value::Object(ref map) => {
+            Value::Object(ref map, ObjectKind::Ordinary) => {
                 libc::printf("{ \0".as_ptr() as RawStringPtr);
 
                 let mut sorted_key_val = (&**map).iter().collect::<Vec<(&String, &Property)>>();
@@ -260,15 +260,13 @@ pub fn debug_print(val: &Value, nest: bool) {
 
                 libc::printf("}\0".as_ptr() as RawStringPtr);
             }
-            Value::Array(ref values) => {
+            Value::Object(map, ObjectKind::Array(ref values)) => {
                 libc::printf("[ \0".as_ptr() as RawStringPtr);
                 let arr = &*(*values);
                 let elems = &arr.elems;
                 let is_last_idx = |idx: usize| -> bool { idx == arr.length - 1 };
                 let mut i = 0;
-
-                let key_val = &arr.obj;
-                let mut sorted_key_val = (&**key_val).iter().collect::<Vec<(&String, &Property)>>();
+                let mut sorted_key_val = (&**map).iter().collect::<Vec<(&String, &Property)>>();
                 sorted_key_val.sort_by(|(key1, _), (key2, _)| key1.as_str().cmp(key2.as_str()));
                 sorted_key_val.retain(|(ref key, _)| key != &"__proto__");
 
@@ -314,10 +312,11 @@ pub fn debug_print(val: &Value, nest: bool) {
 
                 libc::printf("]\0".as_ptr() as RawStringPtr);
             }
-            Value::Function(_) | Value::BuiltinFunction(_) => {
+            Value::Object(_, ObjectKind::Function(_))
+            | Value::Object(_, ObjectKind::BuiltinFunction(_)) => {
                 libc::printf("[Function]\0".as_ptr() as RawStringPtr);
             }
-            Value::Date(box (time_val, _)) => {
+            Value::Object(_, ObjectKind::Date(box time_val)) => {
                 // TODO: Date needs toString() ?
                 libc::printf(
                     "%s\0".as_ptr() as RawStringPtr,

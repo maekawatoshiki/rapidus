@@ -13,11 +13,13 @@ thread_local!(
             __proto__: OBJECT_PROTOTYPE.with(|x| x.clone())
         ));
 
-        Value::Array(gc::new(ArrayValue {
-            elems: vec![],
-            length: 0,
-            obj: map,
-        }))
+        Value::Object(
+            map,
+            ObjectKind::Array(gc::new(ArrayValue {
+                elems: vec![],
+                length: 0,
+            })),
+        )
     };
 );
 pub fn init() -> Value {
@@ -75,7 +77,7 @@ fn prototype_push(
     args: &Vec<Value>,
     callobj: &CallObject,
 ) -> Result<(), RuntimeError> {
-    let array = if let Value::Array(array) = *callobj.this {
+    let array = if let Value::Object(_, ObjectKind::Array(array)) = *callobj.this {
         unsafe { &mut *array }
     } else {
         println!("fail");
@@ -99,7 +101,7 @@ fn prototype_pop(
     _args: &Vec<Value>,
     callobj: &CallObject,
 ) -> Result<(), RuntimeError> {
-    let array = if let Value::Array(array) = *callobj.this {
+    let array = if let Value::Object(_, ObjectKind::Array(array)) = *callobj.this {
         unsafe { &mut *array }
     } else {
         vm.set_return_value(Value::Undefined);
@@ -122,7 +124,7 @@ pub fn prototype_map(
     args: &Vec<Value>,
     callobj: &CallObject,
 ) -> Result<(), RuntimeError> {
-    let array = if let Value::Array(array) = *callobj.this {
+    let array = if let Value::Object(_, ObjectKind::Array(array)) = *callobj.this {
         unsafe { &mut *array }
     } else {
         vm.state.stack.push(Value::Undefined);

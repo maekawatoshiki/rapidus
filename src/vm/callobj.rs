@@ -2,7 +2,7 @@ use rustc_hash::FxHashMap;
 use std::collections::hash_map::Entry;
 
 use super::error::RuntimeError;
-use super::value::{PropMap, Property, Value};
+use super::value::*;
 use gc;
 use gc::GcType;
 
@@ -11,28 +11,23 @@ pub type CallObjectRef = GcType<CallObject>;
 #[derive(Clone, Debug)]
 pub struct CallObject {
     pub vals: PropMap,
-    pub params: Vec<(String, bool)>, // (name, rest param?)
-    pub arg_rest_vals: Vec<Value>,
     pub this: Box<Value>,
+    pub func: Option<ObjectKind>,
     pub parent: Option<CallObjectRef>,
 }
 
 impl PartialEq for CallObject {
     fn eq(&self, other: &CallObject) -> bool {
-        self.vals == other.vals
-            && self.params == other.params
-            && self.arg_rest_vals == other.arg_rest_vals
-            && self.parent == other.parent
+        self.vals == other.vals && self.parent == other.parent
     }
 }
 
 impl CallObject {
-    pub fn new(this: Value) -> CallObject {
+    pub fn new(this: Value, func: Option<ObjectKind>) -> CallObject {
         CallObject {
             vals: gc::new(FxHashMap::default()),
-            params: vec![],
-            arg_rest_vals: vec![],
             this: Box::new(this),
+            func: func,
             parent: None,
         }
     }
@@ -41,35 +36,32 @@ impl CallObject {
         let vals = gc::new(FxHashMap::default());
         let callobj = gc::new(CallObject {
             vals: vals.clone(),
-            params: vec![],
-            arg_rest_vals: vec![],
             this: Box::new(Value::Undefined),
+            func: None,
             parent: None,
         });
         unsafe {
-            *(*callobj).this = Value::Object(vals);
+            *(*callobj).this = Value::Object(vals, ObjectKind::Ordinary);
         }
         callobj
     }
 
-    pub fn clear_args_vals(&mut self) {
-        let params = self.params.clone();
-
+    pub fn clear_args_vals(&mut self, func_info: FuncInfo) {
+        let params = func_info.clone().params.clone();
         for (name, _) in params {
             self.set_value(name, Value::Undefined);
         }
-
-        self.arg_rest_vals.clear();
+        func_info.clone().arg_rest_vals.clear();
     }
 
-    pub fn apply_arguments(&mut self, args: &Vec<Value>) {
+    pub fn apply_arguments(&mut self, func_info: FuncInfo, args: &Vec<Value>) {
         let mut rest_args = vec![];
         let mut rest_param_name = None;
-
+        //if let Some(ObjectKind::Function(box (func_info, _))) = self.clone().func {
         for (i, arg) in args.iter().enumerate() {
-            if let Some(name) = self.get_parameter_nth_name(i) {
+            if let Some(name) = self.get_parameter_nth_name(func_info.clone(), i) {
                 // When rest parameter. TODO: More features of rest parameter
-                if self.params[i].1 {
+                if func_info.params[i].1 {
                     rest_param_name = Some(name);
                     rest_args.push(arg.clone());
                 } else {
@@ -84,9 +76,12 @@ impl CallObject {
             self.set_value(rest_param_name, Value::array_from_elems(rest_args));
         } else {
             for arg in rest_args {
-                self.arg_rest_vals.push(arg);
+                func_info.clone().arg_rest_vals.push(arg);
             }
         }
+        //} else {
+        //    unreachable!("can not apply arguments in non-function environment.");
+        //}
     }
 
     pub fn set_value(&mut self, name: String, val: Value) {
@@ -125,39 +120,51 @@ impl CallObject {
     }
 
     pub fn get_arguments_nth_value(&self, n: usize) -> Result<Value, RuntimeError> {
-        if n < self.params.len() {
-            let param_name = &self.params[n].0;
-            return self.get_value(param_name);
-        }
+        if let Some(ObjectKind::Function(box (func_info, _))) = self.clone().func {
+            if n < func_info.params.len() {
+                let param_name = &func_info.params[n].0;
+                return self.get_value(param_name);
+            }
 
-        let n = n - self.params.len();
-        if n >= self.arg_rest_vals.len() {
-            return Ok(Value::Undefined);
+            let n = n - func_info.params.len();
+            if n >= func_info.arg_rest_vals.len() {
+                return Ok(Value::Undefined);
+            }
+            Ok(func_info.arg_rest_vals[n].clone())
+        } else {
+            unreachable!("can not get arguments in non-function environment.");
         }
-        Ok(self.arg_rest_vals[n].clone())
     }
 
     pub fn set_arguments_nth_value(&mut self, n: usize, val: Value) {
-        if n < self.params.len() {
-            let param_name = self.params[n].0.clone();
-            self.set_value(param_name, val);
-            return;
-        }
+        if let Some(ObjectKind::Function(box (func_info, _))) = self.clone().func {
+            if n < func_info.params.len() {
+                let param_name = func_info.params[n].0.clone();
+                self.set_value(param_name, val);
+                return;
+            }
 
-        let n = n - self.params.len();
-        if n >= self.arg_rest_vals.len() {
-            return;
+            let n = n - func_info.params.len();
+            if n >= func_info.arg_rest_vals.len() {
+                return;
+            }
+            func_info.clone().arg_rest_vals[n] = val;
+        } else {
+            unreachable!("can not set arguments in non-function environment.");
         }
-        self.arg_rest_vals[n] = val;
     }
 
     pub fn get_arguments_length(&self) -> usize {
-        self.params.len() + self.arg_rest_vals.len()
+        if let Some(ObjectKind::Function(box (func_info, _))) = self.clone().func {
+            func_info.params.len() + func_info.arg_rest_vals.len()
+        } else {
+            unreachable!("can not get arguments in non-function environment.");
+        }
     }
 
-    pub fn get_parameter_nth_name(&self, n: usize) -> Option<String> {
-        if n < self.params.len() {
-            return Some(self.params[n].0.clone());
+    pub fn get_parameter_nth_name(&self, func_info: FuncInfo, n: usize) -> Option<String> {
+        if n < func_info.params.len() {
+            return Some(func_info.params[n].0.clone());
         }
         None
     }

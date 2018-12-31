@@ -27,6 +27,35 @@ pub struct Property {
     pub configurable: bool,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct FuncInfo {
+    pub id: FuncId,
+    pub iseq: ByteCode,
+    pub params: Vec<(String, bool)>, // (name, rest param?)
+    pub arg_rest_vals: Vec<Value>,
+}
+
+impl FuncInfo {
+    pub fn new(id: FuncId, iseq: ByteCode, params: Vec<(String, bool)>) -> FuncInfo {
+        FuncInfo {
+            id: id,
+            iseq: iseq,
+            params: params,
+            arg_rest_vals: vec![],
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ObjectKind {
+    Function(Box<(FuncInfo, CallObject)>),
+    BuiltinFunction(Box<(BuiltinFuncInfo, CallObject)>), // id(==0:unknown)
+    Ordinary,
+    Array(GcType<ArrayValue>),
+    Date(Box<(DateTime<Utc>)>),
+    Arguments, // TODO: Should have CallObject
+}
+
 // Now 16 bytes
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
@@ -36,19 +65,13 @@ pub enum Value {
     Bool(bool),
     Number(f64),
     String(Box<CString>), // TODO: Using CString is good for JIT. However, we need better one instead.
-    Function(Box<(FuncId, ByteCode, PropMap, CallObject)>),
-    BuiltinFunction(Box<(BuiltinFuncInfo, PropMap, CallObject)>), // id(==0:unknown)
-    Object(PropMap), // Object(FxHashMap<String, Value>),
-    Array(GcType<ArrayValue>),
-    Date(Box<(DateTime<Utc>, PropMap)>),
-    Arguments, // TODO: Should have CallObject
+    Object(PropMap, ObjectKind), // Object(FxHashMap<String, Value>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ArrayValue {
     pub elems: Vec<Property>,
     pub length: usize,
-    pub obj: PropMap,
 }
 
 #[macro_export]
@@ -91,17 +114,29 @@ impl Value {
     }
 
     /// generate JS function object.
-    pub fn function(id: FuncId, iseq: ByteCode, callobj: CallObject) -> Value {
+    pub fn function(
+        id: FuncId,
+        iseq: ByteCode,
+        params: Vec<(String, bool)>,
+        callobj: &mut CallObject,
+    ) -> Value {
         let prototype = Value::object_from_npp(&vec![]);
-        let val = Value::Function(Box::new((
-            id,
-            iseq,
+        let val = Value::Object(
             Value::propmap_from_npp(&make_npp!(
                 prototype:  prototype.clone(),
                 __proto__:  function::FUNCTION_PROTOTYPE.with(|x| x.clone())
             )),
-            callobj,
-        )));
+            ObjectKind::Function(Box::new((FuncInfo::new(id, iseq, params), callobj.clone()))),
+        );
+        if let Value::Object(_, kind) = val.clone() {
+            callobj.func = Some(kind);
+            if let Some(_) = callobj.clone().func {
+            } else {
+                unreachable!("codegen");
+            }
+        } else {
+            unreachable!("codegen: not function");
+        }
 
         prototype.set_constructor(val.clone());
 
@@ -132,11 +167,13 @@ impl Value {
             npp.push(("prototype".to_string(), Property::new(prototype)));
         }
         let map = Value::propmap_from_npp(npp);
-        Value::BuiltinFunction(Box::new((
-            BuiltinFuncInfo::new(func, builtin_jit_func_info),
+        Value::Object(
             map,
-            CallObject::new(Value::Undefined),
-        )))
+            ObjectKind::BuiltinFunction(Box::new((
+                BuiltinFuncInfo::new(func, builtin_jit_func_info),
+                CallObject::new(Value::Undefined, None),
+            ))),
+        )
     }
 
     /// make new property map (PropMap) from npp.
@@ -163,7 +200,7 @@ impl Value {
             (*map)
                 .entry("__proto__".to_string())
                 .or_insert(object::OBJECT_PROTOTYPE.with(|x| x.clone()).to_property());
-            Value::Object(map)
+            Value::Object(map, ObjectKind::Ordinary)
         }
     }
 
@@ -174,31 +211,42 @@ impl Value {
     }
 
     pub fn array(map: PropMap) -> Value {
-        let mut ary = ArrayValue::new(vec![]);
-        ary.obj = map;
-        Value::Array(gc::new(ary))
+        let ary = ArrayValue::new(vec![]);
+        Value::Object(map, ObjectKind::Array(gc::new(ary)))
     }
 
     /// make new array from elements.
     pub fn array_from_elems(elms: Vec<Value>) -> Value {
         let ary = ArrayValue::new(elms);
-        Value::Array(gc::new(ary))
+        Value::Object(
+            {
+                use builtins::array::ARRAY_PROTOTYPE;
+                let npp = make_npp!(
+                    __proto__:  ARRAY_PROTOTYPE.with(|x| x.clone())
+                );
+                Value::propmap_from_npp(&npp)
+            },
+            ObjectKind::Array(gc::new(ary)),
+        )
     }
 
     pub fn date(time_val: DateTime<Utc>) -> Value {
         use builtins::date::DATE_PROTOTYPE;
-        Value::Date(Box::new((time_val, {
-            let mut hm = FxHashMap::default();
-            hm.insert(
-                "__proto__".to_string(),
-                Property::new(DATE_PROTOTYPE.with(|x| x.clone())),
-            );
-            gc::new(hm)
-        })))
+        Value::Object(
+            {
+                let mut hm = FxHashMap::default();
+                hm.insert(
+                    "__proto__".to_string(),
+                    Property::new(DATE_PROTOTYPE.with(|x| x.clone())),
+                );
+                gc::new(hm)
+            },
+            ObjectKind::Date(Box::new(time_val)),
+        )
     }
 
     pub fn arguments() -> Value {
-        Value::Arguments
+        Value::Object(Value::propmap_from_npp(&vec![]), ObjectKind::Arguments)
     }
 
     pub fn get_property(&self, property: Value, callobjref: Option<&CallObjectRef>) -> Value {
@@ -237,7 +285,7 @@ impl Value {
 
         let property_of_array = |obj: &Value| -> Value {
             let get_by_idx = |n: usize| -> Value {
-                if let Value::Array(ref arrval) = obj {
+                if let Value::Object(_, ObjectKind::Array(ref arrval)) = obj {
                     unsafe {
                         let arr = &(**arrval).elems;
                         if n >= (**arrval).length {
@@ -258,7 +306,7 @@ impl Value {
                 // Index
                 Value::Number(n) if is_integer(n) && n >= 0.0 => get_by_idx(n as usize),
                 Value::String(ref s) if s.to_str().unwrap() == "length" => {
-                    if let Value::Array(ref arrval) = obj {
+                    if let Value::Object(_, ObjectKind::Array(ref arrval)) = obj {
                         unsafe { Value::Number((**arrval).length as f64) }
                     } else {
                         unreachable!("get_property(): Value is not an array.");
@@ -282,8 +330,9 @@ impl Value {
                 match property {
                     // Index
                     Value::Number(n) if is_integer(n) && n >= 0.0 => callobjref
-                        .and_then(|co| unsafe {
-                            Some((**co).get_arguments_nth_value(n as usize).unwrap())
+                        .and_then(|co| {
+                            let co = unsafe { &**co };
+                            Some(co.get_arguments_nth_value(n as usize).unwrap())
                         })
                         .unwrap_or_else(|| Value::Undefined),
                     Value::String(ref s) if s.to_str().unwrap() == "length" => {
@@ -300,12 +349,9 @@ impl Value {
         match self {
             Value::Number(_) => property_of_number(),
             Value::String(ref s) => property_of_string(s),
-            Value::BuiltinFunction(_) | Value::Function(_) | Value::Date(_) | Value::Object(_) => {
-                property_of_object(self.clone())
-            }
-            Value::Array(_) => property_of_array(&*self),
-            Value::Arguments => property_of_arguments(),
-            // TODO: Implement
+            Value::Object(_, ObjectKind::Array(_)) => property_of_array(&*self),
+            Value::Object(_, ObjectKind::Arguments) => property_of_arguments(),
+            Value::Object(_, _) => property_of_object(self.clone()),
             _ => Value::Undefined,
         }
     }
@@ -322,16 +368,7 @@ impl Value {
         };
 
         match self {
-            Value::Object(map)
-            | Value::Date(box (_, map))
-            | Value::Function(box (_, _, map, _))
-            | Value::BuiltinFunction(box (_, map, _)) => unsafe {
-                let refval = (**map)
-                    .entry(property.to_string())
-                    .or_insert_with(|| Value::Undefined.to_property());
-                *refval = value.to_property();
-            },
-            Value::Array(ref aryval) => {
+            Value::Object(map, ObjectKind::Array(ref aryval)) => {
                 match property {
                     // Index
                     Value::Number(n) if is_integer(n) && n >= 0.0 => unsafe {
@@ -355,14 +392,14 @@ impl Value {
                         unsafe { set_by_idx(&mut **aryval, num as usize, value) }
                     }
                     _ => unsafe {
-                        let refval = (*(**aryval).obj)
+                        let refval = (**map)
                             .entry(property.to_string())
                             .or_insert_with(|| Value::Undefined.to_property());
                         *refval = value.to_property();
                     },
                 }
             }
-            Value::Arguments => {
+            Value::Object(_, ObjectKind::Arguments) => {
                 match property {
                     // Index
                     Value::Number(n) if n - n.floor() == 0.0 => unsafe {
@@ -372,6 +409,12 @@ impl Value {
                     _ => {}
                 }
             }
+            Value::Object(map, _) => unsafe {
+                let refval = (**map)
+                    .entry(property.to_string())
+                    .or_insert_with(|| Value::Undefined.to_property());
+                *refval = value.to_property();
+            },
             _ => {}
         };
     }
@@ -384,43 +427,19 @@ impl Value {
 
     pub fn set_constructor(&self, constructor: Value) {
         match self {
-            Value::Function(box (_, _, obj, _))
-            | Value::BuiltinFunction(box (_, obj, _))
-            | Value::Date(box (_, obj))
-            | Value::Object(obj) => unsafe {
-                (**obj).insert("constructor".to_string(), constructor.to_property());
+            Value::Object(map, _) => unsafe {
+                (**map).insert("constructor".to_string(), constructor.to_property());
             },
-            Value::Array(aryval) => unsafe {
-                (*((**aryval).obj)).insert("constructor".to_string(), constructor.to_property());
-            },
-            Value::Empty
-            | Value::Null
-            | Value::Undefined
-            | Value::Bool(_)
-            | Value::Number(_)
-            | Value::String(_)
-            | Value::Arguments => {}
+            _ => {}
         }
     }
 
     pub fn set_property_with_name(&self, name: String, val: Value) {
         match self {
-            Value::Function(box (_, _, obj, _))
-            | Value::BuiltinFunction(box (_, obj, _))
-            | Value::Date(box (_, obj))
-            | Value::Object(obj) => unsafe {
-                (**obj).insert(name, val.to_property());
+            Value::Object(map, _) => unsafe {
+                (**map).insert(name, val.to_property());
             },
-            Value::Array(aryval) => unsafe {
-                (*((**aryval).obj)).insert(name.to_string(), val.to_property());
-            },
-            Value::Empty
-            | Value::Null
-            | Value::Undefined
-            | Value::Bool(_)
-            | Value::Number(_)
-            | Value::String(_)
-            | Value::Arguments => {}
+            _ => {}
         }
     }
 }
@@ -454,11 +473,11 @@ impl Value {
                 format!("{}", *n)
             }
             Value::String(s) => s.clone().into_string().unwrap(),
-            Value::Array(ary_val) => unsafe { (**ary_val).to_string() },
-            Value::Object(_) => "[object Object]".to_string(),
-            Value::Date(box (time_val, _)) => time_val.to_rfc3339(),
-            Value::Function(_) => "[Function]".to_string(),
-            Value::BuiltinFunction(_) => "[BuiltinFunc]".to_string(),
+            Value::Object(_, ObjectKind::Array(ary_val)) => unsafe { (**ary_val).to_string() },
+            Value::Object(_, ObjectKind::Ordinary) => "[object Object]".to_string(),
+            Value::Object(_, ObjectKind::Date(box time_val)) => time_val.to_rfc3339(),
+            Value::Object(_, ObjectKind::Function(_)) => "[Function]".to_string(),
+            Value::Object(_, ObjectKind::BuiltinFunction(_)) => "[BuiltinFunc]".to_string(),
             Value::Null => "null".to_string(),
             Value::Empty => "empty".to_string(),
             _ => "NOT IMPLEMENTED".to_string(),
@@ -498,7 +517,7 @@ impl Value {
             Value::Bool(true) => 1.0,
             Value::Number(n) => *n,
             Value::String(s) => str_to_num(s.to_str().unwrap()),
-            Value::Array(ary) => ary_to_num(unsafe { &**ary }),
+            Value::Object(_, ObjectKind::Array(ary)) => ary_to_num(unsafe { &**ary }),
             _ => ::std::f64::NAN,
         }
     }
@@ -534,8 +553,7 @@ impl Value {
             Value::Number(_) => true,
             Value::String(s) if s.to_str().unwrap().len() == 0 => false,
             Value::String(_) => true,
-            Value::Array(_) => true,
-            Value::Object(_) => true,
+            Value::Object(_, _) => true,
             _ => false,
         }
     }
@@ -547,7 +565,7 @@ impl Value {
                 self.to_string()
             }
             Value::String(_) => format!("'{}'", self.to_string()),
-            Value::Array(aryval) => match depth {
+            Value::Object(_, ObjectKind::Array(aryval)) => match depth {
                 0 => "[Array]".to_string(),
                 depth => {
                     let aryval = unsafe { &**aryval };
@@ -561,7 +579,7 @@ impl Value {
                     format!("[{}]", str)
                 }
             },
-            Value::Object(map) => match depth {
+            Value::Object(map, ObjectKind::Ordinary) => match depth {
                 0 => "[Object]".to_string(),
                 depth => {
                     let map = unsafe { &**map };
@@ -575,10 +593,10 @@ impl Value {
                     format!("{{{}}}", str)
                 }
             },
-            Value::Date(_) => "[Date]".to_string(),
-            Value::Function(_) => "[Function]".to_string(),
-            Value::BuiltinFunction(_) => "[BuiltinFunc]".to_string(),
-            Value::Arguments => "arguments".to_string(),
+            Value::Object(_, ObjectKind::Date(_)) => "[Date]".to_string(),
+            Value::Object(_, ObjectKind::Function(_)) => "[Function]".to_string(),
+            Value::Object(_, ObjectKind::BuiltinFunction(_)) => "[BuiltinFunc]".to_string(),
+            Value::Object(_, ObjectKind::Arguments) => "arguments".to_string(),
         }
     }
 }
@@ -586,17 +604,25 @@ impl Value {
 impl Value {
     pub fn type_equal(&self, other: &Value) -> bool {
         match (self, other) {
-            (&Value::Empty, Value::Empty)
-            | (&Value::Null, Value::Null)
-            | (&Value::Undefined, Value::Undefined)
-            | (&Value::Bool(_), Value::Bool(_))
-            | (&Value::Number(_), Value::Number(_))
-            | (&Value::String(_), Value::String(_))
-            | (&Value::Object(_), Value::Object(_))
-            | (&Value::Function(_), Value::Function(_))
-            | (&Value::BuiltinFunction(_), Value::BuiltinFunction(_))
-            | (Value::Array(_), Value::Array(_))
-            | (Value::Arguments, Value::Arguments) => true,
+            (Value::Empty, Value::Empty)
+            | (Value::Null, Value::Null)
+            | (Value::Undefined, Value::Undefined)
+            | (Value::Bool(_), Value::Bool(_))
+            | (Value::Number(_), Value::Number(_))
+            | (Value::String(_), Value::String(_))
+            | (Value::Object(_, ObjectKind::Ordinary), Value::Object(_, ObjectKind::Ordinary))
+            | (
+                Value::Object(_, ObjectKind::Function(_)),
+                Value::Object(_, ObjectKind::Function(_)),
+            )
+            | (
+                Value::Object(_, ObjectKind::BuiltinFunction(_)),
+                Value::Object(_, ObjectKind::BuiltinFunction(_)),
+            )
+            | (Value::Object(_, ObjectKind::Array(_)), Value::Object(_, ObjectKind::Array(_)))
+            | (Value::Object(_, ObjectKind::Arguments), Value::Object(_, ObjectKind::Arguments)) => {
+                true
+            }
             _ => false,
         }
     }
@@ -630,15 +656,23 @@ impl Value {
             (Value::Number(l), Value::Number(r)) if l.is_nan() || r.is_nan() => Ok(false),
             (Value::Number(l), Value::Number(r)) => Ok(l == r),
             (Value::String(l), Value::String(r)) => Ok(l == r),
-            (Value::Object(l), Value::Object(r)) => Ok(l == r),
-            (Value::Function(box (l1, _, l2, _)), Value::Function(box (r1, _, r2, _))) => {
-                Ok(l1 == r1 && l2 == r2)
+            (Value::Object(l, ObjectKind::Ordinary), Value::Object(r, ObjectKind::Ordinary)) => {
+                Ok(l == r)
             }
-            (Value::BuiltinFunction(box (l1, l2, _)), Value::BuiltinFunction(box (r1, r2, _))) => {
-                Ok(l1 == r1 && l2 == r2)
+            (
+                Value::Object(l2, ObjectKind::Function(box (FuncInfo { id: l1, .. }, _))),
+                Value::Object(r2, ObjectKind::Function(box (FuncInfo { id: r1, .. }, _))),
+            ) => Ok(l1 == r1 && l2 == r2),
+            (
+                Value::Object(l2, ObjectKind::BuiltinFunction(box (l1, _))),
+                Value::Object(r2, ObjectKind::BuiltinFunction(box (r1, _))),
+            ) => Ok(l1 == r1 && l2 == r2),
+            (Value::Object(_, ObjectKind::Array(l)), Value::Object(_, ObjectKind::Array(r))) => {
+                Ok(l == r)
             }
-            (Value::Array(l), Value::Array(r)) => Ok(l == r),
-            (Value::Arguments, Value::Arguments) => return Err(RuntimeError::Unimplemented),
+            (Value::Object(_, ObjectKind::Arguments), Value::Object(_, ObjectKind::Arguments)) => {
+                return Err(RuntimeError::Unimplemented);
+            }
             _ => Ok(false),
         }
     }
@@ -650,13 +684,6 @@ impl ArrayValue {
         ArrayValue {
             elems: arr.iter().map(|x| x.to_property()).collect(),
             length: len,
-            obj: {
-                use builtins::array::ARRAY_PROTOTYPE;
-                let npp = make_npp!(
-                    __proto__:  ARRAY_PROTOTYPE.with(|x| x.clone())
-                );
-                Value::propmap_from_npp(&npp)
-            },
         }
     }
 
@@ -691,11 +718,8 @@ fn is_integer(f: f64) -> bool {
 ///
 pub fn obj_find_val(val: Value, key: &str) -> Value {
     let (map, is_builtin_func) = match val {
-        Value::BuiltinFunction(box (_, map, _)) => (map, true),
-        Value::Function(box (_, _, map, _)) | Value::Date(box (_, map)) | Value::Object(map) => {
-            (map, false)
-        }
-        Value::Array(aryval) => (unsafe { (*aryval).obj }, false),
+        Value::Object(map, ObjectKind::BuiltinFunction(_)) => (map, true),
+        Value::Object(map, _) => (map, false),
         _ => return Value::Undefined,
     };
     unsafe {
@@ -721,18 +745,28 @@ pub fn obj_find_val(val: Value, key: &str) -> Value {
 ///
 pub fn set_this(val: Value, this: &Value) -> Value {
     match val.clone() {
-        Value::Function(box (id, iseq, map, mut callobj)) => {
-            Value::Function(Box::new((id, iseq, map, {
+        Value::Object(
+            map,
+            ObjectKind::Function(box (
+                FuncInfo {
+                    id, iseq, params, ..
+                },
+                mut callobj,
+            )),
+        ) => Value::Object(
+            map,
+            ObjectKind::Function(Box::new((FuncInfo::new(id, iseq, params), {
                 *callobj.this = this.clone();
                 callobj
-            })))
-        }
-        Value::BuiltinFunction(box (id, obj, mut callobj)) => {
-            Value::BuiltinFunction(Box::new((id, obj, {
+            }))),
+        ),
+        Value::Object(map, ObjectKind::BuiltinFunction(box (id, mut callobj))) => Value::Object(
+            map,
+            ObjectKind::BuiltinFunction(Box::new((id, {
                 *callobj.this = this.clone();
                 callobj
-            })))
-        }
+            }))),
+        ),
         val => val,
     }
 }
