@@ -8,7 +8,7 @@ use bytecode_gen::ByteCode;
 use chrono::{DateTime, Utc};
 pub use gc;
 use gc::GcType;
-use id::Id;
+use id::{get_unique_id, Id};
 pub use rustc_hash::FxHashMap;
 use std::ffi::CString;
 
@@ -115,28 +115,24 @@ impl Value {
 
     /// generate JS function object.
     pub fn function(
-        id: FuncId,
         iseq: ByteCode,
         params: Vec<(String, bool)>,
         callobj: &mut CallObject,
     ) -> Value {
         let prototype = Value::object_from_npp(&vec![]);
+        let kind = ObjectKind::Function(Box::new((
+            FuncInfo::new(get_unique_id(), iseq, params),
+            callobj.clone(),
+        )));
         let val = Value::Object(
             Value::propmap_from_npp(&make_npp!(
                 prototype:  prototype.clone(),
                 __proto__:  function::FUNCTION_PROTOTYPE.with(|x| x.clone())
             )),
-            ObjectKind::Function(Box::new((FuncInfo::new(id, iseq, params), callobj.clone()))),
+            kind.clone(),
         );
-        if let Value::Object(_, kind) = val.clone() {
-            callobj.func = Some(kind);
-            if let Some(_) = callobj.clone().func {
-            } else {
-                unreachable!("codegen");
-            }
-        } else {
-            unreachable!("codegen: not function");
-        }
+
+        callobj.func = Some(kind);
 
         prototype.set_constructor(val.clone());
 

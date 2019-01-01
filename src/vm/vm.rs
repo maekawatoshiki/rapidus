@@ -622,6 +622,69 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
     Ok(true)
 }
 
+fn call(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
+    self_.state.pc += 1; // Call
+    get_int32!(self_, iseq, argc, usize);
+
+    let callee = self_.state.stack.pop().unwrap();
+
+    let mut args = vec![];
+    for _ in 0..argc {
+        args.push(self_.state.stack.pop().unwrap());
+    }
+
+    self_.call_function_simply(&callee, &args)?;
+
+    Ok(true)
+}
+
+/// invoke JS function.
+/// 1)apply arguments, 2)execute bytecode.
+pub fn call_function(
+    self_: &mut VM,
+    func_info: FuncInfo,
+    callobj: &mut CallObject,
+    args: &Vec<Value>,
+) -> Result<bool, RuntimeError> {
+    let argc = args.len();
+    let args_all_numbers = args.iter().all(|val| match val {
+        Value::Number(_) => true,
+        _ => false,
+    });
+    callobj.clear_args_vals(func_info.clone());
+    callobj.vals = gc::new(unsafe { (*callobj.vals).clone() });
+    callobj.apply_arguments(func_info.clone(), args);
+    self_.state.scope.push(gc::new(callobj.clone()));
+
+    let FuncInfo { id, iseq, .. } = func_info.clone();
+
+    if args_all_numbers && self_.jit_on {
+        let scope = (*self_.state.scope.last().unwrap()).clone();
+        if let Some(f) = unsafe {
+            self_
+                .jit
+                .can_jit(func_info, &*scope, &self_.const_table, argc)
+        } {
+            self_
+                .state
+                .stack
+                .push(unsafe { self_.jit.run_llvm_func(id, f, &args) });
+            self_.state.scope.pop();
+            return Ok(true);
+        }
+    }
+
+    let res = self_.do_run(&iseq);
+
+    self_.state.scope.pop();
+    if self_.jit_on {
+        self_
+            .jit
+            .record_function_return_type(id, self_.state.stack.last().unwrap());
+    };
+    res
+}
+
 fn create_object(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // create_object
     get_int32!(self_, iseq, len, usize);
@@ -1002,68 +1065,6 @@ fn jmp_if_false(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
     if let Value::Bool(false) = cond {
         self_.state.pc += dst as isize
     }
-    Ok(true)
-}
-
-pub fn call_function(
-    self_: &mut VM,
-    func_info: FuncInfo,
-    callobj: &mut CallObject,
-    args: &Vec<Value>,
-) -> Result<bool, RuntimeError> {
-    let argc = args.len();
-    let args_all_numbers = args.iter().all(|val| match val {
-        Value::Number(_) => true,
-        _ => false,
-    });
-    callobj.clear_args_vals(func_info.clone());
-    callobj.vals = gc::new(unsafe { (*callobj.vals).clone() });
-    callobj.apply_arguments(func_info.clone(), args);
-    self_.state.scope.push(gc::new(callobj.clone()));
-
-    let FuncInfo { id, iseq, .. } = func_info.clone();
-
-    if args_all_numbers && self_.jit_on {
-        let scope = (*self_.state.scope.last().unwrap()).clone();
-        if let Some(f) = unsafe {
-            self_
-                .jit
-                .can_jit(func_info, &*scope, &self_.const_table, argc)
-        } {
-            self_
-                .state
-                .stack
-                .push(unsafe { self_.jit.run_llvm_func(id, f, &args) });
-            self_.state.scope.pop();
-            return Ok(true);
-        }
-    }
-    //self_.store_state();
-
-    let res = self_.do_run(&iseq);
-
-    self_.state.scope.pop();
-    if self_.jit_on {
-        self_
-            .jit
-            .record_function_return_type(id, self_.state.stack.last().unwrap());
-    };
-    res
-}
-
-fn call(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
-    self_.state.pc += 1; // Call
-    get_int32!(self_, iseq, argc, usize);
-
-    let callee = self_.state.stack.pop().unwrap();
-
-    let mut args = vec![];
-    for _ in 0..argc {
-        args.push(self_.state.stack.pop().unwrap());
-    }
-
-    self_.call_function_simply(&callee, &args)?;
-
     Ok(true)
 }
 

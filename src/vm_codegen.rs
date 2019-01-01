@@ -1,5 +1,4 @@
 use bytecode_gen::{ByteCode, ByteCodeGen, VMInst};
-use id;
 use node::{BinOp, FormalParameter, FormalParameters, Node, NodeBase, PropertyDefinition, UnaryOp};
 use vm::{
     callobj::{CallObject, CallObjectRef},
@@ -245,12 +244,7 @@ impl VMCodeGen {
 
         self.set_function_header(&mut func_iseq);
 
-        let val = Value::function(
-            id::get_unique_id(),
-            func_iseq.clone(),
-            params,
-            &mut new_callobj,
-        );
+        let val = Value::function(func_iseq.clone(), params, &mut new_callobj);
 
         self.func_header_info.pop();
 
@@ -262,6 +256,7 @@ impl VMCodeGen {
         Ok(())
     }
 
+    /// function(params) { body }
     pub fn run_function_expr(
         &mut self,
         // TODO: _name should be used.
@@ -304,12 +299,7 @@ impl VMCodeGen {
 
         self.set_function_header(&mut func_iseq);
 
-        let val = Value::function(
-            id::get_unique_id(),
-            func_iseq.clone(),
-            params,
-            &mut new_callobj,
-        );
+        let val = Value::function(func_iseq.clone(), params, &mut new_callobj);
 
         self.bytecode_gen.gen_push_const(val, iseq);
         self.bytecode_gen.gen_update_parent_scope(iseq);
