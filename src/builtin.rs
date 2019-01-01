@@ -219,8 +219,32 @@ pub fn debug_print(val: &Value, nest: bool) {
 
     unsafe {
         match val {
-            Value::Empty | Value::Object(_, ObjectKind::Arguments) => {
-                libc::printf("'Unsupported. Sorry.'\0".as_ptr() as RawStringPtr);
+            Value::Empty => {
+                libc::printf(b"empty\0".as_ptr() as RawStringPtr);
+            }
+            Value::Object(_, ObjectKind::Arguments(callobj)) => {
+                let callobj = &*callobj.clone();
+                let args = &callobj.arguments;
+                libc::printf("[ \0".as_ptr() as RawStringPtr);
+
+                let mut i = 0;
+                let length = args.len();
+                while i < length {
+                    if i != 0 {
+                        libc::printf(", \0".as_ptr() as RawStringPtr);
+                    };
+                    match callobj.get_arguments_nth_value(i) {
+                        Ok(val) => {
+                            debug_print(&val, true);
+                        }
+                        Err(_) => {
+                            libc::printf(" \0".as_ptr() as RawStringPtr);
+                        }
+                    };
+
+                    i += 1;
+                }
+                libc::printf(" ]\0".as_ptr() as RawStringPtr);
             }
             Value::Null => {
                 libc::printf(b"null\0".as_ptr() as RawStringPtr);

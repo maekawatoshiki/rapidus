@@ -80,9 +80,10 @@ fn prototype_push(
     let array = if let Value::Object(_, ObjectKind::Array(array)) = *callobj.this {
         unsafe { &mut *array }
     } else {
-        println!("fail");
         vm.set_return_value(Value::Undefined);
-        return Err(RuntimeError::Unknown);
+        return Err(RuntimeError::Type(
+            "Array.prototype.push called on non-array object.".to_string(),
+        ));
     };
 
     for val in args {

@@ -213,8 +213,7 @@ impl VMCodeGen {
     ) -> Result<(), Error> {
         self.func_header_info.push(vec![]);
 
-        let mut new_callobj =
-            CallObject::new(unsafe { Value::object((*self.global_varmap).vals) }, None);
+        let mut new_callobj = CallObject::new(unsafe { Value::object((*self.global_varmap).vals) });
         let mut func_iseq = vec![];
 
         self.bytecode_gen.gen_create_context(&mut func_iseq);
@@ -267,8 +266,7 @@ impl VMCodeGen {
     ) -> Result<(), Error> {
         self.func_header_info.push(vec![]);
 
-        let mut new_callobj =
-            CallObject::new(unsafe { Value::object((*self.global_varmap).vals) }, None);
+        let mut new_callobj = CallObject::new(unsafe { Value::object((*self.global_varmap).vals) });
 
         let mut func_iseq = vec![];
 

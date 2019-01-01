@@ -32,7 +32,6 @@ pub struct FuncInfo {
     pub id: FuncId,
     pub iseq: ByteCode,
     pub params: Vec<(String, bool)>, // (name, rest param?)
-    pub arg_rest_vals: Vec<Value>,
 }
 
 impl FuncInfo {
@@ -41,7 +40,6 @@ impl FuncInfo {
             id: id,
             iseq: iseq,
             params: params,
-            arg_rest_vals: vec![],
         }
     }
 }
@@ -53,7 +51,7 @@ pub enum ObjectKind {
     Ordinary,
     Array(GcType<ArrayValue>),
     Date(Box<(DateTime<Utc>)>),
-    Arguments, // TODO: Should have CallObject
+    Arguments(CallObjectRef), // TODO: Should have CallObject
 }
 
 // Now 16 bytes
@@ -132,8 +130,6 @@ impl Value {
             kind.clone(),
         );
 
-        callobj.func = Some(kind);
-
         prototype.set_constructor(val.clone());
 
         val
@@ -167,7 +163,7 @@ impl Value {
             map,
             ObjectKind::BuiltinFunction(Box::new((
                 BuiltinFuncInfo::new(func, builtin_jit_func_info),
-                CallObject::new(Value::Undefined, None),
+                CallObject::new(Value::Undefined),
             ))),
         )
     }
@@ -241,8 +237,11 @@ impl Value {
         )
     }
 
-    pub fn arguments() -> Value {
-        Value::Object(Value::propmap_from_npp(&vec![]), ObjectKind::Arguments)
+    pub fn arguments(callobj: CallObjectRef) -> Value {
+        Value::Object(
+            Value::propmap_from_npp(&vec![]),
+            ObjectKind::Arguments(callobj),
+        )
     }
 
     pub fn get_property(&self, property: Value, callobjref: Option<&CallObjectRef>) -> Value {
@@ -346,7 +345,7 @@ impl Value {
             Value::Number(_) => property_of_number(),
             Value::String(ref s) => property_of_string(s),
             Value::Object(_, ObjectKind::Array(_)) => property_of_array(&*self),
-            Value::Object(_, ObjectKind::Arguments) => property_of_arguments(),
+            Value::Object(_, ObjectKind::Arguments(_)) => property_of_arguments(),
             Value::Object(_, _) => property_of_object(self.clone()),
             _ => Value::Undefined,
         }
@@ -395,7 +394,7 @@ impl Value {
                     },
                 }
             }
-            Value::Object(_, ObjectKind::Arguments) => {
+            Value::Object(_, ObjectKind::Arguments(_)) => {
                 match property {
                     // Index
                     Value::Number(n) if n - n.floor() == 0.0 => unsafe {
@@ -592,7 +591,7 @@ impl Value {
             Value::Object(_, ObjectKind::Date(_)) => "[Date]".to_string(),
             Value::Object(_, ObjectKind::Function(_)) => "[Function]".to_string(),
             Value::Object(_, ObjectKind::BuiltinFunction(_)) => "[BuiltinFunc]".to_string(),
-            Value::Object(_, ObjectKind::Arguments) => "arguments".to_string(),
+            Value::Object(_, ObjectKind::Arguments(_)) => "arguments".to_string(),
         }
     }
 }
@@ -616,9 +615,10 @@ impl Value {
                 Value::Object(_, ObjectKind::BuiltinFunction(_)),
             )
             | (Value::Object(_, ObjectKind::Array(_)), Value::Object(_, ObjectKind::Array(_)))
-            | (Value::Object(_, ObjectKind::Arguments), Value::Object(_, ObjectKind::Arguments)) => {
-                true
-            }
+            | (
+                Value::Object(_, ObjectKind::Arguments(_)),
+                Value::Object(_, ObjectKind::Arguments(_)),
+            ) => true,
             _ => false,
         }
     }
@@ -666,7 +666,10 @@ impl Value {
             (Value::Object(_, ObjectKind::Array(l)), Value::Object(_, ObjectKind::Array(r))) => {
                 Ok(l == r)
             }
-            (Value::Object(_, ObjectKind::Arguments), Value::Object(_, ObjectKind::Arguments)) => {
+            (
+                Value::Object(_, ObjectKind::Arguments(_)),
+                Value::Object(_, ObjectKind::Arguments(_)),
+            ) => {
                 return Err(RuntimeError::Unimplemented);
             }
             _ => Ok(false),

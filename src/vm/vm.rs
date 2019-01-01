@@ -593,7 +593,7 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
                     ),
                 )])
             };
-            callobj.clear_args_vals(func_info.clone());
+            //callobj.clear_args_vals(func_info.clone());
             callobj.vals = gc::new(unsafe { (*callobj.vals).clone() });
             callobj.apply_arguments(func_info.clone(), &args);
 
@@ -651,7 +651,7 @@ pub fn call_function(
         Value::Number(_) => true,
         _ => false,
     });
-    callobj.clear_args_vals(func_info.clone());
+    //callobj.clear_args_vals(func_info.clone());
     callobj.vals = gc::new(unsafe { (*callobj.vals).clone() });
     callobj.apply_arguments(func_info.clone(), args);
     self_.state.scope.push(gc::new(callobj.clone()));
@@ -765,7 +765,8 @@ fn push_this(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
 
 fn push_arguments(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // push_arguments
-    self_.state.stack.push(Value::arguments());
+    let callobj = self_.state.scope.last().unwrap().clone();
+    self_.state.stack.push(Value::arguments(callobj));
     Ok(true)
 }
 
@@ -1167,7 +1168,7 @@ fn push_scope(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1;
     let &base_callobj = self_.state.scope.last().unwrap();
     let co = unsafe { (*base_callobj).clone() };
-    let mut callobj = CallObject::new(Value::object_from_npp(&vec![]), None);
+    let mut callobj = CallObject::new(Value::object_from_npp(&vec![]));
     callobj.parent = Some(base_callobj);
     callobj.this = co.this;
     self_.state.scope.push(gc::new(callobj));

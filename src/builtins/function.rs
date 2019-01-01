@@ -15,14 +15,13 @@ thread_local! {
             call:       Value::default_builtin_function(prototype_call),
             __proto__:  object::OBJECT_PROTOTYPE.with(|x| x.clone())
         ));
-        let mut co = CallObject::new(Value::Undefined, None);
+        let co = CallObject::new(Value::Undefined);
         let kind = ObjectKind::Function(
             Box::new((
                 FuncInfo::new(0,vec![],vec![]),
                 co.clone()
             ))
         );
-        co.func = Some(kind.clone());
         Value::Object(map, kind)
     };
 }
@@ -59,9 +58,9 @@ fn prototype_apply(
             }
             elems
         }
-        Value::Object(_, ObjectKind::Arguments) => {
+        Value::Object(_, ObjectKind::Arguments(callobj)) => {
             let mut elems = vec![];
-            let callobj = unsafe { &**vm.state.scope.last().unwrap() };
+            let callobj = unsafe { &*callobj.clone() };
             let length = callobj.get_arguments_length();
             for i in 0..length {
                 elems.push(callobj.get_arguments_nth_value(i).unwrap());
