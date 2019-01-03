@@ -4,6 +4,8 @@ use node::BinOp;
 pub struct Token {
     pub kind: Kind,
     pub pos: usize,
+    /// char position of previous token.
+    pub prev_pos: usize,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -110,6 +112,7 @@ impl Token {
         Token {
             kind: Kind::Number(f),
             pos: pos,
+            prev_pos: 0,
         }
     }
 
@@ -117,6 +120,7 @@ impl Token {
         Token {
             kind: Kind::Identifier(ident),
             pos: pos,
+            prev_pos: 0,
         }
     }
 
@@ -124,6 +128,7 @@ impl Token {
         Token {
             kind: Kind::Keyword(keyword),
             pos: pos,
+            prev_pos: 0,
         }
     }
 
@@ -131,6 +136,7 @@ impl Token {
         Token {
             kind: Kind::String(s),
             pos: pos,
+            prev_pos: 0,
         }
     }
 
@@ -138,6 +144,7 @@ impl Token {
         Token {
             kind: Kind::Symbol(symbol),
             pos: pos,
+            prev_pos: 0,
         }
     }
 
@@ -145,6 +152,7 @@ impl Token {
         Token {
             kind: Kind::LineTerminator,
             pos: pos,
+            prev_pos: 0,
         }
     }
 }
@@ -235,6 +243,13 @@ pub fn get_string_for_symbol(symbol: Symbol) -> String {
         Symbol::Comma => ",".to_string(),
         Symbol::Semicolon => ";".to_string(),
         Symbol::Colon => ":".to_string(),
+        Symbol::Point => ".".to_string(),
+        Symbol::Arrow => "=>".to_string(),
+        Symbol::Inc => "++".to_string(),
+        Symbol::Dec => "--".to_string(),
+        Symbol::Add => "+".to_string(),
+        Symbol::Sub => "-".to_string(),
+        Symbol::Asterisk => "*".to_string(),
         _ => "???".to_string(),
     }
 }

@@ -7,6 +7,18 @@ var f = function() {
   this.g = function() {
     console.log(this.name)
   }
+  //function g() { return 'NG' }
 }
 
-new f().g() // -> error in rapidus
+new f().g() // -> error in rapidus (parsed as "new (f().g())" )
+
+function c (a, b, c) {
+  try {
+    console.log(arguments, [a, b, c])
+    throw 100
+  } catch (e) {
+    console.log(arguments, [a, b, c])
+  }
+}
+
+c(1, 2, 3) // -> can not access arguments in catch clause.

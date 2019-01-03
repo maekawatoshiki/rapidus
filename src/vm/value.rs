@@ -51,7 +51,7 @@ pub enum ObjectKind {
     Ordinary,
     Array(GcType<ArrayValue>),
     Date(Box<(DateTime<Utc>)>),
-    Arguments(CallObjectRef), // TODO: Should have CallObject
+    Arguments(CallObjectRef),
 }
 
 // Now 16 bytes
