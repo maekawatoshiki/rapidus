@@ -5,7 +5,7 @@ use std::mem;
 use std::sync::atomic::{self, AtomicUsize};
 use vm::{
     callobj::CallObject,
-    value::{ArrayValue, Property, Value},
+    value::{ArrayValue, ObjectKind, Property, Value},
     vm::VMState,
 };
 
@@ -53,27 +53,29 @@ impl Gc for Value {
             | Value::Undefined
             | Value::Bool(_)
             | Value::Number(_)
-            | Value::String(_)
-            | Value::Date(_) => {}
-            Value::Function(box (_, _, ref obj, ref c)) => {
-                not_marked_then(*obj, marked, |obj, marked| unsafe {
-                    (*obj).trace(marked);
+            | Value::String(_) => {}
+            Value::Object(map, ObjectKind::Function(box (_, ref c))) => {
+                not_marked_then(*map, marked, |map, marked| unsafe {
+                    (*map).trace(marked);
                 });
                 c.trace(marked);
             }
             // Never trace _xxx
-            Value::BuiltinFunction(box (_, _x, ref c)) => c.trace(marked),
-            Value::Object(ref obj) => {
-                not_marked_then(*obj, marked, |obj, marked| unsafe {
-                    (*obj).trace(marked);
+            Value::Object(_, ObjectKind::BuiltinFunction(box (_, ref c))) => c.trace(marked),
+
+            Value::Object(map, ObjectKind::Array(ref a)) => {
+                not_marked_then(*map, marked, |map, marked| unsafe {
+                    (*map).trace(marked);
                 });
-            }
-            Value::Array(ref a) => {
                 not_marked_then(*a, marked, |a, marked| unsafe {
                     (*a).trace(marked);
                 });
             }
-            Value::Arguments => {}
+            Value::Object(map, _) => {
+                not_marked_then(*map, marked, |map, marked| unsafe {
+                    (*map).trace(marked);
+                });
+            }
         }
     }
 }
@@ -100,9 +102,11 @@ impl Gc for CallObject {
             not_marked_then(self.vals, marked, |vals, marked| {
                 (*vals).trace(marked);
             });
+            /*
             for val in &self.arg_rest_vals {
                 val.trace(marked);
             }
+            */
             if let Some(parent) = self.parent {
                 not_marked_then(parent, marked, |parent, marked| {
                     (*parent).trace(marked);
@@ -120,9 +124,6 @@ impl Gc for ArrayValue {
 
     fn trace(&self, marked: &mut FxHashSet<GcPtr>) {
         for prop in &self.elems {
-            prop.val.trace(marked)
-        }
-        for (_, prop) in unsafe { (*self.obj).iter() } {
             prop.val.trace(marked)
         }
     }

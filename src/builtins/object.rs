@@ -3,9 +3,12 @@ use vm::{callobj::CallObject, error::RuntimeError, value::*, vm::VM};
 thread_local!(
     pub static OBJECT_PROTOTYPE: Value =
         // can not use Value::object_from_npp() here.
-        { Value::Object(Value::propmap_from_npp(&make_npp!(
-            __proto__: Value::Null
-        ))) };
+        { Value::Object(
+            Value::propmap_from_npp(&make_npp!(
+                __proto__: Value::Null
+            )),
+            ObjectKind::Ordinary
+        ) };
 );
 
 pub fn init() -> Value {
@@ -56,7 +59,7 @@ fn create(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeE
     };
 
     let obj = match maybe_obj {
-        Value::Object(map) => {
+        Value::Object(map, ObjectKind::Ordinary) => {
             let new_obj = Value::object_from_npp(&vec![]);
             let proto = new_obj.get_property(Value::string("__proto__".to_string()), None);
             for (name, prop) in unsafe { (**map).iter() } {

@@ -17,21 +17,45 @@ pub struct Lexer {
 
 impl Lexer {
     pub fn new(code: String) -> Lexer {
-        Lexer {
+        let mut lexer = Lexer {
             code: code,
             pos: 0,
             line: 1,
             buf: VecDeque::new(),
             pos_line_list: vec![],
+        };
+        {
+            let res = lexer.tokenize_all();
+            if res != Err(Error::NormalEOF) {
+                unreachable!("error occured in tokenize.");
+            }
+            let mut prev_pos = 0;
+            for mut tok in &mut lexer.buf {
+                tok.prev_pos = prev_pos;
+                prev_pos = tok.pos;
+            }
+        }
+        //lexer.print_buf();
+
+        lexer
+    }
+
+    pub fn print_buf(&self) {
+        for tok in &self.buf {
+            println!("{:?}", tok);
         }
     }
 }
 
 impl Lexer {
+    /// get next token.
+    /// no skipping line terminator.
     pub fn next(&mut self) -> Result<Token, Error> {
         self.read_token()
     }
 
+    /// get the next token.
+    /// skipping line terminators.
     pub fn next_except_lineterminator(&mut self) -> Result<Token, Error> {
         match self.read_token() {
             Ok(ref tok) if tok.kind == Kind::LineTerminator => self.next_except_lineterminator(),
@@ -39,12 +63,48 @@ impl Lexer {
         }
     }
 
-    pub fn peek(&mut self) -> Result<Token, Error> {
-        let tok = self.read_token()?;
-        self.buf.push_back(tok.clone());
-        Ok(tok)
+    /// peek the next token.
+    /// skipping line terminators.
+    pub fn peek_except_lineterminator(&mut self) -> Result<Token, Error> {
+        let len = self.buf.len();
+        for i in 0..len {
+            let tok = self.buf[i].clone();
+            if tok.kind != Kind::LineTerminator {
+                return Ok(tok);
+            }
+        }
+        Err(Error::NormalEOF)
     }
 
+    /// peek the token secified by index. return the next token when index = 0.
+    pub fn peek(&mut self, index: usize) -> Result<Token, Error> {
+        if self.buf.len() > index {
+            Ok(self.buf[index].clone())
+        } else {
+            Err(Error::NormalEOF)
+        }
+    }
+
+    /// get position of next token.
+    pub fn get_current_pos(&mut self) -> usize {
+        if self.buf.is_empty() {
+            self.pos
+        } else {
+            self.buf[0].pos
+        }
+    }
+
+    /// get position of previous token.
+    pub fn get_prev_pos(&mut self) -> usize {
+        if self.buf.is_empty() {
+            self.pos - 1
+        } else {
+            self.buf[0].prev_pos
+        }
+    }
+
+    /// peek the next token, and when token is kind:Kind, return true.
+    /// otherwise, return false.
     pub fn skip(&mut self, kind: Kind) -> bool {
         match self.next() {
             Ok(tok) => {
@@ -58,6 +118,9 @@ impl Lexer {
         }
     }
 
+    /// peek the next token, and when token is kind:Kind, return true.
+    /// otherwise, return false.
+    /// skipping line terminators.
     pub fn skip_except_lineterminator(&mut self, kind: Kind) -> Result<bool, Error> {
         match self.next_except_lineterminator() {
             Ok(tok) => {
@@ -71,29 +134,43 @@ impl Lexer {
         }
     }
 
+    /// push back the token to the stack.
     pub fn unget(&mut self, tok: &Token) {
-        self.buf.push_back(tok.clone());
+        self.buf.push_front(tok.clone());
     }
 
-    pub fn read_token(&mut self) -> Result<Token, Error> {
+    /// read token. skip comments.
+    fn read_token(&mut self) -> Result<Token, Error> {
         if !self.buf.is_empty() {
-            return Ok(self.buf.pop_front().unwrap());
+            Ok(self.buf.pop_front().unwrap())
+        } else {
+            Err(Error::NormalEOF)
         }
+    }
 
+    fn tokenize_all(&mut self) -> Result<(), Error> {
+        loop {
+            let tok = self.tokenize()?;
+            self.buf.push_back(tok);
+        }
+    }
+
+    /// tokenize and return the token.
+    fn tokenize(&mut self) -> Result<Token, Error> {
         if self.starts_with("//") {
             self.skip_line_comment()?;
         } else if self.starts_with("/*") {
             self.skip_normal_comment()?;
         }
 
-        match self.next_char()? {
+        match self.peek_char()? {
             'a'...'z' | 'A'...'Z' | '_' | '$' => self.read_identifier(),
             '0'...'9' => self.read_number(),
             '\'' | '\"' => self.read_string_literal(),
             '\n' => self.read_line_terminator(),
             c if c.is_whitespace() => {
                 self.skip_whitespace()?;
-                self.read_token()
+                self.tokenize()
             }
             _ => self.read_symbol(),
         }
@@ -102,13 +179,13 @@ impl Lexer {
 
 impl Lexer {
     fn skip_line_comment(&mut self) -> Result<(), Error> {
-        self.just_skip_while(|c| c != '\n')
+        self.skip_char_while(|c| c != '\n')
     }
 
     fn skip_normal_comment(&mut self) -> Result<(), Error> {
         let mut last_char = ' ';
         let mut line = self.line;
-        self.just_skip_while(|c| {
+        self.skip_char_while(|c| {
             if c == '\n' {
                 line += 1;
             }
@@ -117,7 +194,7 @@ impl Lexer {
             !end_of_comment
         })?;
         self.line = line;
-        assert_eq!(self.skip_char()?, '/');
+        assert_eq!(self.take_char()?, '/');
         Ok(())
     }
 }
@@ -126,7 +203,7 @@ impl Lexer {
     fn read_identifier(&mut self) -> Result<Token, Error> {
         let pos = self.pos;
         self.pos_line_list.push((pos, self.line));
-        let ident = self.skip_while(|c| c.is_alphanumeric() || c == '_' || c == '$')?;
+        let ident = self.take_char_while(|c| c.is_alphanumeric() || c == '_' || c == '$')?;
         if let Some(keyword) = convert_reserved_keyword(ident.as_str()) {
             Ok(Token::new_keyword(keyword, pos))
         } else {
@@ -152,10 +229,10 @@ impl Lexer {
         let mut kind = NumLiteralKind::Dec;
         let mut num_literal = "".to_string();
 
-        match self.skip_char()? {
+        match self.take_char()? {
             '0' if self.eof() => return Ok(Token::new_number(0.0, pos)),
             '0' => {
-                let c = self.next_char()?;
+                let c = self.peek_char()?;
                 match c {
                     'x' | 'X' => kind = NumLiteralKind::Hex,
                     'b' | 'B' => kind = NumLiteralKind::Bin,
@@ -168,14 +245,14 @@ impl Lexer {
                     '8'...'9' => num_literal.push(c),
                     _ => return Ok(Token::new_number(0.0, pos)),
                 }
-                self.skip_char()?;
+                self.take_char()?;
             }
             c => num_literal.push(c),
         }
 
         macro_rules! read_num {
             ( $($valid_chars:pat),* ) => {
-                self.skip_while(|c| match c.to_ascii_lowercase() {
+                self.take_char_while(|c| match c.to_ascii_lowercase() {
                     $( $valid_chars )|* => true,
                     _ => false }
                 )?
@@ -186,7 +263,7 @@ impl Lexer {
             NumLiteralKind::Hex => read_num!('0'...'9', 'a'...'f'),
             NumLiteralKind::Oct => read_num!('0'...'7'),
             NumLiteralKind::Bin => read_num!('0'...'1'),
-            NumLiteralKind::OldOct => self.skip_while(|c| match c {
+            NumLiteralKind::OldOct => self.take_char_while(|c| match c {
                 '0'...'7' => true,
                 '8'...'9' => {
                     kind = NumLiteralKind::Dec;
@@ -196,7 +273,7 @@ impl Lexer {
             })?,
             NumLiteralKind::Dec => {
                 let mut last = ' ';
-                self.skip_while(|c| {
+                self.take_char_while(|c| {
                     let is_f = "eE".contains(last) && "+-0123456789".contains(c);
                     last = c;
                     c.is_alphanumeric() || c == '.' || is_f
@@ -257,11 +334,11 @@ impl Lexer {
     pub fn read_string_literal(&mut self) -> Result<Token, Error> {
         let pos = self.pos;
         self.pos_line_list.push((pos, self.line));
-        let quote = self.skip_char()?;
+        let quote = self.take_char()?;
         // TODO: support escape sequence
         let mut s = "".to_string();
         loop {
-            match self.skip_char()? {
+            match self.take_char()? {
                 q if q == quote => break,
                 '\\' => {
                     for c in self.read_escaped_char()? {
@@ -275,7 +352,7 @@ impl Lexer {
     }
 
     fn read_escaped_char(&mut self) -> Result<Vec<char>, Error> {
-        let c = self.skip_char()?;
+        let c = self.take_char()?;
         Ok(match c {
             '\'' | '"' | '?' | '\\' => vec![c],
             'a' => vec!['\x07'],
@@ -286,13 +363,13 @@ impl Lexer {
             't' => vec!['\x09'],
             'v' => vec!['\x0b'],
             'x' => {
-                let hex = self.skip_while(|c| c.is_alphanumeric())?;
+                let hex = self.take_char_while(|c| c.is_alphanumeric())?;
                 vec![self.read_hex_num(hex.as_str()) as u8 as char]
             }
             'u' => {
                 let mut u8s = vec![];
                 loop {
-                    let hex = self.skip_while(|c| c.is_alphanumeric())?;
+                    let hex = self.take_char_while(|c| c.is_alphanumeric())?;
                     let mut i = 0;
                     while i < hex.len() {
                         u8s.push(
@@ -307,7 +384,7 @@ impl Lexer {
                     }
                     let save_pos = self.pos;
                     // TODO: Error handling
-                    if self.skip_char()? == '\\' && self.skip_char()? == 'u' {
+                    if self.take_char()? == '\\' && self.take_char()? == 'u' {
                         continue;
                     } else {
                         self.pos = save_pos;
@@ -331,11 +408,11 @@ impl Lexer {
         self.pos_line_list.push((pos, self.line));
 
         let mut symbol = Symbol::Hash;
-        let c = self.skip_char()?;
+        let c = self.take_char()?;
         match c {
-            '+' | '-' => match self.next_char()? {
+            '+' | '-' => match self.peek_char()? {
                 '=' => {
-                    assert_eq!(self.skip_char()?, '=');
+                    assert_eq!(self.take_char()?, '=');
                     if c == '+' {
                         symbol = Symbol::AssignAdd;
                     } else if c == '-' {
@@ -343,19 +420,19 @@ impl Lexer {
                     }
                 }
                 '>' => {
-                    assert_eq!(self.skip_char()?, '>');
+                    assert_eq!(self.take_char()?, '>');
                     if c == '-' {
                         symbol = Symbol::Arrow;
                     }
                 }
                 '+' => {
-                    assert_eq!(self.skip_char()?, '+');
+                    assert_eq!(self.take_char()?, '+');
                     if c == '+' {
                         symbol = Symbol::Inc;
                     }
                 }
                 '-' => {
-                    assert_eq!(self.skip_char()?, '-');
+                    assert_eq!(self.take_char()?, '-');
                     if c == '-' {
                         symbol = Symbol::Dec;
                     }
@@ -369,31 +446,31 @@ impl Lexer {
                 }
             },
             '*' => {
-                if self.skip_char_if_any('=')? {
+                if self.take_char_if('=')? {
                     symbol = Symbol::AssignMul
-                } else if self.skip_char_if_any('*')? {
+                } else if self.take_char_if('*')? {
                     symbol = Symbol::Exp
                 } else {
                     symbol = Symbol::Asterisk
                 }
             }
             '/' => {
-                if self.skip_char_if_any('=')? {
+                if self.take_char_if('=')? {
                     symbol = Symbol::AssignDiv
                 } else {
                     symbol = Symbol::Div
                 }
             }
             '%' => {
-                if self.skip_char_if_any('=')? {
+                if self.take_char_if('=')? {
                     symbol = Symbol::AssignMod
                 } else {
                     symbol = Symbol::Mod
                 }
             }
             '=' => {
-                if self.skip_char_if_any('=')? {
-                    symbol = if self.skip_char_if_any('=')? {
+                if self.take_char_if('=')? {
+                    symbol = if self.take_char_if('=')? {
                         Symbol::SEq
                     } else {
                         Symbol::Eq
@@ -403,15 +480,15 @@ impl Lexer {
                 }
             }
             '^' => {
-                if self.skip_char_if_any('=')? {
+                if self.take_char_if('=')? {
                     symbol = Symbol::AssignXor
                 } else {
                     symbol = Symbol::Xor
                 }
             }
             '!' => {
-                if self.skip_char_if_any('=')? {
-                    symbol = if self.skip_char_if_any('=')? {
+                if self.take_char_if('=')? {
+                    symbol = if self.take_char_if('=')? {
                         Symbol::SNe
                     } else {
                         Symbol::Ne
@@ -422,11 +499,11 @@ impl Lexer {
             }
             '<' | '>' | '&' | '|' => {
                 let mut single = true;
-                if self.skip_char_if_any(c)? {
+                if self.take_char_if(c)? {
                     symbol = match c {
                         '<' => Symbol::Shl,
                         '>' => {
-                            if self.skip_char_if_any('>')? {
+                            if self.take_char_if('>')? {
                                 Symbol::ZFShr
                             } else {
                                 Symbol::Shr
@@ -438,7 +515,7 @@ impl Lexer {
                     };
                     single = false;
                 }
-                if self.skip_char_if_any('=')? {
+                if self.take_char_if('=')? {
                     symbol = match (c, symbol) {
                         ('<', Symbol::Shl) => Symbol::AssignShl,
                         ('<', _) => Symbol::Le,
@@ -475,8 +552,8 @@ impl Lexer {
             '?' => symbol = Symbol::Question,
             '#' => symbol = Symbol::Hash,
             '.' => {
-                if self.skip_char_if_any('.')? {
-                    symbol = if self.skip_char_if_any('.')? {
+                if self.take_char_if('.')? {
+                    symbol = if self.take_char_if('.')? {
                         Symbol::Rest
                     } else {
                         // TODO: better error handler needed
@@ -498,41 +575,47 @@ impl Lexer {
 }
 
 impl Lexer {
+    /// read line terminator. (if nect char is not line terminator, panic.)
     pub fn read_line_terminator(&mut self) -> Result<Token, Error> {
         let pos = self.pos;
-        assert_eq!(self.skip_char()?, '\n');
+        assert_eq!(self.take_char()?, '\n');
         self.line += 1;
         Ok(Token::new_line_terminator(pos))
     }
 }
 
 impl Lexer {
+    /// skip whitespace and tabs.
     fn skip_whitespace(&mut self) -> Result<(), Error> {
-        self.skip_while(|c| c == ' ' || c == '\t').and(Ok(()))
+        self.take_char_while(|c| c == ' ' || c == '\t').and(Ok(()))
     }
 
-    fn skip_while<F>(&mut self, mut f: F) -> Result<String, Error>
+    /// if predicete f(char) is true, read chars, and move cursor next.
+    /// return all chars as String.
+    fn take_char_while<F>(&mut self, mut f: F) -> Result<String, Error>
     where
         F: FnMut(char) -> bool,
     {
         let mut s = "".to_string();
-        while !self.eof() && f(self.next_char()?) {
-            s.push(self.skip_char()?);
+        while !self.eof() && f(self.peek_char()?) {
+            s.push(self.take_char()?);
         }
         Ok(s)
     }
 
-    fn just_skip_while<F>(&mut self, mut f: F) -> Result<(), Error>
+    /// if predicete f(char) is true, move cursor next.
+    fn skip_char_while<F>(&mut self, mut f: F) -> Result<(), Error>
     where
         F: FnMut(char) -> bool,
     {
-        while !self.eof() && f(self.next_char()?) {
-            self.skip_char()?;
+        while !self.eof() && f(self.peek_char()?) {
+            self.take_char()?;
         }
         Ok(())
     }
 
-    fn skip_char(&mut self) -> Result<char, Error> {
+    /// read next char, and move cursor next.
+    fn take_char(&mut self) -> Result<char, Error> {
         let mut iter = self.code[self.pos..].char_indices();
         let (_, cur_char) = iter.next().ok_or(Error::NormalEOF)?;
         let (next_pos, _) = iter.next().unwrap_or((cur_char.len_utf8(), ' '));
@@ -540,24 +623,32 @@ impl Lexer {
         Ok(cur_char)
     }
 
-    fn skip_char_if_any(&mut self, c: char) -> Result<bool, Error> {
-        let f = !self.eof() && self.next_char()? == c;
+    /// if the next char is c:char, move cursor next, return true.
+    /// if not (include EOF), return false.
+    fn take_char_if(&mut self, c: char) -> Result<bool, Error> {
+        let f = !self.eof() && self.peek_char()? == c;
         if f {
-            assert_eq!(self.skip_char()?, c);
+            assert_eq!(self.take_char()?, c);
         }
         Ok(f)
     }
 
+    /// if chars start with s:&str, return true.
     fn starts_with(&self, s: &str) -> bool {
         self.code[self.pos..].starts_with(s)
     }
 
-    fn next_char(&self) -> Result<char, Error> {
+    /// peek next char.
+    fn peek_char(&self) -> Result<char, Error> {
         self.code[self.pos..].chars().next().ok_or(Error::NormalEOF)
     }
 
-    pub fn eof(&self) -> bool {
+    fn eof(&self) -> bool {
         self.pos >= self.code.len()
+    }
+
+    pub fn is_eof(&self) -> bool {
+        self.buf.is_empty()
     }
 }
 
