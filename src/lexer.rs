@@ -676,7 +676,6 @@ impl Lexer {
             x if x == 0 => 0,
             x => x - 1,
         };
-        println!("{} {} {}", pos, start_pos, end_pos);
         let surrounding_code = String::from_utf8(code[*start_pos..end_pos].to_vec())
             .unwrap()
             .to_string();
