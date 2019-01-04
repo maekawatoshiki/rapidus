@@ -1,12 +1,9 @@
 extern crate rapidus;
 use rapidus::builtin;
 use rapidus::bytecode_gen;
-use rapidus::lexer;
 use rapidus::parser;
 use rapidus::vm;
 use rapidus::vm_codegen;
-
-use parser::Error::*;
 
 extern crate libc;
 
@@ -28,8 +25,6 @@ use std::io::prelude::*;
 const VERSION_STR: &'static str = env!("CARGO_PKG_VERSION");
 
 fn main() {
-    use parser::Error::*;
-
     let app = App::new("Rapidus")
         .version(VERSION_STR)
         .author("uint256_t")
@@ -76,28 +71,13 @@ fn main() {
         }
     };
 
-    let mut lexer = lexer::Lexer::new(file_body.clone());
-
-    println!("Lexer:");
-    while let Ok(token) = lexer.next() {
-        println!("{:?}", token);
-    }
-
     let mut parser = parser::Parser::new(file_body);
 
     println!("Parser:");
     let node = match parser.parse_all() {
         Ok(ok) => ok,
-        Err(NormalEOF) => unreachable!(),
-        Err(Expect(pos, kind, msg))
-        | Err(General(pos, kind, msg))
-        | Err(UnexpectedEOF(pos, kind, msg))
-        | Err(UnexpectedToken(pos, kind, msg)) => {
-            parser.show_error_at(pos, kind, msg.as_str());
-            return;
-        }
-        Err(UnsupportedFeature(pos)) => {
-            parser.enhanced_show_error_at(pos, "unsupported feature");
+        Err(err) => {
+            parser.handle_error(err);
             return;
         }
     };
@@ -155,16 +135,8 @@ fn repl(trace: bool) {
 
         let node = match parser.parse_all() {
             Ok(ok) => ok,
-            Err(NormalEOF) => unreachable!(),
-            Err(Expect(pos, kind, msg))
-            | Err(General(pos, kind, msg))
-            | Err(UnexpectedEOF(pos, kind, msg))
-            | Err(UnexpectedToken(pos, kind, msg)) => {
-                parser.show_error_at(pos, kind, msg.as_str());
-                continue;
-            }
-            Err(UnsupportedFeature(pos)) => {
-                parser.enhanced_show_error_at(pos, "unsupported feature");
+            Err(err) => {
+                parser.handle_error(err);
                 continue;
             }
         };
@@ -173,11 +145,11 @@ fn repl(trace: bool) {
         match vm_codegen.compile(&node, &mut iseq, true) {
             Ok(()) => {}
             Err(vm_codegen::Error::General { msg, token_pos }) => {
-                parser.show_error_at(token_pos, lexer::ErrorMsgKind::Normal, msg.as_str());
+                parser.show_error_at(token_pos, msg.as_str());
                 continue;
             }
             Err(vm_codegen::Error::Unimplemented { msg, token_pos }) => {
-                parser.show_error_at(token_pos, lexer::ErrorMsgKind::LastToken, msg.as_str());
+                parser.show_error_at(token_pos, msg.as_str());
                 continue;
             }
         };
@@ -273,16 +245,8 @@ fn run(file_name: &str, trace: bool) {
 
             let mut node = match parser.parse_all() {
                 Ok(ok) => ok,
-                Err(NormalEOF) => unreachable!(),
-                Err(Expect(pos, kind, msg))
-                | Err(General(pos, kind, msg))
-                | Err(UnexpectedEOF(pos, kind, msg))
-                | Err(UnexpectedToken(pos, kind, msg)) => {
-                    parser.show_error_at(pos, kind, msg.as_str());
-                    return;
-                }
-                Err(UnsupportedFeature(pos)) => {
-                    parser.enhanced_show_error_at(pos, "unsupported feature");
+                Err(err) => {
+                    parser.handle_error(err);
                     return;
                 }
             };
@@ -292,7 +256,7 @@ fn run(file_name: &str, trace: bool) {
             match vm_codegen.compile(&node, &mut iseq, false) {
                 Ok(()) => {}
                 Err(vm_codegen::Error::General { msg, token_pos }) => {
-                    parser.show_error_at(token_pos, lexer::ErrorMsgKind::Normal, msg.as_str());
+                    parser.show_error_at(token_pos, msg.as_str());
                     return;
                 }
                 Err(e) => panic!(e),

@@ -5,6 +5,7 @@ pub struct Token {
     pub kind: Kind,
     pub pos: usize,
     /// char position of previous token.
+    /// lexer generate this after tokenizing.
     pub prev_pos: usize,
 }
 
@@ -16,6 +17,7 @@ pub enum Kind {
     String(String),
     Symbol(Symbol),
     LineTerminator,
+    EOF,
 }
 
 #[derive(Clone, Debug, PartialEq)]

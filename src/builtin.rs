@@ -7,9 +7,7 @@ use std::fs::OpenOptions;
 use std::io::prelude::*;
 use std::path;
 
-use lexer;
 use parser;
-use parser::Error::*;
 use vm::{
     callobj::CallObject,
     error::RuntimeError,
@@ -450,19 +448,9 @@ pub fn require(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject) -> Result<(
 
             let node = match parser.parse_all() {
                 Ok(ok) => ok,
-                Err(NormalEOF) => unreachable!(),
-                Err(Expect(pos, kind, msg))
-                | Err(General(pos, kind, msg))
-                | Err(UnexpectedEOF(pos, kind, msg))
-                | Err(UnexpectedToken(pos, kind, msg)) => {
-                    parser.show_error_at(pos, kind, msg.as_str());
-                    vm.state.stack.push(Value::Undefined);
-                    return Ok(());
-                }
-                Err(UnsupportedFeature(pos)) => {
-                    parser.enhanced_show_error_at(pos, "unsupported feature");
-                    vm.state.stack.push(Value::Undefined);
-                    return Ok(());
+                Err(err) => {
+                    parser.handle_error(err);
+                    return Err(RuntimeError::General("error in 'require'".to_string()));
                 }
             };
 
@@ -473,7 +461,7 @@ pub fn require(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject) -> Result<(
             match vm_codegen.compile(&node, &mut iseq, false) {
                 Ok(()) => {}
                 Err(vm_codegen::Error::General { msg, token_pos }) => {
-                    parser.show_error_at(token_pos, lexer::ErrorMsgKind::Normal, msg.as_str());
+                    parser.show_error_at(token_pos, msg.as_str());
                     return Ok(());
                 }
                 Err(e) => panic!(e),
