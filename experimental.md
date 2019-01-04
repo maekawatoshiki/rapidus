@@ -4,12 +4,34 @@
 
 - 従来の `Value`, `ValueBase` 構造体をそれぞれ `Property`, `Value` 構造体へ変更した。
 writable, configurable などの属性は `Property` のメンバとなる。
-- Valueは`to_property(&self)`で`Property`に変換できる。
+- `Value`は`to_property(&self)`で`Property`に変換できる。
 - 識別子とProperyのタプルとして`NamePropPair`, プロパティのmapとして`PropMap`を定義した。
+- `Object`とその亜種（`Array`, `Function`, `Date`, `Arguments` など）はプロパティのマップのみを`Value`に残し、他の情報は`ObjectKind`列挙体にラップした。
+- `Function`については`CallObject`からパラメータの名称情報を`ObjectKind`の中の`FuncInfo`構造体へ移動した。静的情報は`FuncInfo`へ、関数呼び出しのたびに動的に生成する情報は`CallObject`に格納される。
 
 ```Rust
 pub type NamePropPair = (String, Property);
 pub type PropMap = GcType<FxHashMap<String, Property>>;
+
+pub enum Value {
+    Object(PropMap, ObjectKind),
+    ...
+}
+
+pub enum ObjectKind {
+    Function(Box<(FuncInfo, CallObject)>),
+    BuiltinFunction(Box<(BuiltinFuncInfo, CallObject)>),
+    Ordinary,
+    Array(GcType<ArrayValue>),
+    Date(Box<(DateTime<Utc>)>),
+    Arguments(CallObjectRef),
+}
+
+pub struct FuncInfo {
+    pub id: FuncId,
+    pub iseq: ByteCode,
+    pub params: Vec<(String, bool)>, // (name, rest param?)
+}
 ```
 
 - `Value::propmap_from_npp(&Vec<NamePropPair>)`で`PropMap`、`Value::object_from_npp(&Vec<NamePropPair)`で`Value::Object`、`Value::array_from_elems(Vec<Value>)`で`Value::Array`を生成でき,ハッシュマップやGCの実装を隠蔽できる。
@@ -116,3 +138,9 @@ stack trace: 1
 stack trace: 1 | 2 | true | 'elem' | [1,2,'wow']
 [ 1, 2, 'wow' ]
 ```
+
+### 6.Lexerの改良
+
+- パースに入る前にソースコードのtokenizeを完了するようにした。これにより改行文字を読み飛ばしながらのトークンの先読みが容易となった。
+- `lexer.pos_line_list`にはコメントのみの行を除く全ての行の行頭のソースコード上の位置を(position of line head, line number)のタプルとして保存するようにした。これによりエラー発生時の行数・行内での位置の特定が容易になった。
+- `Token`構造体に一つ前のTokenの位置も保存するようにした（`prev_pos`メンバ）。これにより`ErrMsgKind`での指定は不要となった。
