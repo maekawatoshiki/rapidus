@@ -2141,7 +2141,7 @@ fn function_decl() {
     }
     for input in ["a = function(x,y){b=1}"].iter() {
         let mut parser = Parser::new(input.to_string());
-        parser.parse_all().expect_err("should be error");
+        parser.parse_all().unwrap();
     }
 }
 
