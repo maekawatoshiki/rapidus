@@ -1767,6 +1767,10 @@ fn call() {
         let mut parser = Parser::new(input.to_string());
         parser.parse_all().expect_err("should be error");
     }
+    for input in ["f[3]()"].iter() {
+        let mut parser = Parser::new(input.to_string());
+        parser.parse_all().unwrap();
+    }
 }
 
 #[test]
@@ -1881,7 +1885,7 @@ fn break_() {
             0
         )
     );
-    for input in ["while(1){break a=7}"].iter() {
+    for input in ["while(1){break 7}"].iter() {
         let mut parser = Parser::new(input.to_string());
         parser.parse_all().expect_err("should be error");
     }
@@ -2127,11 +2131,17 @@ fn function_decl() {
         "function f(,){}",
         "function f(x,.y){}",
         "function f(x,..y){}",
+        "function f(x,...y,z){}",
+        "function f(x,...7){}",
     ]
     .iter()
     {
         let mut parser = Parser::new(input.to_string());
         parser.parse_all().expect_err(input);
+    }
+    for input in ["a = function(x,y){b=1}"].iter() {
+        let mut parser = Parser::new(input.to_string());
+        parser.parse_all().expect_err("should be error");
     }
 }
 
@@ -2216,6 +2226,8 @@ fn throw() {
         "throw",
         "throw
     100",
+        "throw;",
+        "throw}",
     ]
     .iter()
     {
@@ -2241,7 +2253,7 @@ fn try_catch1() {
             0
         )
     );
-    for input in ["try {} catch", "try {} catch {}", "try {} catch(e"].iter() {
+    for input in ["try {} catch", "try {} catch {}", "try {} catch(7)"].iter() {
         let mut parser = Parser::new(input.to_string());
         parser.parse_all().expect_err("should be error");
     }
