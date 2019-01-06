@@ -13,6 +13,7 @@ pub mod jit;
 pub mod lexer;
 pub mod node;
 pub mod parser;
+pub mod test;
 pub mod token;
 pub mod vm_codegen;
 

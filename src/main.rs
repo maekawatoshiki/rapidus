@@ -275,3 +275,14 @@ fn run(file_name: &str, trace: bool) {
         Err(e) => panic!("Rapidus Internal Error: fork failed: {:?}", e),
     }
 }
+
+#[test]
+fn test() {
+    use rapidus::test::*;
+    test_code("closure".to_string(), "[0,50,1,50,1,1000,50]".to_string());
+    test_code(
+        "label".to_string(),
+        "[0,0,0,1,0,2,1,0,2,0,2,1,2,2]".to_string(),
+    );
+    test_code("this".to_string(), "[1,101,124]".to_string());
+}
