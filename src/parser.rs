@@ -1292,6 +1292,10 @@ fn array1() {
             0
         )
     );
+    for input in ["[1,2,"].iter() {
+        let mut parser = Parser::new(input.to_string());
+        parser.parse_all().expect_err("should be error");
+    }
 }
 
 #[test]
@@ -1352,6 +1356,14 @@ fn object() {
             0
         )
     );
+    for input in ["a = {}", "a = {b}"].iter() {
+        let mut parser = Parser::new(input.to_string());
+        parser.parse_all().unwrap();
+    }
+    for input in ["a = {b:6 c}", "a = {b:6, 777}"].iter() {
+        let mut parser = Parser::new(input.to_string());
+        parser.parse_all().expect_err(input);
+    }
 }
 
 #[test]
@@ -1751,7 +1763,7 @@ fn call() {
             )
         );
     }
-    for input in ["f(,)", "f(", "f(1", "f(1,"].iter() {
+    for input in ["f(,)", "f(", "f(1", "f(1,", "f.7", "f[5", "f(1 a)"].iter() {
         let mut parser = Parser::new(input.to_string());
         parser.parse_all().expect_err("should be error");
     }
@@ -1819,6 +1831,10 @@ fn var_decl() {
             0
         )
     );
+    for input in ["var 7"].iter() {
+        let mut parser = Parser::new(input.to_string());
+        parser.parse_all().expect_err("should be error");
+    }
 }
 
 #[test]
@@ -1840,7 +1856,7 @@ fn block() {
             0
         )
     );
-    for input in ["{", "{ a", "{ a=", "{ a=1", "}"].iter() {
+    for input in ["{", "{ a", "{ a=", "{ a=1", "}", "{ 7z }", "{a=0 8k}"].iter() {
         let mut parser = Parser::new(input.to_string());
         parser.parse_all().expect_err("should be error");
     }
@@ -1865,6 +1881,10 @@ fn break_() {
             0
         )
     );
+    for input in ["while(1){break a=7}"].iter() {
+        let mut parser = Parser::new(input.to_string());
+        parser.parse_all().expect_err("should be error");
+    }
 }
 
 #[test]
@@ -1886,6 +1906,10 @@ fn continue_() {
             0
         )
     );
+    for input in ["while(1){continue 825}"].iter() {
+        let mut parser = Parser::new(input.to_string());
+        parser.parse_all().expect_err("should be error");
+    }
 }
 
 #[test]
@@ -1966,7 +1990,7 @@ fn if_() {
         )
     );
 
-    for input in ["if(", "if()else"].iter() {
+    for input in ["if(", "if()else", "if(true){} 8j"].iter() {
         let mut parser = Parser::new(input.to_string());
         parser.parse_all().expect_err("should be error");
     }
@@ -2008,7 +2032,18 @@ fn for1() {
             0
         )
     );
-    for input in ["for()", "for(;)", "for(;;;)"].iter() {
+    for input in [
+        "for(){}",
+        "for(;){}",
+        "for(;;;){}",
+        "for(var){}",
+        "for(var a=1){}",
+        "for(a=1){}",
+        "for(a=1;a<8)",
+        "for(a=1;a<8;a++",
+    ]
+    .iter()
+    {
         let mut parser = Parser::new(input.to_string());
         parser.parse_all().expect_err("should be error");
     }
