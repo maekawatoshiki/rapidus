@@ -1,7 +1,6 @@
 use chrono::Utc;
 use libc;
 use llvm::core::*;
-use rustc_hash::FxHashMap;
 use std::{ffi::CString, thread, time};
 
 use super::{
@@ -38,6 +37,7 @@ pub struct VMState {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+/// Value or Runtime error to be returned after finally clause.
 pub enum TryReturn {
     Value(Value),
     Error(RuntimeError),
@@ -98,7 +98,7 @@ impl VM {
             Value::default_builtin_function(builtin::require),
         );
 
-        let module_exports = Value::object(gc::new(FxHashMap::default()));
+        let module_exports = Value::object_from_npp(&vec![]);
         global_vals.set_value("module".to_string(), {
             make_object!(
                 exports:    module_exports.clone()
@@ -106,43 +106,41 @@ impl VM {
         });
         global_vals.set_value("exports".to_string(), module_exports);
 
-        unsafe {
-            global_vals.set_value("console".to_string(), {
-                let func_log = Value::builtin_function_with_jit(
-                    builtin::console_log,
-                    BuiltinJITFuncInfo::ConsoleLog {
-                        bool: (
-                            builtin::jit_console_log_bool as *mut libc::c_void,
-                            LLVMAddFunction(
-                                jit.module,
-                                CString::new("jit_console_log_bool").unwrap().as_ptr(),
-                                LLVMFunctionType(
-                                    LLVMVoidType(),
-                                    vec![LLVMInt1TypeInContext(jit.context)]
-                                        .as_mut_slice()
-                                        .as_mut_ptr(),
-                                    1,
-                                    0,
-                                ),
+        global_vals.set_value("console".to_string(), {
+            let func_log = Value::builtin_function_with_jit(
+                builtin::console_log,
+                BuiltinJITFuncInfo::ConsoleLog {
+                    bool: (builtin::jit_console_log_bool as *mut libc::c_void, unsafe {
+                        LLVMAddFunction(
+                            jit.module,
+                            CString::new("jit_console_log_bool").unwrap().as_ptr(),
+                            LLVMFunctionType(
+                                LLVMVoidType(),
+                                vec![LLVMInt1TypeInContext(jit.context)]
+                                    .as_mut_slice()
+                                    .as_mut_ptr(),
+                                1,
+                                0,
                             ),
-                        ),
-                        f64: (
-                            builtin::jit_console_log_f64 as *mut libc::c_void,
-                            LLVMAddFunction(
-                                jit.module,
-                                CString::new("jit_console_log_f64").unwrap().as_ptr(),
-                                LLVMFunctionType(
-                                    LLVMVoidType(),
-                                    vec![LLVMDoubleTypeInContext(jit.context)]
-                                        .as_mut_slice()
-                                        .as_mut_ptr(),
-                                    1,
-                                    0,
-                                ),
+                        )
+                    }),
+                    f64: (builtin::jit_console_log_f64 as *mut libc::c_void, unsafe {
+                        LLVMAddFunction(
+                            jit.module,
+                            CString::new("jit_console_log_f64").unwrap().as_ptr(),
+                            LLVMFunctionType(
+                                LLVMVoidType(),
+                                vec![LLVMDoubleTypeInContext(jit.context)]
+                                    .as_mut_slice()
+                                    .as_mut_ptr(),
+                                1,
+                                0,
                             ),
-                        ),
-                        string: (
-                            builtin::jit_console_log_string as *mut libc::c_void,
+                        )
+                    }),
+                    string: (
+                        builtin::jit_console_log_string as *mut libc::c_void,
+                        unsafe {
                             LLVMAddFunction(
                                 jit.module,
                                 CString::new("jit_console_log_string").unwrap().as_ptr(),
@@ -154,22 +152,24 @@ impl VM {
                                     1,
                                     0,
                                 ),
-                            ),
-                        ),
-                        newline: (
-                            builtin::jit_console_log_newline as *mut libc::c_void,
+                            )
+                        },
+                    ),
+                    newline: (
+                        builtin::jit_console_log_newline as *mut libc::c_void,
+                        unsafe {
                             LLVMAddFunction(
                                 jit.module,
                                 CString::new("jit_console_log_newline").unwrap().as_ptr(),
                                 LLVMFunctionType(LLVMVoidType(), vec![].as_mut_ptr(), 0, 0),
-                            ),
-                        ),
-                    },
-                );
-                let npp = make_npp!(log: func_log);
-                Value::object_from_npp(&npp)
-            });
-        }
+                            )
+                        },
+                    ),
+                },
+            );
+            let npp = make_npp!(log: func_log);
+            Value::object_from_npp(&npp)
+        });
 
         let llvm_process_stdout_write = unsafe {
             LLVMAddFunction(
@@ -399,9 +399,9 @@ impl VM {
                 print!("stack trace: ");
                 for (n, v) in self.state.stack.iter().enumerate() {
                     if n == 0 {
-                        print!("{}", v.format(1));
+                        print!("{}", v.format(1, false));
                     } else {
-                        print!(" | {}", v.format(1));
+                        print!(" | {}", v.format(1, false));
                     }
                 }
                 println!();
@@ -436,7 +436,7 @@ impl VM {
                     scopelen,
                     stacklen,
                     match stacktop {
-                        Some(val) => val.format(0),
+                        Some(val) => val.format(0, false),
                         None => "".to_string(),
                     },
                 );
@@ -456,6 +456,7 @@ impl VM {
                 }
 
                 Err(err) => {
+                    // Runtime error or THROW in try-catch.
                     let mut error: Option<RuntimeError> = None;
                     {
                         let trystate = self.trystate_stack.last_mut().unwrap();
@@ -579,7 +580,7 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
                 x.func
             })(self_, &args, &callobj)?;
         }
-        Value::Object(map, ObjectKind::Function(box (func_info, mut callobj))) => {
+        Value::Object(map, ObjectKind::Function(box (func_info, callobj))) => {
             // similar code is used some times. should make it a function.
             let new_this = unsafe {
                 Value::object_from_npp(&vec![(
@@ -593,13 +594,10 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
                     ),
                 )])
             };
-            //callobj.clear_args_vals(func_info.clone());
-            callobj.vals = gc::new(unsafe { (*callobj.vals).clone() });
-            callobj.apply_arguments(func_info.clone(), &args);
+            let callobj =
+                callobj.new_callobj_from_func(func_info.clone(), &args, Some(new_this.clone()));
 
-            *callobj.this = new_this.clone();
-            self_.state.scope.push(gc::new(callobj));
-            //self_.store_state();
+            self_.state.scope.push(callobj);
 
             let res = self_.do_run(&func_info.iseq);
 
@@ -651,10 +649,9 @@ pub fn call_function(
         Value::Number(_) => true,
         _ => false,
     });
-    //callobj.clear_args_vals(func_info.clone());
-    callobj.vals = gc::new(unsafe { (*callobj.vals).clone() });
-    callobj.apply_arguments(func_info.clone(), args);
-    self_.state.scope.push(gc::new(callobj.clone()));
+
+    let callobj = callobj.new_callobj_from_func(func_info.clone(), &args, None);
+    self_.state.scope.push(callobj);
 
     let FuncInfo { id, iseq, .. } = func_info.clone();
 

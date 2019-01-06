@@ -1,26 +1,28 @@
-function f(x,y,z){ console.log(x,y,z) }
-f()
-f(1,
-  2
-  ,3)
-var cde = "deen"
-var a = {abc:7}  // wedwdw
-  /*
-
-  */f(3, )
-  //wdewe
-f(1,)
-if
-(
-  true
-)
-
-{
-var
-a
-b
-=
-
-7
-console.log(b)
+var a = 0
+function f() {
+  var b = 0
+  return {
+    a: a,
+    inc_b: function() {
+      b++
+    },
+    inc_a: function() {
+      a++
+    },
+    print_b: function() {
+      console.log(b)
+    }
+  }
 }
+g = f()
+console.log(g.a)
+a = 100
+console.log(g.a)
+
+g.inc_a()
+g.inc_b()
+g.print_b()
+console.log(a)
+console.log(g.a)
+console.log(f().a)
+f().print_b()

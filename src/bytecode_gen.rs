@@ -448,7 +448,7 @@ pub fn show_inst(code: &ByteCode, i: usize, const_table: &ConstantTable) {
         VMInst::PUSH_CONST => {
             let int32 = read_int32(code, i + 1);
             let value = &const_table.value[int32 as usize];
-            print!("PushConst {}", value.format(1));
+            print!("PushConst {}", value.format(1, false));
         }
         VMInst::PUSH_THIS => {
             print!("PushThis");

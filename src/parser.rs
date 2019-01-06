@@ -910,13 +910,28 @@ impl Parser {
         let mut elements = vec![];
 
         loop {
-            if self.lexer.skip(Kind::Symbol(Symbol::ClosingBrace)) {
+            if self
+                .lexer
+                .skip_except_lineterminator(Kind::Symbol(Symbol::ClosingBrace))?
+            {
                 break;
             }
-            if let Ok(elem) = self.read_property_definition() {
-                elements.push(elem);
+            elements.push(self.read_property_definition()?);
+            if self
+                .lexer
+                .skip_except_lineterminator(Kind::Symbol(Symbol::ClosingBrace))?
+            {
+                break;
             }
-            self.lexer.skip(Kind::Symbol(Symbol::Comma));
+            if !self
+                .lexer
+                .skip_except_lineterminator(Kind::Symbol(Symbol::Comma))?
+            {
+                return Err(Error::Expect(
+                    self.lexer.get_current_pos(),
+                    "expect ',' or '}'.".to_string(),
+                ));
+            }
         }
 
         Ok(Node::new(NodeBase::Object(elements), pos))
@@ -933,9 +948,11 @@ impl Parser {
             }
         }
 
-        let tok = self.lexer.next()?;
-
-        if self.lexer.skip(Kind::Symbol(Symbol::Colon)) {
+        let tok = self.lexer.next_except_lineterminator()?;
+        if self
+            .lexer
+            .skip_except_lineterminator(Kind::Symbol(Symbol::Colon))?
+        {
             let val = self.read_assignment_expression()?;
             return Ok(PropertyDefinition::Property(to_string(tok.kind), val));
         }
@@ -944,8 +961,10 @@ impl Parser {
             return Ok(PropertyDefinition::IdentifierReference(name));
         }
 
-        // TODO: Support all features.
-        Err(Error::UnsupportedFeature(tok.pos))
+        Err(Error::Expect(
+            tok.pos,
+            "Expect property definition.".to_string(),
+        ))
     }
 }
 
@@ -1113,7 +1132,10 @@ impl Parser {
     }
 
     fn read_formal_parameters(&mut self) -> Result<FormalParameters, Error> {
-        if self.lexer.skip(Kind::Symbol(Symbol::ClosingParen)) {
+        if self
+            .lexer
+            .skip_except_lineterminator(Kind::Symbol(Symbol::ClosingParen))?
+        {
             return Ok(vec![]);
         }
 
@@ -1729,6 +1751,10 @@ fn call() {
             )
         );
     }
+    for input in ["f(,)", "f(", "f(1", "f(1,"].iter() {
+        let mut parser = Parser::new(input.to_string());
+        parser.parse_all().expect_err("should be error");
+    }
 }
 
 #[test]
@@ -1814,6 +1840,10 @@ fn block() {
             0
         )
     );
+    for input in ["{", "{ a", "{ a=", "{ a=1", "}"].iter() {
+        let mut parser = Parser::new(input.to_string());
+        parser.parse_all().expect_err("should be error");
+    }
 }
 
 #[test]
@@ -1935,6 +1965,11 @@ fn if_() {
             0
         )
     );
+
+    for input in ["if(", "if()else"].iter() {
+        let mut parser = Parser::new(input.to_string());
+        parser.parse_all().expect_err("should be error");
+    }
 }
 
 #[test]
@@ -1973,18 +2008,27 @@ fn for1() {
             0
         )
     );
+    for input in ["for()", "for(;)", "for(;;;)"].iter() {
+        let mut parser = Parser::new(input.to_string());
+        parser.parse_all().expect_err("should be error");
+    }
 }
 
 #[test]
 fn function_decl() {
     for (input, node) in [
         (
-            "function f() { }",
+            "function
+            f
+            (
+            ) 
+            { 
+            }",
             Node::new(
                 NodeBase::FunctionDecl(
                     "f".to_string(),
                     vec![],
-                    Box::new(Node::new(NodeBase::StatementList(vec![]), 13)),
+                    Box::new(Node::new(NodeBase::StatementList(vec![]), 64)),
                 ),
                 0,
             ),
@@ -2039,6 +2083,20 @@ fn function_decl() {
             parser.parse_all().unwrap(),
             Node::new(NodeBase::StatementList(vec![node.clone()]), 0)
         );
+    }
+    for input in [
+        "function",
+        "function ()",
+        "function f(x",
+        "function f(x,",
+        "function f(,){}",
+        "function f(x,.y){}",
+        "function f(x,..y){}",
+    ]
+    .iter()
+    {
+        let mut parser = Parser::new(input.to_string());
+        parser.parse_all().expect_err(input);
     }
 }
 
@@ -2118,7 +2176,17 @@ fn throw() {
             )]),
             0
         )
-    )
+    );
+    for input in [
+        "throw",
+        "throw
+    100",
+    ]
+    .iter()
+    {
+        let mut parser = Parser::new(input.to_string());
+        parser.parse_all().expect_err("should be error");
+    }
 }
 #[test]
 fn try_catch1() {
@@ -2138,6 +2206,10 @@ fn try_catch1() {
             0
         )
     );
+    for input in ["try {} catch", "try {} catch {}", "try {} catch(e"].iter() {
+        let mut parser = Parser::new(input.to_string());
+        parser.parse_all().expect_err("should be error");
+    }
 }
 
 #[test]

@@ -1,5 +1,4 @@
 extern crate rapidus;
-use rapidus::builtin;
 use rapidus::bytecode_gen;
 use rapidus::parser;
 use rapidus::vm;
@@ -174,11 +173,14 @@ fn repl(trace: bool) {
             _ => {
                 // Show the evaluated result
                 if let Some(value) = vm.state.stack.pop() {
-                    //println!("{}", value.to_string());
+                    print!("{}", value.format(3, true));
+                    println!();
+                    /*
                     unsafe {
                         builtin::debug_print(&value, true);
                         libc::puts(b"\0".as_ptr() as *const i8);
                     }
+                    */
                 }
             }
         }

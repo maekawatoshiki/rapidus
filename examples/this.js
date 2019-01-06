@@ -1,4 +1,4 @@
-count = 100
+var count = 100
 var c = {
   count: 0,
   up: function() {

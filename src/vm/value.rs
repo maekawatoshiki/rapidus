@@ -553,8 +553,14 @@ impl Value {
         }
     }
 
-    // generate pretty print string for the object, specifying trace depth.
-    pub fn format(&self, depth: i32) -> String {
+    /// generate pretty print string for the object.
+    /// - max_depth: tracing depth in an object's property.
+    /// - indent: if true, output with indentation.
+    pub fn format(&self, max_depth: usize, indent: bool) -> String {
+        return self.format_(max_depth, max_depth, indent);
+    }
+
+    fn format_(&self, max_depth: usize, depth: usize, indent: bool) -> String {
         match self {
             Value::Undefined | Value::Bool(_) | Value::Number(_) | Value::Null | Value::Empty => {
                 self.to_string()
@@ -567,7 +573,7 @@ impl Value {
                     let str = aryval.elems[0..aryval.length]
                         .iter()
                         .fold("".to_string(), |acc, prop| {
-                            acc + prop.val.format(depth - 1).as_str() + ","
+                            acc + prop.val.format_(max_depth, depth - 1, indent).as_str() + ","
                         })
                         .trim_right_matches(",")
                         .to_string();
@@ -577,15 +583,32 @@ impl Value {
             Value::Object(map, ObjectKind::Ordinary) => match depth {
                 0 => "[Object]".to_string(),
                 depth => {
+                    let cr = |i: usize| {
+                        if indent {
+                            format!("\n{}", "  ".repeat(max_depth - depth + i))
+                        } else {
+                            "".to_string()
+                        }
+                    };
                     let map = unsafe { &**map };
                     let str = map
                         .iter()
                         .fold("".to_string(), |acc, nvp| {
-                            acc + nvp.0 + ":" + nvp.1.val.format(depth - 1).as_str() + ","
+                            if nvp.0.as_str() == "__proto__" {
+                                acc
+                            } else {
+                                format!(
+                                    "{}{}{}:{},",
+                                    acc,
+                                    cr(1),
+                                    nvp.0,
+                                    nvp.1.val.format_(max_depth, depth - 1, indent)
+                                )
+                            }
                         })
                         .trim_right_matches(",")
                         .to_string();
-                    format!("{{{}}}", str)
+                    format!("{{{}{}}}", str, cr(0))
                 }
             },
             Value::Object(_, ObjectKind::Date(_)) => "[Date]".to_string(),

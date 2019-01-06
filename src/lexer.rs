@@ -121,7 +121,7 @@ impl Lexer {
         }
     }
 
-    /// peek the next token, and when token is kind:Kind, return true.
+    /// peek the next token and if it is kind:Kind, get the next token, return true.
     /// otherwise, return false.
     pub fn skip(&mut self, kind: Kind) -> bool {
         match self.next() {
@@ -136,7 +136,7 @@ impl Lexer {
         }
     }
 
-    /// peek the next token, and when token is kind:Kind, return true.
+    /// peek the next token, and when token is kind:Kind, get the token and return true.
     /// otherwise, return false.
     /// skipping line terminators.
     pub fn skip_except_lineterminator(&mut self, kind: Kind) -> Result<bool, Error> {
