@@ -814,7 +814,7 @@ impl Parser {
     }
 
     /// https://tc39.github.io/ecma262/#prod-PrimaryExpression
-    pub fn read_primary_expression(&mut self) -> Result<Node, Error> {
+    fn read_primary_expression(&mut self) -> Result<Node, Error> {
         let tok = self.lexer.next()?;
 
         match tok.kind {
