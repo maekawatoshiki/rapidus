@@ -294,4 +294,9 @@ fn vm_closure() {
         "qsort".to_string(),
         "[ 0, 0, 1, 3, 5, 7, 7, 10, 11, 12, 14, 14, 16, 17, 19 ]".to_string(),
     );
+    test_file("arguments1".to_string(), "[[1,2,3,4],[1,2,[3,4]],[5,6,7,undefined],[5,6,[7]],[8,9,undefined,undefined],[8,9,undefined],[10,undefined,undefined,undefined],[10,undefined,undefined]]".to_string());
+    test_file(
+        "arguments2".to_string(),
+        "[10,15,20,25,15,10,'OK',20,25,'OK',10,'NG',20,25,'NG']".to_string(),
+    );
 }

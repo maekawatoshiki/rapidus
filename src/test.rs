@@ -34,24 +34,28 @@ fn execute_script(text: String, answer: String) {
     let mut iseq = vec![];
 
     vm_codegen.compile(&node, &mut iseq, true).unwrap();
-    vm.const_table = vm_codegen.bytecode_gen.const_table.clone();
+    vm.const_table = vm_codegen.bytecode_gen.const_table;
     vm.state.pc = 0;
     vm.is_debug = false;
     vm.run(iseq).unwrap();
     let res_text = vm.state.stack.pop().unwrap().clone().format(5, true);
+    println!("file: {}", res_text);
+
+    let mut vm_codegen = VMCodeGen::new();
+    let global = vm_codegen.global_varmap;
+    let mut vm = vm::vm::VM::new(global);
 
     let mut parser = parser::Parser::new(answer);
     let node = parser.parse_all().unwrap();
     let mut iseq = vec![];
 
     vm_codegen.compile(&node, &mut iseq, true).unwrap();
-    vm.const_table = vm_codegen.bytecode_gen.const_table.clone();
+    vm.const_table = vm_codegen.bytecode_gen.const_table;
     vm.state.pc = 0;
-    vm.is_debug = false;
+    vm.is_debug = true;
     vm.run(iseq).unwrap();
     let res_answer = vm.state.stack.pop().unwrap().clone().format(5, true);
-
-    println!("file: {}", res_text);
     println!("ans:  {}", res_answer);
+
     assert_eq!(res_text, res_answer);
 }

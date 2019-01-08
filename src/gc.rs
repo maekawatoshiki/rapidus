@@ -71,10 +71,16 @@ impl Gc for Value {
                     (*a).trace(marked);
                 });
             }
-            Value::Object(map, _) => {
+            Value::Object(map, ObjectKind::Ordinary) | Value::Object(map, ObjectKind::Date(_)) => {
                 not_marked_then(*map, marked, |map, marked| unsafe {
                     (*map).trace(marked);
                 });
+            }
+            Value::Object(map, ObjectKind::Arguments(ref c)) => {
+                not_marked_then(*map, marked, |map, marked| unsafe {
+                    (*map).trace(marked);
+                });
+                unsafe { (**c).trace(marked) };
             }
         }
     }
@@ -102,11 +108,13 @@ impl Gc for CallObject {
             not_marked_then(self.vals, marked, |vals, marked| {
                 (*vals).trace(marked);
             });
-            /*
-            for val in &self.arg_rest_vals {
+
+            for (_, val) in &self.arguments {
                 val.trace(marked);
             }
-            */
+
+            self.this.trace(marked);
+
             if let Some(parent) = self.parent {
                 not_marked_then(parent, marked, |parent, marked| {
                     (*parent).trace(marked);
@@ -176,9 +184,10 @@ fn free(marked: &FxHashSet<GcPtr>) {
             let is_marked = marked.contains(p);
             if !is_marked {
                 unsafe {
+                    // SEGV occurs in this point.
+                    //let released_size = mem::size_of_val(&*Box::from_raw(p.0));
                     (*p.0).free();
-                    let released_size = mem::size_of_val(&*Box::from_raw(p.0));
-                    ALLOCATED_MEM_SIZE_BYTE.fetch_sub(released_size, atomic::Ordering::SeqCst);
+                    //ALLOCATED_MEM_SIZE_BYTE.fetch_sub(released_size, atomic::Ordering::SeqCst);
                 }
             }
             is_marked
