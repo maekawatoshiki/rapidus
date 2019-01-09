@@ -37,13 +37,14 @@ impl Hash for GcPtr {
 }
 
 pub trait Gc {
-    fn free(&self);
+    fn free(&self) -> usize;
     fn trace(&self, &mut FxHashSet<GcPtr>);
 }
 
 impl Gc for Value {
-    fn free(&self) {
+    fn free(&self) -> usize {
         mem::drop(self);
+        mem::size_of::<Value>()
     }
 
     fn trace(&self, marked: &mut FxHashSet<GcPtr>) {
@@ -87,8 +88,9 @@ impl Gc for Value {
 }
 
 impl Gc for FxHashMap<String, Property> {
-    fn free(&self) {
+    fn free(&self) -> usize {
         mem::drop(self);
+        mem::size_of::<FxHashMap<String, Property>>()
     }
 
     fn trace(&self, marked: &mut FxHashSet<GcPtr>) {
@@ -99,8 +101,9 @@ impl Gc for FxHashMap<String, Property> {
 }
 
 impl Gc for CallObject {
-    fn free(&self) {
+    fn free(&self) -> usize {
         mem::drop(self);
+        mem::size_of::<CallObject>()
     }
 
     fn trace(&self, marked: &mut FxHashSet<GcPtr>) {
@@ -126,8 +129,9 @@ impl Gc for CallObject {
 }
 
 impl Gc for ArrayValue {
-    fn free(&self) {
+    fn free(&self) -> usize {
         mem::drop(self);
+        mem::size_of::<ArrayValue>()
     }
 
     fn trace(&self, marked: &mut FxHashSet<GcPtr>) {
@@ -186,8 +190,8 @@ fn free(marked: &FxHashSet<GcPtr>) {
                 unsafe {
                     // SEGV occurs in this point.
                     //let released_size = mem::size_of_val(&*Box::from_raw(p.0));
-                    (*p.0).free();
-                    //ALLOCATED_MEM_SIZE_BYTE.fetch_sub(released_size, atomic::Ordering::SeqCst);
+                    let released_size = (*p.0).free();
+                    ALLOCATED_MEM_SIZE_BYTE.fetch_sub(released_size, atomic::Ordering::SeqCst);
                 }
             }
             is_marked

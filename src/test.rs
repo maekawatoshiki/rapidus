@@ -52,7 +52,7 @@ fn execute_script(text: String, answer: String) {
     vm_codegen.compile(&node, &mut iseq, true).unwrap();
     vm.const_table = vm_codegen.bytecode_gen.const_table;
     vm.state.pc = 0;
-    vm.is_debug = true;
+    vm.is_debug = false;
     vm.run(iseq).unwrap();
     let res_answer = vm.state.stack.pop().unwrap().clone().format(5, true);
     println!("ans:  {}", res_answer);
