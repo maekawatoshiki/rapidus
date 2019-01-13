@@ -161,7 +161,8 @@ pub fn new<X: Gc + 'static>(data: X) -> *mut X {
 
 pub fn mark_and_sweep(vm_state: &VMState) {
     fn over16kb_allocated() -> bool {
-        ALLOCATED_MEM_SIZE_BYTE.load(atomic::Ordering::SeqCst) > 16 * 1024
+        //ALLOCATED_MEM_SIZE_BYTE.load(atomic::Ordering::SeqCst) > 16 * 1024
+        true
     }
 
     if over16kb_allocated() {
