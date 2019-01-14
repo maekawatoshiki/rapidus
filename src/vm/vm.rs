@@ -381,6 +381,8 @@ impl VM {
             thread::sleep(time::Duration::from_millis(1));
         }
 
+        gc::free_all();
+
         res
     }
 
@@ -421,8 +423,12 @@ impl VM {
     fn do_run(&mut self, iseq: &ByteCode) -> Result<bool, RuntimeError> {
         self.store_state();
         self.trystate_stack.push(TryState::None);
-
+        //let mut count = 0;
         loop {
+            //count += 1;
+            //if count % 1000 == 0 {
+            //    gc::mark_and_sweep(&mut self.state)
+            //};
             let code = iseq[self.state.pc as usize];
             if self.is_debug {
                 let trystate = self.trystate_stack.last().unwrap();
@@ -698,7 +704,7 @@ fn create_object(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> 
 
     self_.state.stack.push(Value::object_from_npp(&npp));
 
-    gc::mark_and_sweep(&self_.state);
+    gc::mark_and_sweep(self_);
 
     Ok(true)
 }
@@ -715,7 +721,7 @@ fn create_array(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
 
     self_.state.stack.push(Value::array_from_elems(arr));
 
-    gc::mark_and_sweep(&self_.state);
+    gc::mark_and_sweep(self_);
 
     Ok(true)
 }

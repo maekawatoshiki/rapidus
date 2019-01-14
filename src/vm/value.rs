@@ -18,6 +18,7 @@ pub type RawStringPtr = *mut libc::c_char;
 
 pub type NamePropPair = (String, Property);
 pub type PropMap = GcType<FxHashMap<String, Property>>;
+pub type ValueRef = GcType<Value>;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Property {

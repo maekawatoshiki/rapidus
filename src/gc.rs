@@ -6,7 +6,7 @@ use std::sync::atomic::{self, AtomicUsize};
 use vm::{
     callobj::CallObject,
     value::{ArrayValue, ObjectKind, Property, Value},
-    vm::VMState,
+    vm::VM,
 };
 
 static ALLOCATED_MEM_SIZE_BYTE: AtomicUsize = AtomicUsize::new(0);
@@ -38,16 +38,20 @@ impl Hash for GcPtr {
 
 pub trait Gc {
     fn free(&self) -> usize;
-    fn trace(&self, &mut FxHashSet<GcPtr>);
+    fn trace(&mut self, &mut FxHashSet<GcPtr>);
 }
 
 impl Gc for Value {
     fn free(&self) -> usize {
+        print!(":V");
         mem::drop(self);
         mem::size_of::<Value>()
     }
 
-    fn trace(&self, marked: &mut FxHashSet<GcPtr>) {
+    fn trace(&mut self, marked: &mut FxHashSet<GcPtr>) {
+        if !mark(self, marked) {
+            return;
+        };
         match self {
             Value::Empty
             | Value::Null
@@ -55,46 +59,41 @@ impl Gc for Value {
             | Value::Bool(_)
             | Value::Number(_)
             | Value::String(_) => {}
-            Value::Object(map, ObjectKind::Function(box (_, ref c))) => {
-                not_marked_then(*map, marked, |map, marked| unsafe {
-                    (*map).trace(marked);
-                });
-                c.trace(marked);
-            }
+            Value::Object(map, ObjectKind::Function(box (_, c))) => unsafe {
+                (**map).trace(marked);
+                (*c).trace(marked);
+            },
             // Never trace _xxx
-            Value::Object(_, ObjectKind::BuiltinFunction(box (_, ref c))) => c.trace(marked),
+            Value::Object(_, ObjectKind::BuiltinFunction(box (_, c))) => (*c).trace(marked),
 
-            Value::Object(map, ObjectKind::Array(ref a)) => {
-                not_marked_then(*map, marked, |map, marked| unsafe {
-                    (*map).trace(marked);
-                });
-                not_marked_then(*a, marked, |a, marked| unsafe {
-                    (*a).trace(marked);
-                });
-            }
-            Value::Object(map, ObjectKind::Ordinary) | Value::Object(map, ObjectKind::Date(_)) => {
-                not_marked_then(*map, marked, |map, marked| unsafe {
-                    (*map).trace(marked);
-                });
-            }
-            Value::Object(map, ObjectKind::Arguments(ref c)) => {
-                not_marked_then(*map, marked, |map, marked| unsafe {
-                    (*map).trace(marked);
-                });
-                unsafe { (**c).trace(marked) };
-            }
+            Value::Object(map, ObjectKind::Array(a)) => unsafe {
+                (**map).trace(marked);
+                (**a).trace(marked);
+            },
+            Value::Object(map, ObjectKind::Ordinary) | Value::Object(map, ObjectKind::Date(_)) => unsafe {
+                (**map).trace(marked);
+            },
+            Value::Object(map, ObjectKind::Arguments(c)) => unsafe {
+                (**map).trace(marked);
+                (**c).trace(marked);
+            },
         }
     }
 }
 
 impl Gc for FxHashMap<String, Property> {
     fn free(&self) -> usize {
+        print!(":M");
         mem::drop(self);
         mem::size_of::<FxHashMap<String, Property>>()
     }
 
-    fn trace(&self, marked: &mut FxHashSet<GcPtr>) {
-        for (_, prop) in self {
+    fn trace(&mut self, marked: &mut FxHashSet<GcPtr>) {
+        if !mark(self, marked) {
+            return;
+        };
+        let map = self;
+        for (_, prop) in map {
             prop.val.trace(marked);
         }
     }
@@ -102,26 +101,24 @@ impl Gc for FxHashMap<String, Property> {
 
 impl Gc for CallObject {
     fn free(&self) -> usize {
+        print!(":C");
         mem::drop(self);
         mem::size_of::<CallObject>()
     }
 
-    fn trace(&self, marked: &mut FxHashSet<GcPtr>) {
+    fn trace(&mut self, marked: &mut FxHashSet<GcPtr>) {
+        if !mark(self, marked) {
+            return;
+        };
         unsafe {
-            not_marked_then(self.vals, marked, |vals, marked| {
-                (*vals).trace(marked);
-            });
+            (*self.vals).trace(marked);
 
-            for (_, val) in &self.arguments {
-                val.trace(marked);
+            for (_, val) in &mut self.arguments {
+                (*val).trace(marked);
             }
 
-            self.this.trace(marked);
-
             if let Some(parent) = self.parent {
-                not_marked_then(parent, marked, |parent, marked| {
-                    (*parent).trace(marked);
-                })
+                (*parent).trace(marked);
             }
             self.this.trace(marked);
         }
@@ -130,12 +127,16 @@ impl Gc for CallObject {
 
 impl Gc for ArrayValue {
     fn free(&self) -> usize {
+        print!(":AV");
         mem::drop(self);
         mem::size_of::<ArrayValue>()
     }
 
-    fn trace(&self, marked: &mut FxHashSet<GcPtr>) {
-        for prop in &self.elems {
+    fn trace(&mut self, marked: &mut FxHashSet<GcPtr>) {
+        if !mark(self, marked) {
+            return;
+        };
+        for prop in &mut self.elems {
             prop.val.trace(marked)
         }
     }
@@ -159,7 +160,7 @@ pub fn new<X: Gc + 'static>(data: X) -> *mut X {
 //     ptr
 // }
 
-pub fn mark_and_sweep(vm_state: &VMState) {
+pub fn mark_and_sweep(vm: &mut VM) {
     fn over16kb_allocated() -> bool {
         //ALLOCATED_MEM_SIZE_BYTE.load(atomic::Ordering::SeqCst) > 16 * 1024
         true
@@ -167,20 +168,43 @@ pub fn mark_and_sweep(vm_state: &VMState) {
 
     if over16kb_allocated() {
         let mut marked = FxHashSet::default();
-        trace(&vm_state, &mut marked);
+        let pre_alloc_size = ALLOCATED_MEM_SIZE_BYTE.load(atomic::Ordering::SeqCst);
+        let pre_gc_size = GC_MEM.with(|mem| mem.borrow_mut().len());
+        trace(vm, &mut marked);
         free(&marked);
+        let post_gc_size = GC_MEM.with(|mem| mem.borrow_mut().len());
+        if pre_gc_size != post_gc_size {
+            println!(
+                "\nallocated_size: {}->{} marked: {} all:{}->{}",
+                pre_alloc_size,
+                ALLOCATED_MEM_SIZE_BYTE.load(atomic::Ordering::SeqCst),
+                marked.len(),
+                pre_gc_size,
+                post_gc_size,
+            );
+        }
     }
 }
 
-fn trace(vm_state: &VMState, marked: &mut FxHashSet<GcPtr>) {
-    for val in &vm_state.stack {
+fn trace(vm: &mut VM, marked: &mut FxHashSet<GcPtr>) {
+    for val in &mut vm.const_table.value {
         val.trace(marked);
     }
-    for scope in &vm_state.scope {
-        not_marked_then(*scope, marked, |scope, marked| unsafe {
-            (*scope).trace(marked)
-        });
+    let after_const = marked.len();
+    for val in &mut vm.state.stack {
+        val.trace(marked);
     }
+    let after_stack = marked.len();
+    for scope in &mut vm.state.scope {
+        unsafe {
+            (**scope).trace(marked);
+        }
+    }
+    let after_scope = marked.len();
+    println!(
+        "marked after const: {} stack:{} scope:{}",
+        after_const, after_stack, after_scope
+    );
 }
 
 fn free(marked: &FxHashSet<GcPtr>) {
@@ -190,7 +214,9 @@ fn free(marked: &FxHashSet<GcPtr>) {
             if !is_marked {
                 unsafe {
                     // SEGV occurs in this point.
-                    //let released_size = mem::size_of_val(&*Box::from_raw(p.0));
+                    //let b = Box::from_raw(p.0);
+                    //let released_size = mem::size_of_val(&*b);
+                    //Box::leak(b);
                     let released_size = (*p.0).free();
                     ALLOCATED_MEM_SIZE_BYTE.fetch_sub(released_size, atomic::Ordering::SeqCst);
                 }
@@ -200,6 +226,26 @@ fn free(marked: &FxHashSet<GcPtr>) {
     });
 }
 
+pub fn free_all() {
+    GC_MEM.with(|mem| {
+        mem.borrow_mut().retain(|p| {
+            unsafe {
+                // SEGV occurs in this point.
+                //let _ = Box::from_raw(p.0);
+                let released_size = (*p.0).free();
+                ALLOCATED_MEM_SIZE_BYTE.fetch_sub(released_size, atomic::Ordering::SeqCst);
+            }
+            false
+        });
+    });
+    println!(
+        "\nallocated_size: {} all:{}",
+        ALLOCATED_MEM_SIZE_BYTE.load(atomic::Ordering::SeqCst),
+        GC_MEM.with(|mem| mem.borrow_mut().len()),
+    );
+}
+
+/*
 fn not_marked_then<F>(p: *mut Gc, marked: &mut FxHashSet<GcPtr>, mut f: F)
 where
     F: FnMut(*mut Gc, &mut FxHashSet<GcPtr>),
@@ -207,4 +253,8 @@ where
     if marked.insert(GcPtr(p)) {
         f(p, marked);
     }
+}
+*/
+fn mark(p: *mut Gc, marked: &mut FxHashSet<GcPtr>) -> bool {
+    marked.insert(GcPtr(p))
 }

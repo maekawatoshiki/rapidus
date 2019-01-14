@@ -47,7 +47,7 @@ fn new(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeErro
 
     if args_len == 0 {
         vm.set_return_value(Value::array_from_elems(vec![]));
-        gc::mark_and_sweep(&vm.state);
+        gc::mark_and_sweep(vm);
         return Ok(());
     }
 
@@ -67,7 +67,7 @@ fn new(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeErro
     }
 
     vm.set_return_value(Value::array_from_elems(elems));
-    gc::mark_and_sweep(&vm.state);
+    gc::mark_and_sweep(vm);
 
     Ok(())
 }
