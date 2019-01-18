@@ -1,11 +1,10 @@
 #![feature(box_patterns)]
 #![feature(if_while_or_patterns)]
 #![feature(repeat_generic_slice)]
-
-#[macro_use]
-pub mod vm;
 #[macro_use]
 pub mod util;
+#[macro_use]
+pub mod vm;
 pub mod builtin;
 pub mod builtins;
 pub mod bytecode_gen;
@@ -29,4 +28,5 @@ extern crate nix;
 extern crate rand;
 extern crate rustc_hash;
 extern crate rustyline;
+extern crate stopwatch; 
 // extern crate cpuprofiler;

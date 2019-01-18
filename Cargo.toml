@@ -16,6 +16,7 @@ rustc-hash = "*"
 rustyline = "*"
 libloading = "0.5"
 chrono = "0.4"
+stopwatch = "0.0.7"
 
 [profile.dev]
 codegen-units = 16

@@ -119,7 +119,7 @@ use rapidus::{
 };
 
 #[no_mangle]
-fn initialize(vm: &mut VM, _: &Vec<Value>, _: GcType<CallObject>) -> Result<(), RuntimeError> {
+fn initialize(vm: &mut VM, _: &Vec<Value>, _: CallObjectRef) -> Result<(), RuntimeError> {
     // make_object!() is useful
     let module_exports = make_object!(
         greet:   Value::default_builtin_function(greet),
@@ -132,7 +132,7 @@ fn initialize(vm: &mut VM, _: &Vec<Value>, _: GcType<CallObject>) -> Result<(), 
 }
 
 #[no_mangle]
-fn greet(vm: &mut VM, _: &Vec<Value>, _: GcType<CallObject>) -> Result<(), RuntimeError> {
+fn greet(vm: &mut VM, _: &Vec<Value>, _: CallObjectRef) -> Result<(), RuntimeError> {
     println!("Hello World from Rust DLL!");
 
     vm.set_return_value(Value::Undefined); // Remember to return a value you want

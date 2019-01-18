@@ -3,6 +3,7 @@ use std::cell::RefCell;
 use std::hash::{Hash, Hasher};
 use std::mem;
 use std::sync::atomic::{self, AtomicUsize};
+use stopwatch::Stopwatch;
 use vm::{
     callobj::CallObject,
     value::{ArrayValue, ObjectKind, Property, Value},
@@ -203,8 +204,15 @@ pub fn new<X: Gc + 'static>(data: X) -> GcType<X> {
     let data_size = mem::size_of_val(&data);
     // get raw pointer to the data copied on the heap.
     let ptr = Box::into_raw(Box::new(data));
-    ALLOCATED_MEM_SIZE_BYTE.fetch_add(data_size, atomic::Ordering::SeqCst);
+    let _prev_size = ALLOCATED_MEM_SIZE_BYTE.fetch_add(data_size, atomic::Ordering::SeqCst);
     GC_MEM.with(|m| m.borrow_mut().insert(GcPtr(ptr)));
+    /*
+    println!(
+        "new Gc {} bytes, total {} bytes",
+        data_size,
+        prev_size + data_size
+    );
+    */
     GcType {
         inner: ptr as usize,
         //gc_mark: false,
@@ -215,15 +223,17 @@ pub fn new<X: Gc + 'static>(data: X) -> GcType<X> {
 pub fn mark_and_sweep(vm: &mut VM) {
     fn over16kb_allocated() -> bool {
         //ALLOCATED_MEM_SIZE_BYTE.load(atomic::Ordering::SeqCst) > 16 * 1024
-        false
+        true
     }
 
     if over16kb_allocated() {
+        let sw = Stopwatch::start_new();
         let mut marked = FxHashSet::default();
         let pre_alloc_size = ALLOCATED_MEM_SIZE_BYTE.load(atomic::Ordering::SeqCst);
         let pre_gc_size = GC_MEM.with(|mem| mem.borrow_mut().len());
         trace(vm, &mut marked);
         free(&marked);
+        println!("GC executed: {} ms", sw.elapsed_ms());
         let post_gc_size = GC_MEM.with(|mem| mem.borrow_mut().len());
         if pre_gc_size != post_gc_size {
             println!(
@@ -277,13 +287,9 @@ fn free(marked: &FxHashSet<GcPtr>) {
 }
 
 pub fn free_all() {
-    return;
-    /*
     GC_MEM.with(|mem| {
         mem.borrow_mut().retain(|p| {
             unsafe {
-                // SEGV occurs in this point.
-                //let _ = Box::from_raw(p.0);
                 let released_size = (*p.0).free();
                 ALLOCATED_MEM_SIZE_BYTE.fetch_sub(released_size, atomic::Ordering::SeqCst);
             }
@@ -295,7 +301,6 @@ pub fn free_all() {
         ALLOCATED_MEM_SIZE_BYTE.load(atomic::Ordering::SeqCst),
         GC_MEM.with(|mem| mem.borrow_mut().len()),
     );
-    */
 }
 
 /*

@@ -17,7 +17,9 @@ pub type RawStringPtr = *mut libc::c_char;
 
 pub type NamePropPair = (String, Property);
 /// 24 bytes
-pub type PropMap = FxHashMap<String, Property>;
+pub type PropMapRef = GcType<FxHashMap<String, Property>>;
+pub type CallObjectRef = GcType<CallObject>;
+pub type ArrayValueRef = GcType<ArrayValue>;
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct Property {
@@ -46,15 +48,15 @@ impl FuncInfo {
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum ObjectKind {
-    Function(Box<(FuncInfo, GcType<CallObject>)>),
-    BuiltinFunction(Box<(BuiltinFuncInfo, GcType<CallObject>)>), // id(==0:unknown)
+    Function(Box<(FuncInfo, CallObjectRef)>),
+    BuiltinFunction(Box<(BuiltinFuncInfo, CallObjectRef)>), // id(==0:unknown)
     Ordinary,
-    Array(GcType<ArrayValue>),
+    Array(ArrayValueRef),
     Date(Box<(DateTime<Utc>)>),
-    Arguments(GcType<CallObject>),
+    Arguments(CallObjectRef),
 }
 
-// 72 bytes
+// 32 bytes
 #[derive(Clone, PartialEq, Debug)]
 pub enum Value {
     Empty,
@@ -63,7 +65,7 @@ pub enum Value {
     Bool(bool),
     Number(f64),
     String(Box<CString>), // TODO: Using CString is good for JIT. However, we need better one instead.
-    Object(GcType<PropMap>, ObjectKind), // Object(FxHashMap<String, Value>),
+    Object(PropMapRef, ObjectKind), // Object(FxHashMap<String, Value>),
 }
 
 #[derive(Clone, PartialEq)]
@@ -113,11 +115,7 @@ impl Value {
     }
 
     /// generate JS function object.
-    pub fn function(
-        iseq: ByteCode,
-        params: Vec<(String, bool)>,
-        callobj: GcType<CallObject>,
-    ) -> Value {
+    pub fn function(iseq: ByteCode, params: Vec<(String, bool)>, callobj: CallObjectRef) -> Value {
         let mut prototype = Value::object_from_npp(&vec![]);
         let kind = ObjectKind::Function(Box::new((
             FuncInfo::new(get_unique_id(), iseq, params),
@@ -136,7 +134,7 @@ impl Value {
         val
     }
 
-    /// generate builtin function with JIT, blank PropMap and no prototype.
+    /// generate builtin function with JIT, blank PropMapRef and no prototype.
     pub fn builtin_function_with_jit(
         func: BuiltinFuncTy,
         builtin_jit_func_info: BuiltinJITFuncInfo,
@@ -144,7 +142,7 @@ impl Value {
         Value::builtin_function(func, Some(builtin_jit_func_info), &mut vec![], None)
     }
 
-    /// generate builtin function with blank PropMap and no prototype.
+    /// generate builtin function with blank PropMapRef and no prototype.
     pub fn default_builtin_function(func: BuiltinFuncTy) -> Value {
         Value::builtin_function(func, None, &mut vec![], None)
     }
@@ -169,8 +167,8 @@ impl Value {
         )
     }
 
-    /// make new property map (PropMap) from npp.
-    pub fn propmap_from_npp(npp: &Vec<NamePropPair>) -> GcType<PropMap> {
+    /// make new property map (PropMapRef) from npp.
+    pub fn propmap_from_npp(npp: &Vec<NamePropPair>) -> PropMapRef {
         let mut map = FxHashMap::default();
         for p in npp {
             map.insert(p.0.clone(), p.1.clone());
@@ -179,13 +177,13 @@ impl Value {
     }
 
     /// register name-value pairs to property map.
-    pub fn insert_propmap(mut map: PropMap, npp: &Vec<(&'static str, Value)>) {
+    pub fn insert_propmap(mut map: PropMapRef, npp: &Vec<(&'static str, Value)>) {
         for p in npp {
             map.insert(p.0.to_string(), p.1.to_property());
         }
     }
 
-    pub fn object(map: GcType<PropMap>) -> Value {
+    pub fn object(map: PropMapRef) -> Value {
         use builtins::object;
         let mut map = map.clone();
         map.entry("__proto__".to_string())
@@ -199,7 +197,7 @@ impl Value {
         Value::object(map)
     }
 
-    pub fn array(map: GcType<PropMap>) -> Value {
+    pub fn array(map: PropMapRef) -> Value {
         let ary = ArrayValue::new(vec![]);
         Value::Object(map, ObjectKind::Array(gc::new(ary)))
     }
@@ -234,14 +232,14 @@ impl Value {
         )
     }
 
-    pub fn arguments(callobj: GcType<CallObject>) -> Value {
+    pub fn arguments(callobj: CallObjectRef) -> Value {
         Value::Object(
             Value::propmap_from_npp(&vec![]),
             ObjectKind::Arguments(callobj),
         )
     }
 
-    pub fn get_property(&self, property: Value, callobjref: Option<GcType<CallObject>>) -> Value {
+    pub fn get_property(&self, property: Value, callobjref: Option<CallObjectRef>) -> Value {
         let property_of_number = || -> Value {
             use builtins::number::NUMBER_PROTOTYPE;
             let val = NUMBER_PROTOTYPE.with(|x| x.clone());
@@ -346,12 +344,7 @@ impl Value {
         }
     }
 
-    pub fn set_property(
-        &mut self,
-        property: Value,
-        value: Value,
-        callobj: Option<GcType<CallObject>>,
-    ) {
+    pub fn set_property(&mut self, property: Value, value: Value, callobj: Option<CallObjectRef>) {
         fn set_by_idx(ary: &mut ArrayValue, n: usize, val: Value) {
             if n >= ary.length as usize {
                 ary.length = n + 1;

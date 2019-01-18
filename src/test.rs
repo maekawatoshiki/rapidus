@@ -1,3 +1,4 @@
+use gc;
 use parser;
 use std::fs::OpenOptions;
 use std::io::Read;
@@ -54,6 +55,8 @@ fn execute_script(text: String, answer: String) {
     vm.run(iseq).unwrap();
     let res_answer = vm.state.stack.pop().unwrap().clone().format(5, true);
     println!("ans:  {}", res_answer);
+
+    gc::free_all();
 
     assert_eq!(res_text, res_answer);
 }

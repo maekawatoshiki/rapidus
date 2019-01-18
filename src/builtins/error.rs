@@ -1,5 +1,5 @@
-use gc::GcType;
-use vm::{callobj::CallObject, error::RuntimeError, value::Property, value::Value, vm::VM};
+use vm::value::{CallObjectRef, Property, Value};
+use vm::{error::RuntimeError, vm::VM};
 
 thread_local! {
     pub static ERROR_PROTOTYPE: Value = {
@@ -18,7 +18,7 @@ pub fn init() -> Value {
     obj
 }
 
-fn error_new(vm: &mut VM, args: &Vec<Value>, _: GcType<CallObject>) -> Result<(), RuntimeError> {
+fn error_new(vm: &mut VM, args: &Vec<Value>, _: CallObjectRef) -> Result<(), RuntimeError> {
     let message = match args.len() {
         0 => "".to_string(),
         _ => args[0].to_string(),

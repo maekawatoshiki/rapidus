@@ -1,5 +1,4 @@
 use chrono::Utc;
-use gc::GcType;
 use libc;
 use libloading;
 use llvm::prelude::LLVMValueRef;
@@ -9,15 +8,14 @@ use std::fs::OpenOptions;
 use std::io::prelude::*;
 use std::path;
 use vm::{
-    callobj::CallObject,
     error::RuntimeError,
     task::{Task, TimerID, TimerKind},
-    value::{ObjectKind, Property, RawStringPtr, Value},
+    value::{CallObjectRef, ObjectKind, Property, RawStringPtr, Value},
     vm::VM,
 };
 use vm_codegen;
 
-pub type BuiltinFuncTy = fn(&mut VM, &Vec<Value>, GcType<CallObject>) -> Result<(), RuntimeError>;
+pub type BuiltinFuncTy = fn(&mut VM, &Vec<Value>, CallObjectRef) -> Result<(), RuntimeError>;
 pub type BuiltinJITFuncTy = *mut libc::c_void;
 
 #[derive(Clone)]
@@ -64,11 +62,7 @@ impl ::std::fmt::Debug for BuiltinFuncInfo {
     }
 }
 
-pub fn set_timeout(
-    vm: &mut VM,
-    args: &Vec<Value>,
-    _: GcType<CallObject>,
-) -> Result<(), RuntimeError> {
+pub fn set_timeout(vm: &mut VM, args: &Vec<Value>, _: CallObjectRef) -> Result<(), RuntimeError> {
     if args.len() == 0 {
         return Err(RuntimeError::General(
             "error: setTimeout() needs one argument at least".to_string(),
@@ -99,11 +93,7 @@ pub fn set_timeout(
     Ok(())
 }
 
-pub fn set_interval(
-    vm: &mut VM,
-    args: &Vec<Value>,
-    _: GcType<CallObject>,
-) -> Result<(), RuntimeError> {
+pub fn set_interval(vm: &mut VM, args: &Vec<Value>, _: CallObjectRef) -> Result<(), RuntimeError> {
     if args.len() == 0 {
         return Err(RuntimeError::General(
             "error: setInterval() needs one argument at least".to_string(),
@@ -134,11 +124,7 @@ pub fn set_interval(
     Ok(())
 }
 
-pub fn clear_timer(
-    vm: &mut VM,
-    args: &Vec<Value>,
-    _: GcType<CallObject>,
-) -> Result<(), RuntimeError> {
+pub fn clear_timer(vm: &mut VM, args: &Vec<Value>, _: CallObjectRef) -> Result<(), RuntimeError> {
     if args.len() == 0 {
         return Err(RuntimeError::General(
             "error: clearInterval() or clearTimer needs an argument".to_string(),
@@ -163,7 +149,7 @@ pub fn clear_timer(
 pub fn console_log(
     self_: &mut VM,
     args: &Vec<Value>,
-    _: GcType<CallObject>,
+    _: CallObjectRef,
 ) -> Result<(), RuntimeError> {
     let args_len = args.len();
     unsafe {
@@ -182,7 +168,7 @@ pub fn console_log(
 pub fn process_stdout_write(
     vm: &mut VM,
     args: &Vec<Value>,
-    _: GcType<CallObject>,
+    _: CallObjectRef,
 ) -> Result<(), RuntimeError> {
     let args_len = args.len();
     unsafe {
@@ -197,11 +183,7 @@ pub fn process_stdout_write(
     Ok(())
 }
 
-pub fn enable_jit(
-    vm: &mut VM,
-    args: &Vec<Value>,
-    _: GcType<CallObject>,
-) -> Result<(), RuntimeError> {
+pub fn enable_jit(vm: &mut VM, args: &Vec<Value>, _: CallObjectRef) -> Result<(), RuntimeError> {
     let args_len = args.len();
     if args_len == 0 {
         return Err(RuntimeError::General(
@@ -216,7 +198,7 @@ pub fn enable_jit(
     Ok(())
 }
 
-pub fn p(vm: &mut VM, _args: &Vec<Value>, _: GcType<CallObject>) -> Result<(), RuntimeError> {
+pub fn p(vm: &mut VM, _args: &Vec<Value>, _: CallObjectRef) -> Result<(), RuntimeError> {
     /*
     let co = vm.state.scope.last().unwrap().clone();
     let ptr: *const CallObject = &**co.clone();
@@ -382,11 +364,7 @@ pub fn debug_print(val: &Value, nest: bool) {
     }
 }
 
-pub fn require(
-    vm: &mut VM,
-    args: &Vec<Value>,
-    callobj: GcType<CallObject>,
-) -> Result<(), RuntimeError> {
+pub fn require(vm: &mut VM, args: &Vec<Value>, callobj: CallObjectRef) -> Result<(), RuntimeError> {
     enum RequireFileKind {
         DLL(String),
         Normal(String),

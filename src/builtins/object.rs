@@ -1,5 +1,4 @@
-use gc::GcType;
-use vm::{callobj::CallObject, error::RuntimeError, value::*, vm::VM};
+use vm::{error::RuntimeError, value::*, vm::VM};
 
 thread_local!(
     pub static OBJECT_PROTOTYPE: Value =
@@ -27,7 +26,7 @@ pub fn init() -> Value {
 }
 
 /// https://www.ecma-international.org/ecma-262/6.0/#sec-object-objects
-fn new(vm: &mut VM, args: &Vec<Value>, _: GcType<CallObject>) -> Result<(), RuntimeError> {
+fn new(vm: &mut VM, args: &Vec<Value>, _: CallObjectRef) -> Result<(), RuntimeError> {
     if args.len() == 0 {
         vm.set_return_value(Value::object_from_npp(&vec![]));
         return Ok(());
@@ -47,7 +46,7 @@ fn new(vm: &mut VM, args: &Vec<Value>, _: GcType<CallObject>) -> Result<(), Runt
     }
 }
 
-fn create(vm: &mut VM, args: &Vec<Value>, _: GcType<CallObject>) -> Result<(), RuntimeError> {
+fn create(vm: &mut VM, args: &Vec<Value>, _: CallObjectRef) -> Result<(), RuntimeError> {
     let maybe_obj = match args.len() {
         0 => {
             return Err(RuntimeError::General(

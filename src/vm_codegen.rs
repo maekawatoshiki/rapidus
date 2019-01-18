@@ -1,7 +1,7 @@
 use bytecode_gen::{ByteCode, ByteCodeGen, VMInst};
-use gc::GcType;
 use node::{BinOp, FormalParameter, FormalParameters, Node, NodeBase, PropertyDefinition, UnaryOp};
-use vm::{callobj::CallObject, value::Value};
+use vm::callobj::CallObject;
+use vm::value::*;
 
 #[derive(Clone, Debug)]
 pub enum Error {
@@ -44,7 +44,7 @@ pub enum FunctionHeaderInst {
 
 #[derive(Clone, Debug)]
 pub struct VMCodeGen {
-    pub global_varmap: GcType<CallObject>,
+    pub global_varmap: CallObjectRef,
     pub func_header_info: Vec<Vec<FunctionHeaderInst>>,
     pub bytecode_gen: ByteCodeGen,
     pub labels: Jumps,

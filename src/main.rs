@@ -278,6 +278,7 @@ fn run(file_name: &str, trace: bool) {
 
 #[test]
 fn vm_test() {
+    // IMPORTANT: these test_file() fn should be run in a single thread.
     use rapidus::test::test_file;
     test_file("closure".to_string(), "[0,50,1,50,1,1000,50]".to_string());
     test_file(

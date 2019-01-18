@@ -1,4 +1,3 @@
-#[macro_use]
 use std::mem;
 
 pub fn get_raw_bytes_with_size<T: ?Sized>(p: &T, size: usize) -> Vec<u8> {

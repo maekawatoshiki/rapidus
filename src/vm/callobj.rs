@@ -1,17 +1,13 @@
-//#[macro_use]
-//use util;
 use super::error::RuntimeError;
 use super::value::*;
 use gc;
-use gc::GcType;
 use rustc_hash::FxHashMap;
-use std::fmt;
 
 #[derive(Clone)]
-/// 72 bytes
+/// 80 bytes
 pub struct CallObject {
     /// map of variables belongs to the scope.
-    pub vals: GcType<PropMap>,
+    pub vals: PropMapRef,
     /// name of rest parameters. (if the function has no rest parameters, None.)
     pub rest_params: Option<String>,
     /// set of the name of parameter corresponds to applied arguments when the function was invoked.
@@ -19,7 +15,7 @@ pub struct CallObject {
     /// this value.
     pub this: Box<Value>,
     /// reference to the outer scope.
-    pub parent: Option<GcType<CallObject>>,
+    pub parent: Option<CallObjectRef>,
 }
 
 impl PartialEq for CallObject {
@@ -27,15 +23,16 @@ impl PartialEq for CallObject {
         self.vals == other.vals && self.parent == other.parent
     }
 }
-
+/*
 impl fmt::Debug for CallObject {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let ptr_co: *const CallObject = &*self;
-        let ptr_map: *const PropMap = &*self.vals;
+        let ptr_map: *const PropMapRef = *self.vals;
         write!(f, "CO:[{:?}] Map:[{:?}]", ptr_co, ptr_map)
     }
 }
 
+*/
 impl CallObject {
     fn new(this: Value) -> CallObject {
         CallObject {
@@ -47,7 +44,7 @@ impl CallObject {
         }
     }
 
-    pub fn new_with_this(this: Value) -> GcType<CallObject> {
+    pub fn new_with_this(this: Value) -> CallObjectRef {
         gc::new(CallObject::new(this))
     }
 
@@ -58,7 +55,7 @@ impl CallObject {
         func_info: FuncInfo,
         args: &Vec<Value>,
         this: Option<Value>,
-    ) -> GcType<CallObject> {
+    ) -> CallObjectRef {
         let mut callobj = match this {
             Some(this) => CallObject::new(this),
             None => CallObject::new(*self.this.clone()),
@@ -68,7 +65,7 @@ impl CallObject {
         gc::new(callobj)
     }
 
-    pub fn new_global() -> GcType<CallObject> {
+    pub fn new_global() -> CallObjectRef {
         let vals = gc::new(FxHashMap::default());
         gc::new(CallObject {
             vals: vals.clone(),

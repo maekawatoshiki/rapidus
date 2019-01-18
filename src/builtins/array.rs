@@ -1,7 +1,6 @@
 use builtins::object::*;
 use gc;
-use gc::GcType;
-use vm::{callobj::CallObject, error::RuntimeError, value::*, vm::VM};
+use vm::{error::RuntimeError, value::*, vm::VM};
 
 thread_local!(
     pub static ARRAY_PROTOTYPE: Value = {
@@ -43,11 +42,7 @@ pub fn init() -> Value {
     array
 }
 
-fn prototype_new(
-    vm: &mut VM,
-    args: &Vec<Value>,
-    _: GcType<CallObject>,
-) -> Result<(), RuntimeError> {
+fn prototype_new(vm: &mut VM, args: &Vec<Value>, _: CallObjectRef) -> Result<(), RuntimeError> {
     let args_len = args.len();
 
     if args_len == 0 {
@@ -80,7 +75,7 @@ fn prototype_new(
 fn prototype_push(
     vm: &mut VM,
     args: &Vec<Value>,
-    callobj: GcType<CallObject>,
+    callobj: CallObjectRef,
 ) -> Result<(), RuntimeError> {
     let mut array = if let Value::Object(_, ObjectKind::Array(array)) = *callobj.this.clone() {
         array
@@ -105,7 +100,7 @@ fn prototype_push(
 fn prototype_pop(
     vm: &mut VM,
     _args: &Vec<Value>,
-    callobj: GcType<CallObject>,
+    callobj: CallObjectRef,
 ) -> Result<(), RuntimeError> {
     let mut array = if let Value::Object(_, ObjectKind::Array(ref array)) = *callobj.this {
         array.clone()
@@ -128,7 +123,7 @@ fn prototype_pop(
 pub fn prototype_map(
     vm: &mut VM,
     args: &Vec<Value>,
-    callobj: GcType<CallObject>,
+    callobj: CallObjectRef,
 ) -> Result<(), RuntimeError> {
     let array = if let Value::Object(_, ObjectKind::Array(ref array)) = *callobj.this {
         array.clone()

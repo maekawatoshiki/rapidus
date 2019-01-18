@@ -1,6 +1,3 @@
-#[macro_use]
-use super::super::util;
-
 use chrono::Utc;
 use libc;
 use llvm::core::*;
@@ -18,7 +15,6 @@ use builtins;
 use bytecode_gen;
 use bytecode_gen::ByteCode;
 use gc;
-use gc::GcType;
 use jit::TracingJit;
 
 pub struct VM {
@@ -35,7 +31,7 @@ pub struct VM {
 
 pub struct VMState {
     pub stack: Vec<Value>,
-    pub scope: Vec<GcType<CallObject>>,
+    pub scope: Vec<CallObjectRef>,
     pub pc: isize,
     pub history: Vec<(usize, isize)>, // sp, return_pc
 }
@@ -93,10 +89,10 @@ impl ConstantTable {
 }
 
 impl VM {
-    pub fn new(global_vals: GcType<CallObject>) -> VM {
+    pub fn new(global_vals: CallObjectRef) -> VM {
         let jit = unsafe { TracingJit::new() };
         let mut global_vals = global_vals.clone();
-        //print_raw_bytes!(global_vals);
+
         global_vals.set_value("p".to_string(), Value::default_builtin_function(builtin::p));
         // TODO: Support for 'require' is not enough.
         global_vals.set_value(
@@ -243,14 +239,14 @@ impl VM {
         global_vals.set_value("Date".to_string(), DATE_OBJ.with(|x| x.clone()));
         global_vals.set_value("Math".to_string(), builtins::math::init(jit.clone()));
         /*
-        println!(
-            "CallObject:{} Value:{} PropMap:{} ArrayValue:{}",
-            std::mem::size_of::<CallObject>(),
-            std::mem::size_of::<Value>(),
-            std::mem::size_of::<PropMap>(),
-            std::mem::size_of::<ArrayValue>()
-        );*/
-
+                println!(
+                    "CallObject:{} Value:{} PropMapRef:{} ArrayValue:{}",
+                    std::mem::size_of::<CallObject>(),
+                    std::mem::size_of::<Value>(),
+                    std::mem::size_of::<PropMapRef>(),
+                    std::mem::size_of::<ArrayValue>()
+                );
+        */
         VM {
             jit: jit,
             state: VMState {
@@ -530,7 +526,7 @@ impl VM {
                 return Ok(true);
             }
             Value::Object(_, ObjectKind::Function(box (func_info, callobject))) => {
-                println!("call this:{}", callobject.this.clone().format(1, true));
+                //println!("call this:{}", callobject.this.clone().format(1, true));
                 call_function(self, func_info.clone(), &mut callobject.clone(), args)
             }
             ref e => Err(RuntimeError::Type(format!(

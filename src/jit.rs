@@ -1,7 +1,6 @@
 use builtin::{BuiltinFuncInfo, BuiltinJITFuncInfo, BuiltinJITFuncTy};
 use builtins::math;
 use bytecode_gen::{ByteCode, VMInst};
-use gc::GcType;
 use id::Id;
 use libc;
 use llvm;
@@ -13,7 +12,6 @@ use std::ffi::CString;
 use std::mem::transmute;
 use std::ptr;
 use vm;
-use vm::callobj::CallObject;
 use vm::value::*;
 
 const MAX_FUNCTION_PARAMS: usize = 3;
@@ -199,7 +197,7 @@ impl TracingJit {
     pub unsafe fn can_jit(
         &mut self,
         func_info: vm::value::FuncInfo,
-        scope: GcType<CallObject>,
+        scope: CallObjectRef,
         const_table: &vm::vm::ConstantTable,
         argc: usize,
     ) -> Option<fn()> {
@@ -277,7 +275,7 @@ impl TracingJit {
         &mut self,
         name: String,
         func_info: vm::value::FuncInfo,
-        scope: GcType<CallObject>,
+        scope: CallObjectRef,
         const_table: &vm::vm::ConstantTable,
         argc: usize,
     ) -> Result<LLVMValueRef, ()> {
@@ -644,7 +642,7 @@ impl TracingJit {
     unsafe fn gen_body(
         &mut self,
         iseq: &ByteCode,
-        scope: GcType<CallObject>,
+        scope: CallObjectRef,
         const_table: &vm::vm::ConstantTable,
         func_id: FuncId,
         bgn: usize,

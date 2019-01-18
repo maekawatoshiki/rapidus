@@ -1,5 +1,4 @@
 use builtins::object;
-use gc::GcType;
 use vm::{
     callobj::CallObject,
     error::RuntimeError,
@@ -39,14 +38,14 @@ pub fn init() -> Value {
     obj
 }
 
-fn new(_vm: &mut VM, _args: &Vec<Value>, _: GcType<CallObject>) -> Result<(), RuntimeError> {
+fn new(_vm: &mut VM, _args: &Vec<Value>, _: CallObjectRef) -> Result<(), RuntimeError> {
     unimplemented!("sorry");
 }
 
 fn prototype_apply(
     vm: &mut VM,
     args: &Vec<Value>,
-    callobj: GcType<CallObject>,
+    callobj: CallObjectRef,
 ) -> Result<(), RuntimeError> {
     let callee = &*callobj.this;
     let arg_this = args[0].clone();
@@ -89,7 +88,7 @@ fn prototype_apply(
 fn prototype_call(
     vm: &mut VM,
     args: &Vec<Value>,
-    callobj: GcType<CallObject>,
+    callobj: CallObjectRef,
 ) -> Result<(), RuntimeError> {
     let callee = &*callobj.this;
     let arg_this = args[0].clone();
