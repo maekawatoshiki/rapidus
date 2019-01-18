@@ -15,8 +15,6 @@ thread_local!(pub static GC_MEM: RefCell<FxHashSet<GcPtr>> = {
     RefCell::new(FxHashSet::default())
 });
 
-pub type GcType<T> = *mut T;
-
 #[derive(Clone, Debug, Eq)]
 pub struct GcPtr(*mut Gc);
 
@@ -33,6 +31,66 @@ impl Hash for GcPtr {
     {
         state.write_u64(self.0 as *mut libc::c_void as u64);
         state.finish();
+    }
+}
+
+pub struct GcType<X> {
+    inner: usize,
+    //gc_mark: bool,
+    _phantom: std::marker::PhantomData<X>,
+}
+
+impl<X: Clone> GcType<X> {
+    pub fn duplicate(&self) -> GcType<X> {
+        let ptr = Box::into_raw(Box::new((**self).clone()));
+        GcType {
+            inner: ptr as usize,
+            //gc_mark: false,
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<X> Clone for GcType<X> {
+    fn clone(&self) -> GcType<X> {
+        GcType {
+            inner: self.inner,
+            //gc_mark: false,
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<X> std::ops::Deref for GcType<X> {
+    type Target = X;
+
+    fn deref(&self) -> &X {
+        unsafe {
+            let b = Box::from_raw(self.inner as *mut X);
+            let ptr = Box::leak(b);
+            ptr as &X
+        }
+    }
+}
+
+impl<X> std::ops::DerefMut for GcType<X> {
+    fn deref_mut(&mut self) -> &mut X {
+        unsafe {
+            let b = Box::from_raw(self.inner as *mut X);
+            Box::leak(b)
+        }
+    }
+}
+
+impl<X> PartialEq for GcType<X> {
+    fn eq(&self, other: &GcType<X>) -> bool {
+        self.inner as *mut u8 == other.inner as *mut u8
+    }
+}
+
+impl<X> std::fmt::Debug for GcType<X> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{{{:?}}}", *self)
     }
 }
 
@@ -59,24 +117,24 @@ impl Gc for Value {
             | Value::Bool(_)
             | Value::Number(_)
             | Value::String(_) => {}
-            Value::Object(map, ObjectKind::Function(box (_, c))) => unsafe {
-                (**map).trace(marked);
+            Value::Object(map, ObjectKind::Function(box (_, c))) => {
+                (*map).trace(marked);
                 (*c).trace(marked);
-            },
+            }
             // Never trace _xxx
             Value::Object(_, ObjectKind::BuiltinFunction(box (_, c))) => (*c).trace(marked),
 
-            Value::Object(map, ObjectKind::Array(a)) => unsafe {
-                (**map).trace(marked);
-                (**a).trace(marked);
-            },
-            Value::Object(map, ObjectKind::Ordinary) | Value::Object(map, ObjectKind::Date(_)) => unsafe {
-                (**map).trace(marked);
-            },
-            Value::Object(map, ObjectKind::Arguments(c)) => unsafe {
-                (**map).trace(marked);
-                (**c).trace(marked);
-            },
+            Value::Object(map, ObjectKind::Array(a)) => {
+                (*map).trace(marked);
+                (*a).trace(marked);
+            }
+            Value::Object(map, ObjectKind::Ordinary) | Value::Object(map, ObjectKind::Date(_)) => {
+                (*map).trace(marked);
+            }
+            Value::Object(map, ObjectKind::Arguments(c)) => {
+                (*map).trace(marked);
+                (*c).trace(marked);
+            }
         }
     }
 }
@@ -110,18 +168,17 @@ impl Gc for CallObject {
         if !mark(self, marked) {
             return;
         };
-        unsafe {
-            (*self.vals).trace(marked);
+        self.vals.trace(marked);
 
-            for (_, val) in &mut self.arguments {
-                (*val).trace(marked);
-            }
-
-            if let Some(parent) = self.parent {
-                (*parent).trace(marked);
-            }
-            self.this.trace(marked);
+        for (_, val) in &mut self.arguments {
+            (*val).trace(marked);
         }
+        /*
+        if let Some(ref mut parent) = *self.parent {
+            parent.trace(marked);
+        }
+        */
+        self.this.trace(marked);
     }
 }
 
@@ -142,28 +199,23 @@ impl Gc for ArrayValue {
     }
 }
 
-pub fn new<X: Gc + 'static>(data: X) -> *mut X {
+pub fn new<X: Gc + 'static>(data: X) -> GcType<X> {
     let data_size = mem::size_of_val(&data);
+    // get raw pointer to the data copied on the heap.
     let ptr = Box::into_raw(Box::new(data));
     ALLOCATED_MEM_SIZE_BYTE.fetch_add(data_size, atomic::Ordering::SeqCst);
     GC_MEM.with(|m| m.borrow_mut().insert(GcPtr(ptr)));
-    ptr
+    GcType {
+        inner: ptr as usize,
+        //gc_mark: false,
+        _phantom: std::marker::PhantomData,
+    }
 }
-
-// pub fn gc_new_and_free<X: Gc + 'static>(data: X, vm_state: &VMState) -> *mut X {
-//     let mut marked = FxHashSet::default();
-//     trace(&vm_state, &mut marked);
-//     free(&marked);
-//
-//     let ptr = Box::into_raw(Box::new(data));
-//     GC_MEM.with(|m| m.borrow_mut().insert(GcPtr(ptr)));
-//     ptr
-// }
 
 pub fn mark_and_sweep(vm: &mut VM) {
     fn over16kb_allocated() -> bool {
         //ALLOCATED_MEM_SIZE_BYTE.load(atomic::Ordering::SeqCst) > 16 * 1024
-        true
+        false
     }
 
     if over16kb_allocated() {
@@ -196,9 +248,7 @@ fn trace(vm: &mut VM, marked: &mut FxHashSet<GcPtr>) {
     }
     let after_stack = marked.len();
     for scope in &mut vm.state.scope {
-        unsafe {
-            (**scope).trace(marked);
-        }
+        (*scope).trace(marked);
     }
     let after_scope = marked.len();
     println!(
@@ -227,6 +277,8 @@ fn free(marked: &FxHashSet<GcPtr>) {
 }
 
 pub fn free_all() {
+    return;
+    /*
     GC_MEM.with(|mem| {
         mem.borrow_mut().retain(|p| {
             unsafe {
@@ -243,6 +295,7 @@ pub fn free_all() {
         ALLOCATED_MEM_SIZE_BYTE.load(atomic::Ordering::SeqCst),
         GC_MEM.with(|mem| mem.borrow_mut().len()),
     );
+    */
 }
 
 /*

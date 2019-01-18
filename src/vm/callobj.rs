@@ -1,17 +1,17 @@
-use rustc_hash::FxHashMap;
-use std::collections::hash_map::Entry;
-
+//#[macro_use]
+//use util;
 use super::error::RuntimeError;
 use super::value::*;
 use gc;
 use gc::GcType;
+use rustc_hash::FxHashMap;
+use std::fmt;
 
-pub type CallObjectRef = GcType<CallObject>;
-
-#[derive(Clone, Debug)]
+#[derive(Clone)]
+/// 72 bytes
 pub struct CallObject {
     /// map of variables belongs to the scope.
-    pub vals: PropMap,
+    pub vals: GcType<PropMap>,
     /// name of rest parameters. (if the function has no rest parameters, None.)
     pub rest_params: Option<String>,
     /// set of the name of parameter corresponds to applied arguments when the function was invoked.
@@ -19,7 +19,7 @@ pub struct CallObject {
     /// this value.
     pub this: Box<Value>,
     /// reference to the outer scope.
-    pub parent: Option<CallObjectRef>,
+    pub parent: Option<GcType<CallObject>>,
 }
 
 impl PartialEq for CallObject {
@@ -28,8 +28,16 @@ impl PartialEq for CallObject {
     }
 }
 
+impl fmt::Debug for CallObject {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let ptr_co: *const CallObject = &*self;
+        let ptr_map: *const PropMap = &*self.vals;
+        write!(f, "CO:[{:?}] Map:[{:?}]", ptr_co, ptr_map)
+    }
+}
+
 impl CallObject {
-    pub fn new(this: Value) -> CallObject {
+    fn new(this: Value) -> CallObject {
         CallObject {
             vals: gc::new(FxHashMap::default()),
             rest_params: None,
@@ -39,6 +47,10 @@ impl CallObject {
         }
     }
 
+    pub fn new_with_this(this: Value) -> GcType<CallObject> {
+        gc::new(CallObject::new(this))
+    }
+
     /// create new CallObj for func invocation.
     /// this: None => use self.this.
     pub fn new_callobj_from_func(
@@ -46,68 +58,107 @@ impl CallObject {
         func_info: FuncInfo,
         args: &Vec<Value>,
         this: Option<Value>,
-    ) -> CallObjectRef {
+    ) -> GcType<CallObject> {
         let mut callobj = match this {
             Some(this) => CallObject::new(this),
             None => CallObject::new(*self.this.clone()),
         };
         callobj.apply_arguments(func_info.clone(), args);
-        callobj.parent = self.parent;
+        callobj.parent = self.clone().parent;
         gc::new(callobj)
     }
 
-    pub fn new_global() -> CallObjectRef {
+    pub fn new_global() -> GcType<CallObject> {
         let vals = gc::new(FxHashMap::default());
-        let callobj = gc::new(CallObject {
+        gc::new(CallObject {
             vals: vals.clone(),
             rest_params: None,
             arguments: vec![],
-            this: Box::new(Value::Undefined),
+            this: Box::new(Value::Object(vals.clone(), ObjectKind::Ordinary)),
             parent: None,
-        });
-        unsafe {
-            *(*callobj).this = Value::Object(vals, ObjectKind::Ordinary);
-        }
-        callobj
+        })
     }
 
     pub fn set_value(&mut self, name: String, val: Value) {
-        unsafe {
-            (*self.vals).insert(name, Property::new(val));
-        }
+        //println!("{:?} set value: {} {}", self, name, val.format(0, false));
+        self.vals.insert(name, val.to_property());
     }
 
     pub fn set_value_if_exist(&mut self, name: String, val: Value) {
-        unsafe {
-            match (*self.vals).entry(name.clone()) {
-                Entry::Occupied(ref mut v) => *v.get_mut() = Property::new(val),
-                Entry::Vacant(v) => {
-                    match self.parent {
-                        Some(ref parent) => return (**parent).set_value_if_exist(name, val),
-                        None => v.insert(Property::new(val)),
-                    };
-                }
+        if self.vals.contains_key(&name.clone()) {
+            let old = self.vals.insert(name.clone(), val.to_property());
+            let _old = match old {
+                None => "None".to_string(),
+                Some(x) => x.val.format(0, false),
+            };
+            /*
+            println!(
+                "{:?} change value if exist: {} {} oldvalue: {:?}",
+                self,
+                name,
+                val.format(0, false),
+                old
+            );
+            */
+            let _new = self.vals.get(&name.clone());
+        /*
+        println!(
+            "{}",
+            match new {
+                None => "None".to_string(),
+                Some(x) => x.val.format(0, false),
             }
+        );
+        */
+        } else {
+            match self.parent {
+                Some(ref mut parent) => {
+                    return parent.set_value_if_exist(name, val);
+                }
+                None => {
+                    /*
+                    println!(
+                        "{:?} new value if exist: {} {}",
+                        self,
+                        name,
+                        val.format(0, false)
+                    );
+                    */
+                    self.vals.insert(name, val.to_property());
+                }
+            };
         }
     }
 
     pub fn get_value(&self, name: &String) -> Result<Value, RuntimeError> {
-        unsafe {
-            if let Some(prop) = (*self.vals).get(name) {
-                return Ok(prop.val.clone());
+        if let Some(prop) = self.vals.get(name) {
+            /*
+            println!(
+                "{:?} get value: {} {}",
+                self,
+                name,
+                prop.val.format(0, false)
+            );
+            */
+            return Ok(prop.val.clone());
+        }
+        match self.parent {
+            Some(ref parent) => {
+                //println!("parant {:?}", self);
+                parent.get_value(name)
             }
-            match self.parent {
-                Some(ref parent) => (**parent).get_value(name),
-                None => Err(RuntimeError::Reference(format!(
+            None => {
+                //println!("global {:?}", self);
+                Err(RuntimeError::Reference(format!(
                     "reference error: '{}' is not defined",
                     name
-                ))),
+                )))
             }
         }
     }
 
     pub fn get_local_value(&self, name: &String) -> Result<Value, RuntimeError> {
-        if let Some(prop) = unsafe { (*self.vals).get(name) } {
+        if let Some(prop) = self.vals.get(name) {
             Ok(prop.val.clone())
         } else {
             Err(RuntimeError::General(

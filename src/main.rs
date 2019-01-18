@@ -100,7 +100,7 @@ fn main() {
 fn repl(trace: bool) {
     // TODO: REFINE CODE!!!!
     let mut vm_codegen = vm_codegen::VMCodeGen::new();
-    let global = vm_codegen.global_varmap;
+    let global = vm_codegen.global_varmap.clone();
     let mut vm = vm::vm::VM::new(global);
 
     let mut rl = rustyline::Editor::<()>::new();

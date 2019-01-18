@@ -1,11 +1,8 @@
-var a = []
-for (var j = 0; j < 20; j++) {
-  a = []
-  f()
-}
+var a = 10000
 
-function f(){
-  for (var i = 0; i < 20; i++) {
-    a.push({ i: i, j: undefined })
-  }
+function f(x) {
+  return x * 2 + a
 }
+console.log(f(5))
+
+console.log(a)

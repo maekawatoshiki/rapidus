@@ -1,10 +1,13 @@
+#[macro_use]
+use super::super::util;
+
 use chrono::Utc;
 use libc;
 use llvm::core::*;
 use std::{ffi::CString, thread, time};
 
 use super::{
-    callobj::{CallObject, CallObjectRef},
+    callobj::CallObject,
     error::*,
     task::{Task, TaskManager, TimerKind},
     value::*,
@@ -15,6 +18,7 @@ use builtins;
 use bytecode_gen;
 use bytecode_gen::ByteCode;
 use gc;
+use gc::GcType;
 use jit::TracingJit;
 
 pub struct VM {
@@ -31,7 +35,7 @@ pub struct VM {
 
 pub struct VMState {
     pub stack: Vec<Value>,
-    pub scope: Vec<CallObjectRef>,
+    pub scope: Vec<GcType<CallObject>>,
     pub pc: isize,
     pub history: Vec<(usize, isize)>, // sp, return_pc
 }
@@ -89,9 +93,11 @@ impl ConstantTable {
 }
 
 impl VM {
-    pub fn new(global_vals: CallObjectRef) -> VM {
+    pub fn new(global_vals: GcType<CallObject>) -> VM {
         let jit = unsafe { TracingJit::new() };
-        let global_vals = unsafe { &mut *global_vals };
+        let mut global_vals = global_vals.clone();
+        //print_raw_bytes!(global_vals);
+        global_vals.set_value("p".to_string(), Value::default_builtin_function(builtin::p));
         // TODO: Support for 'require' is not enough.
         global_vals.set_value(
             "require".to_string(),
@@ -236,6 +242,14 @@ impl VM {
         use builtins::date::DATE_OBJ;
         global_vals.set_value("Date".to_string(), DATE_OBJ.with(|x| x.clone()));
         global_vals.set_value("Math".to_string(), builtins::math::init(jit.clone()));
+        /*
+        println!(
+            "CallObject:{} Value:{} PropMap:{} ArrayValue:{}",
+            std::mem::size_of::<CallObject>(),
+            std::mem::size_of::<Value>(),
+            std::mem::size_of::<PropMap>(),
+            std::mem::size_of::<ArrayValue>()
+        );*/
 
         VM {
             jit: jit,
@@ -511,11 +525,12 @@ impl VM {
         args: &Vec<Value>,
     ) -> Result<bool, RuntimeError> {
         match callee {
-            Value::Object(_, ObjectKind::BuiltinFunction(box (ref info, ref callobj))) => {
-                (info.func)(self, args, &callobj)?;
+            Value::Object(_, ObjectKind::BuiltinFunction(box (ref info, callobj))) => {
+                (info.func)(self, args, callobj.clone())?;
                 return Ok(true);
             }
             Value::Object(_, ObjectKind::Function(box (func_info, callobject))) => {
+                println!("call this:{}", callobject.this.clone().format(1, true));
                 call_function(self, func_info.clone(), &mut callobject.clone(), args)
             }
             ref e => Err(RuntimeError::Type(format!(
@@ -567,13 +582,12 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
         Value::Object(map, ObjectKind::BuiltinFunction(box (x, mut callobj))) => {
             *callobj.this = Value::object_from_npp(&vec![(
                 "__proto__".to_string(),
-                Property::new(unsafe {
-                    (*map)
-                        .get("prototype")
+                Property::new(
+                    map.get("prototype")
                         .unwrap_or(&Value::Undefined.to_property())
                         .val
-                        .clone()
-                }),
+                        .clone(),
+                ),
             )]);
 
             // https://tc39.github.io/ecma262/#sec-date-constructor
@@ -584,22 +598,19 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
                 date_new
             } else {
                 x.func
-            })(self_, &args, &callobj)?;
+            })(self_, &args, callobj)?;
         }
         Value::Object(map, ObjectKind::Function(box (func_info, callobj))) => {
             // similar code is used some times. should make it a function.
-            let new_this = unsafe {
-                Value::object_from_npp(&vec![(
-                    "__proto__".to_string(),
-                    Property::new(
-                        (*map)
-                            .get("prototype")
-                            .unwrap_or(&Property::new(Value::Undefined))
-                            .val
-                            .clone(),
-                    ),
-                )])
-            };
+            let new_this = Value::object_from_npp(&vec![(
+                "__proto__".to_string(),
+                Property::new(
+                    map.get("prototype")
+                        .unwrap_or(&Property::new(Value::Undefined))
+                        .val
+                        .clone(),
+                ),
+            )]);
             let callobj =
                 callobj.new_callobj_from_func(func_info.clone(), &args, Some(new_this.clone()));
 
@@ -666,7 +677,7 @@ pub fn call_function(
         if let Some(f) = unsafe {
             self_
                 .jit
-                .can_jit(func_info, &*scope, &self_.const_table, argc)
+                .can_jit(func_info, scope, &self_.const_table, argc)
         } {
             self_
                 .state
@@ -761,14 +772,14 @@ fn push_const(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
 
 fn push_this(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // push_this
-    let this = unsafe { *(**self_.state.scope.last().unwrap()).this.clone() };
-    self_.state.stack.push(this);
+    let this = self_.state.scope.last().unwrap().this.clone();
+    self_.state.stack.push(*this);
     Ok(true)
 }
 
 fn push_arguments(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // push_arguments
-    let callobj = self_.state.scope.last().unwrap().clone();
+    let callobj = self_.state.scope.last_mut().unwrap().clone();
     self_.state.stack.push(Value::arguments(callobj));
     Ok(true)
 }
@@ -1041,7 +1052,7 @@ fn get_member(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // get_global
     let member = self_.state.stack.pop().unwrap();
     let parent = self_.state.stack.pop().unwrap();
-    let val = parent.get_property(member, Some(self_.state.scope.last().unwrap()));
+    let val = parent.get_property(member, Some(self_.state.scope.last().unwrap().clone()));
     self_.state.stack.push(val);
     Ok(true)
 }
@@ -1049,9 +1060,9 @@ fn get_member(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
 fn set_member(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // get_global
     let member = self_.state.stack.pop().unwrap();
-    let parent = self_.state.stack.pop().unwrap();
+    let mut parent = self_.state.stack.pop().unwrap().clone();
     let val = self_.state.stack.pop().unwrap();
-    parent.set_property(member, val, Some(self_.state.scope.last().unwrap()));
+    parent.set_property(member, val, Some(self_.state.scope.last().unwrap().clone()));
     Ok(true)
 }
 
@@ -1169,12 +1180,14 @@ fn return_try(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
 
 fn push_scope(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1;
-    let &base_callobj = self_.state.scope.last().unwrap();
-    let co = unsafe { (*base_callobj).clone() };
-    let mut callobj = CallObject::new(Value::object_from_npp(&vec![]));
-    callobj.parent = Some(base_callobj);
-    callobj.this = co.this;
-    self_.state.scope.push(gc::new(callobj));
+    let mut callobj = CallObject::new_with_this(Value::object_from_npp(&vec![]));
+
+    let base_callobj = self_.state.scope.last().unwrap().clone();
+
+    callobj.parent = Some(base_callobj.clone());
+    callobj.this = base_callobj.this.clone();
+
+    self_.state.scope.push(callobj);
     Ok(true)
 }
 
@@ -1223,7 +1236,7 @@ fn get_value(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1;
     get_int32!(self_, iseq, name_id, usize);
     let name = &self_.const_table.string[name_id];
-    let val = unsafe { (**self_.state.scope.last().unwrap()).get_value(name)? };
+    let val = self_.state.scope.last().unwrap().get_value(name)?;
     self_.state.stack.push(val);
     Ok(true)
 }
@@ -1238,12 +1251,15 @@ fn set_value(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
     if let Value::Object(_, ObjectKind::Function(box (_, ref mut cobj)))
     | Value::Object(_, ObjectKind::BuiltinFunction(box (_, ref mut cobj))) = &mut val
     {
-        unsafe {
-            cobj.this = (**self_.state.scope.last().unwrap()).this.clone();
-        }
+        cobj.this = self_.state.scope.last().unwrap().this.clone();
     }
 
-    unsafe { (**self_.state.scope.last().unwrap()).set_value_if_exist(name, val) };
+    self_
+        .state
+        .scope
+        .last_mut()
+        .unwrap()
+        .set_value_if_exist(name, val);
 
     Ok(true)
 }
@@ -1252,7 +1268,7 @@ fn decl_var(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1;
     get_int32!(self_, iseq, name_id, usize);
     let name = self_.const_table.string[name_id].clone();
-    unsafe { (**self_.state.scope.last().unwrap()).set_value(name, Value::Undefined) };
+    (*self_.state.scope.last_mut().unwrap()).set_value(name, Value::Undefined);
     Ok(true)
 }
 

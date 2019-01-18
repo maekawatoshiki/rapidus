@@ -26,7 +26,7 @@ pub fn test_code(code: String, answer: String) {
 
 fn execute_script(text: String, answer: String) {
     let mut vm_codegen = VMCodeGen::new();
-    let global = vm_codegen.global_varmap;
+    let global = vm_codegen.global_varmap.clone();
     let mut vm = vm::vm::VM::new(global);
 
     let mut parser = parser::Parser::new(text);
@@ -41,7 +41,7 @@ fn execute_script(text: String, answer: String) {
     println!("file: {}", res_text);
 
     let mut vm_codegen = VMCodeGen::new();
-    let global = vm_codegen.global_varmap;
+    let global = vm_codegen.global_varmap.clone();
     let mut vm = vm::vm::VM::new(global);
 
     let mut parser = parser::Parser::new(answer);

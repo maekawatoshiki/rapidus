@@ -1,3 +1,4 @@
+use gc::GcType;
 use vm::{callobj::CallObject, error::RuntimeError, value::*, vm::VM};
 
 thread_local!(
@@ -8,7 +9,7 @@ thread_local!(
 pub fn number_prototype_tostring(
     vm: &mut VM,
     args: &Vec<Value>,
-    callobj: &CallObject,
+    callobj: GcType<CallObject>,
 ) -> Result<(), RuntimeError> {
     let number = if let Value::Number(num) = *callobj.this {
         num
