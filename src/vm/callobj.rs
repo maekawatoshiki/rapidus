@@ -77,50 +77,18 @@ impl CallObject {
     }
 
     pub fn set_value(&mut self, name: String, val: Value) {
-        //println!("{:?} set value: {} {}", self, name, val.format(0, false));
         self.vals.insert(name, val.to_property());
     }
 
     pub fn set_value_if_exist(&mut self, name: String, val: Value) {
         if self.vals.contains_key(&name.clone()) {
-            let old = self.vals.insert(name.clone(), val.to_property());
-            let _old = match old {
-                None => "None".to_string(),
-                Some(x) => x.val.format(0, false),
-            };
-            /*
-            println!(
-                "{:?} change value if exist: {} {} oldvalue: {:?}",
-                self,
-                name,
-                val.format(0, false),
-                old
-            );
-            */
-            let _new = self.vals.get(&name.clone());
-        /*
-        println!(
-            "{}",
-            match new {
-                None => "None".to_string(),
-                Some(x) => x.val.format(0, false),
-            }
-        );
-        */
+            self.vals.insert(name.clone(), val.to_property());
         } else {
             match self.parent {
                 Some(ref mut parent) => {
                     return parent.set_value_if_exist(name, val);
                 }
                 None => {
-                    /*
-                    println!(
-                        "{:?} new value if exist: {} {}",
-                        self,
-                        name,
-                        val.format(0, false)
-                    );
-                    */
                     self.vals.insert(name, val.to_property());
                 }
             };
@@ -129,28 +97,14 @@ impl CallObject {
 
     pub fn get_value(&self, name: &String) -> Result<Value, RuntimeError> {
         if let Some(prop) = self.vals.get(name) {
-            /*
-            println!(
-                "{:?} get value: {} {}",
-                self,
-                name,
-                prop.val.format(0, false)
-            );
-            */
             return Ok(prop.val.clone());
         }
         match self.parent {
-            Some(ref parent) => {
-                //println!("parant {:?}", self);
-                parent.get_value(name)
-            }
-            None => {
-                //println!("global {:?}", self);
-                Err(RuntimeError::Reference(format!(
-                    "reference error: '{}' is not defined",
-                    name
-                )))
-            }
+            Some(ref parent) => parent.get_value(name),
+            None => Err(RuntimeError::Reference(format!(
+                "reference error: '{}' is not defined",
+                name
+            ))),
         }
     }
 

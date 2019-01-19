@@ -772,9 +772,11 @@ pub fn set_this(val: Value, this: &Value) -> Value {
         ) => Value::Object(
             map,
             ObjectKind::Function(Box::new((FuncInfo::new(id, iseq, params), {
-                let mut callobj = callobj.duplicate();
-                *callobj.this = this.clone();
-                callobj
+                let co = CallObject {
+                    this: Box::new(this.clone()),
+                    ..(*callobj).clone()
+                };
+                gc::new(co)
             }))),
         ),
         Value::Object(map, ObjectKind::BuiltinFunction(box (id, mut callobj))) => Value::Object(

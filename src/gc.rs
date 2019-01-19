@@ -1,7 +1,9 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::cell::RefCell;
+use std::fmt::{Debug, Formatter, Result};
 use std::hash::{Hash, Hasher};
 use std::mem;
+use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{self, AtomicUsize};
 use stopwatch::Stopwatch;
 use vm::{
@@ -35,24 +37,37 @@ impl Hash for GcPtr {
     }
 }
 
-pub struct GcType<X> {
+/// A struct which holds a pointer to X and a mark bit for GC.
+/// Dereference of GcType<X> is automatically converted to &X or &mut X by deref coercion.
+///
+/// ### Usage
+/// ```
+/// # extern crate rustc_hash;
+/// # use rapidus::gc;
+/// # use rapidus::vm::value::{Value, CallObjectRef};
+/// # use rapidus::vm::callobj::CallObject;
+/// # use rustc_hash::FxHashMap;
+/// let callobjectref =
+///     gc::new(CallObject {
+///         vals: gc::new(FxHashMap::default()),
+///         rest_params: None,
+///         arguments: vec![],
+///         this: Box::new(Value::Undefined),
+///         parent: None,
+///     }
+/// );
+///
+/// assert_eq!(*callobjectref.this, Value::Undefined);
+/// ```
+pub struct GcType<X: Gc> {
     inner: usize,
     //gc_mark: bool,
     _phantom: std::marker::PhantomData<X>,
 }
 
-impl<X: Clone> GcType<X> {
-    pub fn duplicate(&self) -> GcType<X> {
-        let ptr = Box::into_raw(Box::new((**self).clone()));
-        GcType {
-            inner: ptr as usize,
-            //gc_mark: false,
-            _phantom: std::marker::PhantomData,
-        }
-    }
-}
-
-impl<X> Clone for GcType<X> {
+impl<X: Gc> Clone for GcType<X> {
+    /// return the cloned pointer. (exactly the same value as original pointer.)
+    /// both of original and cloned pointer point to the identical X.
     fn clone(&self) -> GcType<X> {
         GcType {
             inner: self.inner,
@@ -62,39 +77,40 @@ impl<X> Clone for GcType<X> {
     }
 }
 
-impl<X> std::ops::Deref for GcType<X> {
+impl<X: Gc> Deref for GcType<X> {
     type Target = X;
 
     fn deref(&self) -> &X {
         unsafe {
-            let b = Box::from_raw(self.inner as *mut X);
-            let ptr = Box::leak(b);
+            let boxed_x = Box::from_raw(self.inner as *mut X);
+            let ptr = Box::leak(boxed_x);
             ptr as &X
         }
     }
 }
 
-impl<X> std::ops::DerefMut for GcType<X> {
+impl<X: Gc> DerefMut for GcType<X> {
     fn deref_mut(&mut self) -> &mut X {
         unsafe {
-            let b = Box::from_raw(self.inner as *mut X);
-            Box::leak(b)
+            let boxed_x = Box::from_raw(self.inner as *mut X);
+            Box::leak(boxed_x)
         }
     }
 }
 
-impl<X> PartialEq for GcType<X> {
+impl<X: Gc> PartialEq for GcType<X> {
     fn eq(&self, other: &GcType<X>) -> bool {
-        self.inner as *mut u8 == other.inner as *mut u8
+        self.inner == other.inner
     }
 }
 
-impl<X> std::fmt::Debug for GcType<X> {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+impl<X: Gc> Debug for GcType<X> {
+    fn fmt(&self, f: &mut Formatter) -> Result {
         write!(f, "{{{:?}}}", *self)
     }
 }
 
+/// A trait for GC'able object.
 pub trait Gc {
     fn free(&self) -> usize;
     fn trace(&mut self, &mut FxHashSet<GcPtr>);
@@ -102,7 +118,6 @@ pub trait Gc {
 
 impl Gc for Value {
     fn free(&self) -> usize {
-        print!(":V");
         mem::drop(self);
         mem::size_of::<Value>()
     }
@@ -119,22 +134,22 @@ impl Gc for Value {
             | Value::Number(_)
             | Value::String(_) => {}
             Value::Object(map, ObjectKind::Function(box (_, c))) => {
-                (*map).trace(marked);
-                (*c).trace(marked);
+                map.trace(marked);
+                c.trace(marked);
             }
             // Never trace _xxx
             Value::Object(_, ObjectKind::BuiltinFunction(box (_, c))) => (*c).trace(marked),
 
             Value::Object(map, ObjectKind::Array(a)) => {
-                (*map).trace(marked);
-                (*a).trace(marked);
+                map.trace(marked);
+                a.trace(marked);
             }
             Value::Object(map, ObjectKind::Ordinary) | Value::Object(map, ObjectKind::Date(_)) => {
-                (*map).trace(marked);
+                map.trace(marked);
             }
             Value::Object(map, ObjectKind::Arguments(c)) => {
-                (*map).trace(marked);
-                (*c).trace(marked);
+                map.trace(marked);
+                c.trace(marked);
             }
         }
     }
@@ -142,7 +157,6 @@ impl Gc for Value {
 
 impl Gc for FxHashMap<String, Property> {
     fn free(&self) -> usize {
-        print!(":M");
         mem::drop(self);
         mem::size_of::<FxHashMap<String, Property>>()
     }
@@ -160,7 +174,6 @@ impl Gc for FxHashMap<String, Property> {
 
 impl Gc for CallObject {
     fn free(&self) -> usize {
-        print!(":C");
         mem::drop(self);
         mem::size_of::<CallObject>()
     }
@@ -172,7 +185,7 @@ impl Gc for CallObject {
         self.vals.trace(marked);
 
         for (_, val) in &mut self.arguments {
-            (*val).trace(marked);
+            val.trace(marked);
         }
         /*
         if let Some(ref mut parent) = *self.parent {
@@ -185,7 +198,6 @@ impl Gc for CallObject {
 
 impl Gc for ArrayValue {
     fn free(&self) -> usize {
-        print!(":AV");
         mem::drop(self);
         mem::size_of::<ArrayValue>()
     }
@@ -202,17 +214,10 @@ impl Gc for ArrayValue {
 
 pub fn new<X: Gc + 'static>(data: X) -> GcType<X> {
     let data_size = mem::size_of_val(&data);
-    // get raw pointer to the data copied on the heap.
+    // get a raw pointer which points to the data copied on the heap.
     let ptr = Box::into_raw(Box::new(data));
     let _prev_size = ALLOCATED_MEM_SIZE_BYTE.fetch_add(data_size, atomic::Ordering::SeqCst);
     GC_MEM.with(|m| m.borrow_mut().insert(GcPtr(ptr)));
-    /*
-    println!(
-        "new Gc {} bytes, total {} bytes",
-        data_size,
-        prev_size + data_size
-    );
-    */
     GcType {
         inner: ptr as usize,
         //gc_mark: false,
@@ -227,12 +232,13 @@ pub fn mark_and_sweep(vm: &mut VM) {
     }
 
     if over16kb_allocated() {
-        let sw = Stopwatch::start_new();
+        let _sw = Stopwatch::start_new();
         let mut marked = FxHashSet::default();
-        let pre_alloc_size = ALLOCATED_MEM_SIZE_BYTE.load(atomic::Ordering::SeqCst);
-        let pre_gc_size = GC_MEM.with(|mem| mem.borrow_mut().len());
+        let _pre_alloc_size = ALLOCATED_MEM_SIZE_BYTE.load(atomic::Ordering::SeqCst);
+        let _pre_gc_size = GC_MEM.with(|mem| mem.borrow_mut().len());
         trace(vm, &mut marked);
         free(&marked);
+        /*
         println!("GC executed: {} ms", sw.elapsed_ms());
         let post_gc_size = GC_MEM.with(|mem| mem.borrow_mut().len());
         if pre_gc_size != post_gc_size {
@@ -245,6 +251,7 @@ pub fn mark_and_sweep(vm: &mut VM) {
                 post_gc_size,
             );
         }
+        */
     }
 }
 
@@ -252,19 +259,21 @@ fn trace(vm: &mut VM, marked: &mut FxHashSet<GcPtr>) {
     for val in &mut vm.const_table.value {
         val.trace(marked);
     }
-    let after_const = marked.len();
+    //let after_const = marked.len();
     for val in &mut vm.state.stack {
         val.trace(marked);
     }
-    let after_stack = marked.len();
+    //let after_stack = marked.len();
     for scope in &mut vm.state.scope {
-        (*scope).trace(marked);
+        scope.trace(marked);
     }
-    let after_scope = marked.len();
+    //let after_scope = marked.len();
+    /*
     println!(
         "marked after const: {} stack:{} scope:{}",
         after_const, after_stack, after_scope
     );
+    */
 }
 
 fn free(marked: &FxHashSet<GcPtr>) {
@@ -296,23 +305,15 @@ pub fn free_all() {
             false
         });
     });
+    /*
     println!(
         "\nallocated_size: {} all:{}",
         ALLOCATED_MEM_SIZE_BYTE.load(atomic::Ordering::SeqCst),
         GC_MEM.with(|mem| mem.borrow_mut().len()),
     );
+    */
 }
 
-/*
-fn not_marked_then<F>(p: *mut Gc, marked: &mut FxHashSet<GcPtr>, mut f: F)
-where
-    F: FnMut(*mut Gc, &mut FxHashSet<GcPtr>),
-{
-    if marked.insert(GcPtr(p)) {
-        f(p, marked);
-    }
-}
-*/
 fn mark(p: *mut Gc, marked: &mut FxHashSet<GcPtr>) -> bool {
     marked.insert(GcPtr(p))
 }

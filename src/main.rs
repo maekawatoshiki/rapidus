@@ -278,9 +278,11 @@ fn run(file_name: &str, trace: bool) {
 
 #[test]
 fn vm_test() {
-    // IMPORTANT: these test_file() fn should be run in a single thread.
-    use rapidus::test::test_file;
+    // IMPORTANT: these test should be run in a single thread.
+    use rapidus::test::{execute_script, test_file};
+    execute_script("for(var i = 0; i < 10; i++){}".to_string(), true);
     test_file("closure".to_string(), "[0,50,1,50,1,1000,50]".to_string());
+    test_file("fact".to_string(), "[479001600]".to_string());
     test_file(
         "label".to_string(),
         "[0,0,0,1,0,2,1,0,2,0,2,1,2,2]".to_string(),
