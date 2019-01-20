@@ -1,7 +1,6 @@
-use vm::value::*;
-use vm::{callobj::CallObject, error::RuntimeError, vm::VM};
-
 use chrono::Utc;
+use vm::value::*;
+use vm::{error::RuntimeError, vm::VM};
 
 thread_local!(
     pub static DATE_PROTOTYPE: Value = {
@@ -11,7 +10,7 @@ thread_local!(
     };
 
     pub static DATE_OBJ: Value = {
-        let prototype = DATE_PROTOTYPE.with(|x| x.clone());
+        let mut prototype = DATE_PROTOTYPE.with(|x| x.clone());
         let date = Value::builtin_function(
             date,
             None,
@@ -28,7 +27,7 @@ thread_local!(
     }
 );
 
-pub fn date(vm: &mut VM, _args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
+pub fn date(vm: &mut VM, _args: &Vec<Value>, _: CallObjectRef) -> Result<(), RuntimeError> {
     let now = Utc::now();
 
     vm.state.stack.push(Value::string(now.to_rfc3339()));
@@ -36,7 +35,7 @@ pub fn date(vm: &mut VM, _args: &Vec<Value>, _: &CallObject) -> Result<(), Runti
     Ok(())
 }
 
-pub fn date_new(vm: &mut VM, _args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
+pub fn date_new(vm: &mut VM, _args: &Vec<Value>, _: CallObjectRef) -> Result<(), RuntimeError> {
     let now = Utc::now();
 
     vm.state.stack.push(Value::date(now));
@@ -44,7 +43,7 @@ pub fn date_new(vm: &mut VM, _args: &Vec<Value>, _: &CallObject) -> Result<(), R
     Ok(())
 }
 
-pub fn date_now(vm: &mut VM, _args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
+pub fn date_now(vm: &mut VM, _args: &Vec<Value>, _: CallObjectRef) -> Result<(), RuntimeError> {
     let now = Utc::now();
     let now_millis = now.timestamp_millis();
     vm.state.stack.push(Value::Number(now_millis as f64));

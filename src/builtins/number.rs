@@ -1,4 +1,4 @@
-use vm::{callobj::CallObject, error::RuntimeError, value::*, vm::VM};
+use vm::{error::RuntimeError, value::*, vm::VM};
 
 thread_local!(
     pub static NUMBER_PROTOTYPE: Value =
@@ -8,7 +8,7 @@ thread_local!(
 pub fn number_prototype_tostring(
     vm: &mut VM,
     args: &Vec<Value>,
-    callobj: &CallObject,
+    callobj: CallObjectRef,
 ) -> Result<(), RuntimeError> {
     let number = if let Value::Number(num) = *callobj.this {
         num

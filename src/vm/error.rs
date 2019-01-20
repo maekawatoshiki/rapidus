@@ -1,7 +1,7 @@
 use ansi_term::Colour;
 use vm::value::Value;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum RuntimeError {
     Unknown,
     Type(String),

@@ -5,7 +5,7 @@ use llvm::core::*;
 use rand::random;
 use std::ffi::CString;
 use vm::value::*;
-use vm::{callobj::CallObject, error::RuntimeError, vm::VM};
+use vm::{error::RuntimeError, vm::VM};
 
 pub fn init(jit: TracingJit) -> Value {
     make_object!(
@@ -117,7 +117,11 @@ pub fn init(jit: TracingJit) -> Value {
 macro_rules! simple_math {
     ($name:ident, $f:ident) => {
         #[allow(unused_variables)]
-        fn $name(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject) -> Result<(), RuntimeError> {
+        fn $name(
+            vm: &mut VM,
+            args: &Vec<Value>,
+            callobj: CallObjectRef,
+        ) -> Result<(), RuntimeError> {
             if let Value::Number(n) = args[0] {
                 vm.state.stack.push(Value::Number(n.$f()));
                 return Ok(());
@@ -137,7 +141,7 @@ simple_math!(math_asinh, asinh);
 simple_math!(math_atan, atan);
 simple_math!(math_atanh, atanh);
 
-fn math_atan2(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
+fn math_atan2(vm: &mut VM, args: &Vec<Value>, _: CallObjectRef) -> Result<(), RuntimeError> {
     if let Value::Number(n1) = args[0] {
         if let Value::Number(n2) = args[1] {
             vm.state.stack.push(Value::Number(n1.atan2(n2)));
@@ -150,7 +154,7 @@ fn math_atan2(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), Runt
 simple_math!(math_cbrt, cbrt);
 simple_math!(math_ceil, ceil);
 
-fn math_clz32(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
+fn math_clz32(vm: &mut VM, args: &Vec<Value>, _: CallObjectRef) -> Result<(), RuntimeError> {
     if let Value::Number(n) = args[0] {
         vm.state.stack.push(Value::Number(if n == 0.0 {
             32.0
@@ -171,7 +175,7 @@ simple_math!(math_exp, exp);
 simple_math!(math_expm1, exp_m1);
 simple_math!(math_fround, round);
 
-fn math_hypot(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
+fn math_hypot(vm: &mut VM, args: &Vec<Value>, _: CallObjectRef) -> Result<(), RuntimeError> {
     let mut sum2 = 0.0;
     for n in args {
         if let Value::Number(n) = n {
@@ -182,7 +186,7 @@ fn math_hypot(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), Runt
 ;    Ok(())
 }
 
-fn math_log(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
+fn math_log(vm: &mut VM, args: &Vec<Value>, _: CallObjectRef) -> Result<(), RuntimeError> {
     if let Value::Number(n1) = args[0] {
         vm.state
             .stack
@@ -193,7 +197,7 @@ fn math_log(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), Runtim
     Ok(())
 }
 
-fn math_log1p(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
+fn math_log1p(vm: &mut VM, args: &Vec<Value>, _: CallObjectRef) -> Result<(), RuntimeError> {
     if let Value::Number(n1) = args[0] {
         vm.state
             .stack
@@ -207,7 +211,7 @@ fn math_log1p(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), Runt
 simple_math!(math_log10, log10);
 simple_math!(math_log2, log2);
 
-fn math_max(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
+fn math_max(vm: &mut VM, args: &Vec<Value>, _: CallObjectRef) -> Result<(), RuntimeError> {
     let mut max = if let Value::Number(n) = args[0] {
         n
     } else {
@@ -224,7 +228,7 @@ fn math_max(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), Runtim
     Ok(())
 }
 
-fn math_min(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
+fn math_min(vm: &mut VM, args: &Vec<Value>, _: CallObjectRef) -> Result<(), RuntimeError> {
     let mut min = if let Value::Number(n) = args[0] {
         n
     } else {
@@ -243,7 +247,7 @@ fn math_min(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), Runtim
 
 simple_math!(math_round, round);
 
-fn math_sign(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
+fn math_sign(vm: &mut VM, args: &Vec<Value>, _: CallObjectRef) -> Result<(), RuntimeError> {
     if let Value::Number(n) = args[0] {
         vm.state.stack.push(Value::Number(if n == 0.0 {
             n
@@ -265,12 +269,12 @@ simple_math!(math_tan, tan);
 simple_math!(math_tanh, tanh);
 simple_math!(math_trunc, trunc);
 
-fn math_random(vm: &mut VM, _: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
+fn math_random(vm: &mut VM, _: &Vec<Value>, _: CallObjectRef) -> Result<(), RuntimeError> {
     vm.state.stack.push(Value::Number(random::<f64>()));
     Ok(())
 }
 
-fn math_pow(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
+fn math_pow(vm: &mut VM, args: &Vec<Value>, _: CallObjectRef) -> Result<(), RuntimeError> {
     if let Value::Number(f1) = args[0] {
         if let Value::Number(f2) = args[1] {
             vm.state.stack.push(Value::Number(f1.powf(f2)));

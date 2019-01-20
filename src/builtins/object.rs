@@ -1,4 +1,4 @@
-use vm::{callobj::CallObject, error::RuntimeError, value::*, vm::VM};
+use vm::{error::RuntimeError, value::*, vm::VM};
 
 thread_local!(
     pub static OBJECT_PROTOTYPE: Value =
@@ -12,7 +12,7 @@ thread_local!(
 );
 
 pub fn init() -> Value {
-    let prototype = OBJECT_PROTOTYPE.with(|x| x.clone());
+    let mut prototype = OBJECT_PROTOTYPE.with(|x| x.clone());
     // Object constructor
     let obj = Value::builtin_function(
         new,
@@ -26,7 +26,7 @@ pub fn init() -> Value {
 }
 
 /// https://www.ecma-international.org/ecma-262/6.0/#sec-object-objects
-fn new(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
+fn new(vm: &mut VM, args: &Vec<Value>, _: CallObjectRef) -> Result<(), RuntimeError> {
     if args.len() == 0 {
         vm.set_return_value(Value::object_from_npp(&vec![]));
         return Ok(());
@@ -46,7 +46,7 @@ fn new(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeErro
     }
 }
 
-fn create(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
+fn create(vm: &mut VM, args: &Vec<Value>, _: CallObjectRef) -> Result<(), RuntimeError> {
     let maybe_obj = match args.len() {
         0 => {
             return Err(RuntimeError::General(
@@ -62,8 +62,10 @@ fn create(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeE
         Value::Object(map, ObjectKind::Ordinary) => {
             let new_obj = Value::object_from_npp(&vec![]);
             let proto = new_obj.get_property(Value::string("__proto__".to_string()), None);
-            for (name, prop) in unsafe { (**map).iter() } {
-                proto.set_property(Value::string(name.to_string()), prop.clone().val, None)
+            for (name, prop) in (*map).iter() {
+                proto
+                    .clone()
+                    .set_property(Value::string(name.to_string()), prop.clone().val, None)
             }
             new_obj
         }

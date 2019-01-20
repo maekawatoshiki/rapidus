@@ -1,11 +1,10 @@
 use chrono::Utc;
 use libc;
 use llvm::core::*;
-use rustc_hash::FxHashMap;
 use std::{ffi::CString, thread, time};
 
 use super::{
-    callobj::{CallObject, CallObjectRef},
+    callobj::CallObject,
     error::*,
     task::{Task, TaskManager, TimerKind},
     value::*,
@@ -38,6 +37,7 @@ pub struct VMState {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+/// Value or Runtime error to be returned after finally clause.
 pub enum TryReturn {
     Value(Value),
     Error(RuntimeError),
@@ -91,14 +91,16 @@ impl ConstantTable {
 impl VM {
     pub fn new(global_vals: CallObjectRef) -> VM {
         let jit = unsafe { TracingJit::new() };
-        let global_vals = unsafe { &mut *global_vals };
+        let mut global_vals = global_vals.clone();
+
+        global_vals.set_value("p".to_string(), Value::default_builtin_function(builtin::p));
         // TODO: Support for 'require' is not enough.
         global_vals.set_value(
             "require".to_string(),
             Value::default_builtin_function(builtin::require),
         );
 
-        let module_exports = Value::object(gc::new(FxHashMap::default()));
+        let module_exports = Value::object_from_npp(&vec![]);
         global_vals.set_value("module".to_string(), {
             make_object!(
                 exports:    module_exports.clone()
@@ -106,43 +108,41 @@ impl VM {
         });
         global_vals.set_value("exports".to_string(), module_exports);
 
-        unsafe {
-            global_vals.set_value("console".to_string(), {
-                let func_log = Value::builtin_function_with_jit(
-                    builtin::console_log,
-                    BuiltinJITFuncInfo::ConsoleLog {
-                        bool: (
-                            builtin::jit_console_log_bool as *mut libc::c_void,
-                            LLVMAddFunction(
-                                jit.module,
-                                CString::new("jit_console_log_bool").unwrap().as_ptr(),
-                                LLVMFunctionType(
-                                    LLVMVoidType(),
-                                    vec![LLVMInt1TypeInContext(jit.context)]
-                                        .as_mut_slice()
-                                        .as_mut_ptr(),
-                                    1,
-                                    0,
-                                ),
+        global_vals.set_value("console".to_string(), {
+            let func_log = Value::builtin_function_with_jit(
+                builtin::console_log,
+                BuiltinJITFuncInfo::ConsoleLog {
+                    bool: (builtin::jit_console_log_bool as *mut libc::c_void, unsafe {
+                        LLVMAddFunction(
+                            jit.module,
+                            CString::new("jit_console_log_bool").unwrap().as_ptr(),
+                            LLVMFunctionType(
+                                LLVMVoidType(),
+                                vec![LLVMInt1TypeInContext(jit.context)]
+                                    .as_mut_slice()
+                                    .as_mut_ptr(),
+                                1,
+                                0,
                             ),
-                        ),
-                        f64: (
-                            builtin::jit_console_log_f64 as *mut libc::c_void,
-                            LLVMAddFunction(
-                                jit.module,
-                                CString::new("jit_console_log_f64").unwrap().as_ptr(),
-                                LLVMFunctionType(
-                                    LLVMVoidType(),
-                                    vec![LLVMDoubleTypeInContext(jit.context)]
-                                        .as_mut_slice()
-                                        .as_mut_ptr(),
-                                    1,
-                                    0,
-                                ),
+                        )
+                    }),
+                    f64: (builtin::jit_console_log_f64 as *mut libc::c_void, unsafe {
+                        LLVMAddFunction(
+                            jit.module,
+                            CString::new("jit_console_log_f64").unwrap().as_ptr(),
+                            LLVMFunctionType(
+                                LLVMVoidType(),
+                                vec![LLVMDoubleTypeInContext(jit.context)]
+                                    .as_mut_slice()
+                                    .as_mut_ptr(),
+                                1,
+                                0,
                             ),
-                        ),
-                        string: (
-                            builtin::jit_console_log_string as *mut libc::c_void,
+                        )
+                    }),
+                    string: (
+                        builtin::jit_console_log_string as *mut libc::c_void,
+                        unsafe {
                             LLVMAddFunction(
                                 jit.module,
                                 CString::new("jit_console_log_string").unwrap().as_ptr(),
@@ -154,22 +154,24 @@ impl VM {
                                     1,
                                     0,
                                 ),
-                            ),
-                        ),
-                        newline: (
-                            builtin::jit_console_log_newline as *mut libc::c_void,
+                            )
+                        },
+                    ),
+                    newline: (
+                        builtin::jit_console_log_newline as *mut libc::c_void,
+                        unsafe {
                             LLVMAddFunction(
                                 jit.module,
                                 CString::new("jit_console_log_newline").unwrap().as_ptr(),
                                 LLVMFunctionType(LLVMVoidType(), vec![].as_mut_ptr(), 0, 0),
-                            ),
-                        ),
-                    },
-                );
-                let npp = make_npp!(log: func_log);
-                Value::object_from_npp(&npp)
-            });
-        }
+                            )
+                        },
+                    ),
+                },
+            );
+            let npp = make_npp!(log: func_log);
+            Value::object_from_npp(&npp)
+        });
 
         let llvm_process_stdout_write = unsafe {
             LLVMAddFunction(
@@ -236,7 +238,15 @@ impl VM {
         use builtins::date::DATE_OBJ;
         global_vals.set_value("Date".to_string(), DATE_OBJ.with(|x| x.clone()));
         global_vals.set_value("Math".to_string(), builtins::math::init(jit.clone()));
-
+        /*
+                println!(
+                    "CallObject:{} Value:{} PropMapRef:{} ArrayValue:{}",
+                    std::mem::size_of::<CallObject>(),
+                    std::mem::size_of::<Value>(),
+                    std::mem::size_of::<PropMapRef>(),
+                    std::mem::size_of::<ArrayValue>()
+                );
+        */
         VM {
             jit: jit,
             state: VMState {
@@ -381,6 +391,8 @@ impl VM {
             thread::sleep(time::Duration::from_millis(1));
         }
 
+        gc::free_all();
+
         res
     }
 
@@ -399,9 +411,9 @@ impl VM {
                 print!("stack trace: ");
                 for (n, v) in self.state.stack.iter().enumerate() {
                     if n == 0 {
-                        print!("{}", v.format(1));
+                        print!("{}", v.format(1, false));
                     } else {
-                        print!(" | {}", v.format(1));
+                        print!(" | {}", v.format(1, false));
                     }
                 }
                 println!();
@@ -421,8 +433,12 @@ impl VM {
     fn do_run(&mut self, iseq: &ByteCode) -> Result<bool, RuntimeError> {
         self.store_state();
         self.trystate_stack.push(TryState::None);
-
+        //let mut count = 0;
         loop {
+            //count += 1;
+            //if count % 1000 == 0 {
+            //    gc::mark_and_sweep(&mut self.state)
+            //};
             let code = iseq[self.state.pc as usize];
             if self.is_debug {
                 let trystate = self.trystate_stack.last().unwrap();
@@ -436,7 +452,7 @@ impl VM {
                     scopelen,
                     stacklen,
                     match stacktop {
-                        Some(val) => val.format(0),
+                        Some(val) => val.format(0, false),
                         None => "".to_string(),
                     },
                 );
@@ -456,6 +472,7 @@ impl VM {
                 }
 
                 Err(err) => {
+                    // Runtime error or THROW in try-catch.
                     let mut error: Option<RuntimeError> = None;
                     {
                         let trystate = self.trystate_stack.last_mut().unwrap();
@@ -504,11 +521,12 @@ impl VM {
         args: &Vec<Value>,
     ) -> Result<bool, RuntimeError> {
         match callee {
-            Value::Object(_, ObjectKind::BuiltinFunction(box (ref info, ref callobj))) => {
-                (info.func)(self, args, &callobj)?;
+            Value::Object(_, ObjectKind::BuiltinFunction(box (ref info, callobj))) => {
+                (info.func)(self, args, callobj.clone())?;
                 return Ok(true);
             }
             Value::Object(_, ObjectKind::Function(box (func_info, callobject))) => {
+                //println!("call this:{}", callobject.this.clone().format(1, true));
                 call_function(self, func_info.clone(), &mut callobject.clone(), args)
             }
             ref e => Err(RuntimeError::Type(format!(
@@ -560,13 +578,12 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
         Value::Object(map, ObjectKind::BuiltinFunction(box (x, mut callobj))) => {
             *callobj.this = Value::object_from_npp(&vec![(
                 "__proto__".to_string(),
-                Property::new(unsafe {
-                    (*map)
-                        .get("prototype")
+                Property::new(
+                    map.get("prototype")
                         .unwrap_or(&Value::Undefined.to_property())
                         .val
-                        .clone()
-                }),
+                        .clone(),
+                ),
             )]);
 
             // https://tc39.github.io/ecma262/#sec-date-constructor
@@ -577,29 +594,23 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
                 date_new
             } else {
                 x.func
-            })(self_, &args, &callobj)?;
+            })(self_, &args, callobj)?;
         }
-        Value::Object(map, ObjectKind::Function(box (func_info, mut callobj))) => {
+        Value::Object(map, ObjectKind::Function(box (func_info, callobj))) => {
             // similar code is used some times. should make it a function.
-            let new_this = unsafe {
-                Value::object_from_npp(&vec![(
-                    "__proto__".to_string(),
-                    Property::new(
-                        (*map)
-                            .get("prototype")
-                            .unwrap_or(&Property::new(Value::Undefined))
-                            .val
-                            .clone(),
-                    ),
-                )])
-            };
-            //callobj.clear_args_vals(func_info.clone());
-            callobj.vals = gc::new(unsafe { (*callobj.vals).clone() });
-            callobj.apply_arguments(func_info.clone(), &args);
+            let new_this = Value::object_from_npp(&vec![(
+                "__proto__".to_string(),
+                Property::new(
+                    map.get("prototype")
+                        .unwrap_or(&Property::new(Value::Undefined))
+                        .val
+                        .clone(),
+                ),
+            )]);
+            let callobj =
+                callobj.new_callobj_from_func(func_info.clone(), &args, Some(new_this.clone()));
 
-            *callobj.this = new_this.clone();
-            self_.state.scope.push(gc::new(callobj));
-            //self_.store_state();
+            self_.state.scope.push(callobj);
 
             let res = self_.do_run(&func_info.iseq);
 
@@ -651,10 +662,9 @@ pub fn call_function(
         Value::Number(_) => true,
         _ => false,
     });
-    //callobj.clear_args_vals(func_info.clone());
-    callobj.vals = gc::new(unsafe { (*callobj.vals).clone() });
-    callobj.apply_arguments(func_info.clone(), args);
-    self_.state.scope.push(gc::new(callobj.clone()));
+
+    let callobj = callobj.new_callobj_from_func(func_info.clone(), &args, None);
+    self_.state.scope.push(callobj);
 
     let FuncInfo { id, iseq, .. } = func_info.clone();
 
@@ -663,7 +673,7 @@ pub fn call_function(
         if let Some(f) = unsafe {
             self_
                 .jit
-                .can_jit(func_info, &*scope, &self_.const_table, argc)
+                .can_jit(func_info, scope, &self_.const_table, argc)
         } {
             self_
                 .state
@@ -701,7 +711,7 @@ fn create_object(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> 
 
     self_.state.stack.push(Value::object_from_npp(&npp));
 
-    gc::mark_and_sweep(&self_.state);
+    gc::mark_and_sweep(self_);
 
     Ok(true)
 }
@@ -718,7 +728,7 @@ fn create_array(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
 
     self_.state.stack.push(Value::array_from_elems(arr));
 
-    gc::mark_and_sweep(&self_.state);
+    gc::mark_and_sweep(self_);
 
     Ok(true)
 }
@@ -758,14 +768,14 @@ fn push_const(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
 
 fn push_this(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // push_this
-    let this = unsafe { *(**self_.state.scope.last().unwrap()).this.clone() };
-    self_.state.stack.push(this);
+    let this = self_.state.scope.last().unwrap().this.clone();
+    self_.state.stack.push(*this);
     Ok(true)
 }
 
 fn push_arguments(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // push_arguments
-    let callobj = self_.state.scope.last().unwrap().clone();
+    let callobj = self_.state.scope.last_mut().unwrap().clone();
     self_.state.stack.push(Value::arguments(callobj));
     Ok(true)
 }
@@ -1038,7 +1048,7 @@ fn get_member(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // get_global
     let member = self_.state.stack.pop().unwrap();
     let parent = self_.state.stack.pop().unwrap();
-    let val = parent.get_property(member, Some(self_.state.scope.last().unwrap()));
+    let val = parent.get_property(member, Some(self_.state.scope.last().unwrap().clone()));
     self_.state.stack.push(val);
     Ok(true)
 }
@@ -1046,9 +1056,9 @@ fn get_member(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
 fn set_member(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // get_global
     let member = self_.state.stack.pop().unwrap();
-    let parent = self_.state.stack.pop().unwrap();
+    let mut parent = self_.state.stack.pop().unwrap().clone();
     let val = self_.state.stack.pop().unwrap();
-    parent.set_property(member, val, Some(self_.state.scope.last().unwrap()));
+    parent.set_property(member, val, Some(self_.state.scope.last().unwrap().clone()));
     Ok(true)
 }
 
@@ -1166,12 +1176,14 @@ fn return_try(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
 
 fn push_scope(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1;
-    let &base_callobj = self_.state.scope.last().unwrap();
-    let co = unsafe { (*base_callobj).clone() };
-    let mut callobj = CallObject::new(Value::object_from_npp(&vec![]));
-    callobj.parent = Some(base_callobj);
-    callobj.this = co.this;
-    self_.state.scope.push(gc::new(callobj));
+    let mut callobj = CallObject::new_with_this(Value::object_from_npp(&vec![]));
+
+    let base_callobj = self_.state.scope.last().unwrap().clone();
+
+    callobj.parent = Some(base_callobj.clone());
+    callobj.this = base_callobj.this.clone();
+
+    self_.state.scope.push(callobj);
     Ok(true)
 }
 
@@ -1220,7 +1232,7 @@ fn get_value(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1;
     get_int32!(self_, iseq, name_id, usize);
     let name = &self_.const_table.string[name_id];
-    let val = unsafe { (**self_.state.scope.last().unwrap()).get_value(name)? };
+    let val = self_.state.scope.last().unwrap().get_value(name)?;
     self_.state.stack.push(val);
     Ok(true)
 }
@@ -1235,12 +1247,15 @@ fn set_value(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
     if let Value::Object(_, ObjectKind::Function(box (_, ref mut cobj)))
     | Value::Object(_, ObjectKind::BuiltinFunction(box (_, ref mut cobj))) = &mut val
     {
-        unsafe {
-            cobj.this = (**self_.state.scope.last().unwrap()).this.clone();
-        }
+        cobj.this = self_.state.scope.last().unwrap().this.clone();
     }
 
-    unsafe { (**self_.state.scope.last().unwrap()).set_value_if_exist(name, val) };
+    self_
+        .state
+        .scope
+        .last_mut()
+        .unwrap()
+        .set_value_if_exist(name, val);
 
     Ok(true)
 }
@@ -1249,7 +1264,7 @@ fn decl_var(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1;
     get_int32!(self_, iseq, name_id, usize);
     let name = self_.const_table.string[name_id].clone();
-    unsafe { (**self_.state.scope.last().unwrap()).set_value(name, Value::Undefined) };
+    (*self_.state.scope.last_mut().unwrap()).set_value(name, Value::Undefined);
     Ok(true)
 }
 

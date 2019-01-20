@@ -1,9 +1,7 @@
 use bytecode_gen::{ByteCode, ByteCodeGen, VMInst};
 use node::{BinOp, FormalParameter, FormalParameters, Node, NodeBase, PropertyDefinition, UnaryOp};
-use vm::{
-    callobj::{CallObject, CallObjectRef},
-    value::Value,
-};
+use vm::callobj::CallObject;
+use vm::value::*;
 
 #[derive(Clone, Debug)]
 pub enum Error {
@@ -213,7 +211,7 @@ impl VMCodeGen {
     ) -> Result<(), Error> {
         self.func_header_info.push(vec![]);
 
-        let mut new_callobj = CallObject::new(unsafe { Value::object((*self.global_varmap).vals) });
+        let new_callobj = CallObject::new_with_this(Value::object(self.global_varmap.vals.clone()));
         let mut func_iseq = vec![];
 
         self.bytecode_gen.gen_create_context(&mut func_iseq);
@@ -243,7 +241,7 @@ impl VMCodeGen {
 
         self.set_function_header(&mut func_iseq);
 
-        let val = Value::function(func_iseq.clone(), params, &mut new_callobj);
+        let val = Value::function(func_iseq.clone(), params, new_callobj);
 
         self.func_header_info.pop();
 
@@ -266,7 +264,7 @@ impl VMCodeGen {
     ) -> Result<(), Error> {
         self.func_header_info.push(vec![]);
 
-        let mut new_callobj = CallObject::new(unsafe { Value::object((*self.global_varmap).vals) });
+        let new_callobj = CallObject::new_with_this(Value::object(self.global_varmap.vals.clone()));
 
         let mut func_iseq = vec![];
 
@@ -297,7 +295,7 @@ impl VMCodeGen {
 
         self.set_function_header(&mut func_iseq);
 
-        let val = Value::function(func_iseq.clone(), params, &mut new_callobj);
+        let val = Value::function(func_iseq.clone(), params, new_callobj);
 
         self.bytecode_gen.gen_push_const(val, iseq);
         self.bytecode_gen.gen_update_parent_scope(iseq);

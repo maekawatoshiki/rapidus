@@ -2,10 +2,6 @@ use builtin::{BuiltinFuncInfo, BuiltinJITFuncInfo, BuiltinJITFuncTy};
 use builtins::math;
 use bytecode_gen::{ByteCode, VMInst};
 use id::Id;
-use vm;
-use vm::callobj::CallObject;
-use vm::value::*;
-
 use libc;
 use llvm;
 use llvm::core::*;
@@ -15,6 +11,8 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use std::ffi::CString;
 use std::mem::transmute;
 use std::ptr;
+use vm;
+use vm::value::*;
 
 const MAX_FUNCTION_PARAMS: usize = 3;
 
@@ -199,7 +197,7 @@ impl TracingJit {
     pub unsafe fn can_jit(
         &mut self,
         func_info: vm::value::FuncInfo,
-        scope: &CallObject,
+        scope: CallObjectRef,
         const_table: &vm::vm::ConstantTable,
         argc: usize,
     ) -> Option<fn()> {
@@ -277,7 +275,7 @@ impl TracingJit {
         &mut self,
         name: String,
         func_info: vm::value::FuncInfo,
-        scope: &CallObject,
+        scope: CallObjectRef,
         const_table: &vm::vm::ConstantTable,
         argc: usize,
     ) -> Result<LLVMValueRef, ()> {
@@ -534,7 +532,7 @@ impl TracingJit {
         let mut compilation_failed = false;
         if let Err(_) = self.gen_body(
             iseq,
-            &**vm_state.scope.last().unwrap(),
+            vm_state.scope.last().unwrap().clone(),
             const_table,
             bgn,
             bgn,
@@ -616,7 +614,7 @@ impl TracingJit {
         end: usize,
     ) -> Result<Vec<(usize, ValueType)>, ()> {
         let mut local_vars = FxHashSet::default();
-        let local_scope = &**vm_state.scope.last().unwrap();
+        let local_scope = &*vm_state.scope.last().unwrap();
 
         while pc < end {
             let inst_size = try_opt!(VMInst::get_inst_size(iseq[pc]));
@@ -625,7 +623,7 @@ impl TracingJit {
                     pc += 1;
                     get_int32!(iseq, pc, id, usize);
                     let name = &const_table.string[id];
-                    if let Some(prop) = (*local_scope.vals).get(name) {
+                    if let Some(prop) = local_scope.vals.get(name) {
                         let ty = if let Some(ty) = get_value_type(&prop.val) {
                             ty
                         } else {
@@ -644,7 +642,7 @@ impl TracingJit {
     unsafe fn gen_body(
         &mut self,
         iseq: &ByteCode,
-        scope: &CallObject,
+        scope: CallObjectRef,
         const_table: &vm::vm::ConstantTable,
         func_id: FuncId,
         bgn: usize,
@@ -1655,12 +1653,12 @@ pub unsafe fn run_loop_llvm_func(
     const_table: &vm::vm::ConstantTable,
     local_vars: &Vec<(usize, ValueType)>,
 ) -> Option<isize> {
-    let scope = *vm_state.scope.last().unwrap();
+    let scope = &*vm_state.scope.last().unwrap();
     let mut args_of_local_vars = vec![];
 
     for (id, _) in local_vars {
         let name = &const_table.string[*id];
-        args_of_local_vars.push(match (*scope).get_value(name).unwrap() {
+        args_of_local_vars.push(match scope.get_value(name).unwrap() {
             vm::value::Value::Number(f) => Box::into_raw(Box::new(f)) as *mut libc::c_void,
             vm::value::Value::Bool(b) => Box::into_raw(Box::new(b)) as *mut libc::c_void,
             _ => return None,
@@ -1675,7 +1673,7 @@ pub unsafe fn run_loop_llvm_func(
 
     for (i, (id, ty)) in local_vars.iter().enumerate() {
         let name = const_table.string[*id].clone();
-        (*scope).set_value_if_exist(
+        scope.clone().set_value_if_exist(
             name,
             match ty {
                 ValueType::Number => vm::value::Value::Number(*(args_of_local_vars[i] as *mut f64)),

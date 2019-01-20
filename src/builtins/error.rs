@@ -1,4 +1,5 @@
-use vm::{callobj::CallObject, error::RuntimeError, value::Property, value::Value, vm::VM};
+use vm::value::{CallObjectRef, Property, Value};
+use vm::{error::RuntimeError, vm::VM};
 
 thread_local! {
     pub static ERROR_PROTOTYPE: Value = {
@@ -10,14 +11,14 @@ thread_local! {
 }
 
 pub fn init() -> Value {
-    let prototype = ERROR_PROTOTYPE.with(|x| x.clone());
-    let obj = Value::builtin_function(new, None, &mut vec![], Some(prototype.clone()));
+    let mut prototype = ERROR_PROTOTYPE.with(|x| x.clone());
+    let obj = Value::builtin_function(error_new, None, &mut vec![], Some(prototype.clone()));
     prototype.set_constructor(obj.clone());
 
     obj
 }
 
-fn new(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
+fn error_new(vm: &mut VM, args: &Vec<Value>, _: CallObjectRef) -> Result<(), RuntimeError> {
     let message = match args.len() {
         0 => "".to_string(),
         _ => args[0].to_string(),

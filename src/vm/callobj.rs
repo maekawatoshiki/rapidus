@@ -1,17 +1,13 @@
-use rustc_hash::FxHashMap;
-use std::collections::hash_map::Entry;
-
 use super::error::RuntimeError;
 use super::value::*;
 use gc;
-use gc::GcType;
+use rustc_hash::FxHashMap;
 
-pub type CallObjectRef = GcType<CallObject>;
-
-#[derive(Clone, Debug)]
+#[derive(Clone)]
+/// 80 bytes
 pub struct CallObject {
-    /// map of variables belong to the scope.
-    pub vals: PropMap,
+    /// map of variables belongs to the scope.
+    pub vals: PropMapRef,
     /// name of rest parameters. (if the function has no rest parameters, None.)
     pub rest_params: Option<String>,
     /// set of the name of parameter corresponds to applied arguments when the function was invoked.
@@ -27,9 +23,18 @@ impl PartialEq for CallObject {
         self.vals == other.vals && self.parent == other.parent
     }
 }
+/*
+impl fmt::Debug for CallObject {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let ptr_co: *const CallObject = &*self;
+        let ptr_map: *const PropMapRef = *self.vals;
+        write!(f, "CO:[{:?}] Map:[{:?}]", ptr_co, ptr_map)
+    }
+}
 
+*/
 impl CallObject {
-    pub fn new(this: Value) -> CallObject {
+    fn new(this: Value) -> CallObject {
         CallObject {
             vals: gc::new(FxHashMap::default()),
             rest_params: None,
@@ -39,89 +44,72 @@ impl CallObject {
         }
     }
 
+    pub fn new_with_this(this: Value) -> CallObjectRef {
+        gc::new(CallObject::new(this))
+    }
+
+    /// create new CallObj for func invocation.
+    /// this: None => use self.this.
+    pub fn new_callobj_from_func(
+        &self,
+        func_info: FuncInfo,
+        args: &Vec<Value>,
+        this: Option<Value>,
+    ) -> CallObjectRef {
+        let mut callobj = match this {
+            Some(this) => CallObject::new(this),
+            None => CallObject::new(*self.this.clone()),
+        };
+        callobj.apply_arguments(func_info.clone(), args);
+        callobj.parent = self.clone().parent;
+        gc::new(callobj)
+    }
+
     pub fn new_global() -> CallObjectRef {
         let vals = gc::new(FxHashMap::default());
-        let callobj = gc::new(CallObject {
+        gc::new(CallObject {
             vals: vals.clone(),
             rest_params: None,
             arguments: vec![],
-            this: Box::new(Value::Undefined),
+            this: Box::new(Value::Object(vals.clone(), ObjectKind::Ordinary)),
             parent: None,
-        });
-        unsafe {
-            *(*callobj).this = Value::Object(vals, ObjectKind::Ordinary);
-        }
-        callobj
-    }
-
-    pub fn apply_arguments(&mut self, func_info: FuncInfo, args: &Vec<Value>) {
-        for (name, _) in &func_info.params {
-            self.set_value(name.to_string(), Value::Undefined);
-        }
-        let mut rest_args = vec![];
-        let mut rest_param_name = None;
-        self.arguments.clear();
-
-        for (i, arg) in args.iter().enumerate() {
-            if let Some(name) = self.get_parameter_nth_name(func_info.clone(), i) {
-                // When rest parameter. TODO: More features of rest parameter
-                if func_info.params[i].1 {
-                    self.arguments.push((None, arg.clone()));
-                    rest_param_name = Some(name);
-                    rest_args.push(arg.clone());
-                } else {
-                    self.arguments.push((Some(name.clone()), arg.clone()));
-                    self.set_value(name.clone(), arg.clone());
-                }
-            } else {
-                self.arguments.push((None, arg.clone()));
-                rest_args.push(arg.clone());
-            }
-        }
-
-        if let Some(rest_param_name) = rest_param_name {
-            self.set_value(rest_param_name.clone(), Value::array_from_elems(rest_args));
-            self.rest_params = Some(rest_param_name);
-        };
+        })
     }
 
     pub fn set_value(&mut self, name: String, val: Value) {
-        unsafe {
-            (*self.vals).insert(name, Property::new(val));
-        }
+        self.vals.insert(name, val.to_property());
     }
 
     pub fn set_value_if_exist(&mut self, name: String, val: Value) {
-        unsafe {
-            match (*self.vals).entry(name.clone()) {
-                Entry::Occupied(ref mut v) => *v.get_mut() = Property::new(val),
-                Entry::Vacant(v) => {
-                    match self.parent {
-                        Some(ref parent) => return (**parent).set_value_if_exist(name, val),
-                        None => v.insert(Property::new(val)),
-                    };
+        if self.vals.contains_key(&name.clone()) {
+            self.vals.insert(name.clone(), val.to_property());
+        } else {
+            match self.parent {
+                Some(ref mut parent) => {
+                    return parent.set_value_if_exist(name, val);
                 }
-            }
+                None => {
+                    self.vals.insert(name, val.to_property());
+                }
+            };
         }
     }
 
     pub fn get_value(&self, name: &String) -> Result<Value, RuntimeError> {
-        unsafe {
-            if let Some(prop) = (*self.vals).get(name) {
-                return Ok(prop.val.clone());
-            }
-            match self.parent {
-                Some(ref parent) => (**parent).get_value(name),
-                None => Err(RuntimeError::Reference(format!(
-                    "reference error: '{}' is not defined",
-                    name
-                ))),
-            }
+        if let Some(prop) = self.vals.get(name) {
+            return Ok(prop.val.clone());
+        }
+        match self.parent {
+            Some(ref parent) => parent.get_value(name),
+            None => Err(RuntimeError::Reference(format!(
+                "reference error: '{}' is not defined",
+                name
+            ))),
         }
     }
 
     pub fn get_local_value(&self, name: &String) -> Result<Value, RuntimeError> {
-        if let Some(prop) = unsafe { (*self.vals).get(name) } {
+        if let Some(prop) = self.vals.get(name) {
             Ok(prop.val.clone())
         } else {
             Err(RuntimeError::General(
@@ -164,5 +152,38 @@ impl CallObject {
             return Some(func_info.params[n].0.clone());
         }
         None
+    }
+}
+
+impl CallObject {
+    pub fn apply_arguments(&mut self, func_info: FuncInfo, args: &Vec<Value>) {
+        for (name, _) in &func_info.params {
+            self.set_value(name.to_string(), Value::Undefined);
+        }
+        let mut rest_args = vec![];
+        let mut rest_param_name = None;
+        self.arguments.clear();
+
+        for (i, arg) in args.iter().enumerate() {
+            if let Some(name) = self.get_parameter_nth_name(func_info.clone(), i) {
+                // When rest parameter. TODO: More features of rest parameter
+                if func_info.params[i].1 {
+                    self.arguments.push((None, arg.clone()));
+                    rest_param_name = Some(name);
+                    rest_args.push(arg.clone());
+                } else {
+                    self.arguments.push((Some(name.clone()), arg.clone()));
+                    self.set_value(name.clone(), arg.clone());
+                }
+            } else {
+                self.arguments.push((None, arg.clone()));
+                rest_args.push(arg.clone());
+            }
+        }
+
+        if let Some(rest_param_name) = rest_param_name {
+            self.set_value(rest_param_name.clone(), Value::array_from_elems(rest_args));
+            self.rest_params = Some(rest_param_name);
+        };
     }
 }

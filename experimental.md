@@ -5,16 +5,16 @@
 - 従来の `Value`, `ValueBase` 構造体をそれぞれ `Property`, `Value` 構造体へ変更した。
 writable, configurable などの属性は `Property` のメンバとなる。
 - `Value`は`to_property(&self)`で`Property`に変換できる。
-- 識別子とProperyのタプルとして`NamePropPair`, プロパティのmapとして`PropMap`を定義した。
+- 識別子とProperyのタプルとして`NamePropPair`, プロパティのmapとして`PropMapRef`を定義した。
 - `Object`とその亜種（`Array`, `Function`, `Date`, `Arguments` など）はプロパティのマップのみを`Value`に残し、他の情報は`ObjectKind`列挙体にラップした。
 - `Function`については`CallObject`からパラメータの名称情報を`ObjectKind`の中の`FuncInfo`構造体へ移動した。静的情報は`FuncInfo`へ、関数呼び出しのたびに動的に生成する情報は`CallObject`に格納される。
 
 ```Rust
 pub type NamePropPair = (String, Property);
-pub type PropMap = GcType<FxHashMap<String, Property>>;
+pub type PropMapRef = GcType<FxHashMap<String, Property>>;
 
 pub enum Value {
-    Object(PropMap, ObjectKind),
+    Object(PropMapRef, ObjectKind),
     ...
 }
 
@@ -34,12 +34,12 @@ pub struct FuncInfo {
 }
 ```
 
-- `Value::propmap_from_npp(&Vec<NamePropPair>)`で`PropMap`、`Value::object_from_npp(&Vec<NamePropPair)`で`Value::Object`、`Value::array_from_elems(Vec<Value>)`で`Value::Array`を生成でき,ハッシュマップやGCの実装を隠蔽できる。
+- `Value::propmap_from_npp(&Vec<NamePropPair>)`で`PropMapRef`、`Value::object_from_npp(&Vec<NamePropPair)`で`Value::Object`、`Value::array_from_elems(Vec<Value>)`で`Value::Array`を生成でき,ハッシュマップやGCの実装を隠蔽できる。
 - make_npp!マクロとmake_object!マクロにより`NamePropPair`と`Value::Object`の生成が行える。
 - ただ、マクロを多用するとエラー表示が分かりづらくなる（マクロ定義の箇所におけるエラーとなるっぽい）ので、あまり大々的には使用しないほうがいいかも。
 
 ```Rust
-pub fn propmap_from_npp(npp: &Vec<NamePropPair>) -> PropMap {
+pub fn propmap_from_npp(npp: &Vec<NamePropPair>) -> PropMapRef {
     let mut map = FxHashMap::default();
     for p in npp {
         map.insert(p.0.clone(), p.1.clone());
@@ -62,7 +62,7 @@ let obj: Value = make_object!(
     __proto__:  make_object!()
 );
 
-let map: PropMap = Value::propmap_from_npp(&make_npp!(
+let map: PropMapRef = Value::propmap_from_npp(&make_npp!(
     push:   Value::default_builtin_function(prototype_push),
     pop:    Value::default_builtin_function(prototype_pop),
     map:    Value::default_builtin_function(prototype_map)

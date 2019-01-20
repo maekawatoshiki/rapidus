@@ -1,12 +1,11 @@
 #![macro_use]
-
-use super::callobj::{CallObject, CallObjectRef};
+use super::callobj::CallObject;
 use super::error::*;
 use builtin::{BuiltinFuncInfo, BuiltinFuncTy, BuiltinJITFuncInfo};
 use builtins::function;
 use bytecode_gen::ByteCode;
 use chrono::{DateTime, Utc};
-pub use gc;
+use gc;
 use gc::GcType;
 use id::{get_unique_id, Id};
 pub use rustc_hash::FxHashMap;
@@ -17,9 +16,12 @@ pub type FuncId = Id;
 pub type RawStringPtr = *mut libc::c_char;
 
 pub type NamePropPair = (String, Property);
-pub type PropMap = GcType<FxHashMap<String, Property>>;
+/// 24 bytes
+pub type PropMapRef = GcType<FxHashMap<String, Property>>;
+pub type CallObjectRef = GcType<CallObject>;
+pub type ArrayValueRef = GcType<ArrayValue>;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct Property {
     pub val: Value,
     pub writable: bool,
@@ -44,18 +46,18 @@ impl FuncInfo {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum ObjectKind {
-    Function(Box<(FuncInfo, CallObject)>),
-    BuiltinFunction(Box<(BuiltinFuncInfo, CallObject)>), // id(==0:unknown)
+    Function(Box<(FuncInfo, CallObjectRef)>),
+    BuiltinFunction(Box<(BuiltinFuncInfo, CallObjectRef)>), // id(==0:unknown)
     Ordinary,
-    Array(GcType<ArrayValue>),
+    Array(ArrayValueRef),
     Date(Box<(DateTime<Utc>)>),
     Arguments(CallObjectRef),
 }
 
-// Now 16 bytes
-#[derive(Clone, Debug, PartialEq)]
+// 32 bytes
+#[derive(Clone, PartialEq, Debug)]
 pub enum Value {
     Empty,
     Null,
@@ -63,10 +65,11 @@ pub enum Value {
     Bool(bool),
     Number(f64),
     String(Box<CString>), // TODO: Using CString is good for JIT. However, we need better one instead.
-    Object(PropMap, ObjectKind), // Object(FxHashMap<String, Value>),
+    Object(PropMapRef, ObjectKind), // Object(FxHashMap<String, Value>),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
+/// 32 bytes
 pub struct ArrayValue {
     pub elems: Vec<Property>,
     pub length: usize,
@@ -112,12 +115,8 @@ impl Value {
     }
 
     /// generate JS function object.
-    pub fn function(
-        iseq: ByteCode,
-        params: Vec<(String, bool)>,
-        callobj: &mut CallObject,
-    ) -> Value {
-        let prototype = Value::object_from_npp(&vec![]);
+    pub fn function(iseq: ByteCode, params: Vec<(String, bool)>, callobj: CallObjectRef) -> Value {
+        let mut prototype = Value::object_from_npp(&vec![]);
         let kind = ObjectKind::Function(Box::new((
             FuncInfo::new(get_unique_id(), iseq, params),
             callobj.clone(),
@@ -135,7 +134,7 @@ impl Value {
         val
     }
 
-    /// generate builtin function with JIT, blank PropMap and no prototype.
+    /// generate builtin function with JIT, blank PropMapRef and no prototype.
     pub fn builtin_function_with_jit(
         func: BuiltinFuncTy,
         builtin_jit_func_info: BuiltinJITFuncInfo,
@@ -143,7 +142,7 @@ impl Value {
         Value::builtin_function(func, Some(builtin_jit_func_info), &mut vec![], None)
     }
 
-    /// generate builtin function with blank PropMap and no prototype.
+    /// generate builtin function with blank PropMapRef and no prototype.
     pub fn default_builtin_function(func: BuiltinFuncTy) -> Value {
         Value::builtin_function(func, None, &mut vec![], None)
     }
@@ -163,13 +162,13 @@ impl Value {
             map,
             ObjectKind::BuiltinFunction(Box::new((
                 BuiltinFuncInfo::new(func, builtin_jit_func_info),
-                CallObject::new(Value::Undefined),
+                CallObject::new_with_this(Value::Undefined),
             ))),
         )
     }
 
-    /// make new property map (PropMap) from npp.
-    pub fn propmap_from_npp(npp: &Vec<NamePropPair>) -> PropMap {
+    /// make new property map (PropMapRef) from npp.
+    pub fn propmap_from_npp(npp: &Vec<NamePropPair>) -> PropMapRef {
         let mut map = FxHashMap::default();
         for p in npp {
             map.insert(p.0.clone(), p.1.clone());
@@ -178,22 +177,18 @@ impl Value {
     }
 
     /// register name-value pairs to property map.
-    pub fn insert_propmap(map: PropMap, npp: &Vec<(&'static str, Value)>) {
-        unsafe {
-            for p in npp {
-                (*map).insert(p.0.to_string(), p.1.to_property());
-            }
+    pub fn insert_propmap(mut map: PropMapRef, npp: &Vec<(&'static str, Value)>) {
+        for p in npp {
+            map.insert(p.0.to_string(), p.1.to_property());
         }
     }
 
-    pub fn object(map: PropMap) -> Value {
+    pub fn object(map: PropMapRef) -> Value {
         use builtins::object;
-        unsafe {
-            (*map)
-                .entry("__proto__".to_string())
-                .or_insert(object::OBJECT_PROTOTYPE.with(|x| x.clone()).to_property());
-            Value::Object(map, ObjectKind::Ordinary)
-        }
+        let mut map = map.clone();
+        map.entry("__proto__".to_string())
+            .or_insert(object::OBJECT_PROTOTYPE.with(|x| x.clone()).to_property());
+        Value::Object(map, ObjectKind::Ordinary)
     }
 
     /// make new object from npp.
@@ -202,7 +197,7 @@ impl Value {
         Value::object(map)
     }
 
-    pub fn array(map: PropMap) -> Value {
+    pub fn array(map: PropMapRef) -> Value {
         let ary = ArrayValue::new(vec![]);
         Value::Object(map, ObjectKind::Array(gc::new(ary)))
     }
@@ -244,7 +239,7 @@ impl Value {
         )
     }
 
-    pub fn get_property(&self, property: Value, callobjref: Option<&CallObjectRef>) -> Value {
+    pub fn get_property(&self, property: Value, callobjref: Option<CallObjectRef>) -> Value {
         let property_of_number = || -> Value {
             use builtins::number::NUMBER_PROTOTYPE;
             let val = NUMBER_PROTOTYPE.with(|x| x.clone());
@@ -281,16 +276,14 @@ impl Value {
         let property_of_array = |obj: &Value| -> Value {
             let get_by_idx = |n: usize| -> Value {
                 if let Value::Object(_, ObjectKind::Array(ref arrval)) = obj {
-                    unsafe {
-                        let arr = &(**arrval).elems;
-                        if n >= (**arrval).length {
-                            return Value::Undefined;
-                        }
+                    let arr = &(*arrval).elems;
+                    if n >= (*arrval).length {
+                        return Value::Undefined;
+                    }
 
-                        match arr[n].val {
-                            Value::Empty => Value::Undefined,
-                            ref other => other.clone(),
-                        }
+                    match arr[n].val {
+                        Value::Empty => Value::Undefined,
+                        ref other => other.clone(),
                     }
                 } else {
                     unreachable!("get_property(): Value is not an array.");
@@ -302,7 +295,7 @@ impl Value {
                 Value::Number(n) if is_integer(n) && n >= 0.0 => get_by_idx(n as usize),
                 Value::String(ref s) if s.to_str().unwrap() == "length" => {
                     if let Value::Object(_, ObjectKind::Array(ref arrval)) = obj {
-                        unsafe { Value::Number((**arrval).length as f64) }
+                        Value::Number((*arrval).length as f64)
                     } else {
                         unreachable!("get_property(): Value is not an array.");
                     }
@@ -326,13 +319,13 @@ impl Value {
                     // Index
                     Value::Number(n) if is_integer(n) && n >= 0.0 => callobjref
                         .and_then(|co| {
-                            let co = unsafe { &**co };
+                            let co = &*co;
                             Some(co.get_arguments_nth_value(n as usize).unwrap())
                         })
                         .unwrap_or_else(|| Value::Undefined),
                     Value::String(ref s) if s.to_str().unwrap() == "length" => {
                         let length = callobjref
-                            .and_then(|co| unsafe { Some((**co).get_arguments_length()) })
+                            .and_then(|co| Some((*co).get_arguments_length()))
                             .unwrap_or(0);
                         Value::Number(length as f64)
                     }
@@ -351,7 +344,7 @@ impl Value {
         }
     }
 
-    pub fn set_property(&self, property: Value, value: Value, callobjref: Option<&CallObjectRef>) {
+    pub fn set_property(&mut self, property: Value, value: Value, callobj: Option<CallObjectRef>) {
         fn set_by_idx(ary: &mut ArrayValue, n: usize, val: Value) {
             if n >= ary.length as usize {
                 ary.length = n + 1;
@@ -363,19 +356,19 @@ impl Value {
         };
 
         match self {
-            Value::Object(map, ObjectKind::Array(ref aryval)) => {
+            Value::Object(map, ObjectKind::Array(ref mut aryval)) => {
                 match property {
                     // Index
-                    Value::Number(n) if is_integer(n) && n >= 0.0 => unsafe {
-                        set_by_idx(&mut **aryval, n as usize, value)
-                    },
+                    Value::Number(n) if is_integer(n) && n >= 0.0 => {
+                        set_by_idx(&mut *aryval, n as usize, value)
+                    }
                     Value::String(ref s) if s.to_str().unwrap() == "length" => match value {
-                        Value::Number(n) if is_integer(n) && n >= 0.0 => unsafe {
-                            (**aryval).length = n as usize;
-                            while (**aryval).elems.len() < n as usize + 1 {
-                                (**aryval).elems.push(Value::empty().to_property());
+                        Value::Number(n) if is_integer(n) && n >= 0.0 => {
+                            (*aryval).length = n as usize;
+                            while (*aryval).elems.len() < n as usize + 1 {
+                                (*aryval).elems.push(Value::empty().to_property());
                             }
-                        },
+                        }
                         _ => {}
                     },
                     // https://www.ecma-international.org/ecma-262/9.0/index.html#sec-array-exotic-objects
@@ -384,32 +377,35 @@ impl Value {
                             == s.to_str().unwrap() =>
                     {
                         let num = property.to_uint32();
-                        unsafe { set_by_idx(&mut **aryval, num as usize, value) }
+                        set_by_idx(&mut *aryval, num as usize, value)
                     }
-                    _ => unsafe {
-                        let refval = (**map)
+                    _ => {
+                        let refval = (*map)
                             .entry(property.to_string())
                             .or_insert_with(|| Value::Undefined.to_property());
                         *refval = value.to_property();
-                    },
+                    }
                 }
             }
             Value::Object(_, ObjectKind::Arguments(_)) => {
                 match property {
                     // Index
-                    Value::Number(n) if n - n.floor() == 0.0 => unsafe {
-                        (**callobjref.unwrap()).set_arguments_nth_value(n as usize, value);
-                    },
+                    Value::Number(n) if n - n.floor() == 0.0 => {
+                        callobj
+                            .unwrap()
+                            .clone()
+                            .set_arguments_nth_value(n as usize, value);
+                    }
                     // TODO: 'length'
                     _ => {}
                 }
             }
-            Value::Object(map, _) => unsafe {
-                let refval = (**map)
+            Value::Object(map, _) => {
+                let refval = (*map)
                     .entry(property.to_string())
                     .or_insert_with(|| Value::Undefined.to_property());
                 *refval = value.to_property();
-            },
+            }
             _ => {}
         };
     }
@@ -420,20 +416,20 @@ impl Value {
         }
     }
 
-    pub fn set_constructor(&self, constructor: Value) {
+    pub fn set_constructor(&mut self, constructor: Value) {
         match self {
-            Value::Object(map, _) => unsafe {
-                (**map).insert("constructor".to_string(), constructor.to_property());
-            },
+            Value::Object(map, _) => {
+                (*map).insert("constructor".to_string(), constructor.to_property());
+            }
             _ => {}
         }
     }
 
-    pub fn set_property_with_name(&self, name: String, val: Value) {
+    pub fn set_property_with_name(&mut self, name: String, val: Value) {
         match self {
-            Value::Object(map, _) => unsafe {
-                (**map).insert(name, val.to_property());
-            },
+            Value::Object(map, _) => {
+                (*map).insert(name, val.to_property());
+            }
             _ => {}
         }
     }
@@ -468,7 +464,7 @@ impl Value {
                 format!("{}", *n)
             }
             Value::String(s) => s.clone().into_string().unwrap(),
-            Value::Object(_, ObjectKind::Array(ary_val)) => unsafe { (**ary_val).to_string() },
+            Value::Object(_, ObjectKind::Array(ary_val)) => (*ary_val).to_string(),
             Value::Object(_, ObjectKind::Ordinary) => "[object Object]".to_string(),
             Value::Object(_, ObjectKind::Date(box time_val)) => time_val.to_rfc3339(),
             Value::Object(_, ObjectKind::Function(_)) => "[Function]".to_string(),
@@ -512,7 +508,7 @@ impl Value {
             Value::Bool(true) => 1.0,
             Value::Number(n) => *n,
             Value::String(s) => str_to_num(s.to_str().unwrap()),
-            Value::Object(_, ObjectKind::Array(ary)) => ary_to_num(unsafe { &**ary }),
+            Value::Object(_, ObjectKind::Array(ary)) => ary_to_num(&*ary),
             _ => ::std::f64::NAN,
         }
     }
@@ -553,8 +549,14 @@ impl Value {
         }
     }
 
-    // generate pretty print string for the object, specifying trace depth.
-    pub fn format(&self, depth: i32) -> String {
+    /// generate pretty print string for the object.
+    /// - max_depth: tracing depth in an object's property.
+    /// - indent: if true, output with indentation.
+    pub fn format(&self, max_depth: usize, indent: bool) -> String {
+        return self.format_(max_depth, max_depth, indent);
+    }
+
+    fn format_(&self, max_depth: usize, depth: usize, indent: bool) -> String {
         match self {
             Value::Undefined | Value::Bool(_) | Value::Number(_) | Value::Null | Value::Empty => {
                 self.to_string()
@@ -563,11 +565,11 @@ impl Value {
             Value::Object(_, ObjectKind::Array(aryval)) => match depth {
                 0 => "[Array]".to_string(),
                 depth => {
-                    let aryval = unsafe { &**aryval };
+                    //let aryval = &*aryval;
                     let str = aryval.elems[0..aryval.length]
                         .iter()
                         .fold("".to_string(), |acc, prop| {
-                            acc + prop.val.format(depth - 1).as_str() + ","
+                            acc + prop.val.format_(max_depth, depth - 1, indent).as_str() + ","
                         })
                         .trim_right_matches(",")
                         .to_string();
@@ -577,15 +579,32 @@ impl Value {
             Value::Object(map, ObjectKind::Ordinary) => match depth {
                 0 => "[Object]".to_string(),
                 depth => {
-                    let map = unsafe { &**map };
+                    let cr = |i: usize| {
+                        if indent {
+                            format!("\n{}", "  ".repeat(max_depth - depth + i))
+                        } else {
+                            "".to_string()
+                        }
+                    };
+                    //let map = unsafe { &*map };
                     let str = map
                         .iter()
                         .fold("".to_string(), |acc, nvp| {
-                            acc + nvp.0 + ":" + nvp.1.val.format(depth - 1).as_str() + ","
+                            if nvp.0.as_str() == "__proto__" {
+                                acc
+                            } else {
+                                format!(
+                                    "{}{}{}:{},",
+                                    acc,
+                                    cr(1),
+                                    nvp.0,
+                                    nvp.1.val.format_(max_depth, depth - 1, indent)
+                                )
+                            }
                         })
                         .trim_right_matches(",")
                         .to_string();
-                    format!("{{{}}}", str)
+                    format!("{{{}{}}}", str, cr(0))
                 }
             },
             Value::Object(_, ObjectKind::Date(_)) => "[Date]".to_string(),
@@ -721,20 +740,18 @@ pub fn obj_find_val(val: Value, key: &str) -> Value {
         Value::Object(map, _) => (map, false),
         _ => return Value::Undefined,
     };
-    unsafe {
-        match (*map).get(key) {
-            Some(prop) => prop.val.clone(),
-            None if is_builtin_func && key == "__proto__" => {
-                return function::FUNCTION_PROTOTYPE.with(|x| x.clone());
-            }
-            None => match (*map).get("__proto__") {
-                Some(prop) => obj_find_val(prop.val.clone(), key),
-                None if is_builtin_func => {
-                    obj_find_val(function::FUNCTION_PROTOTYPE.with(|x| x.clone()), key)
-                }
-                _ => return Value::Undefined,
-            },
+    match map.get(key) {
+        Some(prop) => prop.val.clone(),
+        None if is_builtin_func && key == "__proto__" => {
+            return function::FUNCTION_PROTOTYPE.with(|x| x.clone());
         }
+        None => match map.get("__proto__") {
+            Some(prop) => obj_find_val(prop.val.clone(), key),
+            None if is_builtin_func => {
+                obj_find_val(function::FUNCTION_PROTOTYPE.with(|x| x.clone()), key)
+            }
+            _ => return Value::Undefined,
+        },
     }
 }
 
@@ -750,13 +767,16 @@ pub fn set_this(val: Value, this: &Value) -> Value {
                 FuncInfo {
                     id, iseq, params, ..
                 },
-                mut callobj,
+                callobj,
             )),
         ) => Value::Object(
             map,
             ObjectKind::Function(Box::new((FuncInfo::new(id, iseq, params), {
-                *callobj.this = this.clone();
-                callobj
+                let co = CallObject {
+                    this: Box::new(this.clone()),
+                    ..(*callobj).clone()
+                };
+                gc::new(co)
             }))),
         ),
         Value::Object(map, ObjectKind::BuiltinFunction(box (id, mut callobj))) => Value::Object(

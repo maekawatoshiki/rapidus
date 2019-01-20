@@ -1,26 +1,8 @@
-function f(x,y,z){ console.log(x,y,z) }
-f()
-f(1,
-  2
-  ,3)
-var cde = "deen"
-var a = {abc:7}  // wedwdw
-  /*
+var a = 10000
 
-  */f(3, )
-  //wdewe
-f(1,)
-if
-(
-  true
-)
-
-{
-var
-a
-b
-=
-
-7
-console.log(b)
+function f(x) {
+  return x * 2 + a
 }
+console.log(f(5))
+
+console.log(a)

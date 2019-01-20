@@ -390,11 +390,11 @@ pub fn slice_to_int32(iseq: &[u8]) -> i32 {
     ((iseq[3] as i32) << 24) + ((iseq[2] as i32) << 16) + ((iseq[1] as i32) << 8) + (iseq[0] as i32)
 }
 
-pub fn read_int32(iseq: &ByteCode, pc: usize) -> u32 {
-    ((iseq[pc as usize + 3] as u32) << 24)
+pub fn read_int32(iseq: &ByteCode, pc: usize) -> i32 {
+    (((iseq[pc as usize + 3] as u32) << 24)
         + ((iseq[pc as usize + 2] as u32) << 16)
         + ((iseq[pc as usize + 1] as u32) << 8)
-        + (iseq[pc as usize + 0] as u32)
+        + (iseq[pc as usize + 0] as u32)) as i32
 }
 
 pub fn show(code: &ByteCode, const_table: &ConstantTable) {
@@ -448,7 +448,7 @@ pub fn show_inst(code: &ByteCode, i: usize, const_table: &ConstantTable) {
         VMInst::PUSH_CONST => {
             let int32 = read_int32(code, i + 1);
             let value = &const_table.value[int32 as usize];
-            print!("PushConst {}", value.format(1));
+            print!("PushConst {}", value.format(1, false));
         }
         VMInst::PUSH_THIS => {
             print!("PushThis");
@@ -533,11 +533,11 @@ pub fn show_inst(code: &ByteCode, i: usize, const_table: &ConstantTable) {
         }
         VMInst::JMP_IF_FALSE => {
             let int32 = read_int32(code, i + 1);
-            print!("JmpIfFalse {:04x}", i as u32 + int32 + 5);
+            print!("JmpIfFalse {:04x}", i as i32 + int32 + 5);
         }
         VMInst::JMP => {
             let int32 = read_int32(code, i + 1);
-            print!("Jmp {:04x}", i as u32 + int32 + 5);
+            print!("Jmp {:04x}", i as i32 + int32 + 5);
         }
         VMInst::CALL => {
             let int32 = read_int32(code, i + 1);

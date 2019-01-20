@@ -1,6 +1,6 @@
 use builtins::object::*;
 use gc;
-use vm::{callobj::CallObject, error::RuntimeError, value::*, vm::VM};
+use vm::{error::RuntimeError, value::*, vm::VM};
 
 thread_local!(
     pub static ARRAY_PROTOTYPE: Value = {
@@ -23,9 +23,9 @@ thread_local!(
     };
 );
 pub fn init() -> Value {
-    let prototype = ARRAY_PROTOTYPE.with(|x| x.clone());
+    let mut prototype = ARRAY_PROTOTYPE.with(|x| x.clone());
     let array = Value::builtin_function(
-        new,
+        prototype_new,
         None,
         &mut vec![
             // TODO: Add:
@@ -42,12 +42,12 @@ pub fn init() -> Value {
     array
 }
 
-fn new(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
+fn prototype_new(vm: &mut VM, args: &Vec<Value>, _: CallObjectRef) -> Result<(), RuntimeError> {
     let args_len = args.len();
 
     if args_len == 0 {
         vm.set_return_value(Value::array_from_elems(vec![]));
-        gc::mark_and_sweep(&vm.state);
+        gc::mark_and_sweep(vm);
         return Ok(());
     }
 
@@ -67,7 +67,7 @@ fn new(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeErro
     }
 
     vm.set_return_value(Value::array_from_elems(elems));
-    gc::mark_and_sweep(&vm.state);
+    gc::mark_and_sweep(vm);
 
     Ok(())
 }
@@ -75,10 +75,10 @@ fn new(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeErro
 fn prototype_push(
     vm: &mut VM,
     args: &Vec<Value>,
-    callobj: &CallObject,
+    callobj: CallObjectRef,
 ) -> Result<(), RuntimeError> {
-    let array = if let Value::Object(_, ObjectKind::Array(array)) = *callobj.this {
-        unsafe { &mut *array }
+    let mut array = if let Value::Object(_, ObjectKind::Array(array)) = *callobj.this.clone() {
+        array
     } else {
         vm.set_return_value(Value::Undefined);
         return Err(RuntimeError::Type(
@@ -100,16 +100,16 @@ fn prototype_push(
 fn prototype_pop(
     vm: &mut VM,
     _args: &Vec<Value>,
-    callobj: &CallObject,
+    callobj: CallObjectRef,
 ) -> Result<(), RuntimeError> {
-    let array = if let Value::Object(_, ObjectKind::Array(array)) = *callobj.this {
-        unsafe { &mut *array }
+    let mut array = if let Value::Object(_, ObjectKind::Array(ref array)) = *callobj.this {
+        array.clone()
     } else {
         vm.set_return_value(Value::Undefined);
         return Err(RuntimeError::Unknown);
     };
 
-    if let Some(prop) = array.elems.pop() {
+    if let Some(prop) = array.clone().elems.pop() {
         array.length -= 1;
         vm.set_return_value(prop.val);
         return Ok(());
@@ -123,10 +123,10 @@ fn prototype_pop(
 pub fn prototype_map(
     vm: &mut VM,
     args: &Vec<Value>,
-    callobj: &CallObject,
+    callobj: CallObjectRef,
 ) -> Result<(), RuntimeError> {
-    let array = if let Value::Object(_, ObjectKind::Array(array)) = *callobj.this {
-        unsafe { &mut *array }
+    let array = if let Value::Object(_, ObjectKind::Array(ref array)) = *callobj.this {
+        array.clone()
     } else {
         vm.state.stack.push(Value::Undefined);
         return Err(RuntimeError::Unknown);

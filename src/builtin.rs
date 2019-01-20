@@ -2,22 +2,20 @@ use chrono::Utc;
 use libc;
 use libloading;
 use llvm::prelude::LLVMValueRef;
+use parser;
 use std::ffi::CString;
 use std::fs::OpenOptions;
 use std::io::prelude::*;
 use std::path;
-
-use parser;
 use vm::{
-    callobj::CallObject,
     error::RuntimeError,
     task::{Task, TimerID, TimerKind},
-    value::{ObjectKind, Property, RawStringPtr, Value},
+    value::{CallObjectRef, ObjectKind, Property, RawStringPtr, Value},
     vm::VM,
 };
 use vm_codegen;
 
-pub type BuiltinFuncTy = fn(&mut VM, &Vec<Value>, &CallObject) -> Result<(), RuntimeError>;
+pub type BuiltinFuncTy = fn(&mut VM, &Vec<Value>, CallObjectRef) -> Result<(), RuntimeError>;
 pub type BuiltinJITFuncTy = *mut libc::c_void;
 
 #[derive(Clone)]
@@ -64,7 +62,7 @@ impl ::std::fmt::Debug for BuiltinFuncInfo {
     }
 }
 
-pub fn set_timeout(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
+pub fn set_timeout(vm: &mut VM, args: &Vec<Value>, _: CallObjectRef) -> Result<(), RuntimeError> {
     if args.len() == 0 {
         return Err(RuntimeError::General(
             "error: setTimeout() needs one argument at least".to_string(),
@@ -95,7 +93,7 @@ pub fn set_timeout(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(),
     Ok(())
 }
 
-pub fn set_interval(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
+pub fn set_interval(vm: &mut VM, args: &Vec<Value>, _: CallObjectRef) -> Result<(), RuntimeError> {
     if args.len() == 0 {
         return Err(RuntimeError::General(
             "error: setInterval() needs one argument at least".to_string(),
@@ -126,7 +124,7 @@ pub fn set_interval(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<()
     Ok(())
 }
 
-pub fn clear_timer(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
+pub fn clear_timer(vm: &mut VM, args: &Vec<Value>, _: CallObjectRef) -> Result<(), RuntimeError> {
     if args.len() == 0 {
         return Err(RuntimeError::General(
             "error: clearInterval() or clearTimer needs an argument".to_string(),
@@ -148,7 +146,11 @@ pub fn clear_timer(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(),
     Ok(())
 }
 
-pub fn console_log(self_: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
+pub fn console_log(
+    self_: &mut VM,
+    args: &Vec<Value>,
+    _: CallObjectRef,
+) -> Result<(), RuntimeError> {
     let args_len = args.len();
     unsafe {
         for i in 0..args_len {
@@ -166,7 +168,7 @@ pub fn console_log(self_: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<
 pub fn process_stdout_write(
     vm: &mut VM,
     args: &Vec<Value>,
-    _: &CallObject,
+    _: CallObjectRef,
 ) -> Result<(), RuntimeError> {
     let args_len = args.len();
     unsafe {
@@ -181,7 +183,7 @@ pub fn process_stdout_write(
     Ok(())
 }
 
-pub fn enable_jit(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), RuntimeError> {
+pub fn enable_jit(vm: &mut VM, args: &Vec<Value>, _: CallObjectRef) -> Result<(), RuntimeError> {
     let args_len = args.len();
     if args_len == 0 {
         return Err(RuntimeError::General(
@@ -192,6 +194,19 @@ pub fn enable_jit(vm: &mut VM, args: &Vec<Value>, _: &CallObject) -> Result<(), 
         Value::Bool(b) => vm.jit_on = b,
         _ => {}
     };
+    vm.set_return_value(Value::Undefined);
+    Ok(())
+}
+
+pub fn p(vm: &mut VM, _args: &Vec<Value>, _: CallObjectRef) -> Result<(), RuntimeError> {
+    /*
+    let co = vm.state.scope.last().unwrap().clone();
+    let ptr: *const CallObject = &**co.clone();
+    println!("CallObject: {:?}", ptr);
+    for (k, v) in &*co.vals {
+        println!("{}:{}", k, v.val.format(0, false));
+    }
+    */
     vm.set_return_value(Value::Undefined);
     Ok(())
 }
@@ -221,7 +236,7 @@ pub fn debug_print(val: &Value, nest: bool) {
                 libc::printf(b"empty\0".as_ptr() as RawStringPtr);
             }
             Value::Object(_, ObjectKind::Arguments(callobj)) => {
-                let callobj = &*callobj.clone();
+                let callobj = &callobj.clone();
                 let args = &callobj.arguments;
                 libc::printf("[ \0".as_ptr() as RawStringPtr);
 
@@ -274,7 +289,7 @@ pub fn debug_print(val: &Value, nest: bool) {
             Value::Object(ref map, ObjectKind::Ordinary) => {
                 libc::printf("{ \0".as_ptr() as RawStringPtr);
 
-                let mut sorted_key_val = (&**map).iter().collect::<Vec<(&String, &Property)>>();
+                let mut sorted_key_val = (&*map).iter().collect::<Vec<(&String, &Property)>>();
                 sorted_key_val.sort_by(|(key1, _), (key2, _)| key1.as_str().cmp(key2.as_str()));
                 sorted_key_val.retain(|(ref key, _)| key != &"__proto__");
 
@@ -284,11 +299,11 @@ pub fn debug_print(val: &Value, nest: bool) {
             }
             Value::Object(map, ObjectKind::Array(ref values)) => {
                 libc::printf("[ \0".as_ptr() as RawStringPtr);
-                let arr = &*(*values);
+                let arr = &*(values);
                 let elems = &arr.elems;
                 let is_last_idx = |idx: usize| -> bool { idx == arr.length - 1 };
                 let mut i = 0;
-                let mut sorted_key_val = (&**map).iter().collect::<Vec<(&String, &Property)>>();
+                let mut sorted_key_val = (&*map).iter().collect::<Vec<(&String, &Property)>>();
                 sorted_key_val.sort_by(|(key1, _), (key2, _)| key1.as_str().cmp(key2.as_str()));
                 sorted_key_val.retain(|(ref key, _)| key != &"__proto__");
 
@@ -349,7 +364,7 @@ pub fn debug_print(val: &Value, nest: bool) {
     }
 }
 
-pub fn require(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject) -> Result<(), RuntimeError> {
+pub fn require(vm: &mut VM, args: &Vec<Value>, callobj: CallObjectRef) -> Result<(), RuntimeError> {
     enum RequireFileKind {
         DLL(String),
         Normal(String),
@@ -473,10 +488,10 @@ pub fn require(vm: &mut VM, args: &Vec<Value>, callobj: &CallObject) -> Result<(
             vm.const_table = vm_codegen.bytecode_gen.const_table;
             vm.run(iseq).unwrap();
 
-            let module_exports =
-                unsafe { (**vm.state.scope.last().unwrap()).get_value(&"module".to_string()) }
-                    .unwrap()
-                    .get_property(Value::string("exports".to_string()), None);
+            let module_exports = (*vm.state.scope.last().unwrap())
+                .get_value(&"module".to_string())
+                .unwrap()
+                .get_property(Value::string("exports".to_string()), None);
             vm.state.stack.push(module_exports);
         }
         RequireFileKind::NotFound => {

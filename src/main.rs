@@ -1,5 +1,4 @@
 extern crate rapidus;
-use rapidus::builtin;
 use rapidus::bytecode_gen;
 use rapidus::parser;
 use rapidus::vm;
@@ -101,7 +100,7 @@ fn main() {
 fn repl(trace: bool) {
     // TODO: REFINE CODE!!!!
     let mut vm_codegen = vm_codegen::VMCodeGen::new();
-    let global = vm_codegen.global_varmap;
+    let global = vm_codegen.global_varmap.clone();
     let mut vm = vm::vm::VM::new(global);
 
     let mut rl = rustyline::Editor::<()>::new();
@@ -174,11 +173,14 @@ fn repl(trace: bool) {
             _ => {
                 // Show the evaluated result
                 if let Some(value) = vm.state.stack.pop() {
-                    //println!("{}", value.to_string());
+                    print!("{}", value.format(3, true));
+                    println!();
+                    /*
                     unsafe {
                         builtin::debug_print(&value, true);
                         libc::puts(b"\0".as_ptr() as *const i8);
                     }
+                    */
                 }
             }
         }
@@ -272,4 +274,32 @@ fn run(file_name: &str, trace: bool) {
         }
         Err(e) => panic!("Rapidus Internal Error: fork failed: {:?}", e),
     }
+}
+
+#[test]
+fn vm_test() {
+    // IMPORTANT: these test should be run in a single thread.
+    use rapidus::test::{execute_script, test_file};
+    execute_script("for(var i = 0; i < 10; i++){}".to_string(), true);
+    test_file("closure".to_string(), "[0,50,1,50,1,1000,50]".to_string());
+    test_file("fact".to_string(), "[479001600]".to_string());
+    test_file(
+        "label".to_string(),
+        "[0,0,0,1,0,2,1,0,2,0,2,1,2,2]".to_string(),
+    );
+    test_file("this".to_string(), "[1,101,124]".to_string());
+    test_file("trycatch".to_string(), "[ 0, 2, 1, 10110 ]".to_string());
+    test_file(
+        "prototypes".to_string(),
+        "[true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true]"
+            .to_string());
+    test_file(
+        "qsort".to_string(),
+        "[ 0, 0, 1, 3, 5, 7, 7, 10, 11, 12, 14, 14, 16, 17, 19 ]".to_string(),
+    );
+    test_file("arguments1".to_string(), "[[1,2,3,4],[1,2,[3,4]],[5,6,7,undefined],[5,6,[7]],[8,9,undefined,undefined],[8,9,undefined],[10,undefined,undefined,undefined],[10,undefined,undefined]]".to_string());
+    test_file(
+        "arguments2".to_string(),
+        "[10,15,20,25,15,10,'OK',20,25,'OK',10,'NG',20,25,'NG']".to_string(),
+    );
 }
