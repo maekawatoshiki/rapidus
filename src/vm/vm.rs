@@ -944,7 +944,7 @@ fn ne(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_
         .state
         .stack
-        .push(Value::Bool(lhs.abstract_equal(rhs)?));
+        .push(Value::Bool(!lhs.abstract_equal(rhs)?));
     Ok(true)
 }
 

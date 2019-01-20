@@ -648,10 +648,19 @@ impl Value {
         }
 
         match (&self, &other) {
+            (&Value::Null, &Value::Undefined) | (&Value::Undefined, &Value::Null) => Ok(true),
             (&Value::Number(l), &Value::String(_)) => Ok(l == other.to_number()),
             (&Value::String(_), &Value::Number(r)) => Ok(self.to_number() == r),
             (&Value::Bool(_), _) => Ok(Value::Number(self.to_number()).abstract_equal(other)?),
             (_, &Value::Bool(_)) => Ok(Value::Number(other.to_number()).abstract_equal(self)?),
+            (&Value::String(_), &Value::Object(_, _))
+            | (&Value::Number(_), &Value::Object(_, _)) => {
+                Ok(self.abstract_equal(Value::string(other.to_string()))?)
+            }
+            (&Value::Object(_, _), &Value::String(_))
+            | (&Value::Object(_, _), &Value::Number(_)) => {
+                Ok(Value::string(self.to_string()).abstract_equal(other)?)
+            }
             // TODO: Implement the following cases:
             //  8. If Type(x) is either String, Number, or Symbol and Type(y) is Object,
             //      return the result of the comparison x == ToPrimitive(y).

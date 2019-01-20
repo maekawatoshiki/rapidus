@@ -5,7 +5,8 @@ thread_local!(
         // can not use Value::object_from_npp() here.
         { Value::Object(
             Value::propmap_from_npp(&make_npp!(
-                __proto__: Value::Null
+                __proto__: Value::Null,
+                toString: Value::default_builtin_function(to_string)
             )),
             ObjectKind::Ordinary
         ) };
@@ -77,6 +78,14 @@ fn create(vm: &mut VM, args: &Vec<Value>, _: CallObjectRef) -> Result<(), Runtim
         }
     };
 
+    vm.set_return_value(obj);
+
+    Ok(())
+}
+
+fn to_string(vm: &mut VM, _: &Vec<Value>, callobj: CallObjectRef) -> Result<(), RuntimeError> {
+    let this = *callobj.this.clone();
+    let obj = Value::string(this.to_string());
     vm.set_return_value(obj);
 
     Ok(())

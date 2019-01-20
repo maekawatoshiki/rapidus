@@ -12,15 +12,15 @@ writable, configurable などの属性は `Property` のメンバとなる。
 ```Rust
 pub type NamePropPair = (String, Property);
 pub type PropMapRef = GcType<FxHashMap<String, Property>>;
-
+pub type CallObjectRef = GcType<CallObject>;
 pub enum Value {
     Object(PropMapRef, ObjectKind),
     ...
 }
 
 pub enum ObjectKind {
-    Function(Box<(FuncInfo, CallObject)>),
-    BuiltinFunction(Box<(BuiltinFuncInfo, CallObject)>),
+    Function(Box<(FuncInfo, CallObjectRef)>),
+    BuiltinFunction(Box<(BuiltinFuncInfo, CallObjectRef)>),
     Ordinary,
     Array(GcType<ArrayValue>),
     Date(Box<(DateTime<Utc>)>),
