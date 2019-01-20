@@ -1,4 +1,5 @@
 use chrono::Utc;
+use gc;
 use libc;
 use libloading;
 use llvm::prelude::LLVMValueRef;
@@ -198,17 +199,27 @@ pub fn enable_jit(vm: &mut VM, args: &Vec<Value>, _: CallObjectRef) -> Result<()
     Ok(())
 }
 
-pub fn p(vm: &mut VM, _args: &Vec<Value>, _: CallObjectRef) -> Result<(), RuntimeError> {
-    /*
-    let co = vm.state.scope.last().unwrap().clone();
-    let ptr: *const CallObject = &**co.clone();
-    println!("CallObject: {:?}", ptr);
-    for (k, v) in &*co.vals {
-        println!("{}:{}", k, v.val.format(0, false));
+/// assertion by strict equality comparison.
+/// Usage:
+/// assert_seq(actual, expected)
+/// if actual === expected, return true.
+pub fn assert_seq(vm: &mut VM, args: &Vec<Value>, _: CallObjectRef) -> Result<(), RuntimeError> {
+    let args_len = args.len();
+    if args_len < 2 {
+        return Err(RuntimeError::General(
+            "error: assert() needs two arguments".to_string(),
+        ));
+    };
+    if args[0].clone().strict_equal(args[1].clone())? {
+        vm.set_return_value(Value::Undefined);
+        Ok(())
+    } else {
+        Err(RuntimeError::General(format!(
+            "AssertionError [ERR_ASSERTION]: {} == {}",
+            args[0].format(1, true),
+            args[1].format(1, true),
+        )))
     }
-    */
-    vm.set_return_value(Value::Undefined);
-    Ok(())
 }
 
 pub fn debug_print(val: &Value, nest: bool) {
@@ -372,7 +383,7 @@ pub fn require(vm: &mut VM, args: &Vec<Value>, callobj: CallObjectRef) -> Result
     }
 
     fn find_file(file_name: &str) -> RequireFileKind {
-        let paths = vec!["#", "lib#.so", "lib#.dylib"];
+        let paths = vec!["#.js", "lib#.so", "lib#.dylib"];
         match paths
             .iter()
             .find(|path| {
@@ -395,7 +406,7 @@ pub fn require(vm: &mut VM, args: &Vec<Value>, callobj: CallObjectRef) -> Result
 
     if args.len() == 0 {
         return Err(RuntimeError::General(
-            "error: require(NEED AN ARGUMENT)".to_string(),
+            "require() needs an argument.".to_string(),
         ));
     }
 
@@ -403,7 +414,7 @@ pub fn require(vm: &mut VM, args: &Vec<Value>, callobj: CallObjectRef) -> Result
         Value::String(ref s) => s.to_str().unwrap().clone(),
         _ => {
             return Err(RuntimeError::Type(
-                "type error: require(ARGUMENT MUST BE STRING)".to_string(),
+                "require() arguments must be string.".to_string(),
             ));
         }
     };
@@ -458,14 +469,15 @@ pub fn require(vm: &mut VM, args: &Vec<Value>, callobj: CallObjectRef) -> Result
                 let first_ln = file_body.find('\n').unwrap_or(file_body.len());
                 file_body.drain(..first_ln);
             }
-
             let mut parser = parser::Parser::new(file_body);
 
             let node = match parser.parse_all() {
                 Ok(ok) => ok,
                 Err(err) => {
                     parser.handle_error(err);
-                    return Err(RuntimeError::General("error in 'require'".to_string()));
+                    return Err(RuntimeError::General(
+                        "parse error in require()".to_string(),
+                    ));
                 }
             };
 
@@ -483,15 +495,26 @@ pub fn require(vm: &mut VM, args: &Vec<Value>, callobj: CallObjectRef) -> Result
             }
 
             vm.const_table = vm_codegen.bytecode_gen.const_table.clone();
+            let mut module_exports;
+            let is_debug = vm.is_debug;
+            {
+                let mut vm = VM::new(vm_codegen.global_varmap);
+                vm.const_table = vm_codegen.bytecode_gen.const_table;
+                vm.is_debug = is_debug;
+                vm.jit_on = false;
 
-            let mut vm = VM::new(vm_codegen.global_varmap);
-            vm.const_table = vm_codegen.bytecode_gen.const_table;
-            vm.run(iseq).unwrap();
+                vm.run(iseq)?;
 
-            let module_exports = (*vm.state.scope.last().unwrap())
-                .get_value(&"module".to_string())
-                .unwrap()
-                .get_property(Value::string("exports".to_string()), None);
+                module_exports = vm
+                    .state
+                    .scope
+                    .last()
+                    .unwrap()
+                    .get_value(&"module".to_string())?
+                    .get_property(Value::string("exports".to_string()), None);
+                // Is it ok when GC runs in the required module?
+                gc::mark_and_sweep(&mut vm);
+            }
             vm.state.stack.push(module_exports);
         }
         RequireFileKind::NotFound => {

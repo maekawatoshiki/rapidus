@@ -7,6 +7,16 @@ use vm::value;
 use vm_codegen::VMCodeGen;
 
 pub fn test_file(file_name: String, answer: String) {
+    println!("{}", format!("test/{}.js", file_name));
+    compare_scripts(load_file(file_name), answer);
+}
+
+pub fn assert_file(file_name: String) {
+    println!("{}", format!("test/{}.js", file_name));
+    execute_script(load_file(file_name), false);
+}
+
+fn load_file(file_name: String) -> String {
     let mut file_body = String::new();
     match OpenOptions::new()
         .read(true)
@@ -18,8 +28,7 @@ pub fn test_file(file_name: String, answer: String) {
         },
         Err(_) => panic!("file not found"),
     };
-    println!("{}", format!("test/{}.js", file_name));
-    compare_scripts(file_body, answer);
+    file_body
 }
 
 pub fn test_code(code: String, answer: String) {

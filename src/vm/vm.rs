@@ -27,6 +27,7 @@ pub struct VM {
     pub task_mgr: TaskManager,
     pub is_debug: bool,
     pub jit_on: bool,
+    pub gc_on: bool,
 }
 
 pub struct VMState {
@@ -93,7 +94,6 @@ impl VM {
         let jit = unsafe { TracingJit::new() };
         let mut global_vals = global_vals.clone();
 
-        global_vals.set_value("p".to_string(), Value::default_builtin_function(builtin::p));
         // TODO: Support for 'require' is not enough.
         global_vals.set_value(
             "require".to_string(),
@@ -231,6 +231,11 @@ impl VM {
             Value::default_builtin_function(builtin::enable_jit),
         );
 
+        global_vals.set_value(
+            "__assert".to_string(),
+            Value::default_builtin_function(builtin::assert_seq),
+        );
+
         global_vals.set_value("Object".to_string(), builtins::object::init());
         global_vals.set_value("Error".to_string(), builtins::error::init());
         global_vals.set_value("Function".to_string(), builtins::function::init());
@@ -261,6 +266,7 @@ impl VM {
             task_mgr: TaskManager::new(),
             is_debug: false,
             jit_on: true,
+            gc_on: true,
             op_table: [
                 end,
                 create_context,
@@ -520,6 +526,7 @@ impl VM {
         callee: &Value,
         args: &Vec<Value>,
     ) -> Result<bool, RuntimeError> {
+        //println!("{}", callee.format(1, true));
         match callee {
             Value::Object(_, ObjectKind::BuiltinFunction(box (ref info, callobj))) => {
                 (info.func)(self, args, callobj.clone())?;
@@ -1048,6 +1055,10 @@ fn get_member(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // get_global
     let member = self_.state.stack.pop().unwrap();
     let parent = self_.state.stack.pop().unwrap();
+    match member.clone() {
+        Value::String(ref s) if s.to_str().unwrap() == "toString" => {}
+        _ => {}
+    };
     let val = parent.get_property(member, Some(self_.state.scope.last().unwrap().clone()));
     self_.state.stack.push(val);
     Ok(true)
