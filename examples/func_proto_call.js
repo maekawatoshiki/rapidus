@@ -1,11 +1,17 @@
 function A(x, y) {
-  this.x = x;
-  this.y = y;
+  this.x = x
+  this.y = y
 }
 
 function B() {
-  A.call(this, 1, 2);
+  A.call(this, 1, 2)
 }
 
-var b = new B();
-console.log(b.x, b.y);
+function C() {
+  A.apply(this, [3, 4])
+}
+
+var b = new B()
+var c = new C()
+console.log(b.x, b.y)
+console.log(c.x, c.y)

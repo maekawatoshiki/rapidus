@@ -279,10 +279,19 @@ fn run(file_name: &str, trace: bool) {
 #[test]
 fn vm_test() {
     // IMPORTANT: these test should be run in a single thread.
-    use rapidus::test::{execute_script, test_file};
-    execute_script("for(var i = 0; i < 10; i++){}".to_string(), true);
+    use rapidus::test::{execute_script, test_code, test_file};
+    execute_script("for(var i = 0; i < 4; i++){ i }".to_string(), true);
+    test_file(
+        "trinity".to_string(),
+        "[true,true,true,true,true,true]".to_string(),
+    );
     test_file("closure".to_string(), "[0,50,1,50,1,1000,50]".to_string());
     test_file("fact".to_string(), "[479001600]".to_string());
+    test_file(
+        "array".to_string(),
+        "[1,2,3,4,[3,4],[2,3,'three1',5],4,[1,2,'three']]".to_string(),
+    );
+    test_code("(100).toString(15)".to_string(), "'6a'".to_string());
     test_file(
         "label".to_string(),
         "[0,0,0,1,0,2,1,0,2,0,2,1,2,2]".to_string(),
