@@ -9,6 +9,7 @@ use super::{
     task::{Task, TaskManager, TimerKind},
     value::*,
 };
+
 use builtin;
 use builtin::BuiltinJITFuncInfo;
 use builtins;
@@ -16,18 +17,19 @@ use bytecode_gen;
 use bytecode_gen::ByteCode;
 use gc;
 use jit::TracingJit;
+use vm_codegen;
 
 pub struct VM {
     pub jit: TracingJit,
     pub state: VMState,
     pub trystate_stack: Vec<TryState>,
-    pub const_table: ConstantTable,
     pub cur_func_id: FuncId, // id == 0: main
     pub op_table: [fn(&mut VM, &ByteCode) -> Result<bool, RuntimeError>; 59],
     pub task_mgr: TaskManager,
     pub is_debug: bool,
     pub jit_on: bool,
     pub gc_on: bool,
+    pub codegen: vm_codegen::VMCodeGen,
 }
 
 pub struct VMState {
@@ -90,9 +92,9 @@ impl ConstantTable {
 }
 
 impl VM {
-    pub fn new(global_vals: CallObjectRef) -> VM {
+    pub fn new() -> VM {
         let jit = unsafe { TracingJit::new() };
-        let mut global_vals = global_vals.clone();
+        let mut global_vals = CallObject::new_global();
 
         // TODO: Support for 'require' is not enough.
         global_vals.set_value(
@@ -256,17 +258,17 @@ impl VM {
             jit: jit,
             state: VMState {
                 stack: { Vec::with_capacity(128) },
-                scope: vec![global_vals],
+                scope: vec![global_vals.clone()],
                 history: vec![(0, 0)],
                 pc: 0isize,
             },
             trystate_stack: vec![TryState::None],
-            const_table: ConstantTable::new(),
             cur_func_id: 0, // 0 is main
             task_mgr: TaskManager::new(),
             is_debug: false,
             jit_on: true,
             gc_on: true,
+            codegen: vm_codegen::VMCodeGen::new(global_vals.clone()),
             op_table: [
                 end,
                 create_context,
@@ -436,7 +438,7 @@ impl VM {
     }
 
     /// main execution loop
-    fn do_run(&mut self, iseq: &ByteCode) -> Result<bool, RuntimeError> {
+    pub fn do_run(&mut self, iseq: &ByteCode) -> Result<bool, RuntimeError> {
         self.store_state();
         self.trystate_stack.push(TryState::None);
         //let mut count = 0;
@@ -462,7 +464,11 @@ impl VM {
                         None => "".to_string(),
                     },
                 );
-                bytecode_gen::show_inst(iseq, self.state.pc as usize, &self.const_table);
+                bytecode_gen::show_inst(
+                    iseq,
+                    self.state.pc as usize,
+                    &self.codegen.bytecode_gen.const_table,
+                );
                 println!();
             }
             match self.op_table[code as usize](self, iseq) {
@@ -678,9 +684,12 @@ pub fn call_function(
     if args_all_numbers && self_.jit_on {
         let scope = (*self_.state.scope.last().unwrap()).clone();
         if let Some(f) = unsafe {
-            self_
-                .jit
-                .can_jit(func_info, scope, &self_.const_table, argc)
+            self_.jit.can_jit(
+                func_info,
+                scope,
+                &self_.codegen.bytecode_gen.const_table,
+                argc,
+            )
         } {
             self_
                 .state
@@ -769,7 +778,10 @@ fn push_true(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
 fn push_const(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // push_const
     get_int32!(self_, iseq, n, usize);
-    self_.state.stack.push(self_.const_table.value[n].clone());
+    self_
+        .state
+        .stack
+        .push(self_.codegen.bytecode_gen.const_table.value[n].clone());
     Ok(true)
 }
 
@@ -1242,7 +1254,7 @@ fn update_parent_scope(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, Runtime
 fn get_value(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1;
     get_int32!(self_, iseq, name_id, usize);
-    let name = &self_.const_table.string[name_id];
+    let name = &self_.codegen.bytecode_gen.const_table.string[name_id];
     let val = self_.state.scope.last().unwrap().get_value(name)?;
     self_.state.stack.push(val);
     Ok(true)
@@ -1251,7 +1263,7 @@ fn get_value(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
 fn set_value(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1;
     get_int32!(self_, iseq, name_id, usize);
-    let name = self_.const_table.string[name_id].clone();
+    let name = self_.codegen.bytecode_gen.const_table.string[name_id].clone();
     let mut val = self_.state.stack.pop().unwrap();
 
     // We have to change cobj.this to the current scope one. (./examples/this.js)
@@ -1274,7 +1286,7 @@ fn set_value(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
 fn decl_var(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1;
     get_int32!(self_, iseq, name_id, usize);
-    let name = self_.const_table.string[name_id].clone();
+    let name = self_.codegen.bytecode_gen.const_table.string[name_id].clone();
     (*self_.state.scope.last_mut().unwrap()).set_value(name, Value::Undefined);
     Ok(true)
 }
@@ -1299,7 +1311,7 @@ fn loop_start(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
             self_.jit.can_loop_jit(
                 id,
                 &iseq,
-                &self_.const_table,
+                &self_.codegen.bytecode_gen.const_table,
                 &mut self_.state,
                 loop_start,
                 loop_end,

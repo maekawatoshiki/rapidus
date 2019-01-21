@@ -4,7 +4,6 @@ use std::fs::OpenOptions;
 use std::io::Read;
 use vm;
 use vm::value;
-use vm_codegen::VMCodeGen;
 
 pub fn test_file(file_name: String, answer: String) {
     println!("{}", format!("test/{}.js", file_name));
@@ -36,16 +35,13 @@ pub fn test_code(code: String, answer: String) {
 }
 
 pub fn execute_script(text: String, debug: bool) -> String {
-    let mut vm_codegen = VMCodeGen::new();
-    let global = vm_codegen.global_varmap.clone();
-    let mut vm = vm::vm::VM::new(global);
+    let mut vm = vm::vm::VM::new();
 
     let mut parser = parser::Parser::new(text);
     let node = parser.parse_all().unwrap();
     let mut iseq = vec![];
 
-    vm_codegen.compile(&node, &mut iseq, true).unwrap();
-    vm.const_table = vm_codegen.bytecode_gen.const_table;
+    vm.codegen.compile(&node, &mut iseq, true).unwrap();
     vm.is_debug = debug;
     vm.run(iseq).unwrap();
     vm.state

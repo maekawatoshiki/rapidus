@@ -11,7 +11,7 @@ use std::path;
 use vm::{
     error::RuntimeError,
     task::{Task, TimerID, TimerKind},
-    value::{CallObjectRef, ObjectKind, Property, RawStringPtr, Value},
+    value::{CallObjectRef, FuncInfo, ObjectKind, Property, RawStringPtr, Value},
     vm::VM,
 };
 use vm_codegen;
@@ -480,12 +480,14 @@ pub fn require(vm: &mut VM, args: &Vec<Value>, callobj: CallObjectRef) -> Result
                     ));
                 }
             };
+            // this FuncInfo is a dummy.
+            let func_info = FuncInfo::new(0, vec![], vec![]);
+            let mut callobj = callobj.new_callobj_from_func(func_info, &args, None);
+            callobj.parent = Some(vm.state.scope.last().unwrap().clone());
+            vm.state.scope.push(callobj);
 
-            let mut vm_codegen = vm_codegen::VMCodeGen::new();
             let mut iseq = vec![];
-            vm_codegen.bytecode_gen.const_table = vm.const_table.clone();
-
-            match vm_codegen.compile(&node, &mut iseq, false) {
+            match vm.codegen.compile(&node, &mut iseq, false) {
                 Ok(()) => {}
                 Err(vm_codegen::Error::General { msg, token_pos }) => {
                     parser.show_error_at(token_pos, msg.as_str());
@@ -494,28 +496,24 @@ pub fn require(vm: &mut VM, args: &Vec<Value>, callobj: CallObjectRef) -> Result
                 Err(e) => panic!(e),
             }
 
-            vm.const_table = vm_codegen.bytecode_gen.const_table.clone();
-            let mut module_exports;
-            let is_debug = vm.is_debug;
-            {
-                let mut vm = VM::new(vm_codegen.global_varmap);
-                vm.const_table = vm_codegen.bytecode_gen.const_table;
-                vm.is_debug = is_debug;
-                vm.jit_on = false;
+            vm.state.scope.last_mut().unwrap().set_value(
+                "module".to_string(),
+                Value::object_from_npp(&make_npp!(exports: Value::Undefined)),
+            );
 
-                vm.run(iseq)?;
+            vm.do_run(&iseq)?;
 
-                module_exports = vm
-                    .state
-                    .scope
-                    .last()
-                    .unwrap()
-                    .get_value(&"module".to_string())?
-                    .get_property(Value::string("exports".to_string()), None);
-                // Is it ok when GC runs in the required module?
-                gc::mark_and_sweep(&mut vm);
-            }
+            let module_exports = vm
+                .state
+                .scope
+                .last()
+                .unwrap()
+                .get_value(&"module".to_string())?
+                .get_property(Value::string("exports".to_string()), None);
+            vm.state.scope.pop();
+
             vm.state.stack.push(module_exports);
+            gc::mark_and_sweep(vm);
         }
         RequireFileKind::NotFound => {
             return Err(RuntimeError::General(format!(

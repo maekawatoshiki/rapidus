@@ -238,7 +238,9 @@ pub fn mark_and_sweep(vm: &mut VM) {
         let _pre_gc_size = GC_MEM.with(|mem| mem.borrow_mut().len());
         trace(vm, &mut marked);
         free(&marked);
-        println!("GC executed: {} ms", _sw.elapsed_ms());
+        if vm.is_debug {
+            println!("GC executed: {} ms", _sw.elapsed_ms());
+        }
         /*
         let post_gc_size = GC_MEM.with(|mem| mem.borrow_mut().len());
         if pre_gc_size != post_gc_size {
@@ -256,7 +258,7 @@ pub fn mark_and_sweep(vm: &mut VM) {
 }
 
 fn trace(vm: &mut VM, marked: &mut FxHashSet<GcPtr>) {
-    for val in &mut vm.const_table.value {
+    for val in &mut vm.codegen.bytecode_gen.const_table.value {
         val.trace(marked);
     }
     //let after_const = marked.len();

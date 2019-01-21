@@ -2,6 +2,7 @@ extern crate rapidus;
 use rapidus::bytecode_gen;
 use rapidus::parser;
 use rapidus::vm;
+use rapidus::vm::vm::VM;
 use rapidus::vm_codegen;
 
 extern crate libc;
@@ -82,27 +83,21 @@ fn main() {
     };
     println!("{:?}", node);
 
-    let mut vm_codegen = vm_codegen::VMCodeGen::new();
+    let mut vm = VM::new();
     let mut iseq = vec![];
-    vm_codegen.compile(&node, &mut iseq, false).unwrap();
+    vm.codegen.compile(&node, &mut iseq, false).unwrap();
 
-    bytecode_gen::show(&iseq, &vm_codegen.bytecode_gen.const_table);
+    bytecode_gen::show(&iseq, &vm.codegen.bytecode_gen.const_table);
 
     // println!("Result:");
     // let mut vm = vm::VM::new();
     // vm.global_objects.extend(vm_codegen.global_varmap);
     // vm.run(iseq);
-
-    // println!("VM CodeGen Test:");
-    // vm_codegen::test();
 }
 
 fn repl(trace: bool) {
     // TODO: REFINE CODE!!!!
-    let mut vm_codegen = vm_codegen::VMCodeGen::new();
-    let global = vm_codegen.global_varmap.clone();
-    let mut vm = vm::vm::VM::new(global);
-
+    let mut vm = vm::vm::VM::new();
     let mut rl = rustyline::Editor::<()>::new();
 
     loop {
@@ -141,7 +136,7 @@ fn repl(trace: bool) {
         };
 
         let mut iseq = vec![];
-        match vm_codegen.compile(&node, &mut iseq, true) {
+        match vm.codegen.compile(&node, &mut iseq, true) {
             Ok(()) => {}
             Err(vm_codegen::Error::General { msg, token_pos }) => {
                 parser.show_error_at(token_pos, msg.as_str());
@@ -152,7 +147,6 @@ fn repl(trace: bool) {
                 continue;
             }
         };
-        vm.const_table = vm_codegen.bytecode_gen.const_table.clone();
         vm.state.pc = 0;
         vm.is_debug = trace;
         let res = vm.run(iseq);
@@ -184,9 +178,6 @@ fn repl(trace: bool) {
                 }
             }
         }
-
-        vm_codegen.bytecode_gen.const_table = vm.const_table.clone();
-        //vm.state.stack.clear();
     }
 }
 
@@ -253,9 +244,9 @@ fn run(file_name: &str, trace: bool) {
                 }
             };
 
-            let mut vm_codegen = vm_codegen::VMCodeGen::new();
+            let mut vm = vm::vm::VM::new();
             let mut iseq = vec![];
-            match vm_codegen.compile(&node, &mut iseq, false) {
+            match vm.codegen.compile(&node, &mut iseq, false) {
                 Ok(()) => {}
                 Err(vm_codegen::Error::General { msg, token_pos }) => {
                     parser.show_error_at(token_pos, msg.as_str());
@@ -264,8 +255,6 @@ fn run(file_name: &str, trace: bool) {
                 Err(e) => panic!(e),
             }
 
-            let mut vm = vm::vm::VM::new(vm_codegen.global_varmap);
-            vm.const_table = vm_codegen.bytecode_gen.const_table;
             vm.is_debug = trace;
 
             if let Err(e) = vm.run(iseq) {
