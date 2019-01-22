@@ -98,86 +98,79 @@ fn main() {
 fn repl(trace: bool) {
     // TODO: REFINE CODE!!!!
     let mut vm = vm::vm::VM::new();
+    vm.is_debug = trace;
     let mut rl = rustyline::Editor::<()>::new();
 
     loop {
-        let line = match rl.readline("> ") {
+        let mut parser;
+        match rl.readline("> ") {
             Ok(line) => {
-                let body = if line == ".." {
-                    let mut lines = "".to_string();
+                rl.add_history_entry(line.as_ref());
+                let mut lines = line.clone() + "\n";
+                loop {
+                    parser = parser::Parser::new(lines.clone());
+                    match parser.parse_all() {
+                        Ok(node) => {
+                            // compile and execute
+                            let mut iseq = vec![];
+                            match vm.codegen.compile(&node, &mut iseq, true) {
+                                Ok(()) => {}
+                                Err(vm_codegen::Error::General { msg, token_pos }) => {
+                                    parser.show_error_at(token_pos, msg.as_str());
+                                    break;
+                                }
+                                Err(vm_codegen::Error::Unimplemented { msg, token_pos }) => {
+                                    parser.show_error_at(token_pos, msg.as_str());
+                                    break;
+                                }
+                            };
 
-                    while let Ok(line) = rl.readline(">> ") {
-                        if line == ".." {
+                            let res = vm.run(iseq);
+                            if vm.state.stack.len() == 0 {
+                                vm.state.stack.push(vm::value::Value::Undefined);
+                            };
+                            if vm.state.history.len() != 1 {
+                                println!(
+                                    "Warning: history length is {} (should be 1)",
+                                    vm.state.history.len()
+                                );
+                            };
+                            match res {
+                                Err(e) => {
+                                    e.show_error_message();
+                                }
+                                _ => {
+                                    // Show the evaluated result
+                                    if let Some(value) = vm.state.stack.pop() {
+                                        print!("{}", value.format(3, true));
+                                        println!();
+                                        /*
+                                        unsafe {
+                                            builtin::debug_print(&value, true);
+                                            libc::puts(b"\0".as_ptr() as *const i8);
+                                        }
+                                        */
+                                    }
+                                }
+                            };
+                            vm.state.stack.clear();
                             break;
                         }
-                        lines += line.as_str();
-                        lines += "\n";
-                    }
-
-                    lines
-                } else {
-                    line
-                };
-
-                rl.add_history_entry(body.as_ref());
-                body
+                        Err(parser::Error::UnexpectedEOF(_)) => match rl.readline("... ") {
+                            Ok(line) => {
+                                rl.add_history_entry(line.as_ref());
+                                lines += line.as_str();
+                                lines += "\n";
+                                continue;
+                            }
+                            Err(_) => break,
+                        },
+                        Err(_) => break,
+                    };
+                }
             }
             Err(_) => break,
         };
-
-        let mut parser = parser::Parser::new(line);
-
-        let node = match parser.parse_all() {
-            Ok(ok) => ok,
-            Err(err) => {
-                parser.handle_error(err);
-                continue;
-            }
-        };
-
-        let mut iseq = vec![];
-        match vm.codegen.compile(&node, &mut iseq, true) {
-            Ok(()) => {}
-            Err(vm_codegen::Error::General { msg, token_pos }) => {
-                parser.show_error_at(token_pos, msg.as_str());
-                continue;
-            }
-            Err(vm_codegen::Error::Unimplemented { msg, token_pos }) => {
-                parser.show_error_at(token_pos, msg.as_str());
-                continue;
-            }
-        };
-        vm.state.pc = 0;
-        vm.is_debug = trace;
-        let res = vm.run(iseq);
-        if vm.state.stack.len() == 0 {
-            vm.state.stack.push(vm::value::Value::Undefined);
-        };
-        if vm.state.history.len() != 1 {
-            println!(
-                "Warning: history length is {} (should be 1)",
-                vm.state.history.len()
-            );
-        };
-        match res {
-            Err(e) => {
-                e.show_error_message();
-                vm.state.stack.pop();
-            }
-            _ => {
-                // Show the evaluated result
-                if let Some(value) = vm.state.stack.pop() {
-                    print!("{}", value.format(3, true));
-                    println!();
-                    /*
-                    unsafe {
-                        builtin::debug_print(&value, true);
-                        libc::puts(b"\0".as_ptr() as *const i8);
-                    }
-                    */
-                }
-            }
-        }
     }
 }
 
