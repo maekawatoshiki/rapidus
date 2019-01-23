@@ -4,9 +4,18 @@ use std::fs::OpenOptions;
 use std::io::Read;
 use vm;
 use vm::value;
-use vm_codegen::VMCodeGen;
 
 pub fn test_file(file_name: String, answer: String) {
+    println!("{}", format!("test/{}.js", file_name));
+    compare_scripts(load_file(file_name), answer);
+}
+
+pub fn assert_file(file_name: String) {
+    println!("{}", format!("test/{}.js", file_name));
+    execute_script(load_file(file_name), false);
+}
+
+fn load_file(file_name: String) -> String {
     let mut file_body = String::new();
     match OpenOptions::new()
         .read(true)
@@ -18,8 +27,7 @@ pub fn test_file(file_name: String, answer: String) {
         },
         Err(_) => panic!("file not found"),
     };
-    println!("{}", format!("test/{}.js", file_name));
-    compare_scripts(file_body, answer);
+    file_body
 }
 
 pub fn test_code(code: String, answer: String) {
@@ -27,16 +35,13 @@ pub fn test_code(code: String, answer: String) {
 }
 
 pub fn execute_script(text: String, debug: bool) -> String {
-    let mut vm_codegen = VMCodeGen::new();
-    let global = vm_codegen.global_varmap.clone();
-    let mut vm = vm::vm::VM::new(global);
+    let mut vm = vm::vm::VM::new();
 
     let mut parser = parser::Parser::new(text);
     let node = parser.parse_all().unwrap();
     let mut iseq = vec![];
 
-    vm_codegen.compile(&node, &mut iseq, true).unwrap();
-    vm.const_table = vm_codegen.bytecode_gen.const_table;
+    vm.codegen.compile(&node, &mut iseq, true).unwrap();
     vm.is_debug = debug;
     vm.run(iseq).unwrap();
     vm.state

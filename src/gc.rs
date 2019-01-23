@@ -231,32 +231,28 @@ pub fn mark_and_sweep(vm: &mut VM) {
         true
     }
 
-    if over16kb_allocated() {
+    if vm.gc_on && over16kb_allocated() {
         let _sw = Stopwatch::start_new();
         let mut marked = FxHashSet::default();
-        let _pre_alloc_size = ALLOCATED_MEM_SIZE_BYTE.load(atomic::Ordering::SeqCst);
-        let _pre_gc_size = GC_MEM.with(|mem| mem.borrow_mut().len());
+        let pre_alloc_size = ALLOCATED_MEM_SIZE_BYTE.load(atomic::Ordering::SeqCst);
+        let pre_gc_size = GC_MEM.with(|mem| mem.borrow_mut().len());
         trace(vm, &mut marked);
         free(&marked);
-        /*
-        println!("GC executed: {} ms", sw.elapsed_ms());
-        let post_gc_size = GC_MEM.with(|mem| mem.borrow_mut().len());
-        if pre_gc_size != post_gc_size {
+        if vm.is_debug {
             println!(
-                "\nallocated_size: {}->{} marked: {} all:{}->{}",
+                "GC executed: pause duration {} ms. {} -> {} bytes. {} => {} objects",
+                _sw.elapsed_ms(),
                 pre_alloc_size,
                 ALLOCATED_MEM_SIZE_BYTE.load(atomic::Ordering::SeqCst),
-                marked.len(),
                 pre_gc_size,
-                post_gc_size,
+                GC_MEM.with(|mem| mem.borrow_mut().len()),
             );
         }
-        */
     }
 }
 
 fn trace(vm: &mut VM, marked: &mut FxHashSet<GcPtr>) {
-    for val in &mut vm.const_table.value {
+    for val in &mut vm.codegen.bytecode_gen.const_table.value {
         val.trace(marked);
     }
     //let after_const = marked.len();

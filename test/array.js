@@ -1,8 +1,8 @@
 var a = [1, 2, 'three', 4]
 var b = []
 function A(x, y) {
-  this.x = x
-  this.y = y
+  this.x = x * 2
+  this.y = x + y
 }
 function B() {
   A.call(this, 1, 2)
@@ -22,5 +22,5 @@ b.push(
 )
 b.push(a.pop())
 b.push(a)
-console.log(b)
-b
+console.log(b.toString())
+b.toString()

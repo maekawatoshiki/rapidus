@@ -52,8 +52,7 @@ pub struct VMCodeGen {
 }
 
 impl VMCodeGen {
-    pub fn new() -> VMCodeGen {
-        let global = CallObject::new_global();
+    pub fn new(global: CallObjectRef) -> VMCodeGen {
         VMCodeGen {
             global_varmap: global,
             func_header_info: vec![vec![]],

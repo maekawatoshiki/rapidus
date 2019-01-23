@@ -1,6 +1,6 @@
-var ans = []
+var assert = require('assert').deepEqual
 count = 1000
-var module = (function() {
+var mod = (function() {
   var count = 0
   return {
     count: 50,
@@ -8,18 +8,19 @@ var module = (function() {
       count++
     },
     show: function() {
-      ans.push(count, this.count)
+      return count
     },
     nest: function() {
       return this.count
     }
   }
 })()
-var f = module.show
-module.show() // 0
-module.increment()
-module.show() // 1
-f()
-ans.push(module.nest())
-console.log(ans)
-ans
+var f = mod.show
+var g = mod.nest
+assert(mod.show(), 0)
+mod.increment()
+assert(mod.show(), 1)
+assert(mod.nest(), 50)
+assert(f(), 1)
+assert(g(), 1000)
+assert(mod.nest(), 50)

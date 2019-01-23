@@ -1,9 +1,10 @@
-var a = []
-a.push([] == 0)
-a.push('0' == 0)
-a.push('\t' == 0)
-a.push([] != '0')
-a.push('0' != '\t')
-a.push('\t' != [])
-console.log(a)
-a
+var assert = require('assert').deepEqual
+
+assert([] == 0, true)
+assert('0' == 0, true)
+assert('\t' == 0, true)
+assert([] != '0', true)
+assert('0' != '\t', true)
+assert('\t' != [], true)
+
+
