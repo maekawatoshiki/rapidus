@@ -197,7 +197,7 @@ impl TracingJit {
     pub unsafe fn can_jit(
         &mut self,
         func_info: vm::value::FuncInfo,
-        scope: CallObjectRef,
+        state: vm::vm::VMState,
         const_table: &vm::vm::ConstantTable,
         argc: usize,
     ) -> Option<fn()> {
@@ -227,7 +227,7 @@ impl TracingJit {
         // compiled. (cannot_jit = true)
         // llvm::execution_engine::LLVMAddModule(self.exec_engine, self.module);
         let llvm_func =
-            match self.gen_code_for_func(name.clone(), func_info.clone(), scope, const_table, argc)
+            match self.gen_code_for_func(name.clone(), func_info.clone(), state, const_table, argc)
             {
                 Ok(llvm_func) => llvm_func,
                 Err(()) => {
@@ -275,7 +275,7 @@ impl TracingJit {
         &mut self,
         name: String,
         func_info: vm::value::FuncInfo,
-        scope: CallObjectRef,
+        state: vm::vm::VMState,
         const_table: &vm::vm::ConstantTable,
         argc: usize,
     ) -> Result<LLVMValueRef, ()> {
@@ -317,7 +317,7 @@ impl TracingJit {
                 self.builder,
                 LLVMGetParam(func, i as u32),
                 self.declare_local_var(
-                    scope.get_parameter_nth_name(func_info.clone(), i).unwrap(),
+                    state.get_parameter_nth_name(func_info.clone(), i).unwrap(),
                     &mut env,
                 ),
             );
@@ -326,7 +326,7 @@ impl TracingJit {
         let mut compilation_failed = false;
         if let Err(_) = self.gen_body(
             &iseq,
-            scope,
+            (*state.scope.last().unwrap()).clone(),
             const_table,
             id,
             1, // 0 + 1(CreateContext)
@@ -532,7 +532,7 @@ impl TracingJit {
         let mut compilation_failed = false;
         if let Err(_) = self.gen_body(
             iseq,
-            vm_state.scope.last().unwrap().clone(),
+            (*vm_state.scope.last().unwrap()).clone(),
             const_table,
             bgn,
             bgn,
@@ -642,7 +642,7 @@ impl TracingJit {
     unsafe fn gen_body(
         &mut self,
         iseq: &ByteCode,
-        scope: CallObjectRef,
+        callobj: vm::value::CallObjectRef,
         const_table: &vm::vm::ConstantTable,
         func_id: FuncId,
         bgn: usize,
@@ -1366,7 +1366,7 @@ impl TracingJit {
                                 None,
                             ));
                         }
-                        None => match scope.get_value(name).unwrap() {
+                        None => match callobj.get_value(name).unwrap() {
                             Value::Object(
                                 _,
                                 ObjectKind::Function(box (vm::value::FuncInfo { id, .. }, _)),

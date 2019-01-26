@@ -22,7 +22,7 @@ use vm_codegen;
 pub struct VM {
     pub jit: TracingJit,
     pub state: VMState,
-    pub context_stack: Vec<(usize, isize)>, // sp, return_pc
+    pub context_stack: Vec<(usize, isize, Option<String>, Vec<(Option<String>, Value)>)>, // sp, return_pc, rest_params, arguments
     pub op_table: [fn(&mut VM, &ByteCode) -> Result<bool, RuntimeError>; 59],
     pub task_mgr: TaskManager,
     pub is_debug: bool,
@@ -31,12 +31,94 @@ pub struct VM {
     pub codegen: vm_codegen::VMCodeGen,
 }
 
+#[derive(Clone, PartialEq, Debug)]
 pub struct VMState {
     pub stack: Vec<Value>,
     pub scope: Vec<CallObjectRef>,
     pub trystate: Vec<TryState>,
     pub pc: isize,
     pub cur_func_id: FuncId, // id == 0: main
+    /// name of rest parameters. (if the function has no rest parameters, None.)
+    pub rest_params: Option<String>,
+    /// set of the name of parameter corresponds to applied arguments when the function was invoked.
+    pub arguments: Vec<(Option<String>, Value)>,
+}
+
+impl VMState {
+    pub fn get_arguments_nth_value(&self, n: usize) -> Result<Value, RuntimeError> {
+        let callobj = self.scope.last().unwrap();
+        if n < self.arguments.len() {
+            match self.arguments[n].0.clone() {
+                Some(name) => callobj.get_local_value(&name),
+                None => Ok(self.arguments[n].1.clone()),
+            }
+        } else {
+            Ok(Value::Undefined)
+        }
+    }
+
+    /// set the nth element of callObject.argument to val:Value.
+    pub fn set_arguments_nth_value(&mut self, n: usize, val: Value) {
+        let callobj = self.scope.last_mut().unwrap();
+        if n < self.arguments.len() {
+            let param_name = self.arguments[n].0.clone();
+            if let Some(param_name) = param_name {
+                callobj.set_value(param_name, val);
+            } else {
+                self.arguments[n].1 = val;
+            }
+        }
+    }
+
+    /// get length of callObject.arguments
+    pub fn get_arguments_length(&self) -> usize {
+        self.arguments.len()
+    }
+
+    /// get name of the nth element of func_info.params.
+    pub fn get_parameter_nth_name(&self, func_info: FuncInfo, n: usize) -> Option<String> {
+        if n < func_info.params.len() {
+            return Some(func_info.params[n].0.clone());
+        }
+        None
+    }
+}
+
+impl VMState {
+    pub fn apply_arguments(&mut self, func_info: FuncInfo, args: &Vec<Value>) {
+        for (name, _) in &func_info.params {
+            let callobj = self.scope.last_mut().unwrap();
+            callobj.set_value(name.to_string(), Value::Undefined);
+            //println!("apply {}", name.to_string());
+        }
+        let mut rest_args = vec![];
+        let mut rest_param_name = None;
+        self.arguments.clear();
+
+        for (i, arg) in args.iter().enumerate() {
+            if let Some(name) = self.get_parameter_nth_name(func_info.clone(), i) {
+                // When rest parameter. TODO: More features of rest parameter
+                if func_info.params[i].1 {
+                    self.arguments.push((None, arg.clone()));
+                    rest_param_name = Some(name);
+                    rest_args.push(arg.clone());
+                } else {
+                    self.arguments.push((Some(name.clone()), arg.clone()));
+                    let callobj = self.scope.last_mut().unwrap();
+                    callobj.set_value(name.clone(), arg.clone());
+                }
+            } else {
+                self.arguments.push((None, arg.clone()));
+                rest_args.push(arg.clone());
+            }
+        }
+
+        if let Some(rest_param_name) = rest_param_name {
+            let callobj = self.scope.last_mut().unwrap();
+            callobj.set_value(rest_param_name.clone(), Value::array_from_elems(rest_args));
+            self.rest_params = Some(rest_param_name);
+        };
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -262,8 +344,10 @@ impl VM {
                 trystate: vec![TryState::None],
                 cur_func_id: 0,
                 pc: 0isize,
+                rest_params: None,
+                arguments: vec![],
             },
-            context_stack: vec![(0, 0)],
+            context_stack: vec![],
             task_mgr: TaskManager::new(),
             is_debug: false,
             jit_on: true,
@@ -348,9 +432,9 @@ impl VM {
                 "INST".to_string(),
             );
         }
-
+        self.store_state();
         let res = self.do_run(&iseq);
-
+        self.restore_state();
         loop {
             if self.task_mgr.no_tasks() {
                 break;
@@ -404,14 +488,18 @@ impl VM {
         res
     }
 
-    fn store_state(&mut self) {
-        self.context_stack
-            .push((self.state.stack.len(), self.state.pc));
+    pub fn store_state(&mut self) {
+        self.context_stack.push((
+            self.state.stack.len(),
+            self.state.pc,
+            self.state.rest_params.clone(),
+            self.state.arguments.clone(),
+        ));
         self.state.pc = 0;
     }
 
-    fn restore_state(&mut self) {
-        if let Some((previous_sp, return_pc)) = self.context_stack.pop() {
+    pub fn restore_state(&mut self) {
+        if let Some((previous_sp, return_pc, rest_params, arguments)) = self.context_stack.pop() {
             if self.is_debug {
                 print!("stack trace: ");
                 for (n, v) in self.state.stack.iter().enumerate() {
@@ -428,6 +516,8 @@ impl VM {
             if let Some(top) = top {
                 self.state.stack.push(top);
             }
+            self.state.rest_params = rest_params;
+            self.state.arguments = arguments;
             self.state.pc = return_pc;
         } else {
             unreachable!("context stack abnormaly exhaust.")
@@ -436,7 +526,6 @@ impl VM {
 
     /// main execution loop
     pub fn do_run(&mut self, iseq: &ByteCode) -> Result<(), RuntimeError> {
-        self.store_state();
         self.state.trystate.push(TryState::None);
         //let mut count = 0;
         loop {
@@ -476,7 +565,6 @@ impl VM {
                 Ok(false) => {
                     // END or RETURN or, THROW occurs outer try-catch.
                     self.state.trystate.pop().unwrap();
-                    self.restore_state();
                     return Ok(());
                 }
 
@@ -512,7 +600,6 @@ impl VM {
                         self.state.trystate.pop().unwrap();
                         // must push return value to exec stack.
                         self.set_return_value(Value::Undefined);
-                        self.restore_state();
                         return Err(err);
                     }
                 }
@@ -617,10 +704,10 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
                         .clone(),
                 ),
             )]);
-            let callobj =
-                callobj.new_callobj_from_func(func_info.clone(), &args, Some(new_this.clone()));
-
+            let callobj = callobj.new_callobj_from_func(Some(new_this.clone()));
+            self_.store_state();
             self_.state.scope.push(callobj);
+            self_.state.apply_arguments(func_info.clone(), &args);
 
             let res = match self_.do_run(&func_info.iseq) {
                 Ok(()) => Ok(true),
@@ -628,11 +715,14 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
             };
 
             self_.state.scope.pop();
-            let ret = self_.state.stack.last_mut().unwrap();
-            match &ret {
-                &Value::Object(_, _) => {}
-                _ => *ret = new_this,
+            {
+                let ret = self_.state.stack.last_mut().unwrap();
+                match &ret {
+                    &Value::Object(_, _) => {}
+                    _ => *ret = new_this,
+                };
             };
+            self_.restore_state();
             return res;
         }
         c => {
@@ -676,17 +766,18 @@ pub fn call_function(
         _ => false,
     });
 
-    let callobj = callobj.new_callobj_from_func(func_info.clone(), &args, None);
+    let callobj = callobj.new_callobj_from_func(None);
+    self_.store_state();
     self_.state.scope.push(callobj);
+    self_.state.apply_arguments(func_info.clone(), args);
 
     let FuncInfo { id, iseq, .. } = func_info.clone();
 
     if args_all_numbers && self_.jit_on {
-        let scope = (*self_.state.scope.last().unwrap()).clone();
         if let Some(f) = unsafe {
             self_.jit.can_jit(
                 func_info,
-                scope,
+                self_.state.clone(),
                 &self_.codegen.bytecode_gen.const_table,
                 argc,
             )
@@ -696,6 +787,7 @@ pub fn call_function(
                 .stack
                 .push(unsafe { self_.jit.run_llvm_func(id, f, &args) });
             self_.state.scope.pop();
+            self_.restore_state();
             return Ok(());
         }
     }
@@ -708,6 +800,7 @@ pub fn call_function(
             .jit
             .record_function_return_type(id, self_.state.stack.last().unwrap());
     };
+    self_.restore_state();
     res
 }
 
@@ -794,8 +887,8 @@ fn push_this(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
 
 fn push_arguments(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // push_arguments
-    let callobj = self_.state.scope.last_mut().unwrap().clone();
-    self_.state.stack.push(Value::arguments(callobj));
+    let state = self_.state.clone();
+    self_.state.stack.push(Value::arguments(state));
     Ok(true)
 }
 

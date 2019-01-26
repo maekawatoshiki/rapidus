@@ -10,6 +10,7 @@ use gc::GcType;
 use id::{get_unique_id, Id};
 pub use rustc_hash::FxHashMap;
 use std::ffi::CString;
+use vm;
 
 pub type FuncId = Id;
 
@@ -53,7 +54,7 @@ pub enum ObjectKind {
     Ordinary,
     Array(ArrayValueRef),
     Date(Box<(DateTime<Utc>)>),
-    Arguments(CallObjectRef),
+    Arguments(vm::vm::VMState),
 }
 
 // 32 bytes
@@ -232,10 +233,10 @@ impl Value {
         )
     }
 
-    pub fn arguments(callobj: CallObjectRef) -> Value {
+    pub fn arguments(state: vm::vm::VMState) -> Value {
         Value::Object(
             Value::propmap_from_npp(&vec![]),
-            ObjectKind::Arguments(callobj),
+            ObjectKind::Arguments(state),
         )
     }
 
@@ -313,20 +314,18 @@ impl Value {
             }
         };
 
-        let property_of_arguments = || -> Value {
+        let property_of_arguments = |state: vm::vm::VMState| -> Value {
             {
                 match property {
                     // Index
                     Value::Number(n) if is_integer(n) && n >= 0.0 => callobjref
                         .and_then(|co| {
-                            let co = &*co;
-                            Some(co.get_arguments_nth_value(n as usize).unwrap())
+                            let _co = &*co;
+                            Some(state.get_arguments_nth_value(n as usize).unwrap())
                         })
                         .unwrap_or_else(|| Value::Undefined),
                     Value::String(ref s) if s.to_str().unwrap() == "length" => {
-                        let length = callobjref
-                            .and_then(|co| Some((*co).get_arguments_length()))
-                            .unwrap_or(0);
+                        let length = state.get_arguments_length();
                         Value::Number(length as f64)
                     }
                     _ => Value::Undefined,
@@ -338,13 +337,13 @@ impl Value {
             Value::Number(_) => property_of_number(),
             Value::String(ref s) => property_of_string(s),
             Value::Object(_, ObjectKind::Array(_)) => property_of_array(&*self),
-            Value::Object(_, ObjectKind::Arguments(_)) => property_of_arguments(),
+            Value::Object(_, ObjectKind::Arguments(state)) => property_of_arguments(state.clone()),
             Value::Object(_, _) => property_of_object(self.clone()),
             _ => Value::Undefined,
         }
     }
 
-    pub fn set_property(&mut self, property: Value, value: Value, callobj: Option<CallObjectRef>) {
+    pub fn set_property(&mut self, property: Value, value: Value, _callobj: Option<CallObjectRef>) {
         fn set_by_idx(ary: &mut ArrayValue, n: usize, val: Value) {
             if n >= ary.length as usize {
                 ary.length = n + 1;
@@ -387,14 +386,11 @@ impl Value {
                     }
                 }
             }
-            Value::Object(_, ObjectKind::Arguments(_)) => {
+            Value::Object(_, ObjectKind::Arguments(ref mut state)) => {
                 match property {
                     // Index
                     Value::Number(n) if n - n.floor() == 0.0 => {
-                        callobj
-                            .unwrap()
-                            .clone()
-                            .set_arguments_nth_value(n as usize, value);
+                        state.set_arguments_nth_value(n as usize, value);
                     }
                     // TODO: 'length'
                     _ => {}

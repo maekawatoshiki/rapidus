@@ -50,8 +50,6 @@ impl Hash for GcPtr {
 /// let callobjectref =
 ///     gc::new(CallObject {
 ///         vals: gc::new(FxHashMap::default()),
-///         rest_params: None,
-///         arguments: vec![],
 ///         this: Box::new(Value::Undefined),
 ///         parent: None,
 ///     }
@@ -147,9 +145,8 @@ impl Gc for Value {
             Value::Object(map, ObjectKind::Ordinary) | Value::Object(map, ObjectKind::Date(_)) => {
                 map.trace(marked);
             }
-            Value::Object(map, ObjectKind::Arguments(c)) => {
+            Value::Object(map, ObjectKind::Arguments(_)) => {
                 map.trace(marked);
-                c.trace(marked);
             }
         }
     }
@@ -183,11 +180,11 @@ impl Gc for CallObject {
             return;
         };
         self.vals.trace(marked);
-
+        /*
         for (_, val) in &mut self.arguments {
             val.trace(marked);
         }
-        /*
+
         if let Some(ref mut parent) = *self.parent {
             parent.trace(marked);
         }

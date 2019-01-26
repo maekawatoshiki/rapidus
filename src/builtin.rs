@@ -246,9 +246,8 @@ pub fn debug_print(val: &Value, nest: bool) {
             Value::Empty => {
                 libc::printf(b"empty\0".as_ptr() as RawStringPtr);
             }
-            Value::Object(_, ObjectKind::Arguments(callobj)) => {
-                let callobj = &callobj.clone();
-                let args = &callobj.arguments;
+            Value::Object(_, ObjectKind::Arguments(state)) => {
+                let args = &state.arguments;
                 libc::printf("[ \0".as_ptr() as RawStringPtr);
 
                 let mut i = 0;
@@ -257,7 +256,7 @@ pub fn debug_print(val: &Value, nest: bool) {
                     if i != 0 {
                         libc::printf(", \0".as_ptr() as RawStringPtr);
                     };
-                    match callobj.get_arguments_nth_value(i) {
+                    match state.get_arguments_nth_value(i) {
                         Ok(val) => {
                             debug_print(&val, true);
                         }
@@ -482,9 +481,11 @@ pub fn require(vm: &mut VM, args: &Vec<Value>, callobj: CallObjectRef) -> Result
             };
             // this FuncInfo is a dummy.
             let func_info = FuncInfo::new(0, vec![], vec![]);
-            let mut callobj = callobj.new_callobj_from_func(func_info, &args, None);
+            let mut callobj = callobj.new_callobj_from_func(None);
             callobj.parent = Some(vm.state.scope.last().unwrap().clone());
+            vm.store_state();
             vm.state.scope.push(callobj);
+            vm.state.apply_arguments(func_info.clone(), args);
 
             let mut iseq = vec![];
             match vm.codegen.compile(&node, &mut iseq, false) {
@@ -511,6 +512,7 @@ pub fn require(vm: &mut VM, args: &Vec<Value>, callobj: CallObjectRef) -> Result
                 .get_value(&"module".to_string())?
                 .get_property(Value::string("exports".to_string()), None);
             vm.state.scope.pop();
+            vm.restore_state();
 
             vm.state.stack.push(module_exports);
             gc::mark_and_sweep(vm);
