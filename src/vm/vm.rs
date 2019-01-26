@@ -33,10 +33,15 @@ pub struct VM {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct VMState {
+    /// execution stack.
     pub stack: Vec<Value>,
+    /// scope stack.
     pub scope: Vec<CallObjectRef>,
+    /// try-catch state stack.
     pub trystate: Vec<TryState>,
+    /// program counter on the current bytecode.
     pub pc: isize,
+    /// current FuncId.
     pub cur_func_id: FuncId, // id == 0: main
     /// name of rest parameters. (if the function has no rest parameters, None.)
     pub rest_params: Option<String>,
@@ -49,7 +54,7 @@ impl VMState {
         let callobj = self.scope.last().unwrap();
         if n < self.arguments.len() {
             match self.arguments[n].0.clone() {
-                Some(name) => callobj.get_local_value(&name),
+                Some(name) => callobj.get_value(&name),
                 None => Ok(self.arguments[n].1.clone()),
             }
         } else {
