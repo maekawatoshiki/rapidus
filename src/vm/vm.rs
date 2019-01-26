@@ -22,8 +22,7 @@ use vm_codegen;
 pub struct VM {
     pub jit: TracingJit,
     pub state: VMState,
-    pub trystate_stack: Vec<TryState>,
-    pub cur_func_id: FuncId, // id == 0: main
+    pub context_stack: Vec<(usize, isize)>, // sp, return_pc
     pub op_table: [fn(&mut VM, &ByteCode) -> Result<bool, RuntimeError>; 59],
     pub task_mgr: TaskManager,
     pub is_debug: bool,
@@ -35,8 +34,9 @@ pub struct VM {
 pub struct VMState {
     pub stack: Vec<Value>,
     pub scope: Vec<CallObjectRef>,
+    pub trystate: Vec<TryState>,
     pub pc: isize,
-    pub history: Vec<(usize, isize)>, // sp, return_pc
+    pub cur_func_id: FuncId, // id == 0: main
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -259,11 +259,11 @@ impl VM {
             state: VMState {
                 stack: { Vec::with_capacity(128) },
                 scope: vec![global_vals.clone()],
-                history: vec![(0, 0)],
+                trystate: vec![TryState::None],
+                cur_func_id: 0,
                 pc: 0isize,
             },
-            trystate_stack: vec![TryState::None],
-            cur_func_id: 0, // 0 is main
+            context_stack: vec![(0, 0)],
             task_mgr: TaskManager::new(),
             is_debug: false,
             jit_on: true,
@@ -335,7 +335,7 @@ impl VM {
 }
 
 impl VM {
-    pub fn run(&mut self, iseq: ByteCode) -> Result<bool, RuntimeError> {
+    pub fn run(&mut self, iseq: ByteCode) -> Result<(), RuntimeError> {
         if self.is_debug {
             println!(
                 " {:<8} {:<8} {:<5} {:<5} {:<16} {:<4} {}",
@@ -348,7 +348,7 @@ impl VM {
                 "INST".to_string(),
             );
         }
-        //self.store_state();
+
         let res = self.do_run(&iseq);
 
         loop {
@@ -404,17 +404,14 @@ impl VM {
         res
     }
 
-    /// push vm.state.history
     fn store_state(&mut self) {
-        self.state
-            .history
+        self.context_stack
             .push((self.state.stack.len(), self.state.pc));
         self.state.pc = 0;
     }
 
-    /// pop vm.state.history
     fn restore_state(&mut self) {
-        if let Some((previous_sp, return_pc)) = self.state.history.pop() {
+        if let Some((previous_sp, return_pc)) = self.context_stack.pop() {
             if self.is_debug {
                 print!("stack trace: ");
                 for (n, v) in self.state.stack.iter().enumerate() {
@@ -433,14 +430,14 @@ impl VM {
             }
             self.state.pc = return_pc;
         } else {
-            unreachable!("history stack abnormaly exhaust.")
+            unreachable!("context stack abnormaly exhaust.")
         }
     }
 
     /// main execution loop
-    pub fn do_run(&mut self, iseq: &ByteCode) -> Result<bool, RuntimeError> {
+    pub fn do_run(&mut self, iseq: &ByteCode) -> Result<(), RuntimeError> {
         self.store_state();
-        self.trystate_stack.push(TryState::None);
+        self.state.trystate.push(TryState::None);
         //let mut count = 0;
         loop {
             //count += 1;
@@ -449,7 +446,7 @@ impl VM {
             //};
             let code = iseq[self.state.pc as usize];
             if self.is_debug {
-                let trystate = self.trystate_stack.last().unwrap();
+                let trystate = self.state.trystate.last().unwrap();
                 let scopelen = self.state.scope.len();
                 let stacklen = self.state.stack.len();
                 let stacktop = self.state.stack.last();
@@ -478,16 +475,16 @@ impl VM {
 
                 Ok(false) => {
                     // END or RETURN or, THROW occurs outer try-catch.
-                    self.trystate_stack.pop().unwrap();
+                    self.state.trystate.pop().unwrap();
                     self.restore_state();
-                    return Ok(true);
+                    return Ok(());
                 }
 
                 Err(err) => {
                     // Runtime error or THROW in try-catch.
                     let mut error: Option<RuntimeError> = None;
                     {
-                        let trystate = self.trystate_stack.last_mut().unwrap();
+                        let trystate = self.state.trystate.last_mut().unwrap();
                         match trystate.clone() {
                             TryState::Try(to_catch, to_finally, ret) => {
                                 self.state.pc = to_catch;
@@ -508,11 +505,11 @@ impl VM {
                         };
                     }
                     if let Some(err) = error {
-                        match self.trystate_stack.pop().unwrap() {
+                        match self.state.trystate.pop().unwrap() {
                             TryState::Finally(_) => {}
-                            x => self.trystate_stack.push(x),
+                            x => self.state.trystate.push(x),
                         }
-                        self.trystate_stack.pop().unwrap();
+                        self.state.trystate.pop().unwrap();
                         // must push return value to exec stack.
                         self.set_return_value(Value::Undefined);
                         self.restore_state();
@@ -531,12 +528,12 @@ impl VM {
         &mut self,
         callee: &Value,
         args: &Vec<Value>,
-    ) -> Result<bool, RuntimeError> {
+    ) -> Result<(), RuntimeError> {
         //println!("{}", callee.format(1, true));
         match callee {
             Value::Object(_, ObjectKind::BuiltinFunction(box (ref info, callobj))) => {
                 (info.func)(self, args, callobj.clone())?;
-                return Ok(true);
+                return Ok(());
             }
             Value::Object(_, ObjectKind::Function(box (func_info, callobject))) => {
                 //println!("call this:{}", callobject.this.clone().format(1, true));
@@ -625,7 +622,10 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
 
             self_.state.scope.push(callobj);
 
-            let res = self_.do_run(&func_info.iseq);
+            let res = match self_.do_run(&func_info.iseq) {
+                Ok(()) => Ok(true),
+                Err(err) => Err(err),
+            };
 
             self_.state.scope.pop();
             let ret = self_.state.stack.last_mut().unwrap();
@@ -669,7 +669,7 @@ pub fn call_function(
     func_info: FuncInfo,
     callobj: &mut CallObject,
     args: &Vec<Value>,
-) -> Result<bool, RuntimeError> {
+) -> Result<(), RuntimeError> {
     let argc = args.len();
     let args_all_numbers = args.iter().all(|val| match val {
         Value::Number(_) => true,
@@ -696,7 +696,7 @@ pub fn call_function(
                 .stack
                 .push(unsafe { self_.jit.run_llvm_func(id, f, &args) });
             self_.state.scope.pop();
-            return Ok(true);
+            return Ok(());
         }
     }
 
@@ -1116,7 +1116,7 @@ fn enter_try(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1;
     get_int32!(self_, iseq, to_catch, isize);
     get_int32!(self_, iseq, to_finally, isize);
-    self_.trystate_stack.push(TryState::Try(
+    self_.state.trystate.push(TryState::Try(
         pc + to_catch,
         pc + to_finally,
         TryReturn::None,
@@ -1126,12 +1126,12 @@ fn enter_try(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
 
 fn leave_try(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     fn finally_return(self_: &mut VM, return_val: Value) -> Result<bool, RuntimeError> {
-        if self_.trystate_stack.len() == 0 || self_.trystate_stack.last() == Some(&TryState::None) {
+        if self_.state.trystate.len() == 0 || self_.state.trystate.last() == Some(&TryState::None) {
             self_.state.stack.push(return_val);
             return Ok(false);
         }
 
-        let trystate = self_.trystate_stack.last_mut().unwrap();
+        let trystate = self_.state.trystate.last_mut().unwrap();
         match trystate.clone() {
             TryState::Try(_, to_finally, _) | TryState::Catch(to_finally, _) => {
                 self_.state.pc = to_finally;
@@ -1145,7 +1145,7 @@ fn leave_try(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     };
 
     self_.state.pc += 1;
-    let trystate = self_.trystate_stack.pop().unwrap();
+    let trystate = self_.state.trystate.pop().unwrap();
     match trystate {
         TryState::Finally(TryReturn::Value(val)) => finally_return(self_, val),
         TryState::Finally(TryReturn::Error(err)) => Err(err.clone()),
@@ -1155,7 +1155,7 @@ fn leave_try(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
 
 fn catch(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1;
-    let trystate = self_.trystate_stack.last_mut().unwrap();
+    let trystate = self_.state.trystate.last_mut().unwrap();
     match trystate {
         TryState::Catch(_, _) => {}
         _ => unreachable!("catch(): invalid trystate."),
@@ -1166,7 +1166,7 @@ fn catch(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
 
 fn finally(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1;
-    let trystate = self_.trystate_stack.last_mut().unwrap();
+    let trystate = self_.state.trystate.last_mut().unwrap();
     match trystate.clone() {
         TryState::Finally(_) => {}
         TryState::Try(_, _, x) => {
@@ -1185,7 +1185,7 @@ fn return_try(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
     self_.state.pc += 1;
     get_int32!(self_, iseq, to_finally, isize);
     let val = self_.state.stack.pop().unwrap();
-    let trystate = self_.trystate_stack.last_mut().unwrap();
+    let trystate = self_.state.trystate.last_mut().unwrap();
     match trystate {
         TryState::Finally(_) => {}
         TryState::Try(_, _, _) | TryState::Catch(_, _) => {
@@ -1304,7 +1304,7 @@ fn loop_start(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
     get_int32!(self_, iseq, relatinal_loop_end, usize);
     let loop_end = loop_start + relatinal_loop_end;
 
-    let id = self_.cur_func_id;
+    let id = self_.state.cur_func_id;
 
     if self_.jit_on {
         if let Some(pc) = unsafe {

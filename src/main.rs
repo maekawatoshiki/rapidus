@@ -129,10 +129,10 @@ fn repl(trace: bool) {
                             if vm.state.stack.len() == 0 {
                                 vm.state.stack.push(vm::value::Value::Undefined);
                             };
-                            if vm.state.history.len() != 1 {
+                            if vm.context_stack.len() != 1 {
                                 println!(
-                                    "Warning: history length is {} (should be 1)",
-                                    vm.state.history.len()
+                                    "Warning: context length is {} (should be 1)",
+                                    vm.context_stack.len()
                                 );
                             };
                             match res {

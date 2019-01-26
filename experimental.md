@@ -88,7 +88,7 @@ let map: PropMapRef = Value::propmap_from_npp(&make_npp!(
 
 - コマンドラインから `--trace` オプションをつけて実行するとバイトコード実行・スタックの状態をトレースするようにした（REPL でも使用可）。
 
-- 左から順に `trystate_stack` のスタックトップの `TryState` および `TryReturn`, `state.scope` の要素数、`state.stack` の要素数、`stack` スタックトップの `Value`, プログラムカウンタ、VM インストラクションを表示する。
+- 左から順に `state.trystate_stack` のスタックトップの `TryState` および `TryReturn`, `state.scope` の要素数、`state.stack` の要素数、`stack` スタックトップの `Value`, プログラムカウンタ、VM インストラクションを表示する。
 
 - また、PUSH_INT や JMP、CALL など引数を持つ一部のインストラクションについては引数も表示するようにした。
 
