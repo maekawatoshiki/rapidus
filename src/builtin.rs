@@ -501,8 +501,8 @@ pub fn require(vm: &mut VM, args: &Vec<Value>, callobj: CallObjectRef) -> Result
                 "module".to_string(),
                 Value::object_from_npp(&make_npp!(exports: Value::Undefined)),
             );
-
-            vm.do_run(&iseq)?;
+            vm.state.iseq = iseq;
+            vm.do_run()?;
 
             let module_exports = vm
                 .state

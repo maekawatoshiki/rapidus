@@ -22,8 +22,14 @@ use vm_codegen;
 pub struct VM {
     pub jit: TracingJit,
     pub state: VMState,
-    pub context_stack: Vec<(usize, isize, Option<String>, Vec<(Option<String>, Value)>)>, // sp, return_pc, rest_params, arguments
-    pub op_table: [fn(&mut VM, &ByteCode) -> Result<bool, RuntimeError>; 59],
+    pub context_stack: Vec<(
+        usize,
+        isize,
+        Option<String>,
+        Vec<(Option<String>, Value)>,
+        ByteCode,
+    )>, // sp, return_pc, rest_params, arguments
+    pub op_table: [fn(&mut VM) -> Result<bool, RuntimeError>; 59],
     pub task_mgr: TaskManager,
     pub is_debug: bool,
     pub jit_on: bool,
@@ -41,6 +47,8 @@ pub struct VMState {
     pub trystate: Vec<TryState>,
     /// program counter on the current bytecode.
     pub pc: isize,
+    /// bytecode instruction sequence.
+    pub iseq: ByteCode,
     /// current FuncId.
     pub cur_func_id: FuncId, // id == 0: main
     /// name of rest parameters. (if the function has no rest parameters, None.)
@@ -344,11 +352,12 @@ impl VM {
         VM {
             jit: jit,
             state: VMState {
-                stack: { Vec::with_capacity(128) },
+                stack: Vec::with_capacity(128),
                 scope: vec![global_vals.clone()],
                 trystate: vec![TryState::None],
                 cur_func_id: 0,
                 pc: 0isize,
+                iseq: vec![],
                 rest_params: None,
                 arguments: vec![],
             },
@@ -438,7 +447,8 @@ impl VM {
             );
         }
         self.store_state();
-        let res = self.do_run(&iseq);
+        self.state.iseq = iseq;
+        let res = self.do_run();
         self.restore_state();
         loop {
             if self.task_mgr.no_tasks() {
@@ -499,12 +509,15 @@ impl VM {
             self.state.pc,
             self.state.rest_params.clone(),
             self.state.arguments.clone(),
+            self.state.iseq.clone(),
         ));
         self.state.pc = 0;
     }
 
     pub fn restore_state(&mut self) {
-        if let Some((previous_sp, return_pc, rest_params, arguments)) = self.context_stack.pop() {
+        if let Some((previous_sp, return_pc, rest_params, arguments, iseq)) =
+            self.context_stack.pop()
+        {
             if self.is_debug {
                 print!("stack trace: ");
                 for (n, v) in self.state.stack.iter().enumerate() {
@@ -524,13 +537,14 @@ impl VM {
             self.state.rest_params = rest_params;
             self.state.arguments = arguments;
             self.state.pc = return_pc;
+            self.state.iseq = iseq;
         } else {
             unreachable!("context stack abnormaly exhaust.")
         }
     }
 
     /// main execution loop
-    pub fn do_run(&mut self, iseq: &ByteCode) -> Result<(), RuntimeError> {
+    pub fn do_run(&mut self) -> Result<(), RuntimeError> {
         self.state.trystate.push(TryState::None);
         //let mut count = 0;
         loop {
@@ -538,7 +552,7 @@ impl VM {
             //if count % 1000 == 0 {
             //    gc::mark_and_sweep(&mut self.state)
             //};
-            let code = iseq[self.state.pc as usize];
+            let code = self.state.iseq[self.state.pc as usize];
             if self.is_debug {
                 let trystate = self.state.trystate.last().unwrap();
                 let scopelen = self.state.scope.len();
@@ -556,13 +570,13 @@ impl VM {
                     },
                 );
                 bytecode_gen::show_inst(
-                    iseq,
+                    &self.state.iseq,
                     self.state.pc as usize,
                     &self.codegen.bytecode_gen.const_table,
                 );
                 println!();
             }
-            match self.op_table[code as usize](self, iseq) {
+            match self.op_table[code as usize](self) {
                 Ok(true) => {
                     continue;
                 }
@@ -640,42 +654,42 @@ impl VM {
 }
 
 macro_rules! get_int8 {
-    ($self:ident, $iseq:ident, $var:ident, $ty:ty) => {
-        let $var = $iseq[$self.state.pc as usize] as $ty;
+    ($self:ident, $var:ident, $ty:ty) => {
+        let iseq = &$self.state.iseq;
+        let $var = iseq[$self.state.pc as usize] as $ty;
         $self.state.pc += 1;
     };
 }
 
 macro_rules! get_int32 {
-    ($self:ident, $iseq:ident, $var:ident, $ty:ty) => {
-        let $var = (($iseq[$self.state.pc as usize + 3] as $ty) << 24)
-            + (($iseq[$self.state.pc as usize + 2] as $ty) << 16)
-            + (($iseq[$self.state.pc as usize + 1] as $ty) << 8)
-            + ($iseq[$self.state.pc as usize + 0] as $ty);
+    ($self:ident, $var:ident, $ty:ty) => {
+        let $var = (($self.state.iseq[$self.state.pc as usize + 3] as $ty) << 24)
+            + (($self.state.iseq[$self.state.pc as usize + 2] as $ty) << 16)
+            + (($self.state.iseq[$self.state.pc as usize + 1] as $ty) << 8)
+            + ($self.state.iseq[$self.state.pc as usize + 0] as $ty);
         $self.state.pc += 4;
     };
 }
 
-fn end(_self: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn end(_self: &mut VM) -> Result<bool, RuntimeError> {
     Ok(false)
 }
 
-fn create_context(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn create_context(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // create_context
     Ok(true)
 }
 
-fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn construct(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // construct
-    get_int32!(self_, iseq, argc, usize);
-
     let callee = self_.state.stack.pop().unwrap();
-
     let mut args = vec![];
-    for _ in 0..argc {
-        args.push(self_.state.stack.pop().unwrap());
-    }
-
+    {
+        get_int32!(self_, argc, usize);
+        for _ in 0..argc {
+            args.push(self_.state.stack.pop().unwrap());
+        }
+    };
     match callee.clone() {
         Value::Object(map, ObjectKind::BuiltinFunction(box (x, mut callobj))) => {
             *callobj.this = Value::object_from_npp(&vec![(
@@ -713,8 +727,8 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
             self_.store_state();
             self_.state.scope.push(callobj);
             self_.state.apply_arguments(func_info.clone(), &args);
-
-            let res = match self_.do_run(&func_info.iseq) {
+            self_.state.iseq = func_info.iseq;
+            let res = match self_.do_run() {
                 Ok(()) => Ok(true),
                 Err(err) => Err(err),
             };
@@ -741,17 +755,16 @@ fn construct(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
     Ok(true)
 }
 
-fn call(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn call(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // Call
-    get_int32!(self_, iseq, argc, usize);
-
     let callee = self_.state.stack.pop().unwrap();
-
     let mut args = vec![];
-    for _ in 0..argc {
-        args.push(self_.state.stack.pop().unwrap());
-    }
-
+    {
+        get_int32!(self_, argc, usize);
+        for _ in 0..argc {
+            args.push(self_.state.stack.pop().unwrap());
+        }
+    };
     self_.call_function_simply(&callee, &args)?;
 
     Ok(true)
@@ -796,8 +809,8 @@ pub fn call_function(
             return Ok(());
         }
     }
-
-    let res = self_.do_run(&iseq);
+    self_.state.iseq = iseq;
+    let res = self_.do_run();
 
     self_.state.scope.pop();
     if self_.jit_on {
@@ -809,20 +822,21 @@ pub fn call_function(
     res
 }
 
-fn create_object(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn create_object(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // create_object
-    get_int32!(self_, iseq, len, usize);
     let mut npp = vec![];
-    for _ in 0..len {
-        let name = if let Value::String(name) = self_.state.stack.pop().unwrap() {
-            name.into_string().unwrap()
-        } else {
-            unreachable!()
-        };
-        let val = self_.state.stack.pop().unwrap();
-        npp.push((name, Property::new(val.clone())));
-    }
-
+    {
+        get_int32!(self_, len, usize);
+        for _ in 0..len {
+            let name = if let Value::String(name) = self_.state.stack.pop().unwrap() {
+                name.into_string().unwrap()
+            } else {
+                unreachable!()
+            };
+            let val = self_.state.stack.pop().unwrap();
+            npp.push((name, Property::new(val.clone())));
+        }
+    };
     self_.state.stack.push(Value::object_from_npp(&npp));
 
     gc::mark_and_sweep(self_);
@@ -830,11 +844,11 @@ fn create_object(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> 
     Ok(true)
 }
 
-fn create_array(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn create_array(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // create_array
-    get_int32!(self_, iseq, len, usize);
-
     let mut arr = vec![];
+
+    get_int32!(self_, len, usize);
     for _ in 0..len {
         let val = self_.state.stack.pop().unwrap();
         arr.push(val);
@@ -847,35 +861,35 @@ fn create_array(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
     Ok(true)
 }
 
-fn push_int8(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn push_int8(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // push_int
-    get_int8!(self_, iseq, n, i8);
+    get_int8!(self_, n, i8);
     self_.state.stack.push(Value::Number(n as f64));
     Ok(true)
 }
 
-fn push_int32(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn push_int32(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // push_int
-    get_int32!(self_, iseq, n, i32);
+    get_int32!(self_, n, i32);
     self_.state.stack.push(Value::Number(n as f64));
     Ok(true)
 }
 
-fn push_false(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn push_false(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // push_false
     self_.state.stack.push(Value::Bool(false));
     Ok(true)
 }
 
-fn push_true(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn push_true(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // push_true
     self_.state.stack.push(Value::Bool(true));
     Ok(true)
 }
 
-fn push_const(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn push_const(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // push_const
-    get_int32!(self_, iseq, n, usize);
+    get_int32!(self_, n, usize);
     self_
         .state
         .stack
@@ -883,41 +897,41 @@ fn push_const(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
     Ok(true)
 }
 
-fn push_this(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn push_this(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // push_this
     let this = self_.state.scope.last().unwrap().this.clone();
     self_.state.stack.push(*this);
     Ok(true)
 }
 
-fn push_arguments(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn push_arguments(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // push_arguments
     let state = self_.state.clone();
     self_.state.stack.push(Value::arguments(state));
     Ok(true)
 }
 
-fn push_undefined(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn push_undefined(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // push_defined
     self_.state.stack.push(Value::Undefined);
     Ok(true)
 }
 
-fn lnot(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn lnot(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // lnot
     let expr = self_.state.stack.last_mut().unwrap();
     *expr = Value::Bool(!expr.to_boolean());
     Ok(true)
 }
 
-fn posi(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn posi(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // posi
     let expr = self_.state.stack.last_mut().unwrap();
     *expr = Value::Number(expr.to_number());
     Ok(true)
 }
 
-fn neg(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn neg(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // neg
     let expr = self_.state.stack.last_mut().unwrap();
     *expr = match *expr {
@@ -927,7 +941,7 @@ fn neg(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     Ok(true)
 }
 
-fn add(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn add(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // $name
     let rhs = self_.state.stack.pop().unwrap();
     let lhs = self_.state.stack.pop().unwrap();
@@ -946,7 +960,7 @@ fn add(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     Ok(true)
 }
 
-fn sub(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn sub(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // $name
     let rhs = self_.state.stack.pop().unwrap();
     let lhs = self_.state.stack.pop().unwrap();
@@ -957,7 +971,7 @@ fn sub(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     Ok(true)
 }
 
-fn mul(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn mul(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // $name
     let rhs = self_.state.stack.pop().unwrap();
     let lhs = self_.state.stack.pop().unwrap();
@@ -971,7 +985,7 @@ fn mul(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     Ok(true)
 }
 
-fn div(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn div(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // $name
     let rhs = self_.state.stack.pop().unwrap();
     let lhs = self_.state.stack.pop().unwrap();
@@ -982,7 +996,7 @@ fn div(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     Ok(true)
 }
 
-fn rem(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn rem(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // $name
     let rhs = self_.state.stack.pop().unwrap();
     let lhs = self_.state.stack.pop().unwrap();
@@ -993,7 +1007,7 @@ fn rem(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     Ok(true)
 }
 
-fn lt(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn lt(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // $name
     let rhs = self_.state.stack.pop().unwrap();
     let lhs = self_.state.stack.pop().unwrap();
@@ -1005,7 +1019,7 @@ fn lt(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     Ok(true)
 }
 
-fn gt(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn gt(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // $name
     let rhs = self_.state.stack.pop().unwrap();
     let lhs = self_.state.stack.pop().unwrap();
@@ -1017,7 +1031,7 @@ fn gt(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     Ok(true)
 }
 
-fn le(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn le(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // $name
     let rhs = self_.state.stack.pop().unwrap();
     let lhs = self_.state.stack.pop().unwrap();
@@ -1029,7 +1043,7 @@ fn le(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     Ok(true)
 }
 
-fn ge(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn ge(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // $name
     let rhs = self_.state.stack.pop().unwrap();
     let lhs = self_.state.stack.pop().unwrap();
@@ -1042,7 +1056,7 @@ fn ge(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
 }
 
 // TODO: Need more precise implemention
-fn eq(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn eq(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // $name
     let rhs = self_.state.stack.pop().unwrap();
     let lhs = self_.state.stack.pop().unwrap();
@@ -1054,7 +1068,7 @@ fn eq(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
 }
 
 // TODO: Need more precise implemention
-fn ne(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn ne(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // $name
     let rhs = self_.state.stack.pop().unwrap();
     let lhs = self_.state.stack.pop().unwrap();
@@ -1066,7 +1080,7 @@ fn ne(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
 }
 
 // TODO: Need more precise implemention
-fn seq(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn seq(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // $name
     let rhs = self_.state.stack.pop().unwrap();
     let lhs = self_.state.stack.pop().unwrap();
@@ -1075,7 +1089,7 @@ fn seq(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
 }
 
 // TODO: Need more precise implemention
-fn sne(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn sne(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // $name
     let rhs = self_.state.stack.pop().unwrap();
     let lhs = self_.state.stack.pop().unwrap();
@@ -1083,7 +1097,7 @@ fn sne(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     Ok(true)
 }
 
-fn and(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn and(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // $name
     let rhs = self_.state.stack.pop().unwrap();
     let lhs = self_.state.stack.pop().unwrap();
@@ -1096,7 +1110,7 @@ fn and(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     Ok(true)
 }
 
-fn or(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn or(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // $name
     let rhs = self_.state.stack.pop().unwrap();
     let lhs = self_.state.stack.pop().unwrap();
@@ -1109,7 +1123,7 @@ fn or(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     Ok(true)
 }
 
-fn xor(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn xor(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // $name
     let rhs = self_.state.stack.pop().unwrap();
     let lhs = self_.state.stack.pop().unwrap();
@@ -1122,7 +1136,7 @@ fn xor(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     Ok(true)
 }
 
-fn shl(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn shl(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // $name
     let rhs = self_.state.stack.pop().unwrap();
     let lhs = self_.state.stack.pop().unwrap();
@@ -1135,7 +1149,7 @@ fn shl(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     Ok(true)
 }
 
-fn shr(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn shr(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // $name
     let rhs = self_.state.stack.pop().unwrap();
     let lhs = self_.state.stack.pop().unwrap();
@@ -1148,7 +1162,7 @@ fn shr(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     Ok(true)
 }
 
-fn zfshr(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn zfshr(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // $name
     let rhs = self_.state.stack.pop().unwrap();
     let lhs = self_.state.stack.pop().unwrap();
@@ -1161,7 +1175,7 @@ fn zfshr(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     Ok(true)
 }
 
-fn get_member(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn get_member(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // get_global
     let member = self_.state.stack.pop().unwrap();
     let parent = self_.state.stack.pop().unwrap();
@@ -1174,7 +1188,7 @@ fn get_member(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     Ok(true)
 }
 
-fn set_member(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn set_member(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // get_global
     let member = self_.state.stack.pop().unwrap();
     let mut parent = self_.state.stack.pop().unwrap().clone();
@@ -1183,16 +1197,16 @@ fn set_member(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     Ok(true)
 }
 
-fn jmp(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn jmp(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // jmp
-    get_int32!(self_, iseq, dst, i32);
+    get_int32!(self_, dst, i32);
     self_.state.pc += dst as isize;
     Ok(true)
 }
 
-fn jmp_if_false(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn jmp_if_false(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // jmp_if_false
-    get_int32!(self_, iseq, dst, i32);
+    get_int32!(self_, dst, i32);
     let cond = self_.state.stack.pop().unwrap();
     if let Value::Bool(false) = cond {
         self_.state.pc += dst as isize
@@ -1200,20 +1214,20 @@ fn jmp_if_false(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
     Ok(true)
 }
 
-fn return_(_self: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn return_(_self: &mut VM) -> Result<bool, RuntimeError> {
     Ok(false)
 }
 
-fn throw(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn throw(self_: &mut VM) -> Result<bool, RuntimeError> {
     let val = self_.state.stack.pop().unwrap().clone();
     Err(RuntimeError::Exception(val))
 }
 
-fn enter_try(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn enter_try(self_: &mut VM) -> Result<bool, RuntimeError> {
     let pc = self_.state.pc;
     self_.state.pc += 1;
-    get_int32!(self_, iseq, to_catch, isize);
-    get_int32!(self_, iseq, to_finally, isize);
+    get_int32!(self_, to_catch, isize);
+    get_int32!(self_, to_finally, isize);
     self_.state.trystate.push(TryState::Try(
         pc + to_catch,
         pc + to_finally,
@@ -1222,7 +1236,7 @@ fn enter_try(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
     Ok(true)
 }
 
-fn leave_try(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn leave_try(self_: &mut VM) -> Result<bool, RuntimeError> {
     fn finally_return(self_: &mut VM, return_val: Value) -> Result<bool, RuntimeError> {
         if self_.state.trystate.len() == 0 || self_.state.trystate.last() == Some(&TryState::None) {
             self_.state.stack.push(return_val);
@@ -1251,7 +1265,7 @@ fn leave_try(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     }
 }
 
-fn catch(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn catch(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1;
     let trystate = self_.state.trystate.last_mut().unwrap();
     match trystate {
@@ -1262,7 +1276,7 @@ fn catch(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     Ok(true)
 }
 
-fn finally(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn finally(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1;
     let trystate = self_.state.trystate.last_mut().unwrap();
     match trystate.clone() {
@@ -1278,10 +1292,10 @@ fn finally(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     Ok(true)
 }
 
-fn return_try(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn return_try(self_: &mut VM) -> Result<bool, RuntimeError> {
     let pc = self_.state.pc;
     self_.state.pc += 1;
-    get_int32!(self_, iseq, to_finally, isize);
+    get_int32!(self_, to_finally, isize);
     let val = self_.state.stack.pop().unwrap();
     let trystate = self_.state.trystate.last_mut().unwrap();
     match trystate {
@@ -1295,7 +1309,7 @@ fn return_try(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
     Ok(true)
 }
 
-fn push_scope(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn push_scope(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1;
     let mut callobj = CallObject::new_with_this(Value::object_from_npp(&vec![]));
 
@@ -1308,20 +1322,20 @@ fn push_scope(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
     Ok(true)
 }
 
-fn pop_scope(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn pop_scope(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1;
     self_.state.scope.pop();
     Ok(true)
 }
 
-fn double(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn double(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // double
     let stack_top_val = self_.state.stack.last().unwrap().clone();
     self_.state.stack.push(stack_top_val);
     Ok(true)
 }
 
-fn pop(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn pop(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // double
     self_.state.stack.pop();
     Ok(true)
@@ -1329,17 +1343,17 @@ fn pop(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
 
 // 'land' and 'lor' are for JIT compiler. Nope for VM.
 
-fn land(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn land(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // land
     Ok(true)
 }
 
-fn lor(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn lor(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // lor
     Ok(true)
 }
 
-fn update_parent_scope(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn update_parent_scope(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1;
     if let Some(Value::Object(_, ObjectKind::Function(box (_, ref mut callobj)))) =
         self_.state.stack.last_mut()
@@ -1349,18 +1363,18 @@ fn update_parent_scope(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, Runtime
     Ok(true)
 }
 
-fn get_value(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn get_value(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1;
-    get_int32!(self_, iseq, name_id, usize);
+    get_int32!(self_, name_id, usize);
     let name = &self_.codegen.bytecode_gen.const_table.string[name_id];
     let val = self_.state.scope.last().unwrap().get_value(name)?;
     self_.state.stack.push(val);
     Ok(true)
 }
 
-fn set_value(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn set_value(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1;
-    get_int32!(self_, iseq, name_id, usize);
+    get_int32!(self_, name_id, usize);
     let name = self_.codegen.bytecode_gen.const_table.string[name_id].clone();
     let mut val = self_.state.stack.pop().unwrap();
 
@@ -1381,25 +1395,25 @@ fn set_value(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
     Ok(true)
 }
 
-fn decl_var(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn decl_var(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1;
-    get_int32!(self_, iseq, name_id, usize);
+    get_int32!(self_, name_id, usize);
     let name = self_.codegen.bytecode_gen.const_table.string[name_id].clone();
     (*self_.state.scope.last_mut().unwrap()).set_value(name, Value::Undefined);
     Ok(true)
 }
 
 // 'cond_op' is for JIT compiler. Nope for VM.
-fn cond_op(self_: &mut VM, _iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn cond_op(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1;
     Ok(true)
 }
 
-fn loop_start(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
+fn loop_start(self_: &mut VM) -> Result<bool, RuntimeError> {
     let loop_start = self_.state.pc as usize;
 
     self_.state.pc += 1;
-    get_int32!(self_, iseq, relatinal_loop_end, usize);
+    get_int32!(self_, relatinal_loop_end, usize);
     let loop_end = loop_start + relatinal_loop_end;
 
     let id = self_.state.cur_func_id;
@@ -1408,7 +1422,6 @@ fn loop_start(self_: &mut VM, iseq: &ByteCode) -> Result<bool, RuntimeError> {
         if let Some(pc) = unsafe {
             self_.jit.can_loop_jit(
                 id,
-                &iseq,
                 &self_.codegen.bytecode_gen.const_table,
                 &mut self_.state,
                 loop_start,

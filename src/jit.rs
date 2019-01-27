@@ -371,7 +371,6 @@ impl TracingJit {
     pub unsafe fn can_loop_jit(
         &mut self,
         func_id: FuncId,
-        iseq: &ByteCode,
         const_table: &vm::vm::ConstantTable,
         vm_state: &mut vm::vm::VMState,
         bgn: usize,
@@ -407,7 +406,7 @@ impl TracingJit {
         // If gen_code fails, it means the function can't be JIT-compiled and should never be
         // compiled. (cannot_jit = true)
         let (llvm_func, local_vars) =
-            match self.gen_code_for_loop(name.clone(), vm_state, iseq, const_table, bgn, end) {
+            match self.gen_code_for_loop(name.clone(), vm_state, const_table, bgn, end) {
                 Ok(info) => info,
                 Err(()) => {
                     self.loop_info
@@ -463,13 +462,12 @@ impl TracingJit {
         &mut self,
         name: String,
         vm_state: &mut vm::vm::VMState,
-        iseq: &ByteCode,
         const_table: &vm::vm::ConstantTable,
         bgn: usize,
         end: usize,
     ) -> Result<(LLVMValueRef, Vec<(usize, ValueType)>), ()> {
-        let local_vars = self.collect_local_variables(vm_state, iseq, const_table, bgn, end)?;
-
+        let local_vars = self.collect_local_variables(vm_state, const_table, bgn, end)?;
+        let iseq = &vm_state.iseq;
         let func_ret_ty = LLVMInt32TypeInContext(self.context);
         let func_ty = LLVMFunctionType(
             func_ret_ty,
@@ -531,7 +529,7 @@ impl TracingJit {
 
         let mut compilation_failed = false;
         if let Err(_) = self.gen_body(
-            iseq,
+            &iseq,
             (*vm_state.scope.last().unwrap()).clone(),
             const_table,
             bgn,
@@ -608,14 +606,13 @@ impl TracingJit {
     unsafe fn collect_local_variables(
         &mut self,
         vm_state: &mut vm::vm::VMState,
-        iseq: &ByteCode,
         const_table: &vm::vm::ConstantTable,
         mut pc: usize,
         end: usize,
     ) -> Result<Vec<(usize, ValueType)>, ()> {
         let mut local_vars = FxHashSet::default();
         let local_scope = &*vm_state.scope.last().unwrap();
-
+        let iseq = &vm_state.iseq;
         while pc < end {
             let inst_size = try_opt!(VMInst::get_inst_size(iseq[pc]));
             match iseq[pc] {
