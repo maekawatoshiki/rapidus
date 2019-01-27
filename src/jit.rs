@@ -201,9 +201,9 @@ impl TracingJit {
         const_table: &vm::vm::ConstantTable,
         argc: usize,
     ) -> Option<fn()> {
-        let vm::value::FuncInfo { id, .. } = func_info.clone();
-        if !self.func_is_called_enough_times(id, 0) {
-            self.inc_count(id, 0);
+        let vm::value::FuncInfo { func_id, .. } = func_info.clone();
+        if !self.func_is_called_enough_times(func_id, 0) {
+            self.inc_count(func_id, 0);
             return None;
         }
 
@@ -212,7 +212,7 @@ impl TracingJit {
                 func_addr,
                 jit_info: JITInfo { cannot_jit },
                 ..
-            } = self.func_info.entry(id).or_insert(FuncInfo::new());
+            } = self.func_info.entry(func_id).or_insert(FuncInfo::new());
             if *cannot_jit {
                 return None;
             }
@@ -231,7 +231,11 @@ impl TracingJit {
             {
                 Ok(llvm_func) => llvm_func,
                 Err(()) => {
-                    self.func_info.get_mut(&id).unwrap().jit_info.cannot_jit = true;
+                    self.func_info
+                        .get_mut(&func_id)
+                        .unwrap()
+                        .jit_info
+                        .cannot_jit = true;
                     return None;
                 }
             };
@@ -264,7 +268,7 @@ impl TracingJit {
         );
         let f = transmute::<u64, fn()>(f_raw);
 
-        let info = self.func_info.get_mut(&id).unwrap();
+        let info = self.func_info.get_mut(&func_id).unwrap();
         info.func_addr = Some(f);
         info.llvm_func = Some(llvm_func);
 
@@ -282,8 +286,8 @@ impl TracingJit {
         if argc > MAX_FUNCTION_PARAMS {
             return Err(());
         }
-        let vm::value::FuncInfo { id, iseq, .. } = func_info.clone();
-        let func_ret_ty = if let Some(ty) = self.function_return_types.get(&id) {
+        let vm::value::FuncInfo { func_id, iseq, .. } = func_info.clone();
+        let func_ret_ty = if let Some(ty) = self.function_return_types.get(&func_id) {
             ty.to_llvmty(self.context)
         } else {
             LLVMDoubleTypeInContext(self.context) // Assume as double
@@ -328,7 +332,7 @@ impl TracingJit {
             &iseq,
             (*state.scope.last().unwrap()).clone(),
             const_table,
-            id,
+            func_id,
             1, // 0 + 1(CreateContext)
             iseq.len(),
             true,
@@ -641,7 +645,7 @@ impl TracingJit {
         iseq: &ByteCode,
         callobj: vm::value::CallObjectRef,
         const_table: &vm::vm::ConstantTable,
-        func_id: FuncId,
+        cur_func_id: FuncId,
         bgn: usize,
         end: usize,
         is_func_jit: bool,
@@ -1366,14 +1370,14 @@ impl TracingJit {
                         None => match callobj.get_value(name).unwrap() {
                             Value::Object(
                                 _,
-                                ObjectKind::Function(box (vm::value::FuncInfo { id, .. }, _)),
-                            ) if id == func_id => {
+                                ObjectKind::Function(box (vm::value::FuncInfo { func_id, .. }, _)),
+                            ) if func_id == cur_func_id => {
                                 stack.push((func, None));
                             }
                             Value::Object(
                                 _,
-                                ObjectKind::Function(box (vm::value::FuncInfo { id, .. }, _)),
-                            ) => match self.func_info.get(&id) {
+                                ObjectKind::Function(box (vm::value::FuncInfo { func_id, .. }, _)),
+                            ) => match self.func_info.get(&func_id) {
                                 Some(FuncInfo { llvm_func, .. }) if llvm_func.is_some() => {
                                     stack.push((llvm_func.unwrap(), None));
                                 }
@@ -1474,13 +1478,13 @@ impl TracingJit {
                         )),
                         Value::Object(
                             _,
-                            ObjectKind::Function(box (vm::value::FuncInfo { id, .. }, _)),
-                        ) if is_func_jit && id == func_id => stack.push((func, None)),
+                            ObjectKind::Function(box (vm::value::FuncInfo { func_id, .. }, _)),
+                        ) if is_func_jit && func_id == cur_func_id => stack.push((func, None)),
                         Value::Object(
                             _,
-                            ObjectKind::Function(box (vm::value::FuncInfo { id, .. }, _)),
+                            ObjectKind::Function(box (vm::value::FuncInfo { func_id, .. }, _)),
                         ) => stack.push((
-                            match self.func_info.get(&id) {
+                            match self.func_info.get(&func_id) {
                                 Some(FuncInfo { llvm_func, .. }) if llvm_func.is_some() => {
                                     llvm_func.unwrap()
                                 }

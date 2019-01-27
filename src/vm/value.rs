@@ -32,7 +32,7 @@ pub struct Property {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct FuncInfo {
-    pub id: FuncId,
+    pub func_id: FuncId,
     pub iseq: ByteCode,
     pub params: Vec<(String, bool)>, // (name, rest param?)
 }
@@ -40,7 +40,7 @@ pub struct FuncInfo {
 impl FuncInfo {
     pub fn new(id: FuncId, iseq: ByteCode, params: Vec<(String, bool)>) -> FuncInfo {
         FuncInfo {
-            id: id,
+            func_id: id,
             iseq: iseq,
             params: params,
         }
@@ -680,8 +680,8 @@ impl Value {
                 Ok(l == r)
             }
             (
-                Value::Object(l2, ObjectKind::Function(box (FuncInfo { id: l1, .. }, _))),
-                Value::Object(r2, ObjectKind::Function(box (FuncInfo { id: r1, .. }, _))),
+                Value::Object(l2, ObjectKind::Function(box (FuncInfo { func_id: l1, .. }, _))),
+                Value::Object(r2, ObjectKind::Function(box (FuncInfo { func_id: r1, .. }, _))),
             ) => Ok(l1 == r1 && l2 == r2),
             (
                 Value::Object(l2, ObjectKind::BuiltinFunction(box (l1, _))),
@@ -770,13 +770,16 @@ pub fn set_this(val: Value, this: &Value) -> Value {
             map,
             ObjectKind::Function(box (
                 FuncInfo {
-                    id, iseq, params, ..
+                    func_id,
+                    iseq,
+                    params,
+                    ..
                 },
                 callobj,
             )),
         ) => Value::Object(
             map,
-            ObjectKind::Function(Box::new((FuncInfo::new(id, iseq, params), {
+            ObjectKind::Function(Box::new((FuncInfo::new(func_id, iseq, params), {
                 let co = CallObject {
                     this: Box::new(this.clone()),
                     ..(*callobj).clone()

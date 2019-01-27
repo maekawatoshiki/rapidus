@@ -22,13 +22,7 @@ use vm_codegen;
 pub struct VM {
     pub jit: TracingJit,
     pub state: VMState,
-    pub context_stack: Vec<(
-        usize,
-        isize,
-        Option<String>,
-        Vec<(Option<String>, Value)>,
-        ByteCode,
-    )>, // sp, return_pc, rest_params, arguments
+    pub context_stack: Vec<VMState>,
     pub op_table: [fn(&mut VM) -> Result<bool, RuntimeError>; 59],
     pub task_mgr: TaskManager,
     pub is_debug: bool,
@@ -446,10 +440,10 @@ impl VM {
                 "INST".to_string(),
             );
         }
-        self.store_state();
+        //self.store_state();
         self.state.iseq = iseq;
         let res = self.do_run();
-        self.restore_state();
+        //self.restore_state();
         loop {
             if self.task_mgr.no_tasks() {
                 break;
@@ -504,20 +498,21 @@ impl VM {
     }
 
     pub fn store_state(&mut self) {
-        self.context_stack.push((
-            self.state.stack.len(),
-            self.state.pc,
-            self.state.rest_params.clone(),
-            self.state.arguments.clone(),
-            self.state.iseq.clone(),
-        ));
-        self.state.pc = 0;
+        self.context_stack.push(self.state.clone());
+        self.state = VMState {
+            stack: vec![],
+            scope: vec![],
+            trystate: vec![],
+            pc: 0,
+            iseq: vec![],
+            cur_func_id: 0,
+            rest_params: None,
+            arguments: vec![],
+        };
     }
 
     pub fn restore_state(&mut self) {
-        if let Some((previous_sp, return_pc, rest_params, arguments, iseq)) =
-            self.context_stack.pop()
-        {
+        if let Some(state) = self.context_stack.pop() {
             if self.is_debug {
                 print!("stack trace: ");
                 for (n, v) in self.state.stack.iter().enumerate() {
@@ -530,14 +525,12 @@ impl VM {
                 println!();
             }
             let top = self.state.stack.pop();
-            self.state.stack.truncate(previous_sp);
+            self.state = state;
             if let Some(top) = top {
                 self.state.stack.push(top);
+            } else {
+                self.state.stack.push(Value::Undefined);
             }
-            self.state.rest_params = rest_params;
-            self.state.arguments = arguments;
-            self.state.pc = return_pc;
-            self.state.iseq = iseq;
         } else {
             unreachable!("context stack abnormaly exhaust.")
         }
@@ -789,7 +782,7 @@ pub fn call_function(
     self_.state.scope.push(callobj);
     self_.state.apply_arguments(func_info.clone(), args);
 
-    let FuncInfo { id, iseq, .. } = func_info.clone();
+    let FuncInfo { func_id, iseq, .. } = func_info.clone();
 
     if args_all_numbers && self_.jit_on {
         if let Some(f) = unsafe {
@@ -803,7 +796,7 @@ pub fn call_function(
             self_
                 .state
                 .stack
-                .push(unsafe { self_.jit.run_llvm_func(id, f, &args) });
+                .push(unsafe { self_.jit.run_llvm_func(func_id, f, &args) });
             self_.state.scope.pop();
             self_.restore_state();
             return Ok(());
@@ -816,7 +809,7 @@ pub fn call_function(
     if self_.jit_on {
         self_
             .jit
-            .record_function_return_type(id, self_.state.stack.last().unwrap());
+            .record_function_return_type(func_id, self_.state.stack.last().unwrap());
     };
     self_.restore_state();
     res
