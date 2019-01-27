@@ -440,10 +440,8 @@ impl VM {
                 "INST".to_string(),
             );
         }
-        //self.store_state();
         self.state.iseq = iseq;
         let res = self.do_run();
-        //self.restore_state();
         loop {
             if self.task_mgr.no_tasks() {
                 break;
@@ -497,6 +495,7 @@ impl VM {
         res
     }
 
+    /// store vm.state to the context_stack, and initialize vm.state.
     pub fn store_state(&mut self) {
         self.context_stack.push(self.state.clone());
         self.state = VMState {
@@ -511,6 +510,8 @@ impl VM {
         };
     }
 
+    /// restore vm.state from the context_stack.
+    /// push the returned value to the execute stack of the restored vm.state.
     pub fn restore_state(&mut self) {
         if let Some(state) = self.context_stack.pop() {
             if self.is_debug {
@@ -575,7 +576,7 @@ impl VM {
                 }
 
                 Ok(false) => {
-                    // END or RETURN or, THROW occurs outer try-catch.
+                    // END or RETURN or, LEAVE_TRY with no error.
                     self.state.trystate.pop().unwrap();
                     return Ok(());
                 }
@@ -726,7 +727,6 @@ fn construct(self_: &mut VM) -> Result<bool, RuntimeError> {
                 Err(err) => Err(err),
             };
 
-            self_.state.scope.pop();
             {
                 let ret = self_.state.stack.last_mut().unwrap();
                 match &ret {
@@ -797,7 +797,6 @@ pub fn call_function(
                 .state
                 .stack
                 .push(unsafe { self_.jit.run_llvm_func(func_id, f, &args) });
-            self_.state.scope.pop();
             self_.restore_state();
             return Ok(());
         }
@@ -805,7 +804,6 @@ pub fn call_function(
     self_.state.iseq = iseq;
     let res = self_.do_run();
 
-    self_.state.scope.pop();
     if self_.jit_on {
         self_
             .jit

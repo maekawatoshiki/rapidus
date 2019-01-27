@@ -511,10 +511,10 @@ pub fn require(vm: &mut VM, args: &Vec<Value>, callobj: CallObjectRef) -> Result
                 .unwrap()
                 .get_value(&"module".to_string())?
                 .get_property(Value::string("exports".to_string()), None);
-            vm.state.scope.pop();
+            vm.state.stack.push(module_exports);
             vm.restore_state();
 
-            vm.state.stack.push(module_exports);
+            //vm.state.stack.push(module_exports);
             gc::mark_and_sweep(vm);
         }
         RequireFileKind::NotFound => {
