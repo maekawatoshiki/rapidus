@@ -129,9 +129,9 @@ fn repl(trace: bool) {
                             if vm.state.stack.len() == 0 {
                                 vm.state.stack.push(vm::value::Value::Undefined);
                             };
-                            if vm.context_stack.len() != 1 {
+                            if vm.context_stack.len() != 0 {
                                 println!(
-                                    "Warning: context length is {} (should be 1)",
+                                    "Warning: context length is {} (should be 0)",
                                     vm.context_stack.len()
                                 );
                             };

@@ -52,8 +52,9 @@ pub struct VMState {
 }
 
 impl VMState {
+    /// get the value of nth argument in the current context.
     pub fn get_arguments_nth_value(&self, n: usize) -> Result<Value, RuntimeError> {
-        let callobj = self.scope.last().unwrap();
+        let callobj = self.scope.first().unwrap();
         if n < self.arguments.len() {
             match self.arguments[n].0.clone() {
                 Some(name) => callobj.get_value(&name),
@@ -64,9 +65,9 @@ impl VMState {
         }
     }
 
-    /// set the nth element of callObject.argument to val:Value.
+    /// set the nth argument in the current context to val:Value.
     pub fn set_arguments_nth_value(&mut self, n: usize, val: Value) {
-        let callobj = self.scope.last_mut().unwrap();
+        let callobj = self.scope.first_mut().unwrap();
         if n < self.arguments.len() {
             let param_name = self.arguments[n].0.clone();
             if let Some(param_name) = param_name {
@@ -77,12 +78,12 @@ impl VMState {
         }
     }
 
-    /// get length of callObject.arguments
+    /// get length of the arguments.
     pub fn get_arguments_length(&self) -> usize {
         self.arguments.len()
     }
 
-    /// get name of the nth element of func_info.params.
+    /// get the name of the nth element of func_info.params.
     pub fn get_parameter_nth_name(&self, func_info: FuncInfo, n: usize) -> Option<String> {
         if n < func_info.params.len() {
             return Some(func_info.params[n].0.clone());
@@ -441,6 +442,7 @@ impl VM {
             );
         }
         self.state.iseq = iseq;
+        self.state.pc = 0;
         let res = self.do_run();
         loop {
             if self.task_mgr.no_tasks() {
@@ -540,12 +542,7 @@ impl VM {
     /// main execution loop
     pub fn do_run(&mut self) -> Result<(), RuntimeError> {
         self.state.trystate.push(TryState::None);
-        //let mut count = 0;
         loop {
-            //count += 1;
-            //if count % 1000 == 0 {
-            //    gc::mark_and_sweep(&mut self.state)
-            //};
             let code = self.state.iseq[self.state.pc as usize];
             if self.is_debug {
                 let trystate = self.state.trystate.last().unwrap();

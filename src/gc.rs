@@ -104,7 +104,7 @@ impl<X: Gc> PartialEq for GcType<X> {
 
 impl<X: Gc> Debug for GcType<X> {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(f, "{{{:?}}}", *self)
+        write!(f, " 0x{:x?} ", self.inner)
     }
 }
 
