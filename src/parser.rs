@@ -351,22 +351,15 @@ impl Parser {
         let init = match self.lexer.peek(0)?.kind {
             Kind::Keyword(Keyword::Var) => {
                 assert_eq!(self.lexer.next()?.kind, Kind::Keyword(Keyword::Var));
-                let init = self.read_variable_declaration_list()?;
-                expect!(self, Kind::Symbol(Symbol::Semicolon), "expect ';'");
-                init
+                self.read_variable_declaration_list()?
             }
             Kind::Keyword(Keyword::Let) | Kind::Keyword(Keyword::Const) => {
-                let init = self.read_declaration()?;
-                expect!(self, Kind::Symbol(Symbol::Semicolon), "expect ';'");
-                init
+                self.read_declaration()?
             }
             Kind::Symbol(Symbol::Semicolon) => Node::new(NodeBase::Nope, self.lexer.get_prev_pos()),
-            _ => {
-                let expr = self.read_expression()?;
-                expect!(self, Kind::Symbol(Symbol::Semicolon), "expect ';'");
-                expr
-            }
+            _ => self.read_expression()?,
         };
+        expect!(self, Kind::Symbol(Symbol::Semicolon), "expect ';'");
 
         let cond = if self.lexer.next_if(Kind::Symbol(Symbol::Semicolon)) {
             Node::new(NodeBase::Boolean(true), self.lexer.get_prev_pos())
@@ -2061,12 +2054,13 @@ fn while_() {
 #[test]
 fn for1() {
     let mut parser = Parser::new("for (;;) { }".to_string());
+    println!("ssddee");
     assert_eq!(
         parser.parse_all().unwrap(),
         Node::new(
             NodeBase::StatementList(vec![Node::new(
                 NodeBase::For(
-                    Box::new(Node::new(NodeBase::Nope, 5)),
+                    Box::new(Node::new(NodeBase::Nope, 4)),
                     Box::new(Node::new(NodeBase::Boolean(true), 6)),
                     Box::new(Node::new(NodeBase::Nope, 7)),
                     Box::new(Node::new(NodeBase::Block(vec![]), 9)),
