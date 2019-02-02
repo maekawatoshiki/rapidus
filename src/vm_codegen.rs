@@ -1,5 +1,7 @@
 use bytecode_gen::{ByteCode, ByteCodeGen, VMInst};
-use node::{BinOp, FormalParameter, FormalParameters, Node, NodeBase, PropertyDefinition, UnaryOp};
+use node::{
+    BinOp, FormalParameter, FormalParameters, Node, NodeBase, PropertyDefinition, UnaryOp, VarKind,
+};
 use vm::callobj::CallObject;
 use vm::value::*;
 
@@ -99,13 +101,18 @@ impl VMCodeGen {
             &NodeBase::StatementList(ref node_list) => {
                 self.run_statement_list(node_list, iseq, use_value)?
             }
+            &NodeBase::Block(ref node_list) => {
+                self.run_block_statement(node_list, iseq, use_value)?
+            }
             &NodeBase::FunctionDecl(ref name, ref params, ref body) => {
                 self.run_function_decl(name, params, &*body)?
             }
             &NodeBase::FunctionExpr(ref name, ref params, ref body) => {
                 self.run_function_expr(name, params, &*body, iseq)?
             }
-            &NodeBase::VarDecl(ref name, ref init) => self.run_var_decl(name, init, iseq)?,
+            &NodeBase::VarDecl(ref name, ref init, ref var_kind) => {
+                self.run_var_decl(name, init, iseq, var_kind)?
+            }
             &NodeBase::If(ref cond, ref then_, ref else_) => {
                 self.run_if(&*cond, &*then_, &*else_, iseq)?
             }
@@ -154,7 +161,7 @@ impl VMCodeGen {
             &NodeBase::Nope if use_value => {
                 self.bytecode_gen.gen_push_const(Value::empty(), iseq);
             }
-            _ => {}
+            &NodeBase::Nope => {}
         }
 
         Ok(())
@@ -171,6 +178,21 @@ impl VMCodeGen {
         for node in node_list {
             self.run(node, iseq, use_value)?;
         }
+
+        Ok(())
+    }
+
+    pub fn run_block_statement(
+        &mut self,
+        node_list: &Vec<Node>,
+        iseq: &mut ByteCode,
+        use_value: bool,
+    ) -> Result<(), Error> {
+        self.bytecode_gen.gen_push_scope(iseq);
+        for node in node_list {
+            self.run(node, iseq, use_value)?;
+        }
+        self.bytecode_gen.gen_pop_scope(iseq);
 
         Ok(())
     }
@@ -221,10 +243,10 @@ impl VMCodeGen {
 
         self.level.pop();
 
-        if !body.definitely_returns() {
-            self.bytecode_gen.gen_push_undefined(&mut func_iseq);
-            self.bytecode_gen.gen_return(&mut func_iseq);
-        }
+        //if !body.definitely_returns() {
+        self.bytecode_gen.gen_push_undefined(&mut func_iseq);
+        self.bytecode_gen.gen_return(&mut func_iseq);
+        //}
 
         let params = params
             .clone()
@@ -275,10 +297,10 @@ impl VMCodeGen {
 
         self.level.pop();
 
-        if !body.definitely_returns() {
-            self.bytecode_gen.gen_push_undefined(&mut func_iseq);
-            self.bytecode_gen.gen_return(&mut func_iseq);
-        }
+        //if !body.definitely_returns() {
+        self.bytecode_gen.gen_push_undefined(&mut func_iseq);
+        self.bytecode_gen.gen_return(&mut func_iseq);
+        //}
 
         let params = params
             .clone()
@@ -425,17 +447,22 @@ impl VMCodeGen {
         name: &String,
         init: &Option<Box<Node>>,
         iseq: &mut ByteCode,
+        var_kind: &VarKind,
     ) -> Result<(), Error> {
+        if *var_kind == VarKind::Var {
+            self.func_header_info
+                .last_mut()
+                .unwrap()
+                .push(FunctionHeaderInst::DeclVar(name.clone()));
+        } else {
+            self.bytecode_gen.gen_decl_var(&name.clone(), iseq);
+        };
+
         if let &Some(ref init) = init {
             self.run(&*init, iseq, true)?;
         } else {
             self.bytecode_gen.gen_push_undefined(iseq);
         }
-
-        self.func_header_info
-            .last_mut()
-            .unwrap()
-            .push(FunctionHeaderInst::DeclVar(name.clone()));
         self.bytecode_gen.gen_set_value(name, iseq);
 
         Ok(())
@@ -554,6 +581,7 @@ impl VMCodeGen {
         //   for(...) {} // <- this for is named 'name'
         let name = self.labels.loop_names.pop();
 
+        self.bytecode_gen.gen_push_scope(iseq);
         self.run(init, iseq, false)?;
 
         let pos = iseq.len() as isize;
@@ -604,6 +632,7 @@ impl VMCodeGen {
         );
 
         self.labels.pop_local();
+        self.bytecode_gen.gen_pop_scope(iseq);
 
         Ok(())
     }

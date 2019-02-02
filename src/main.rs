@@ -2,6 +2,7 @@ extern crate rapidus;
 use rapidus::bytecode_gen;
 use rapidus::parser;
 use rapidus::vm;
+use rapidus::vm::value::Value;
 use rapidus::vm::vm::VM;
 use rapidus::vm_codegen;
 
@@ -142,7 +143,15 @@ fn repl(trace: bool) {
                                 _ => {
                                     // Show the evaluated result
                                     if let Some(value) = vm.state.stack.pop() {
-                                        print!("{}", value.format(3, true));
+                                        if value == Value::Undefined {
+                                            print!(
+                                                "{}",
+                                                Colour::Fixed(8).paint(value.format(3, true))
+                                            );
+                                        } else {
+                                            print!("{}", value.format(3, true));
+                                        }
+
                                         println!();
                                         /*
                                         unsafe {

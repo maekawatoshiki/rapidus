@@ -74,16 +74,16 @@ impl Lexer {
 
     /// get the next token.
     /// skipping line terminators.
-    pub fn next_except_lineterminator(&mut self) -> Result<Token, Error> {
+    pub fn next_skip_lineterminator(&mut self) -> Result<Token, Error> {
         match self.read_token() {
-            Ok(ref tok) if tok.kind == Kind::LineTerminator => self.next_except_lineterminator(),
+            Ok(ref tok) if tok.kind == Kind::LineTerminator => self.next_skip_lineterminator(),
             otherwise => otherwise,
         }
     }
 
     /// peek the next token.
     /// skipping line terminators.
-    pub fn peek_except_lineterminator(&mut self) -> Result<Token, Error> {
+    pub fn peek_skip_lineterminator(&mut self) -> Result<Token, Error> {
         let len = self.buf.len();
         for i in 0..len {
             let tok = self.buf[i].clone();
@@ -123,7 +123,7 @@ impl Lexer {
 
     /// peek the next token and if it is kind:Kind, get the next token, return true.
     /// otherwise, return false.
-    pub fn skip(&mut self, kind: Kind) -> bool {
+    pub fn next_if(&mut self, kind: Kind) -> bool {
         match self.next() {
             Ok(tok) => {
                 let success = tok.kind == kind;
@@ -139,8 +139,8 @@ impl Lexer {
     /// peek the next token, and when token is kind:Kind, get the token and return true.
     /// otherwise, return false.
     /// skipping line terminators.
-    pub fn skip_except_lineterminator(&mut self, kind: Kind) -> Result<bool, Error> {
-        match self.next_except_lineterminator() {
+    pub fn next_if_skip_lineterminator(&mut self, kind: Kind) -> Result<bool, Error> {
+        match self.next_skip_lineterminator() {
             Ok(tok) => {
                 let success = tok.kind == kind;
                 if !success {
@@ -334,6 +334,7 @@ impl Lexer {
                 _ => n,
             })
     }
+
     fn read_bin_num(&mut self, num_literal: &str) -> i64 {
         num_literal
             .chars()
@@ -919,15 +920,15 @@ fn comment() {
     );
     lexer.tokenize_all().unwrap();
     assert_eq!(
-        lexer.next_except_lineterminator().unwrap().kind,
+        lexer.next_skip_lineterminator().unwrap().kind,
         Kind::Identifier("x".to_string())
     );
     assert_eq!(
-        lexer.next_except_lineterminator().unwrap().kind,
+        lexer.next_skip_lineterminator().unwrap().kind,
         Kind::Symbol(Symbol::Semicolon)
     );
     assert_eq!(
-        lexer.next_except_lineterminator().unwrap().kind,
+        lexer.next_skip_lineterminator().unwrap().kind,
         Kind::Identifier("y".to_string())
     );
 }

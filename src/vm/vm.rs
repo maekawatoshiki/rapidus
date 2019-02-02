@@ -1195,8 +1195,8 @@ fn jmp(self_: &mut VM) -> Result<bool, RuntimeError> {
 fn jmp_if_false(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1; // jmp_if_false
     get_int32!(self_, dst, i32);
-    let cond = self_.state.stack.pop().unwrap();
-    if let Value::Bool(false) = cond {
+    let cond = self_.state.stack.pop().unwrap().to_boolean();
+    if !cond {
         self_.state.pc += dst as isize
     }
     Ok(true)

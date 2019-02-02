@@ -1,12 +1,14 @@
 pub use lexer;
-use node::{BinOp, FormalParameter, FormalParameters, Node, NodeBase, PropertyDefinition, UnaryOp};
+use node::{
+    BinOp, FormalParameter, FormalParameters, Node, NodeBase, PropertyDefinition, UnaryOp, VarKind,
+};
 use token::{get_string_for_symbol, Keyword, Kind, Symbol, Token};
 
 use ansi_term::Colour;
 
 macro_rules! expect {
     ($self:ident, $kind:expr, $msg:expr) => {{
-        let tok = $self.lexer.next_except_lineterminator()?;
+        let tok = $self.lexer.next_skip_lineterminator()?;
         if tok.kind != $kind {
             return Err(Error::Expect(tok.pos, $msg.to_string()));
         }
@@ -80,12 +82,28 @@ impl Parser {
 
 impl Parser {
     fn read_script(&mut self) -> Result<Node, Error> {
-        self.read_statement_list(false)
+        self.read_statement_list()
     }
 }
 
 impl Parser {
-    fn read_statement_list(&mut self, break_when_closingbrase: bool) -> Result<Node, Error> {
+    fn read_statement_list(&mut self) -> Result<Node, Error> {
+        self.read_statements(false, false)
+    }
+
+    fn read_block_statement(&mut self) -> Result<Node, Error> {
+        self.read_statements(true, true)
+    }
+
+    fn read_block(&mut self) -> Result<Node, Error> {
+        self.read_statements(true, false)
+    }
+
+    fn read_statements(
+        &mut self,
+        break_when_closingbrase: bool,
+        is_block_statement: bool,
+    ) -> Result<Node, Error> {
         let pos = if break_when_closingbrase {
             self.lexer.get_prev_pos()
         } else {
@@ -95,7 +113,7 @@ impl Parser {
         loop {
             match self
                 .lexer
-                .skip_except_lineterminator(Kind::Symbol(Symbol::ClosingBrace))
+                .next_if_skip_lineterminator(Kind::Symbol(Symbol::ClosingBrace))
             {
                 Ok(true) => {
                     if break_when_closingbrase {
@@ -132,7 +150,7 @@ impl Parser {
 
             while match self
                 .lexer
-                .skip_except_lineterminator(Kind::Symbol(Symbol::Semicolon))
+                .next_if_skip_lineterminator(Kind::Symbol(Symbol::Semicolon))
             {
                 Ok(succ) => succ,
                 Err(Error::NormalEOF) => false,
@@ -140,30 +158,40 @@ impl Parser {
             } {}
         }
 
-        Ok(Node::new(NodeBase::StatementList(items), pos))
+        if is_block_statement {
+            Ok(Node::new(NodeBase::Block(items), pos))
+        } else {
+            Ok(Node::new(NodeBase::StatementList(items), pos))
+        }
     }
 
+    /// https://tc39.github.io/ecma262/#prod-StatementListItem
     fn read_statement_list_item(&mut self) -> Result<Node, Error> {
-        if self.is_declaration() {
-            self.read_declaration()
+        if let Ok(tok) = self.lexer.peek(0) {
+            match tok.kind {
+                Kind::Keyword(Keyword::Function) => self.read_declaration(),
+                Kind::Keyword(Keyword::Const) => self.read_declaration(),
+                Kind::Keyword(Keyword::Let) => self.read_declaration(),
+                _ => self.read_statement(),
+            }
         } else {
             self.read_statement()
         }
     }
 
     fn read_statement(&mut self) -> Result<Node, Error> {
-        let tok = self.lexer.next_except_lineterminator()?;
+        let tok = self.lexer.next_skip_lineterminator()?;
 
         // Label
         if let Kind::Identifier(ref name) = tok.kind {
-            let maybe_colon = self.lexer.peek_except_lineterminator();
+            let maybe_colon = self.lexer.peek_skip_lineterminator();
             if let Ok(Token {
                 kind: Kind::Symbol(Symbol::Colon),
                 ..
             }) = maybe_colon
             {
                 assert_eq!(
-                    self.lexer.next_except_lineterminator()?.kind,
+                    self.lexer.next_skip_lineterminator()?.kind,
                     Kind::Symbol(Symbol::Colon)
                 );
                 // TODO: https://tc39.github.io/ecma262/#prod-LabelledStatement
@@ -195,20 +223,13 @@ impl Parser {
 
         match self
             .lexer
-            .skip_except_lineterminator(Kind::Symbol(Symbol::Semicolon))
+            .next_if_skip_lineterminator(Kind::Symbol(Symbol::Semicolon))
         {
             Ok(_) | Err(Error::NormalEOF) => {}
             Err(e) => return Err(e),
         }
 
         stmt
-    }
-}
-
-impl Parser {
-    /// https://tc39.github.io/ecma262/#prod-BlockStatement
-    fn read_block_statement(&mut self) -> Result<Node, Error> {
-        self.read_statement_list(true)
     }
 }
 
@@ -225,7 +246,7 @@ impl Parser {
 
         loop {
             list.push(self.read_variable_declaration()?);
-            if !self.lexer.skip(Kind::Symbol(Symbol::Comma)) {
+            if !self.lexer.next_if(Kind::Symbol(Symbol::Comma)) {
                 break;
             }
         }
@@ -236,7 +257,7 @@ impl Parser {
     /// https://tc39.github.io/ecma262/#prod-VariableDeclaration
     fn read_variable_declaration(&mut self) -> Result<Node, Error> {
         let pos = self.lexer.get_current_pos();
-        let name = match self.lexer.next_except_lineterminator()?.kind {
+        let name = match self.lexer.next_skip_lineterminator()?.kind {
             Kind::Identifier(name) => name,
             _ => {
                 return Err(Error::UnexpectedToken(
@@ -248,14 +269,14 @@ impl Parser {
 
         if self
             .lexer
-            .skip_except_lineterminator(Kind::Symbol(Symbol::Assign))?
+            .next_if_skip_lineterminator(Kind::Symbol(Symbol::Assign))?
         {
             Ok(Node::new(
-                NodeBase::VarDecl(name, Some(Box::new(self.read_initializer()?))),
+                NodeBase::VarDecl(name, Some(Box::new(self.read_initializer()?)), VarKind::Var),
                 pos,
             ))
         } else {
-            Ok(Node::new(NodeBase::VarDecl(name, None), pos))
+            Ok(Node::new(NodeBase::VarDecl(name, None, VarKind::Var), pos))
         }
     }
 
@@ -268,12 +289,12 @@ impl Parser {
 impl Parser {
     fn read_if_statement(&mut self) -> Result<Node, Error> {
         let pos = self.lexer.get_prev_pos();
-        let oparen = self.lexer.next_except_lineterminator()?;
+        let oparen = self.lexer.next_skip_lineterminator()?;
         if oparen.kind != Kind::Symbol(Symbol::OpeningParen) {
             return Err(Error::Expect(oparen.pos, "expect '('".to_string()));
         }
         let cond = self.read_expression()?;
-        let cparen = self.lexer.next_except_lineterminator()?;
+        let cparen = self.lexer.next_skip_lineterminator()?;
         if cparen.kind != Kind::Symbol(Symbol::ClosingParen) {
             return Err(Error::Expect(cparen.pos, "expect ')'".to_string()));
         }
@@ -281,7 +302,7 @@ impl Parser {
         let then_ = self.read_statement()?;
 
         let pos_else = self.lexer.get_current_pos();
-        if let Ok(expect_else_tok) = self.lexer.next_except_lineterminator() {
+        if let Ok(expect_else_tok) = self.lexer.next_skip_lineterminator() {
             if expect_else_tok.kind == Kind::Keyword(Keyword::Else) {
                 let else_ = self.read_statement()?;
                 return Ok(Node::new(
@@ -327,19 +348,27 @@ impl Parser {
 
         expect!(self, Kind::Symbol(Symbol::OpeningParen), "expect '('");
 
-        let init = if self.lexer.skip(Kind::Keyword(Keyword::Var)) {
-            let init = self.read_variable_statement()?;
-            expect!(self, Kind::Symbol(Symbol::Semicolon), "expect ';'");
-            init
-        } else if self.lexer.skip(Kind::Symbol(Symbol::Semicolon)) {
-            Node::new(NodeBase::Nope, self.lexer.get_prev_pos())
-        } else {
-            let expr = self.read_expression()?;
-            expect!(self, Kind::Symbol(Symbol::Semicolon), "expect ';'");
-            expr
+        let init = match self.lexer.peek(0)?.kind {
+            Kind::Keyword(Keyword::Var) => {
+                assert_eq!(self.lexer.next()?.kind, Kind::Keyword(Keyword::Var));
+                let init = self.read_variable_declaration_list()?;
+                expect!(self, Kind::Symbol(Symbol::Semicolon), "expect ';'");
+                init
+            }
+            Kind::Keyword(Keyword::Let) | Kind::Keyword(Keyword::Const) => {
+                let init = self.read_declaration()?;
+                expect!(self, Kind::Symbol(Symbol::Semicolon), "expect ';'");
+                init
+            }
+            Kind::Symbol(Symbol::Semicolon) => Node::new(NodeBase::Nope, self.lexer.get_prev_pos()),
+            _ => {
+                let expr = self.read_expression()?;
+                expect!(self, Kind::Symbol(Symbol::Semicolon), "expect ';'");
+                expr
+            }
         };
 
-        let cond = if self.lexer.skip(Kind::Symbol(Symbol::Semicolon)) {
+        let cond = if self.lexer.next_if(Kind::Symbol(Symbol::Semicolon)) {
             Node::new(NodeBase::Boolean(true), self.lexer.get_prev_pos())
         } else {
             let step = self.read_expression()?;
@@ -347,7 +376,7 @@ impl Parser {
             step
         };
 
-        let step = if self.lexer.skip(Kind::Symbol(Symbol::ClosingParen)) {
+        let step = if self.lexer.next_if(Kind::Symbol(Symbol::ClosingParen)) {
             Node::new(NodeBase::Nope, self.lexer.get_prev_pos())
         } else {
             let step = self.read_expression()?;
@@ -715,7 +744,7 @@ impl Parser {
     /// https://tc39.github.io/ecma262/#prod-NewExpression
     fn read_new_expression(&mut self) -> Result<Node, Error> {
         let pos = self.lexer.get_current_pos();
-        if self.lexer.skip(Kind::Keyword(Keyword::New)) {
+        if self.lexer.next_if(Kind::Keyword(Keyword::New)) {
             Ok(Node::new(
                 NodeBase::New(Box::new(self.read_new_expression()?)),
                 pos,
@@ -740,19 +769,17 @@ impl Parser {
                     let args = self.read_arguments()?;
                     lhs = Node::new(NodeBase::Call(Box::new(lhs), args), pos)
                 }
-                Kind::Symbol(Symbol::Point) => {
-                    match self.lexer.next_except_lineterminator()?.kind {
-                        Kind::Identifier(name) => {
-                            lhs = Node::new(NodeBase::Member(Box::new(lhs), name), pos)
-                        }
-                        _ => {
-                            return Err(Error::Expect(pos_, "expect identifier".to_string()));
-                        }
+                Kind::Symbol(Symbol::Point) => match self.lexer.next_skip_lineterminator()?.kind {
+                    Kind::Identifier(name) => {
+                        lhs = Node::new(NodeBase::Member(Box::new(lhs), name), pos)
                     }
-                }
+                    _ => {
+                        return Err(Error::Expect(pos_, "expect identifier".to_string()));
+                    }
+                },
                 Kind::Symbol(Symbol::OpeningBoxBracket) => {
                     let idx = self.read_expression()?;
-                    if !self.lexer.skip(Kind::Symbol(Symbol::ClosingBoxBracket)) {
+                    if !self.lexer.next_if(Kind::Symbol(Symbol::ClosingBoxBracket)) {
                         return Err(Error::Expect(
                             self.lexer.get_current_pos(),
                             "expect ']'".to_string(),
@@ -777,7 +804,7 @@ impl Parser {
     fn read_arguments(&mut self) -> Result<Vec<Node>, Error> {
         let mut args = vec![];
         loop {
-            match self.lexer.next_except_lineterminator() {
+            match self.lexer.next_skip_lineterminator() {
                 Ok(ref tok) if tok.kind == Kind::Symbol(Symbol::ClosingParen) => break,
                 Ok(ref tok) if tok.kind == Kind::Symbol(Symbol::Comma) => {
                     if args.len() == 0 {
@@ -788,7 +815,7 @@ impl Parser {
                     }
                     if self
                         .lexer
-                        .skip_except_lineterminator(Kind::Symbol(Symbol::ClosingParen))?
+                        .next_if_skip_lineterminator(Kind::Symbol(Symbol::ClosingParen))?
                     {
                         break;
                     }
@@ -867,7 +894,7 @@ impl Parser {
 
         expect!(self, Kind::Symbol(Symbol::OpeningBrace), "expect '{'");
 
-        let body = self.read_statement_list(true)?;
+        let body = self.read_block()?;
 
         Ok(Node::new(
             NodeBase::FunctionExpr(name, params, Box::new(body)),
@@ -882,11 +909,11 @@ impl Parser {
 
         loop {
             // TODO: Support all features.
-            while self.lexer.skip(Kind::Symbol(Symbol::Comma)) {
+            while self.lexer.next_if(Kind::Symbol(Symbol::Comma)) {
                 elements.push(Node::new(NodeBase::Nope, pos));
             }
 
-            if self.lexer.skip(Kind::Symbol(Symbol::ClosingBoxBracket)) {
+            if self.lexer.next_if(Kind::Symbol(Symbol::ClosingBoxBracket)) {
                 break;
             }
 
@@ -898,7 +925,7 @@ impl Parser {
                 elements.push(elem);
             }
 
-            self.lexer.skip(Kind::Symbol(Symbol::Comma));
+            self.lexer.next_if(Kind::Symbol(Symbol::Comma));
         }
 
         Ok(Node::new(NodeBase::Array(elements), pos))
@@ -912,20 +939,20 @@ impl Parser {
         loop {
             if self
                 .lexer
-                .skip_except_lineterminator(Kind::Symbol(Symbol::ClosingBrace))?
+                .next_if_skip_lineterminator(Kind::Symbol(Symbol::ClosingBrace))?
             {
                 break;
             }
             elements.push(self.read_property_definition()?);
             if self
                 .lexer
-                .skip_except_lineterminator(Kind::Symbol(Symbol::ClosingBrace))?
+                .next_if_skip_lineterminator(Kind::Symbol(Symbol::ClosingBrace))?
             {
                 break;
             }
             if !self
                 .lexer
-                .skip_except_lineterminator(Kind::Symbol(Symbol::Comma))?
+                .next_if_skip_lineterminator(Kind::Symbol(Symbol::Comma))?
             {
                 return Err(Error::Expect(
                     self.lexer.get_current_pos(),
@@ -948,10 +975,10 @@ impl Parser {
             }
         }
 
-        let tok = self.lexer.next_except_lineterminator()?;
+        let tok = self.lexer.next_skip_lineterminator()?;
         if self
             .lexer
-            .skip_except_lineterminator(Kind::Symbol(Symbol::Colon))?
+            .next_if_skip_lineterminator(Kind::Symbol(Symbol::Colon))?
         {
             let val = self.read_assignment_expression()?;
             return Ok(PropertyDefinition::Property(to_string(tok.kind), val));
@@ -974,11 +1001,11 @@ impl Parser {
         let pos = self.lexer.get_prev_pos();
 
         // no LineTerminator here
-        if self.lexer.skip(Kind::LineTerminator) {
+        if self.lexer.next_if(Kind::LineTerminator) {
             return Ok(Node::new(NodeBase::Return(None), pos));
         }
 
-        if self.lexer.skip(Kind::Symbol(Symbol::Semicolon)) {
+        if self.lexer.next_if(Kind::Symbol(Symbol::Semicolon)) {
             return Ok(Node::new(NodeBase::Return(None), pos));
         }
 
@@ -987,7 +1014,7 @@ impl Parser {
         }
 
         let expr = self.read_expression()?;
-        self.lexer.skip(Kind::Symbol(Symbol::Semicolon));
+        self.lexer.next_if(Kind::Symbol(Symbol::Semicolon));
 
         Ok(Node::new(NodeBase::Return(Some(Box::new(expr))), pos))
     }
@@ -995,7 +1022,7 @@ impl Parser {
 
 macro_rules! skip_symbol_or_error {
     ($lexer: expr, $symbol: path) => {
-        if !$lexer.skip_except_lineterminator(Kind::Symbol($symbol))? {
+        if !$lexer.next_if_skip_lineterminator(Kind::Symbol($symbol))? {
             return Err(Error::UnexpectedToken(
                 $lexer.get_current_pos(),
                 format!("expected {}", get_string_for_symbol($symbol)),
@@ -1009,10 +1036,10 @@ impl Parser {
     fn read_try_statement(&mut self) -> Result<Node, Error> {
         let pos_try = self.lexer.get_prev_pos();
         skip_symbol_or_error!(self.lexer, Symbol::OpeningBrace);
-        let try = self.read_block_statement()?;
+        let try = self.read_block()?;
         let is_catch = self
             .lexer
-            .skip_except_lineterminator(Kind::Keyword(Keyword::Catch))?;
+            .next_if_skip_lineterminator(Kind::Keyword(Keyword::Catch))?;
         let pos_catch = self.lexer.get_current_pos();
         let (catch, param) = if is_catch {
             skip_symbol_or_error!(self.lexer, Symbol::OpeningParen);
@@ -1029,18 +1056,18 @@ impl Parser {
             };
             skip_symbol_or_error!(self.lexer, Symbol::ClosingParen);
             skip_symbol_or_error!(self.lexer, Symbol::OpeningBrace);
-            (self.read_block_statement()?, catch_param)
+            (self.read_block()?, catch_param)
         } else {
             (
                 Node::new(NodeBase::Nope, pos_catch),
                 Node::new(NodeBase::Nope, pos_catch),
             )
         };
-        let is_finally = self.lexer.skip(Kind::Keyword(Keyword::Finally));
+        let is_finally = self.lexer.next_if(Kind::Keyword(Keyword::Finally));
         let pos_finally = self.lexer.get_current_pos();
         let finally = if is_finally {
             skip_symbol_or_error!(self.lexer, Symbol::OpeningBrace);
-            self.read_block_statement()?
+            self.read_block()?
         } else {
             Node::new(NodeBase::Nope, pos_finally)
         };
@@ -1064,14 +1091,14 @@ impl Parser {
         let pos = self.lexer.get_current_pos();
 
         // no LineTerminator here
-        if self.lexer.skip(Kind::LineTerminator) {
+        if self.lexer.next_if(Kind::LineTerminator) {
             return Err(Error::General(
                 pos,
                 "Illegal new line after throw".to_string(),
             ));
         }
 
-        if self.lexer.skip(Kind::Symbol(Symbol::Semicolon)) {
+        if self.lexer.next_if(Kind::Symbol(Symbol::Semicolon)) {
             return Err(Error::UnexpectedToken(
                 pos,
                 "Unexpected token ;".to_string(),
@@ -1086,29 +1113,58 @@ impl Parser {
         }
 
         let expr = self.read_expression()?;
-        self.lexer.skip(Kind::Symbol(Symbol::Semicolon));
+        self.lexer.next_if(Kind::Symbol(Symbol::Semicolon));
 
         Ok(Node::new(NodeBase::Throw(Box::new(expr)), pos_throw))
     }
 }
 
 impl Parser {
-    fn is_declaration(&mut self) -> bool {
-        self.is_hoistable_declaration()
-    }
-
     fn read_declaration(&mut self) -> Result<Node, Error> {
         let tok = self.lexer.next()?;
         match tok.kind {
             Kind::Keyword(Keyword::Function) => self.read_function_declaration(),
+            Kind::Keyword(Keyword::Const) => self.read_lexical_declaration(true),
+            Kind::Keyword(Keyword::Let) => self.read_lexical_declaration(false),
             _ => unreachable!(),
+        }
+    }
+    /// https://tc39.github.io/ecma262/#prod-LexicalDeclaration
+    fn read_lexical_declaration(&mut self, is_const: bool) -> Result<Node, Error> {
+        let pos = self.lexer.get_current_pos();
+        let name = match self.lexer.next_skip_lineterminator()?.kind {
+            Kind::Identifier(name) => name,
+            _ => {
+                return Err(Error::UnexpectedToken(
+                    self.lexer.get_prev_pos(),
+                    "Expect identifier.".to_string(),
+                ));
+            }
+        };
+
+        let var_kind = if is_const {
+            VarKind::Const
+        } else {
+            VarKind::Let
+        };
+
+        if self
+            .lexer
+            .next_if_skip_lineterminator(Kind::Symbol(Symbol::Assign))?
+        {
+            let init = Some(Box::new(self.read_initializer()?));
+
+            let decl = NodeBase::VarDecl(name, init, var_kind);
+            Ok(Node::new(decl, pos))
+        } else {
+            Ok(Node::new(NodeBase::VarDecl(name, None, var_kind), pos))
         }
     }
 
     /// https://tc39.github.io/ecma262/#prod-FunctionDeclaration
     fn read_function_declaration(&mut self) -> Result<Node, Error> {
         let pos = self.lexer.get_prev_pos();
-        let name = if let Kind::Identifier(name) = self.lexer.next_except_lineterminator()?.kind {
+        let name = if let Kind::Identifier(name) = self.lexer.next_skip_lineterminator()?.kind {
             name
         } else {
             return Err(Error::Expect(
@@ -1123,7 +1179,7 @@ impl Parser {
 
         expect!(self, Kind::Symbol(Symbol::OpeningBrace), "expect '{'");
 
-        let body = self.read_statement_list(true)?;
+        let body = self.read_block()?;
 
         Ok(Node::new(
             NodeBase::FunctionDecl(name, params, Box::new(body)),
@@ -1134,7 +1190,7 @@ impl Parser {
     fn read_formal_parameters(&mut self) -> Result<FormalParameters, Error> {
         if self
             .lexer
-            .skip_except_lineterminator(Kind::Symbol(Symbol::ClosingParen))?
+            .next_if_skip_lineterminator(Kind::Symbol(Symbol::ClosingParen))?
         {
             return Ok(vec![]);
         }
@@ -1147,7 +1203,7 @@ impl Parser {
             params.push(
                 if self
                     .lexer
-                    .skip_except_lineterminator(Kind::Symbol(Symbol::Rest))?
+                    .next_if_skip_lineterminator(Kind::Symbol(Symbol::Rest))?
                 {
                     rest_param = true;
                     self.read_function_rest_parameter()?
@@ -1156,7 +1212,7 @@ impl Parser {
                 },
             );
 
-            if self.lexer.skip(Kind::Symbol(Symbol::ClosingParen)) {
+            if self.lexer.next_if(Kind::Symbol(Symbol::ClosingParen)) {
                 break;
             }
 
@@ -1176,7 +1232,7 @@ impl Parser {
     // TODO: Support all features: https://tc39.github.io/ecma262/#prod-FormalParameter
     fn read_formal_parameter(&mut self) -> Result<FormalParameter, Error> {
         let pos = self.lexer.get_current_pos();
-        let name = if let Kind::Identifier(name) = self.lexer.next_except_lineterminator()?.kind {
+        let name = if let Kind::Identifier(name) = self.lexer.next_skip_lineterminator()?.kind {
             name
         } else {
             return Err(Error::Expect(
@@ -1202,23 +1258,6 @@ impl Parser {
             None,
             true,
         ))
-    }
-}
-
-impl Parser {
-    /// https://tc39.github.io/ecma262/#prod-HoistableDeclaration
-    fn is_hoistable_declaration(&mut self) -> bool {
-        self.is_function_declaration()
-    }
-}
-
-impl Parser {
-    /// https://tc39.github.io/ecma262/#prod-FunctionDeclaration
-    fn is_function_declaration(&mut self) -> bool {
-        match self.lexer.peek(0) {
-            Ok(tok) => tok.is_the_keyword(Keyword::Function),
-            Err(_) => false,
-        }
     }
 }
 
@@ -1821,11 +1860,12 @@ fn var_decl() {
         Node::new(
             NodeBase::StatementList(vec![Node::new(
                 NodeBase::StatementList(vec![
-                    Node::new(NodeBase::VarDecl("a".to_string(), None), 4),
+                    Node::new(NodeBase::VarDecl("a".to_string(), None, VarKind::Var), 4),
                     Node::new(
                         NodeBase::VarDecl(
                             "b".to_string(),
                             Some(Box::new(Node::new(NodeBase::Number(21.0), 11))),
+                            VarKind::Var,
                         ),
                         7,
                     ),
@@ -1848,7 +1888,7 @@ fn block() {
         parser.parse_all().unwrap(),
         Node::new(
             NodeBase::StatementList(vec![Node::new(
-                NodeBase::StatementList(vec![Node::new(
+                NodeBase::Block(vec![Node::new(
                     NodeBase::Assign(
                         Box::new(Node::new(NodeBase::Identifier("a".to_string()), 2)),
                         Box::new(Node::new(NodeBase::Number(1.0), 4)),
@@ -1876,7 +1916,7 @@ fn break_() {
                 NodeBase::While(
                     Box::new(Node::new(NodeBase::Number(1.0), 6)),
                     Box::new(Node::new(
-                        NodeBase::StatementList(vec![Node::new(NodeBase::Break(None), 9)]),
+                        NodeBase::Block(vec![Node::new(NodeBase::Break(None), 9)]),
                         8,
                     )),
                 ),
@@ -1901,7 +1941,7 @@ fn continue_() {
                 NodeBase::While(
                     Box::new(Node::new(NodeBase::Number(1.0), 6)),
                     Box::new(Node::new(
-                        NodeBase::StatementList(vec![Node::new(NodeBase::Continue(None), 9)]),
+                        NodeBase::Block(vec![Node::new(NodeBase::Continue(None), 9)]),
                         8,
                     )),
                 ),
@@ -2009,7 +2049,7 @@ fn while_() {
             NodeBase::StatementList(vec![Node::new(
                 NodeBase::While(
                     Box::new(Node::new(NodeBase::Boolean(true), 7)),
-                    Box::new(Node::new(NodeBase::StatementList(vec![]), 13)),
+                    Box::new(Node::new(NodeBase::Block(vec![]), 13)),
                 ),
                 0,
             )]),
@@ -2029,7 +2069,7 @@ fn for1() {
                     Box::new(Node::new(NodeBase::Nope, 5)),
                     Box::new(Node::new(NodeBase::Boolean(true), 6)),
                     Box::new(Node::new(NodeBase::Nope, 7)),
-                    Box::new(Node::new(NodeBase::StatementList(vec![]), 9)),
+                    Box::new(Node::new(NodeBase::Block(vec![]), 9)),
                 ),
                 0,
             )]),
@@ -2165,7 +2205,7 @@ fn asi1() {
                     Box::new(Node::new(
                         NodeBase::StatementList(vec![
                             Node::new(NodeBase::Return(None), 38),
-                            Node::new(NodeBase::StatementList(vec![]), 59),
+                            Node::new(NodeBase::Block(vec![]), 59),
                         ]),
                         23,
                     )),
