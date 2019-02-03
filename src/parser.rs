@@ -379,7 +379,7 @@ impl Parser {
 
         let body = self.read_statement()?;
 
-        Ok(Node::new(
+        let for_node = Node::new(
             NodeBase::For(
                 Box::new(init),
                 Box::new(cond),
@@ -387,7 +387,9 @@ impl Parser {
                 Box::new(body),
             ),
             pos,
-        ))
+        );
+
+        Ok(Node::new(NodeBase::Block(vec![for_node]), pos))
     }
 }
 
@@ -2054,17 +2056,19 @@ fn while_() {
 #[test]
 fn for1() {
     let mut parser = Parser::new("for (;;) { }".to_string());
-    println!("ssddee");
     assert_eq!(
         parser.parse_all().unwrap(),
         Node::new(
             NodeBase::StatementList(vec![Node::new(
-                NodeBase::For(
-                    Box::new(Node::new(NodeBase::Nope, 4)),
-                    Box::new(Node::new(NodeBase::Boolean(true), 6)),
-                    Box::new(Node::new(NodeBase::Nope, 7)),
-                    Box::new(Node::new(NodeBase::Block(vec![]), 9)),
-                ),
+                NodeBase::Block(vec![Node::new(
+                    NodeBase::For(
+                        Box::new(Node::new(NodeBase::Nope, 4)),
+                        Box::new(Node::new(NodeBase::Boolean(true), 6)),
+                        Box::new(Node::new(NodeBase::Nope, 7)),
+                        Box::new(Node::new(NodeBase::Block(vec![]), 9)),
+                    ),
+                    0,
+                )]),
                 0,
             )]),
             0

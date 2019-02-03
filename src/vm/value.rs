@@ -567,7 +567,7 @@ impl Value {
                         .fold("".to_string(), |acc, prop| {
                             acc + prop.val.format_(max_depth, depth - 1, indent).as_str() + ","
                         })
-                        .trim_right_matches(",")
+                        .trim_end_matches(",")
                         .to_string();
                     format!("[{}]", str)
                 }
@@ -598,7 +598,7 @@ impl Value {
                                 )
                             }
                         })
-                        .trim_right_matches(",")
+                        .trim_end_matches(",")
                         .to_string();
                     format!("{{{}{}}}", str, cr(0))
                 }
@@ -716,7 +716,7 @@ impl ArrayValue {
             .fold("".to_string(), |acc, prop| {
                 acc + prop.val.to_string().as_str() + ","
             })
-            .trim_right_matches(",")
+            .trim_end_matches(",")
             .to_string()
     }
 

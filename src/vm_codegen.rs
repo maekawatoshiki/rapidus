@@ -14,8 +14,14 @@ pub enum Error {
 #[derive(Clone, Debug)]
 pub enum Level {
     Function,
-    Try { return_instr_pos: Vec<isize> },
-    Catch { return_instr_pos: Vec<isize> },
+    Try {
+        /// destination position in iseq for RETURN_TRY.
+        return_instr_pos: Vec<isize>,
+    },
+    Catch {
+        /// destination position in iseq for RETURN_TRY.
+        return_instr_pos: Vec<isize>,
+    },
     Finally,
 }
 
@@ -48,6 +54,7 @@ pub enum FunctionHeaderInst {
 pub struct VMCodeGen {
     pub global_varmap: CallObjectRef,
     pub func_header_info: Vec<Vec<FunctionHeaderInst>>,
+    pub block_header_info: Vec<Vec<FunctionHeaderInst>>,
     pub bytecode_gen: ByteCodeGen,
     pub labels: Jumps,
     pub level: Vec<Level>,
@@ -58,6 +65,7 @@ impl VMCodeGen {
         VMCodeGen {
             global_varmap: global,
             func_header_info: vec![vec![]],
+            block_header_info: vec![vec![]],
             bytecode_gen: ByteCodeGen::new(),
             labels: Jumps::new(),
             level: vec![],
@@ -189,10 +197,48 @@ impl VMCodeGen {
         use_value: bool,
     ) -> Result<(), Error> {
         self.bytecode_gen.gen_push_scope(iseq);
+        let jmp_pos = iseq.len();
+        self.bytecode_gen.gen_jmp(0, iseq);
+        let start_pos = iseq.len();
+
+        self.block_header_info.push(vec![]);
         for node in node_list {
             self.run(node, iseq, use_value)?;
         }
         self.bytecode_gen.gen_pop_scope(iseq);
+        let jmp2_pos = iseq.len();
+        self.bytecode_gen.gen_jmp(0, iseq);
+
+        let header_pos = iseq.len();
+        self.bytecode_gen.replace_int32(
+            (header_pos - jmp_pos) as i32 - 5,
+            &mut iseq[jmp_pos as usize + 1..jmp_pos as usize + 5],
+        );
+
+        let mut block_header_info = self.block_header_info.pop().unwrap();
+        while let Some(header) = block_header_info.pop() {
+            match header {
+                FunctionHeaderInst::Closure(func_name, val) => {
+                    self.bytecode_gen.gen_decl_var(&func_name, iseq);
+                    self.bytecode_gen.gen_push_const(val, iseq);
+                    self.bytecode_gen.gen_update_parent_scope(iseq);
+                    self.bytecode_gen.gen_set_value(&func_name, iseq);
+                }
+                FunctionHeaderInst::DeclVar(var_name) => {
+                    self.bytecode_gen.gen_decl_var(&var_name, iseq);
+                }
+            }
+        }
+
+        let jmp3_pos = iseq.len();
+        self.bytecode_gen
+            .gen_jmp(start_pos as i32 - jmp3_pos as i32 - 5, iseq);
+
+        let exit_pos = iseq.len();
+        self.bytecode_gen.replace_int32(
+            (exit_pos - jmp2_pos) as i32 - 5,
+            &mut iseq[jmp2_pos as usize + 1..jmp2_pos as usize + 5],
+        );
 
         Ok(())
     }
@@ -200,27 +246,23 @@ impl VMCodeGen {
 
 impl VMCodeGen {
     fn set_function_header(&mut self, iseq: &mut ByteCode) {
-        let mut section_callobj_set = vec![];
+        let mut header_iseq = vec![];
         let func_header_info = self.func_header_info.last_mut().unwrap();
         while let Some(header) = func_header_info.pop() {
             match header {
                 FunctionHeaderInst::Closure(func_name, val) => {
+                    self.bytecode_gen.gen_decl_var(&func_name, &mut header_iseq);
+                    self.bytecode_gen.gen_push_const(val, &mut header_iseq);
+                    self.bytecode_gen.gen_update_parent_scope(&mut header_iseq);
                     self.bytecode_gen
-                        .gen_decl_var(&func_name, &mut section_callobj_set);
-                    self.bytecode_gen
-                        .gen_push_const(val, &mut section_callobj_set);
-                    self.bytecode_gen
-                        .gen_update_parent_scope(&mut section_callobj_set);
-                    self.bytecode_gen
-                        .gen_set_value(&func_name, &mut section_callobj_set);
+                        .gen_set_value(&func_name, &mut header_iseq);
                 }
                 FunctionHeaderInst::DeclVar(var_name) => {
-                    self.bytecode_gen
-                        .gen_decl_var(&var_name, &mut section_callobj_set);
+                    self.bytecode_gen.gen_decl_var(&var_name, &mut header_iseq);
                 }
             }
         }
-        iseq.splice(1..1, section_callobj_set);
+        iseq.splice(1..1, header_iseq);
     }
 
     /// function name(params...) { body }
@@ -340,16 +382,19 @@ impl VMCodeGen {
         if self.level.len() == 0 {
             self.bytecode_gen.gen_return(iseq);
         } else {
+            /*
             for level in self.level.iter_mut().rev() {
                 match level {
-                    Level::Catch { .. } => {
+                    Level::Catch { .. } | Level::Block => {
                         self.bytecode_gen.gen_pop_scope(iseq);
                     }
                     Level::Function => break,
                     _ => {}
                 }
             }
+            */
             match self.level.last_mut().unwrap() {
+                // when in try or catch clause, generate RETERN_TRY.
                 Level::Catch {
                     ref mut return_instr_pos,
                 }
@@ -359,6 +404,7 @@ impl VMCodeGen {
                     return_instr_pos.push(iseq.len() as isize);
                     self.bytecode_gen.gen_return_try(iseq);
                 }
+                // otherwise, generate RETURN.
                 _ => {
                     self.bytecode_gen.gen_return(iseq);
                 }
@@ -449,15 +495,20 @@ impl VMCodeGen {
         iseq: &mut ByteCode,
         var_kind: &VarKind,
     ) -> Result<(), Error> {
-        if *var_kind == VarKind::Var {
-            self.func_header_info
-                .last_mut()
-                .unwrap()
-                .push(FunctionHeaderInst::DeclVar(name.clone()));
-        } else {
-            self.bytecode_gen.gen_decl_var(&name.clone(), iseq);
-        };
-
+        match var_kind {
+            VarKind::Var => {
+                self.func_header_info
+                    .last_mut()
+                    .unwrap()
+                    .push(FunctionHeaderInst::DeclVar(name.clone()));
+            }
+            _ => {
+                self.block_header_info
+                    .last_mut()
+                    .unwrap()
+                    .push(FunctionHeaderInst::DeclVar(name.clone()));
+            }
+        }
         if let &Some(ref init) = init {
             self.run(&*init, iseq, true)?;
         } else {
@@ -581,7 +632,6 @@ impl VMCodeGen {
         //   for(...) {} // <- this for is named 'name'
         let name = self.labels.loop_names.pop();
 
-        self.bytecode_gen.gen_push_scope(iseq);
         self.run(init, iseq, false)?;
 
         let pos = iseq.len() as isize;
@@ -632,7 +682,6 @@ impl VMCodeGen {
         );
 
         self.labels.pop_local();
-        self.bytecode_gen.gen_pop_scope(iseq);
 
         Ok(())
     }

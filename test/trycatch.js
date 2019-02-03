@@ -17,7 +17,7 @@ function f() {
 }
 
 try {
-a.push(f());
+  a.push(f());
   throw 10110
 } catch (e){
   a.push(e)

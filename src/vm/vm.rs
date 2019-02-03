@@ -1280,6 +1280,7 @@ fn finally(self_: &mut VM) -> Result<bool, RuntimeError> {
     Ok(true)
 }
 
+/// return in try-catch. return after execute finally clause.
 fn return_try(self_: &mut VM) -> Result<bool, RuntimeError> {
     let pc = self_.state.pc;
     self_.state.pc += 1;
