@@ -1,13 +1,13 @@
 function quick_sort (start, end) {
-  var pivot = a[Math.floor((start + end) / 2)];
-  var left = start;
-  var right = end;
+  const pivot = a[Math.floor((start + end) / 2)];
+  let left = start;
+  let right = end;
 
   while (true) {
     while (a[left] < pivot) left += 1;
     while (pivot < a[right]) right -= 1;
     if (right <= left) break;
-    var tmp = a[left];
+    const tmp = a[left];
     a[left] = a[right];
     a[right] = tmp;
     left += 1;

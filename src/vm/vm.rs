@@ -23,7 +23,7 @@ pub struct VM {
     pub jit: TracingJit,
     pub state: VMState,
     pub context_stack: Vec<VMState>,
-    pub op_table: [fn(&mut VM) -> Result<bool, RuntimeError>; 61],
+    pub op_table: [fn(&mut VM) -> Result<bool, RuntimeError>; 62],
     pub task_mgr: TaskManager,
     pub is_debug: bool,
     pub jit_on: bool,
@@ -465,6 +465,7 @@ impl VM {
                 pop_scope,
                 decl_const,
                 decl_let,
+                not,
             ],
         }
     }
@@ -1136,6 +1137,16 @@ fn and(self_: &mut VM) -> Result<bool, RuntimeError> {
         (Value::Number(l), Value::Number(r)) => {
             Value::Number(((l as i64 as i32) & (r as i64 as i32)) as f64)
         }
+        _ => return Err(RuntimeError::Unimplemented),
+    });
+    Ok(true)
+}
+
+fn not(self_: &mut VM) -> Result<bool, RuntimeError> {
+    self_.state.pc += 1; // $name
+    let expr = self_.state.stack.pop().unwrap();
+    self_.state.stack.push(match expr {
+        Value::Number(expr) => Value::Number(!(expr as i64 as i32) as f64),
         _ => return Err(RuntimeError::Unimplemented),
     });
     Ok(true)

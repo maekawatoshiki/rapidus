@@ -810,6 +810,7 @@ impl VMCodeGen {
             &UnaryOp::Plus => self.bytecode_gen.gen_posi(iseq),
             &UnaryOp::Minus => self.bytecode_gen.gen_neg(iseq),
             &UnaryOp::Not => self.bytecode_gen.gen_lnot(iseq),
+            &UnaryOp::BitwiseNot => self.bytecode_gen.gen_not(iseq),
             &UnaryOp::PrInc => {
                 self.bytecode_gen.gen_push_int8(1, iseq);
                 self.bytecode_gen.gen_add(iseq);
@@ -931,6 +932,7 @@ impl VMCodeGen {
             &BinOp::SNe => self.bytecode_gen.gen_sne(iseq),
             &BinOp::And => self.bytecode_gen.gen_and(iseq),
             &BinOp::Or => self.bytecode_gen.gen_or(iseq),
+            &BinOp::Xor => self.bytecode_gen.gen_xor(iseq),
             &BinOp::Lt => self.bytecode_gen.gen_lt(iseq),
             &BinOp::Gt => self.bytecode_gen.gen_gt(iseq),
             &BinOp::Le => self.bytecode_gen.gen_le(iseq),

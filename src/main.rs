@@ -275,10 +275,13 @@ fn vm_test() {
     assert_file("trinity".to_string());
     assert_file("closure".to_string());
     assert_file("fact".to_string());
+    assert_file("operator".to_string());
     test_file(
         "array".to_string(),
         "'2,3,6,7,3,4,2,3,three1,5,4,1,2,three'".to_string(),
     );
+    test_code("+(5>3)+60%7+(3>=5)+!!5+(-6)".to_string(), "0".to_string());
+    test_code("'true'*3".to_string(), "'truetruetrue'".to_string());
     test_code("(100).toString(15)".to_string(), "'6a'".to_string());
     test_code(
         "'死して屍拾う者なし'[4]".to_string(),

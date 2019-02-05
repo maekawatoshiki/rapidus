@@ -65,6 +65,7 @@ pub mod VMInst {
     pub const POP_SCOPE: u8 = 0x3a;
     pub const DECL_CONST: u8 = 0x3b;
     pub const DECL_LET: u8 = 0x3c;
+    pub const NOT: u8 = 0x3d;
 
     pub fn get_inst_size(inst: u8) -> Option<usize> {
         match inst {
@@ -77,8 +78,8 @@ pub mod VMInst {
             PUSH_INT8 => Some(2),
             PUSH_FALSE | END | PUSH_TRUE | PUSH_THIS | ADD | SUB | MUL | DIV | REM | LT
             | PUSH_ARGUMENTS | NEG | POSI | GT | LE | GE | EQ | NE | GET_MEMBER | RETURN | SNE
-            | ZFSHR | POP | DOUBLE | AND | COND_OP | OR | SEQ | SET_MEMBER
-            | UPDATE_PARENT_SCOPE | PUSH_UNDEFINED | LAND | SHR | SHL | XOR | LOR => Some(1),
+            | ZFSHR | POP | DOUBLE | AND | COND_OP | OR | SEQ | SET_MEMBER | LNOT
+            | UPDATE_PARENT_SCOPE | PUSH_UNDEFINED | LAND | SHR | SHL | XOR | LOR | NOT => Some(1),
             ENTER_TRY => Some(9),
             _ => None,
         }
@@ -175,22 +176,15 @@ impl ByteCodeGen {
         iseq.push(VMInst::PUSH_UNDEFINED);
     }
 
-    // pub fn gen_push_null(&self, iseq: &mut ByteCode) {
-    //     iseq.push(VMInst::PUSH_ARGUMENTS);
-    // }
-
     pub fn gen_lnot(&self, iseq: &mut ByteCode) {
         iseq.push(VMInst::LNOT);
     }
-
     pub fn gen_posi(&self, iseq: &mut ByteCode) {
         iseq.push(VMInst::POSI);
     }
-
     pub fn gen_neg(&self, iseq: &mut ByteCode) {
         iseq.push(VMInst::NEG);
     }
-
     pub fn gen_add(&self, iseq: &mut ByteCode) {
         iseq.push(VMInst::ADD);
     }
@@ -230,6 +224,9 @@ impl ByteCodeGen {
     pub fn gen_sne(&self, iseq: &mut ByteCode) {
         iseq.push(VMInst::SNE);
     }
+    pub fn gen_not(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::NOT);
+    }
     pub fn gen_and(&self, iseq: &mut ByteCode) {
         iseq.push(VMInst::AND);
     }
@@ -248,21 +245,18 @@ impl ByteCodeGen {
     pub fn gen_zfshr(&self, iseq: &mut ByteCode) {
         iseq.push(VMInst::ZFSHR);
     }
-
     pub fn gen_land(&self, iseq: &mut ByteCode) {
         iseq.push(VMInst::LAND);
     }
     pub fn gen_lor(&self, iseq: &mut ByteCode) {
         iseq.push(VMInst::LOR);
     }
-
     pub fn gen_double(&self, iseq: &mut ByteCode) {
         iseq.push(VMInst::DOUBLE);
     }
     pub fn gen_pop(&self, iseq: &mut ByteCode) {
         iseq.push(VMInst::POP);
     }
-
     pub fn gen_get_member(&self, iseq: &mut ByteCode) {
         iseq.push(VMInst::GET_MEMBER);
     }
@@ -523,13 +517,13 @@ pub fn show_inst(code: &ByteCode, i: usize, const_table: &ConstantTable) {
             print!("SNeg");
         }
         VMInst::AND => {
-            print!("And");
+            print!("BitwiseAnd");
         }
         VMInst::OR => {
-            print!("Or");
+            print!("BitwiseOr");
         }
         VMInst::XOR => {
-            print!("Xor");
+            print!("BitwiseXor");
         }
         VMInst::SHL => {
             print!("Shift-L");
@@ -630,6 +624,9 @@ pub fn show_inst(code: &ByteCode, i: usize, const_table: &ConstantTable) {
         }
         VMInst::POP_SCOPE => {
             print!("PopScope");
+        }
+        VMInst::NOT => {
+            print!("BitwiseNot");
         }
         _ => unreachable!("sorry. need to implement more opcodes"),
     }
