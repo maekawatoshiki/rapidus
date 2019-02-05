@@ -62,25 +62,51 @@ impl CallObject {
         })
     }
 
-    pub fn set_value(&mut self, name: String, val: Value) {
-        self.vals.insert(name, val.to_property());
-    }
-
-    pub fn set_value_if_exist(&mut self, name: String, val: Value) {
-        if self.vals.contains_key(&name.clone()) {
-            self.vals.insert(name.clone(), val.to_property());
-        } else {
-            match self.parent {
-                Some(ref mut parent) => {
-                    return parent.set_value_if_exist(name, val);
+    /// set the binding for the value and the name in the local environment.
+    pub fn set_local_value(&mut self, name: String, val: Value) -> Result<(), RuntimeError> {
+        let prop = self.vals.get(&name);
+        match prop {
+            None => {
+                // if the binding does not exists
+                self.vals.clone().insert(name, val.to_property());
+                Ok(())
+            }
+            Some(prop) => {
+                if !prop.writable && prop.val != Value::Uninitialized {
+                    // if the binding in immutable and already initialized
+                    Err(RuntimeError::Type(format!(
+                        "Assignment to constant variable {}.",
+                        name
+                    )))
+                } else {
+                    let prop = Property { val: val, ..*prop };
+                    self.vals.clone().insert(name, prop);
+                    Ok(())
                 }
-                None => {
-                    self.vals.insert(name, val.to_property());
-                }
-            };
+            }
         }
     }
 
+    pub fn set_mutability(&mut self, name: String, mutable: bool) {
+        self.vals.entry(name).and_modify(|x| x.writable = mutable);
+    }
+
+    pub fn set_value(&mut self, name: String, val: Value) -> Result<(), RuntimeError> {
+        if self.vals.contains_key(&name.clone()) {
+            self.set_local_value(name.clone(), val)?;
+            Ok(())
+        } else {
+            match self.parent {
+                Some(ref mut parent) => parent.set_value(name, val),
+                None => {
+                    self.set_local_value(name, val)?;
+                    Ok(())
+                }
+            }
+        }
+    }
+
+    /// get the binding for the name tracing environments chain.
     pub fn get_value(&self, name: &String) -> Result<Value, RuntimeError> {
         if let Some(prop) = self.vals.get(name) {
             return Ok(prop.val.clone());
@@ -94,6 +120,7 @@ impl CallObject {
         }
     }
 
+    /// get the binding for the name in the local environment.
     pub fn get_local_value(&self, name: &String) -> Result<Value, RuntimeError> {
         if let Some(prop) = self.vals.get(name) {
             Ok(prop.val.clone())

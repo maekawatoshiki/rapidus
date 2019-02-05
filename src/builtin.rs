@@ -243,6 +243,9 @@ pub fn debug_print(val: &Value, nest: bool) {
 
     unsafe {
         match val {
+            Value::Uninitialized => {
+                libc::printf(b"uninitialized\0".as_ptr() as RawStringPtr);
+            }
             Value::Empty => {
                 libc::printf(b"empty\0".as_ptr() as RawStringPtr);
             }
@@ -485,7 +488,7 @@ pub fn require(vm: &mut VM, args: &Vec<Value>, callobj: CallObjectRef) -> Result
             callobj.parent = Some(vm.state.scope.last().unwrap().clone());
             vm.store_state();
             vm.state.scope.push(callobj);
-            vm.state.apply_arguments(func_info.clone(), args);
+            vm.state.apply_arguments(func_info.clone(), args)?;
 
             let mut iseq = vec![];
             match vm.codegen.compile(&node, &mut iseq, false) {
@@ -497,10 +500,10 @@ pub fn require(vm: &mut VM, args: &Vec<Value>, callobj: CallObjectRef) -> Result
                 Err(e) => panic!(e),
             }
 
-            vm.state.scope.last_mut().unwrap().set_value(
+            vm.state.scope.last_mut().unwrap().set_local_value(
                 "module".to_string(),
                 Value::object_from_npp(&make_npp!(exports: Value::Undefined)),
-            );
+            )?;
             vm.state.iseq = iseq;
             vm.do_run()?;
 

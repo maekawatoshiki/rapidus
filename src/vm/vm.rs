@@ -23,7 +23,7 @@ pub struct VM {
     pub jit: TracingJit,
     pub state: VMState,
     pub context_stack: Vec<VMState>,
-    pub op_table: [fn(&mut VM) -> Result<bool, RuntimeError>; 59],
+    pub op_table: [fn(&mut VM) -> Result<bool, RuntimeError>; 61],
     pub task_mgr: TaskManager,
     pub is_debug: bool,
     pub jit_on: bool,
@@ -66,16 +66,17 @@ impl VMState {
     }
 
     /// set the nth argument in the current context to val:Value.
-    pub fn set_arguments_nth_value(&mut self, n: usize, val: Value) {
+    pub fn set_arguments_nth_value(&mut self, n: usize, val: Value) -> Result<(), RuntimeError> {
         let callobj = self.scope.first_mut().unwrap();
         if n < self.arguments.len() {
             let param_name = self.arguments[n].0.clone();
             if let Some(param_name) = param_name {
-                callobj.set_value(param_name, val);
+                callobj.set_local_value(param_name, val)?;
             } else {
                 self.arguments[n].1 = val;
             }
         }
+        Ok(())
     }
 
     /// get length of the arguments.
@@ -93,10 +94,14 @@ impl VMState {
 }
 
 impl VMState {
-    pub fn apply_arguments(&mut self, func_info: FuncInfo, args: &Vec<Value>) {
+    pub fn apply_arguments(
+        &mut self,
+        func_info: FuncInfo,
+        args: &Vec<Value>,
+    ) -> Result<(), RuntimeError> {
         for (name, _) in &func_info.params {
             let callobj = self.scope.last_mut().unwrap();
-            callobj.set_value(name.to_string(), Value::Undefined);
+            callobj.set_local_value(name.to_string(), Value::Undefined)?;
             //println!("apply {}", name.to_string());
         }
         let mut rest_args = vec![];
@@ -113,7 +118,7 @@ impl VMState {
                 } else {
                     self.arguments.push((Some(name.clone()), arg.clone()));
                     let callobj = self.scope.last_mut().unwrap();
-                    callobj.set_value(name.clone(), arg.clone());
+                    callobj.set_local_value(name.clone(), arg.clone())?;
                 }
             } else {
                 self.arguments.push((None, arg.clone()));
@@ -123,9 +128,10 @@ impl VMState {
 
         if let Some(rest_param_name) = rest_param_name {
             let callobj = self.scope.last_mut().unwrap();
-            callobj.set_value(rest_param_name.clone(), Value::array_from_elems(rest_args));
+            callobj.set_local_value(rest_param_name.clone(), Value::array_from_elems(rest_args))?;
             self.rest_params = Some(rest_param_name);
         };
+        Ok(())
     }
 }
 
@@ -187,83 +193,94 @@ impl VM {
         let mut global_vals = CallObject::new_global();
 
         // TODO: Support for 'require' is not enough.
-        global_vals.set_value(
-            "require".to_string(),
-            Value::default_builtin_function(builtin::require),
-        );
+        global_vals
+            .set_local_value(
+                "require".to_string(),
+                Value::default_builtin_function(builtin::require),
+            )
+            .unwrap();
 
         let module_exports = Value::object_from_npp(&vec![]);
-        global_vals.set_value("module".to_string(), {
-            make_object!(
-                exports:    module_exports.clone()
-            )
-        });
-        global_vals.set_value("exports".to_string(), module_exports);
+        global_vals
+            .set_local_value("module".to_string(), {
+                make_object!(
+                    exports:    module_exports.clone()
+                )
+            })
+            .unwrap();
+        global_vals
+            .set_local_value("exports".to_string(), module_exports)
+            .unwrap();
 
-        global_vals.set_value("console".to_string(), {
-            let func_log = Value::builtin_function_with_jit(
-                builtin::console_log,
-                BuiltinJITFuncInfo::ConsoleLog {
-                    bool: (builtin::jit_console_log_bool as *mut libc::c_void, unsafe {
-                        LLVMAddFunction(
-                            jit.module,
-                            CString::new("jit_console_log_bool").unwrap().as_ptr(),
-                            LLVMFunctionType(
-                                LLVMVoidType(),
-                                vec![LLVMInt1TypeInContext(jit.context)]
-                                    .as_mut_slice()
-                                    .as_mut_ptr(),
-                                1,
-                                0,
-                            ),
-                        )
-                    }),
-                    f64: (builtin::jit_console_log_f64 as *mut libc::c_void, unsafe {
-                        LLVMAddFunction(
-                            jit.module,
-                            CString::new("jit_console_log_f64").unwrap().as_ptr(),
-                            LLVMFunctionType(
-                                LLVMVoidType(),
-                                vec![LLVMDoubleTypeInContext(jit.context)]
-                                    .as_mut_slice()
-                                    .as_mut_ptr(),
-                                1,
-                                0,
-                            ),
-                        )
-                    }),
-                    string: (
-                        builtin::jit_console_log_string as *mut libc::c_void,
-                        unsafe {
+        global_vals
+            .set_local_value("console".to_string(), {
+                let func_log = Value::builtin_function_with_jit(
+                    builtin::console_log,
+                    BuiltinJITFuncInfo::ConsoleLog {
+                        bool: (builtin::jit_console_log_bool as *mut libc::c_void, unsafe {
                             LLVMAddFunction(
                                 jit.module,
-                                CString::new("jit_console_log_string").unwrap().as_ptr(),
+                                CString::new("jit_console_log_bool").unwrap().as_ptr(),
                                 LLVMFunctionType(
                                     LLVMVoidType(),
-                                    vec![LLVMPointerType(LLVMInt8TypeInContext(jit.context), 0)]
+                                    vec![LLVMInt1TypeInContext(jit.context)]
                                         .as_mut_slice()
                                         .as_mut_ptr(),
                                     1,
                                     0,
                                 ),
                             )
-                        },
-                    ),
-                    newline: (
-                        builtin::jit_console_log_newline as *mut libc::c_void,
-                        unsafe {
+                        }),
+                        f64: (builtin::jit_console_log_f64 as *mut libc::c_void, unsafe {
                             LLVMAddFunction(
                                 jit.module,
-                                CString::new("jit_console_log_newline").unwrap().as_ptr(),
-                                LLVMFunctionType(LLVMVoidType(), vec![].as_mut_ptr(), 0, 0),
+                                CString::new("jit_console_log_f64").unwrap().as_ptr(),
+                                LLVMFunctionType(
+                                    LLVMVoidType(),
+                                    vec![LLVMDoubleTypeInContext(jit.context)]
+                                        .as_mut_slice()
+                                        .as_mut_ptr(),
+                                    1,
+                                    0,
+                                ),
                             )
-                        },
-                    ),
-                },
-            );
-            let npp = make_npp!(log: func_log);
-            Value::object_from_npp(&npp)
-        });
+                        }),
+                        string: (
+                            builtin::jit_console_log_string as *mut libc::c_void,
+                            unsafe {
+                                LLVMAddFunction(
+                                    jit.module,
+                                    CString::new("jit_console_log_string").unwrap().as_ptr(),
+                                    LLVMFunctionType(
+                                        LLVMVoidType(),
+                                        vec![LLVMPointerType(
+                                            LLVMInt8TypeInContext(jit.context),
+                                            0,
+                                        )]
+                                        .as_mut_slice()
+                                        .as_mut_ptr(),
+                                        1,
+                                        0,
+                                    ),
+                                )
+                            },
+                        ),
+                        newline: (
+                            builtin::jit_console_log_newline as *mut libc::c_void,
+                            unsafe {
+                                LLVMAddFunction(
+                                    jit.module,
+                                    CString::new("jit_console_log_newline").unwrap().as_ptr(),
+                                    LLVMFunctionType(LLVMVoidType(), vec![].as_mut_ptr(), 0, 0),
+                                )
+                            },
+                        ),
+                    },
+                );
+                let npp = make_npp!(log: func_log);
+                Value::object_from_npp(&npp)
+            })
+            .unwrap();
 
         let llvm_process_stdout_write = unsafe {
             LLVMAddFunction(
@@ -280,7 +297,7 @@ impl VM {
             )
         };
 
-        global_vals.set_value(
+        global_vals.set_local_value(
             "process".to_string(),
             make_object!(
                 stdout:
@@ -296,45 +313,69 @@ impl VM {
                          ),
                     )
             ),
-        );
+        ).unwrap();
 
-        global_vals.set_value(
-            "setTimeout".to_string(),
-            Value::default_builtin_function(builtin::set_timeout),
-        );
+        global_vals
+            .set_local_value(
+                "setTimeout".to_string(),
+                Value::default_builtin_function(builtin::set_timeout),
+            )
+            .unwrap();
 
-        global_vals.set_value(
-            "setInterval".to_string(),
-            Value::default_builtin_function(builtin::set_interval),
-        );
+        global_vals
+            .set_local_value(
+                "setInterval".to_string(),
+                Value::default_builtin_function(builtin::set_interval),
+            )
+            .unwrap();
 
-        global_vals.set_value(
-            "clearInterval".to_string(),
-            Value::default_builtin_function(builtin::clear_timer),
-        );
+        global_vals
+            .set_local_value(
+                "clearInterval".to_string(),
+                Value::default_builtin_function(builtin::clear_timer),
+            )
+            .unwrap();
 
-        global_vals.set_value(
-            "clearTimeout".to_string(),
-            Value::default_builtin_function(builtin::clear_timer),
-        );
+        global_vals
+            .set_local_value(
+                "clearTimeout".to_string(),
+                Value::default_builtin_function(builtin::clear_timer),
+            )
+            .unwrap();
 
-        global_vals.set_value(
-            "__enableJit".to_string(),
-            Value::default_builtin_function(builtin::enable_jit),
-        );
+        global_vals
+            .set_local_value(
+                "__enableJit".to_string(),
+                Value::default_builtin_function(builtin::enable_jit),
+            )
+            .unwrap();
 
-        global_vals.set_value(
-            "__assert".to_string(),
-            Value::default_builtin_function(builtin::assert_seq),
-        );
+        global_vals
+            .set_local_value(
+                "__assert".to_string(),
+                Value::default_builtin_function(builtin::assert_seq),
+            )
+            .unwrap();
 
-        global_vals.set_value("Object".to_string(), builtins::object::init());
-        global_vals.set_value("Error".to_string(), builtins::error::init());
-        global_vals.set_value("Function".to_string(), builtins::function::init());
-        global_vals.set_value("Array".to_string(), builtins::array::init());
+        global_vals
+            .set_local_value("Object".to_string(), builtins::object::init())
+            .unwrap();
+        global_vals
+            .set_local_value("Error".to_string(), builtins::error::init())
+            .unwrap();
+        global_vals
+            .set_local_value("Function".to_string(), builtins::function::init())
+            .unwrap();
+        global_vals
+            .set_local_value("Array".to_string(), builtins::array::init())
+            .unwrap();
         use builtins::date::DATE_OBJ;
-        global_vals.set_value("Date".to_string(), DATE_OBJ.with(|x| x.clone()));
-        global_vals.set_value("Math".to_string(), builtins::math::init(jit.clone()));
+        global_vals
+            .set_local_value("Date".to_string(), DATE_OBJ.with(|x| x.clone()))
+            .unwrap();
+        global_vals
+            .set_local_value("Math".to_string(), builtins::math::init(jit.clone()))
+            .unwrap();
         /*
                 println!(
                     "CallObject:{} Value:{} PropMapRef:{} ArrayValue:{}",
@@ -422,6 +463,8 @@ impl VM {
                 return_try,
                 push_scope,
                 pop_scope,
+                decl_const,
+                decl_let,
             ],
         }
     }
@@ -717,7 +760,7 @@ fn construct(self_: &mut VM) -> Result<bool, RuntimeError> {
             let callobj = callobj.new_callobj_from_func(Some(new_this.clone()));
             self_.store_state();
             self_.state.scope.push(callobj);
-            self_.state.apply_arguments(func_info.clone(), &args);
+            self_.state.apply_arguments(func_info.clone(), &args)?;
             self_.state.iseq = func_info.iseq;
             let res = match self_.do_run() {
                 Ok(()) => Ok(true),
@@ -777,7 +820,7 @@ pub fn call_function(
     let callobj = callobj.new_callobj_from_func(None);
     self_.store_state();
     self_.state.scope.push(callobj);
-    self_.state.apply_arguments(func_info.clone(), args);
+    self_.state.apply_arguments(func_info.clone(), args)?;
 
     let FuncInfo { func_id, iseq, .. } = func_info.clone();
 
@@ -1181,7 +1224,7 @@ fn set_member(self_: &mut VM) -> Result<bool, RuntimeError> {
     let member = self_.state.stack.pop().unwrap();
     let mut parent = self_.state.stack.pop().unwrap().clone();
     let val = self_.state.stack.pop().unwrap();
-    parent.set_property(member, val, Some(self_.state.scope.last().unwrap().clone()));
+    parent.set_property(member, val, Some(self_.state.scope.last().unwrap().clone()))?;
     Ok(true)
 }
 
@@ -1357,6 +1400,12 @@ fn get_value(self_: &mut VM) -> Result<bool, RuntimeError> {
     get_int32!(self_, name_id, usize);
     let name = &self_.codegen.bytecode_gen.const_table.string[name_id];
     let val = self_.state.scope.last().unwrap().get_value(name)?;
+    if val == Value::Uninitialized {
+        return Err(RuntimeError::Reference(format!(
+            "reference error: '{}' is not defined",
+            name
+        )));
+    }
     self_.state.stack.push(val);
     Ok(true)
 }
@@ -1374,12 +1423,7 @@ fn set_value(self_: &mut VM) -> Result<bool, RuntimeError> {
         cobj.this = self_.state.scope.last().unwrap().this.clone();
     }
 
-    self_
-        .state
-        .scope
-        .last_mut()
-        .unwrap()
-        .set_value_if_exist(name, val);
+    self_.state.scope.last_mut().unwrap().set_value(name, val)?;
 
     Ok(true)
 }
@@ -1388,7 +1432,25 @@ fn decl_var(self_: &mut VM) -> Result<bool, RuntimeError> {
     self_.state.pc += 1;
     get_int32!(self_, name_id, usize);
     let name = self_.codegen.bytecode_gen.const_table.string[name_id].clone();
-    (*self_.state.scope.last_mut().unwrap()).set_value(name, Value::Undefined);
+    (*self_.state.scope.last_mut().unwrap()).set_local_value(name, Value::Undefined)?;
+    Ok(true)
+}
+
+fn decl_const(self_: &mut VM) -> Result<bool, RuntimeError> {
+    self_.state.pc += 1;
+    get_int32!(self_, name_id, usize);
+    let name = self_.codegen.bytecode_gen.const_table.string[name_id].clone();
+    let env = &mut self_.state.scope.last_mut().unwrap();
+    env.set_local_value(name.clone(), Value::Uninitialized)?;
+    env.set_mutability(name, false);
+    Ok(true)
+}
+
+fn decl_let(self_: &mut VM) -> Result<bool, RuntimeError> {
+    self_.state.pc += 1;
+    get_int32!(self_, name_id, usize);
+    let name = self_.codegen.bytecode_gen.const_table.string[name_id].clone();
+    (*self_.state.scope.last_mut().unwrap()).set_local_value(name, Value::Uninitialized)?;
     Ok(true)
 }
 
@@ -1415,7 +1477,7 @@ fn loop_start(self_: &mut VM) -> Result<bool, RuntimeError> {
                 &mut self_.state,
                 loop_start,
                 loop_end,
-            )
+            )?
         } {
             self_.state.pc = pc;
         }

@@ -2,6 +2,7 @@ use bytecode_gen::{ByteCode, ByteCodeGen, VMInst};
 use node::{
     BinOp, FormalParameter, FormalParameters, Node, NodeBase, PropertyDefinition, UnaryOp, VarKind,
 };
+use std::collections::VecDeque;
 use vm::callobj::CallObject;
 use vm::value::*;
 
@@ -44,17 +45,19 @@ pub struct JumpFromLoop {
     break_inst_positions: Vec<isize>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum FunctionHeaderInst {
     Closure(String, Value),
     DeclVar(String),
+    DeclConst(String),
+    DeclLet(String),
 }
 
 #[derive(Clone, Debug)]
 pub struct VMCodeGen {
     pub global_varmap: CallObjectRef,
-    pub func_header_info: Vec<Vec<FunctionHeaderInst>>,
-    pub block_header_info: Vec<Vec<FunctionHeaderInst>>,
+    pub func_header_info: Vec<VecDeque<FunctionHeaderInst>>,
+    pub block_header_info: Vec<VecDeque<FunctionHeaderInst>>,
     pub bytecode_gen: ByteCodeGen,
     pub labels: Jumps,
     pub level: Vec<Level>,
@@ -64,8 +67,8 @@ impl VMCodeGen {
     pub fn new(global: CallObjectRef) -> VMCodeGen {
         VMCodeGen {
             global_varmap: global,
-            func_header_info: vec![vec![]],
-            block_header_info: vec![vec![]],
+            func_header_info: vec![VecDeque::default()],
+            block_header_info: vec![VecDeque::default()],
             bytecode_gen: ByteCodeGen::new(),
             labels: Jumps::new(),
             level: vec![],
@@ -201,7 +204,7 @@ impl VMCodeGen {
         self.bytecode_gen.gen_jmp(0, iseq);
         let start_pos = iseq.len();
 
-        self.block_header_info.push(vec![]);
+        self.block_header_info.push(VecDeque::default());
         for node in node_list {
             self.run(node, iseq, use_value)?;
         }
@@ -216,7 +219,7 @@ impl VMCodeGen {
         );
 
         let mut block_header_info = self.block_header_info.pop().unwrap();
-        while let Some(header) = block_header_info.pop() {
+        while let Some(header) = block_header_info.pop_front() {
             match header {
                 FunctionHeaderInst::Closure(func_name, val) => {
                     self.bytecode_gen.gen_decl_var(&func_name, iseq);
@@ -226,6 +229,12 @@ impl VMCodeGen {
                 }
                 FunctionHeaderInst::DeclVar(var_name) => {
                     self.bytecode_gen.gen_decl_var(&var_name, iseq);
+                }
+                FunctionHeaderInst::DeclConst(var_name) => {
+                    self.bytecode_gen.gen_decl_const(&var_name, iseq);
+                }
+                FunctionHeaderInst::DeclLet(var_name) => {
+                    self.bytecode_gen.gen_decl_let(&var_name, iseq);
                 }
             }
         }
@@ -247,8 +256,10 @@ impl VMCodeGen {
 impl VMCodeGen {
     fn set_function_header(&mut self, iseq: &mut ByteCode) {
         let mut header_iseq = vec![];
-        let func_header_info = self.func_header_info.last_mut().unwrap();
-        while let Some(header) = func_header_info.pop() {
+        let mut header_info = VecDeque::default();
+        header_info.append(self.func_header_info.last_mut().unwrap());
+        header_info.append(self.block_header_info.last_mut().unwrap());
+        while let Some(header) = header_info.pop_front() {
             match header {
                 FunctionHeaderInst::Closure(func_name, val) => {
                     self.bytecode_gen.gen_decl_var(&func_name, &mut header_iseq);
@@ -259,6 +270,13 @@ impl VMCodeGen {
                 }
                 FunctionHeaderInst::DeclVar(var_name) => {
                     self.bytecode_gen.gen_decl_var(&var_name, &mut header_iseq);
+                }
+                FunctionHeaderInst::DeclConst(var_name) => {
+                    self.bytecode_gen
+                        .gen_decl_const(&var_name, &mut header_iseq);
+                }
+                FunctionHeaderInst::DeclLet(var_name) => {
+                    self.bytecode_gen.gen_decl_let(&var_name, &mut header_iseq);
                 }
             }
         }
@@ -272,7 +290,8 @@ impl VMCodeGen {
         params: &FormalParameters,
         body: &Node,
     ) -> Result<(), Error> {
-        self.func_header_info.push(vec![]);
+        self.func_header_info.push(VecDeque::default());
+        self.block_header_info.push(VecDeque::default());
 
         let new_callobj = CallObject::new_with_this(Value::object(self.global_varmap.vals.clone()));
         let mut func_iseq = vec![];
@@ -307,11 +326,12 @@ impl VMCodeGen {
         let val = Value::function(func_iseq.clone(), params, new_callobj);
 
         self.func_header_info.pop();
+        self.block_header_info.pop();
 
         self.func_header_info
             .last_mut()
             .unwrap()
-            .push(FunctionHeaderInst::Closure(name.clone(), val));
+            .push_back(FunctionHeaderInst::Closure(name.clone(), val));
 
         Ok(())
     }
@@ -325,7 +345,8 @@ impl VMCodeGen {
         body: &Node,
         iseq: &mut ByteCode,
     ) -> Result<(), Error> {
-        self.func_header_info.push(vec![]);
+        self.func_header_info.push(VecDeque::default());
+        self.block_header_info.push(VecDeque::default());
 
         let new_callobj = CallObject::new_with_this(Value::object(self.global_varmap.vals.clone()));
 
@@ -364,6 +385,7 @@ impl VMCodeGen {
         self.bytecode_gen.gen_update_parent_scope(iseq);
 
         self.func_header_info.pop();
+        self.block_header_info.pop();
 
         Ok(())
     }
@@ -500,21 +522,25 @@ impl VMCodeGen {
                 self.func_header_info
                     .last_mut()
                     .unwrap()
-                    .push(FunctionHeaderInst::DeclVar(name.clone()));
+                    .push_back(FunctionHeaderInst::DeclVar(name.clone()));
             }
-            _ => {
+            VarKind::Let => {
                 self.block_header_info
                     .last_mut()
                     .unwrap()
-                    .push(FunctionHeaderInst::DeclVar(name.clone()));
+                    .push_back(FunctionHeaderInst::DeclLet(name.clone()));
+            }
+            VarKind::Const => {
+                self.block_header_info
+                    .last_mut()
+                    .unwrap()
+                    .push_back(FunctionHeaderInst::DeclConst(name.clone()));
             }
         }
         if let &Some(ref init) = init {
             self.run(&*init, iseq, true)?;
-        } else {
-            self.bytecode_gen.gen_push_undefined(iseq);
+            self.bytecode_gen.gen_set_value(name, iseq);
         }
-        self.bytecode_gen.gen_set_value(name, iseq);
 
         Ok(())
     }

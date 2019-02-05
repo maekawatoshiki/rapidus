@@ -60,6 +60,7 @@ pub enum ObjectKind {
 // 32 bytes
 #[derive(Clone, PartialEq, Debug)]
 pub enum Value {
+    Uninitialized,
     Empty,
     Null,
     Undefined,
@@ -343,7 +344,12 @@ impl Value {
         }
     }
 
-    pub fn set_property(&mut self, property: Value, value: Value, _callobj: Option<CallObjectRef>) {
+    pub fn set_property(
+        &mut self,
+        property: Value,
+        value: Value,
+        _callobj: Option<CallObjectRef>,
+    ) -> Result<(), RuntimeError> {
         fn set_by_idx(ary: &mut ArrayValue, n: usize, val: Value) {
             if n >= ary.length as usize {
                 ary.length = n + 1;
@@ -390,7 +396,7 @@ impl Value {
                 match property {
                     // Index
                     Value::Number(n) if n - n.floor() == 0.0 => {
-                        state.set_arguments_nth_value(n as usize, value);
+                        state.set_arguments_nth_value(n as usize, value)?;
                     }
                     // TODO: 'length'
                     _ => {}
@@ -404,6 +410,7 @@ impl Value {
             }
             _ => {}
         };
+        Ok(())
     }
 
     pub fn set_number_if_possible(&mut self, n: f64) {
@@ -557,6 +564,7 @@ impl Value {
             Value::Undefined | Value::Bool(_) | Value::Number(_) | Value::Null | Value::Empty => {
                 self.to_string()
             }
+            Value::Uninitialized => "uninitialized".to_string(),
             Value::String(_) => format!("'{}'", self.to_string()),
             Value::Object(_, ObjectKind::Array(aryval)) => match depth {
                 0 => "[Array]".to_string(),

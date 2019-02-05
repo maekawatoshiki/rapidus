@@ -63,6 +63,8 @@ pub mod VMInst {
     pub const RETURN_TRY: u8 = 0x38;
     pub const PUSH_SCOPE: u8 = 0x39;
     pub const POP_SCOPE: u8 = 0x3a;
+    pub const DECL_CONST: u8 = 0x3b;
+    pub const DECL_LET: u8 = 0x3c;
 
     pub fn get_inst_size(inst: u8) -> Option<usize> {
         match inst {
@@ -70,7 +72,8 @@ pub mod VMInst {
                 Some(1)
             }
             CONSTRUCT | CREATE_OBJECT | PUSH_CONST | PUSH_INT32 | CREATE_ARRAY | JMP_IF_FALSE
-            | RETURN_TRY | DECL_VAR | LOOP_START | JMP | SET_VALUE | GET_VALUE | CALL => Some(5),
+            | RETURN_TRY | DECL_VAR | LOOP_START | JMP | SET_VALUE | GET_VALUE | CALL
+            | DECL_LET | DECL_CONST => Some(5),
             PUSH_INT8 => Some(2),
             PUSH_FALSE | END | PUSH_TRUE | PUSH_THIS | ADD | SUB | MUL | DIV | REM | LT
             | PUSH_ARGUMENTS | NEG | POSI | GT | LE | GE | EQ | NE | GET_MEMBER | RETURN | SNE
@@ -319,6 +322,18 @@ impl ByteCodeGen {
     pub fn gen_decl_var(&mut self, name: &String, iseq: &mut ByteCode) {
         let id = self.add_const_string(name);
         iseq.push(VMInst::DECL_VAR);
+        self.gen_int32(id as i32, iseq);
+    }
+
+    pub fn gen_decl_const(&mut self, name: &String, iseq: &mut ByteCode) {
+        let id = self.add_const_string(name);
+        iseq.push(VMInst::DECL_CONST);
+        self.gen_int32(id as i32, iseq);
+    }
+
+    pub fn gen_decl_let(&mut self, name: &String, iseq: &mut ByteCode) {
+        let id = self.add_const_string(name);
+        iseq.push(VMInst::DECL_LET);
         self.gen_int32(id as i32, iseq);
     }
 
@@ -575,6 +590,16 @@ pub fn show_inst(code: &ByteCode, i: usize, const_table: &ConstantTable) {
             let int32 = read_int32(code, i + 1);
             let name = &const_table.string[int32 as usize];
             print!("DeclVar '{}'", name);
+        }
+        VMInst::DECL_CONST => {
+            let int32 = read_int32(code, i + 1);
+            let name = &const_table.string[int32 as usize];
+            print!("DeclConst '{}'", name);
+        }
+        VMInst::DECL_LET => {
+            let int32 = read_int32(code, i + 1);
+            let name = &const_table.string[int32 as usize];
+            print!("DeclLet '{}'", name);
         }
         VMInst::COND_OP => {
             print!("CondOp");

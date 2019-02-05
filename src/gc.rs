@@ -125,7 +125,8 @@ impl Gc for Value {
             return;
         };
         match self {
-            Value::Empty
+            Value::Uninitialized
+            | Value::Empty
             | Value::Null
             | Value::Undefined
             | Value::Bool(_)
