@@ -45,9 +45,9 @@ pub struct VMState {
     pub iseq: ByteCode,
     /// current FuncId.
     pub cur_func_id: FuncId, // id == 0: main
-    /// name of rest parameters. (if the function has no rest parameters, None.)
+    /// a name of rest parameters. (if the function has no rest parameters, None.)
     pub rest_params: Option<String>,
-    /// set of the name of parameter corresponds to applied arguments when the function was invoked.
+    /// a set of the names of parameters corresponding to applied arguments when the function was invoked.
     pub arguments: Vec<(Option<String>, Value)>,
 }
 

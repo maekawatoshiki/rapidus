@@ -1,14 +1,34 @@
-var assert = require('assert').deepEqual
-const i = 100
-let j = 0
-for (let i = 0; i < 5; i++) {
-  {
-    const i = 4
-    {
-      const i = 7
-      j += i
+const x = 10
+function a(x) {
+  return {
+    b: function(x) {
+      console.log(":", x)
     }
   }
 }
-assert(i,100)
-assert(j,35)
+new a(x)
+/*
+New(
+  Call(
+    Identifier("a"),
+    [Identifier("x")]
+  )
+)
+*/
+a.b(x)
+/*
+  Call(
+    Member(
+      Identifier("a"),
+      "b"
+    ),
+    [Identifier("x")]
+  ),
+*/
+a(x)
+/*
+  Call(
+    Identifier("a"),
+    [Identifier("x")]
+  )
+*/
