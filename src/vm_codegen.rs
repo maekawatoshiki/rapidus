@@ -83,19 +83,20 @@ impl VMCodeGen {
     }
 
     fn run(&mut self, node: &Node, iseq: &mut ByteCode, use_value: bool) -> Result<(), Error> {
-        if let Some(constant) = node.base.fold_num_consts() {
-            match constant {
-                NodeBase::String(ref s) => self
-                    .bytecode_gen
-                    .gen_push_const(Value::string(s.clone()), iseq),
-                NodeBase::Number(n) => self.bytecode_gen.gen_push_number(n, iseq),
-                NodeBase::Boolean(b) => self.bytecode_gen.gen_push_bool(b, iseq),
-                // TODO
-                _ => unreachable!(),
-            }
-            return Ok(());
-        }
-
+        /*
+                if let Some(constant) = node.base.fold_num_consts() {
+                    match constant {
+                        NodeBase::String(ref s) => self
+                            .bytecode_gen
+                            .gen_push_const(Value::string(s.clone()), iseq),
+                        NodeBase::Number(n) => self.bytecode_gen.gen_push_number(n, iseq),
+                        NodeBase::Boolean(b) => self.bytecode_gen.gen_push_bool(b, iseq),
+                        // TODO
+                        _ => unreachable!(),
+                    }
+                    return Ok(());
+                }
+        */
         match &node.base {
             &NodeBase::StatementList(ref node_list) => {
                 self.run_statement_list(node_list, iseq, use_value)?
