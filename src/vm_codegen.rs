@@ -28,21 +28,9 @@ pub enum Level {
 
 #[derive(Clone, Debug)]
 pub struct Jumps {
-    global: JumpToGlobalLabel,
-    local: Vec<JumpFromLoop>,
+    continue_inst_positions: Vec<(Option<String>, isize)>,
+    break_inst_positions: Vec<(Option<String>, isize)>,
     loop_names: Vec<String>,
-}
-
-#[derive(Clone, Debug)]
-pub struct JumpToGlobalLabel {
-    continue_inst_positions: Vec<(String, isize)>,
-    break_inst_positions: Vec<(String, isize)>,
-}
-
-#[derive(Clone, Debug)]
-pub struct JumpFromLoop {
-    continue_inst_positions: Vec<isize>,
-    break_inst_positions: Vec<isize>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -449,19 +437,9 @@ impl VMCodeGen {
         let break_inst_pos = iseq.len() as isize;
         self.bytecode_gen.gen_jmp(0, iseq);
 
-        if let Some(name) = name {
-            self.labels
-                .global
-                .break_inst_positions
-                .push((name.clone(), break_inst_pos));
-        } else {
-            self.labels
-                .local
-                .last_mut()
-                .unwrap()
-                .break_inst_positions
-                .push(break_inst_pos);
-        }
+        self.labels
+            .break_inst_positions
+            .push((name.clone(), break_inst_pos));
 
         Ok(())
     }
@@ -474,19 +452,9 @@ impl VMCodeGen {
         let continue_inst_pos = iseq.len() as isize;
         self.bytecode_gen.gen_jmp(0, iseq);
 
-        if let Some(name) = name {
-            self.labels
-                .global
-                .continue_inst_positions
-                .push((name.clone(), continue_inst_pos));
-        } else {
-            self.labels
-                .local
-                .last_mut()
-                .unwrap()
-                .continue_inst_positions
-                .push(continue_inst_pos);
-        }
+        self.labels
+            .continue_inst_positions
+            .push((name.clone(), continue_inst_pos));
 
         Ok(())
     }
@@ -600,7 +568,6 @@ impl VMCodeGen {
         let name = self.labels.loop_names.pop();
 
         let pos1 = iseq.len() as isize;
-        self.labels.make_new_local();
 
         self.bytecode_gen.gen_loop_start(iseq);
 
@@ -622,26 +589,15 @@ impl VMCodeGen {
 
         let break_pos = iseq.len() as isize;
         self.labels
-            .cur_local()
-            .replace_break_dsts(&mut self.bytecode_gen, break_pos, iseq);
-
+            .replace_continue_dsts(&mut self.bytecode_gen, &name, pos1, iseq);
         self.labels
-            .cur_local()
-            .replace_continue_dsts(&mut self.bytecode_gen, pos1, iseq);
-
-        if let Some(name) = name {
-            self.labels
-                .global
-                .replace_continue_dsts(&mut self.bytecode_gen, &name, pos1, iseq);
-        }
+            .replace_break_dsts(&mut self.bytecode_gen, &name, break_pos, iseq);
 
         let pos2 = iseq.len() as isize;
         self.bytecode_gen.replace_int32(
             (pos2 - cond_pos) as i32 - 5,
             &mut iseq[cond_pos as usize + 1..cond_pos as usize + 5],
         );
-
-        self.labels.pop_local();
 
         Ok(())
     }
@@ -661,7 +617,6 @@ impl VMCodeGen {
         self.run(init, iseq, false)?;
 
         let pos = iseq.len() as isize;
-        self.labels.make_new_local();
 
         self.bytecode_gen.gen_loop_start(iseq);
 
@@ -674,17 +629,7 @@ impl VMCodeGen {
 
         let continue_pos = iseq.len() as isize;
         self.labels
-            .cur_local()
-            .replace_continue_dsts(&mut self.bytecode_gen, continue_pos, iseq);
-
-        if let Some(name) = name {
-            self.labels.global.replace_continue_dsts(
-                &mut self.bytecode_gen,
-                &name,
-                continue_pos,
-                iseq,
-            );
-        }
+            .replace_continue_dsts(&mut self.bytecode_gen, &name, continue_pos, iseq);
 
         self.run(step, iseq, false)?;
 
@@ -697,17 +642,15 @@ impl VMCodeGen {
         );
 
         let break_pos = iseq.len() as isize;
+
         self.labels
-            .cur_local()
-            .replace_break_dsts(&mut self.bytecode_gen, break_pos, iseq);
+            .replace_break_dsts(&mut self.bytecode_gen, &name, break_pos, iseq);
 
         let pos = iseq.len() as isize;
         self.bytecode_gen.replace_int32(
             (pos - cond_pos) as i32 - 5,
             &mut iseq[cond_pos as usize + 1..cond_pos as usize + 5],
         );
-
-        self.labels.pop_local();
 
         Ok(())
     }
@@ -721,11 +664,6 @@ impl VMCodeGen {
         self.labels.loop_names.push(name.clone());
 
         self.run(body, iseq, false)?;
-
-        let break_label_pos = iseq.len() as isize;
-        self.labels
-            .global
-            .replace_break_dsts(&mut self.bytecode_gen, name, break_label_pos, iseq);
 
         Ok(())
     }
@@ -1146,43 +1084,22 @@ impl Level {
 impl Jumps {
     pub fn new() -> Self {
         Jumps {
-            global: JumpToGlobalLabel::new(),
-            local: vec![],
-            loop_names: vec![],
-        }
-    }
-
-    pub fn make_new_local(&mut self) {
-        self.local.push(JumpFromLoop::new());
-    }
-
-    pub fn pop_local(&mut self) {
-        self.local.pop();
-    }
-
-    pub fn cur_local(&mut self) -> &mut JumpFromLoop {
-        self.local.last_mut().unwrap()
-    }
-}
-
-impl JumpToGlobalLabel {
-    pub fn new() -> Self {
-        JumpToGlobalLabel {
             continue_inst_positions: vec![],
             break_inst_positions: vec![],
+            loop_names: vec![],
         }
     }
 
     fn replace_break_dsts(
         &mut self,
         bytecode_gen: &mut ByteCodeGen,
-        label_name: &String,
+        label_name: &Option<String>,
         break_dst_pos: isize,
         iseq: &mut ByteCode,
     ) {
         self.break_inst_positions
             .retain(|(dst_label_name, inst_pos)| {
-                let x = dst_label_name == label_name;
+                let x = Jumps::label_name_predicate(label_name, dst_label_name);
                 if x {
                     bytecode_gen.replace_int32(
                         (break_dst_pos - inst_pos) as i32 - 5,
@@ -1196,13 +1113,13 @@ impl JumpToGlobalLabel {
     fn replace_continue_dsts(
         &mut self,
         bytecode_gen: &mut ByteCodeGen,
-        label_name: &String,
+        label_name: &Option<String>,
         continue_dst_pos: isize,
         iseq: &mut ByteCode,
     ) {
         self.continue_inst_positions
             .retain(|(dst_label_name, inst_pos)| {
-                let x = dst_label_name == label_name;
+                let x = Jumps::label_name_predicate(label_name, dst_label_name);
                 if x {
                     bytecode_gen.replace_int32(
                         (continue_dst_pos - inst_pos) as i32 - 5,
@@ -1212,43 +1129,14 @@ impl JumpToGlobalLabel {
                 !x
             });
     }
-}
 
-impl JumpFromLoop {
-    pub fn new() -> Self {
-        JumpFromLoop {
-            continue_inst_positions: vec![],
-            break_inst_positions: vec![],
+    fn label_name_predicate(label_name: &Option<String>, dst_label_name: &Option<String>) -> bool {
+        match dst_label_name.clone() {
+            None => true,
+            Some(dst_label_name) => match label_name.clone() {
+                None => false,
+                Some(label_name) => dst_label_name == *label_name,
+            },
         }
-    }
-
-    fn replace_break_dsts(
-        &mut self,
-        bytecode_gen: &mut ByteCodeGen,
-        break_dst_pos: isize,
-        iseq: &mut ByteCode,
-    ) {
-        for inst_pos in &self.break_inst_positions {
-            bytecode_gen.replace_int32(
-                (break_dst_pos - inst_pos) as i32 - 5,
-                &mut iseq[*inst_pos as usize + 1..*inst_pos as usize + 5],
-            );
-        }
-        self.break_inst_positions.clear();
-    }
-
-    fn replace_continue_dsts(
-        &mut self,
-        bytecode_gen: &mut ByteCodeGen,
-        continue_dst_pos: isize,
-        iseq: &mut ByteCode,
-    ) {
-        for inst_pos in &self.continue_inst_positions {
-            bytecode_gen.replace_int32(
-                (continue_dst_pos - inst_pos) as i32 - 5,
-                &mut iseq[*inst_pos as usize + 1..*inst_pos as usize + 5],
-            );
-        }
-        self.continue_inst_positions.clear();
     }
 }

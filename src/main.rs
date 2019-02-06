@@ -294,7 +294,7 @@ fn vm_test() {
     );
     test_file(
         "label".to_string(),
-        "[0,0,0,1,0,2,1,0,2,0,2,1,2,2]".to_string(),
+        "[ 0, 0, 0, 1, 0, 2, 1, 0, 2, 0, 3, 0, 3, 1, 4, 1, 4, 2 ]".to_string(),
     );
     test_file("this".to_string(), "[1,101,124]".to_string());
     test_file("trycatch".to_string(), "[ 0, 2, 1, 10110 ]".to_string());
