@@ -66,6 +66,7 @@ pub mod VMInst {
     pub const DECL_CONST: u8 = 0x3b;
     pub const DECL_LET: u8 = 0x3c;
     pub const NOT: u8 = 0x3d;
+    pub const JMP_UNWIND: u8 = 0x3e;
 
     pub fn get_inst_size(inst: u8) -> Option<usize> {
         match inst {
@@ -81,6 +82,7 @@ pub mod VMInst {
             | ZFSHR | POP | DOUBLE | AND | COND_OP | OR | SEQ | SET_MEMBER | LNOT
             | UPDATE_PARENT_SCOPE | PUSH_UNDEFINED | LAND | SHR | SHL | XOR | LOR | NOT => Some(1),
             ENTER_TRY => Some(9),
+            JMP_UNWIND => Some(13),
             _ => None,
         }
     }
@@ -280,6 +282,13 @@ impl ByteCodeGen {
         self.gen_int32(dst, iseq);
     }
 
+    pub fn gen_jmp_unwind(&self, dst: i32, scope_level: u32, try_level: u32, iseq: &mut ByteCode) {
+        iseq.push(VMInst::JMP_UNWIND);
+        self.gen_int32(dst, iseq);
+        self.gen_uint32(scope_level, iseq);
+        self.gen_uint32(try_level, iseq);
+    }
+
     pub fn gen_return(&self, iseq: &mut ByteCode) {
         iseq.push(VMInst::RETURN);
     }
@@ -373,6 +382,13 @@ impl ByteCodeGen {
         iseq.push(((n >> 8) & 0xff as i32) as u8);
         iseq.push(((n >> 16) & 0xff as i32) as u8);
         iseq.push(((n >> 24) & 0xff as i32) as u8);
+    }
+
+    pub fn gen_uint32(&self, n: u32, iseq: &mut ByteCode) {
+        iseq.push(((n >> 0) & 0xff as u32) as u8);
+        iseq.push(((n >> 8) & 0xff as u32) as u8);
+        iseq.push(((n >> 16) & 0xff as u32) as u8);
+        iseq.push(((n >> 24) & 0xff as u32) as u8);
     }
 
     pub fn replace_int32(&self, n: i32, iseq: &mut [u8]) {
@@ -547,6 +563,11 @@ pub fn show_inst(code: &ByteCode, i: usize, const_table: &ConstantTable) {
         VMInst::JMP => {
             let int32 = read_int32(code, i + 1);
             print!("Jmp {:04x}", i as i32 + int32 + 5);
+        }
+        VMInst::JMP_UNWIND => {
+            let dest = read_int32(code, i + 1);
+            let pop = read_int32(code, i + 5);
+            print!("JmpUnwind {:04x} {}", i as i32 + dest + 5, pop);
         }
         VMInst::CALL => {
             let int32 = read_int32(code, i + 1);

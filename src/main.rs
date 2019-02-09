@@ -277,6 +277,7 @@ fn vm_test() {
     assert_file("fact".to_string());
     assert_file("operator".to_string());
     assert_file("letconst".to_string());
+    assert_file("nested_block".to_string());
     test_file(
         "array".to_string(),
         "'2,3,6,7,3,4,2,3,three1,5,4,1,2,three'".to_string(),
@@ -294,10 +295,10 @@ fn vm_test() {
     );
     test_file(
         "label".to_string(),
-        "[ 0, 0, 0, 1, 0, 2, 1, 0, 2, 0, 3, 0, 3, 1, 4, 1, 4, 2 ]".to_string(),
+        "[ 0, 0, 0, 1, 0, 2, 1, 0, 2, 0, 3, 0, 3, 1, 4, 1, 4, 2, 0 ]".to_string(),
     );
     test_file("this".to_string(), "[1,101,124]".to_string());
-    test_file("trycatch".to_string(), "[ 0, 2, 1, 10110 ]".to_string());
+    test_file("trycatch".to_string(), "[ 0, 2, 123, 10110 ]".to_string());
     test_file(
         "prototypes".to_string(),
         "[true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true]"

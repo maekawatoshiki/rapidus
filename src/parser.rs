@@ -1031,7 +1031,7 @@ impl Parser {
     fn read_try_statement(&mut self) -> Result<Node, Error> {
         let pos_try = self.lexer.get_prev_pos();
         skip_symbol_or_error!(self.lexer, Symbol::OpeningBrace);
-        let try = self.read_block()?;
+        let try = self.read_block_statement()?;
         let is_catch = self
             .lexer
             .next_if_skip_lineterminator(Kind::Keyword(Keyword::Catch))?;
@@ -1051,7 +1051,7 @@ impl Parser {
             };
             skip_symbol_or_error!(self.lexer, Symbol::ClosingParen);
             skip_symbol_or_error!(self.lexer, Symbol::OpeningBrace);
-            (self.read_block()?, catch_param)
+            (self.read_block_statement()?, catch_param)
         } else {
             (
                 Node::new(NodeBase::Nope, pos_catch),
@@ -1062,7 +1062,7 @@ impl Parser {
         let pos_finally = self.lexer.get_current_pos();
         let finally = if is_finally {
             skip_symbol_or_error!(self.lexer, Symbol::OpeningBrace);
-            self.read_block()?
+            self.read_block_statement()?
         } else {
             Node::new(NodeBase::Nope, pos_finally)
         };
@@ -2281,10 +2281,10 @@ fn try_catch1() {
         Node::new(
             NodeBase::StatementList(vec![Node::new(
                 NodeBase::Try(
-                    Box::new(Node::new(NodeBase::StatementList(vec![]), 4)),
-                    Box::new(Node::new(NodeBase::StatementList(vec![]), 15)),
+                    Box::new(Node::new(NodeBase::Block(vec![]), 4)),
+                    Box::new(Node::new(NodeBase::Block(vec![]), 15)),
                     Box::new(Node::new(NodeBase::Identifier("e".to_string()), 13)),
-                    Box::new(Node::new(NodeBase::StatementList(vec![]), 25))
+                    Box::new(Node::new(NodeBase::Block(vec![]), 25))
                 ),
                 0
             )]),
@@ -2305,8 +2305,8 @@ fn try_catch2() {
         Node::new(
             NodeBase::StatementList(vec![Node::new(
                 NodeBase::Try(
-                    Box::new(Node::new(NodeBase::StatementList(vec![]), 4)),
-                    Box::new(Node::new(NodeBase::StatementList(vec![]), 15)),
+                    Box::new(Node::new(NodeBase::Block(vec![]), 4)),
+                    Box::new(Node::new(NodeBase::Block(vec![]), 15)),
                     Box::new(Node::new(NodeBase::Identifier("e".to_string()), 13)),
                     Box::new(Node::new(NodeBase::Nope, 17))
                 ),
@@ -2325,10 +2325,10 @@ fn try_catch3() {
         Node::new(
             NodeBase::StatementList(vec![Node::new(
                 NodeBase::Try(
-                    Box::new(Node::new(NodeBase::StatementList(vec![]), 4)),
+                    Box::new(Node::new(NodeBase::Block(vec![]), 4)),
                     Box::new(Node::new(NodeBase::Nope, 7)),
                     Box::new(Node::new(NodeBase::Nope, 7)),
-                    Box::new(Node::new(NodeBase::StatementList(vec![]), 15)),
+                    Box::new(Node::new(NodeBase::Block(vec![]), 15)),
                 ),
                 0
             )]),

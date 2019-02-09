@@ -23,7 +23,7 @@ pub struct VM {
     pub jit: TracingJit,
     pub state: VMState,
     pub context_stack: Vec<VMState>,
-    pub op_table: [fn(&mut VM) -> Result<bool, RuntimeError>; 62],
+    pub op_table: [fn(&mut VM) -> Result<bool, RuntimeError>; 63],
     pub task_mgr: TaskManager,
     pub is_debug: bool,
     pub jit_on: bool,
@@ -466,6 +466,7 @@ impl VM {
                 decl_const,
                 decl_let,
                 not,
+                jmp_unwind,
             ],
         }
     }
@@ -473,18 +474,6 @@ impl VM {
 
 impl VM {
     pub fn run(&mut self, iseq: ByteCode) -> Result<(), RuntimeError> {
-        if self.is_debug {
-            println!(
-                " {:<8} {:<8} {:<5} {:<5} {:<16} {:<4} {}",
-                "tryst".to_string(),
-                "tryret".to_string(),
-                "scope".to_string(),
-                "stack".to_string(),
-                "  top".to_string(),
-                "PC".to_string(),
-                "INST".to_string(),
-            );
-        }
         self.state.iseq = iseq;
         self.state.pc = 0;
         let res = self.do_run();
@@ -585,6 +574,19 @@ impl VM {
 
     /// main execution loop
     pub fn do_run(&mut self) -> Result<(), RuntimeError> {
+        if self.is_debug {
+            println!("ENTER NEW CONTEXT");
+            println!(
+                " {:<8} {:<8} {:<5} {:<5} {:<16} {:<4} {}",
+                "tryst".to_string(),
+                "tryret".to_string(),
+                "scope".to_string(),
+                "stack".to_string(),
+                "  top".to_string(),
+                "PC".to_string(),
+                "INST".to_string(),
+            );
+        }
         self.state.trystate.push(TryState::None);
         loop {
             let code = self.state.iseq[self.state.pc as usize];
@@ -619,6 +621,9 @@ impl VM {
                 Ok(false) => {
                     // END or RETURN or, LEAVE_TRY with no error.
                     self.state.trystate.pop().unwrap();
+                    if self.is_debug {
+                        println!("EXIT CONTEXT");
+                    };
                     return Ok(());
                 }
 
@@ -1494,5 +1499,21 @@ fn loop_start(self_: &mut VM) -> Result<bool, RuntimeError> {
         }
     }
 
+    Ok(true)
+}
+
+fn jmp_unwind(self_: &mut VM) -> Result<bool, RuntimeError> {
+    self_.state.pc += 1; // jmp_unwind
+    get_int32!(self_, dst, i32);
+    let pc = self_.state.pc;
+    get_int32!(self_, scope_count, u32);
+    get_int32!(self_, try_count, u32);
+    for _ in 0..scope_count {
+        self_.state.scope.pop();
+    }
+    for _ in 0..try_count {
+        self_.state.trystate.pop();
+    }
+    self_.state.pc = pc + dst as isize;
     Ok(true)
 }

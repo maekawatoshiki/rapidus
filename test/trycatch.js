@@ -1,11 +1,15 @@
 var a = []
+const b = 1
+
 function f() {
+  const b = 2
   try {
+    const b = 3
     a.push(0);
     try {
       throw 123
     } catch(e) {
-      return 1;
+      return e;
     } finally {}
     throw 'bogus';
   } catch(e) {
