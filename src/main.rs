@@ -278,6 +278,7 @@ fn vm_test() {
     assert_file("operator".to_string());
     assert_file("letconst".to_string());
     assert_file("nested_block".to_string());
+    assert_file("nested_block2".to_string());
     test_file(
         "array".to_string(),
         "'2,3,6,7,3,4,2,3,three1,5,4,1,2,three'".to_string(),

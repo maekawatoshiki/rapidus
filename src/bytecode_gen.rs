@@ -353,10 +353,11 @@ impl ByteCodeGen {
         iseq.push(VMInst::THROW);
     }
 
-    pub fn gen_enter_try(&mut self, iseq: &mut ByteCode) {
+    pub fn gen_enter_try(&mut self, iseq: &mut ByteCode, scope_level: usize) {
         iseq.push(VMInst::ENTER_TRY);
         self.gen_int32(0, iseq); // distance from ENTER_TRY to CATCH
         self.gen_int32(0, iseq); // distance from ENTER_TRY to FINALLY
+        self.gen_uint32(scope_level as u32, iseq); // basal scope level
     }
 
     pub fn gen_leave_try(&mut self, iseq: &mut ByteCode) {

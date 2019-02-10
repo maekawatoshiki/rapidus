@@ -699,7 +699,8 @@ impl VMCodeGen {
         iseq: &mut ByteCode,
     ) -> Result<(), Error> {
         let enter_pos = iseq.len() as isize;
-        self.bytecode_gen.gen_enter_try(iseq);
+        self.bytecode_gen
+            .gen_enter_try(iseq, self.state.scope_level);
 
         self.state.try_level.push(Level::Try {
             return_instr_pos: vec![],
