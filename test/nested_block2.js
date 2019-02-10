@@ -1,4 +1,5 @@
 const assert = require('assert').deepEqual
+const i = 100
 function f(g) {
   const i = 0
   try {
@@ -33,5 +34,5 @@ function f(g) {
     assert(i, 0)
   }
 }
-
+assert(i, 100)
 assert(f(), 90)

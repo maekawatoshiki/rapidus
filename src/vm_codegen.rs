@@ -44,8 +44,8 @@ impl Level {
 
 #[derive(Clone, Debug)]
 pub struct CodegenState {
-    func_header_info: Vec<VecDeque<DeclSection>>,
-    block_header_info: Vec<VecDeque<DeclSection>>,
+    func_header_info: Vec<VecDeque<(String, DeclSection)>>,
+    block_header_info: Vec<VecDeque<(String, DeclSection)>>,
     continue_inst_positions: Vec<(Option<String>, isize, usize, usize, usize)>, //(label_name, inst_pos, scope_level, try_level, token_pos)
     break_inst_positions: Vec<(Option<String>, isize, usize, usize, usize)>,
     loop_names: Vec<String>,
@@ -87,10 +87,10 @@ impl CodegenState {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum DeclSection {
-    DeclFunc(String, Value),
-    DeclVar(String),
-    DeclConst(String),
-    DeclLet(String),
+    DeclFunc(Value),
+    DeclVar,
+    DeclConst,
+    DeclLet,
 }
 
 #[derive(Clone, Debug)]
@@ -160,7 +160,7 @@ impl VMCodeGen {
                 self.run_function_expr(name, params, &*body, iseq)?
             }
             &NodeBase::VarDecl(ref name, ref init, ref var_kind) => {
-                self.run_var_decl(name, init, iseq, var_kind)?
+                self.run_var_decl(name, init, iseq, var_kind, &node)?
             }
             &NodeBase::If(ref cond, ref then_, ref else_) => {
                 self.run_if(&*cond, &*then_, &*else_, iseq)?
@@ -262,19 +262,19 @@ impl VMCodeGen {
         let mut block_header_info = self.state.block_header_info.pop().unwrap();
         while let Some(header) = block_header_info.pop_front() {
             match header {
-                DeclSection::DeclFunc(func_name, val) => {
+                (func_name, DeclSection::DeclFunc(val)) => {
                     self.bytecode_gen.gen_decl_var(&func_name, iseq);
                     self.bytecode_gen.gen_push_const(val, iseq);
                     self.bytecode_gen.gen_update_parent_scope(iseq);
                     self.bytecode_gen.gen_set_value(&func_name, iseq);
                 }
-                DeclSection::DeclVar(var_name) => {
-                    self.bytecode_gen.gen_decl_var(&var_name, iseq);
+                (_var_name, DeclSection::DeclVar) => {
+                    //self.bytecode_gen.gen_decl_var(&var_name, iseq);
                 }
-                DeclSection::DeclConst(var_name) => {
+                (var_name, DeclSection::DeclConst) => {
                     self.bytecode_gen.gen_decl_const(&var_name, iseq);
                 }
-                DeclSection::DeclLet(var_name) => {
+                (var_name, DeclSection::DeclLet) => {
                     self.bytecode_gen.gen_decl_let(&var_name, iseq);
                 }
             }
@@ -302,21 +302,21 @@ impl VMCodeGen {
         header_info.append(self.state.block_header_info.last_mut().unwrap());
         while let Some(header) = header_info.pop_front() {
             match header {
-                DeclSection::DeclFunc(func_name, val) => {
+                (func_name, DeclSection::DeclFunc(val)) => {
                     self.bytecode_gen.gen_decl_var(&func_name, &mut header_iseq);
                     self.bytecode_gen.gen_push_const(val, &mut header_iseq);
                     self.bytecode_gen.gen_update_parent_scope(&mut header_iseq);
                     self.bytecode_gen
                         .gen_set_value(&func_name, &mut header_iseq);
                 }
-                DeclSection::DeclVar(var_name) => {
+                (var_name, DeclSection::DeclVar) => {
                     self.bytecode_gen.gen_decl_var(&var_name, &mut header_iseq);
                 }
-                DeclSection::DeclConst(var_name) => {
+                (var_name, DeclSection::DeclConst) => {
                     self.bytecode_gen
                         .gen_decl_const(&var_name, &mut header_iseq);
                 }
-                DeclSection::DeclLet(var_name) => {
+                (var_name, DeclSection::DeclLet) => {
                     self.bytecode_gen.gen_decl_let(&var_name, &mut header_iseq);
                 }
             }
@@ -337,7 +337,7 @@ impl VMCodeGen {
             .func_header_info
             .last_mut()
             .unwrap()
-            .push_back(DeclSection::DeclFunc(name.clone(), val));
+            .push_back((name.clone(), DeclSection::DeclFunc(val)));
 
         Ok(())
     }
@@ -506,33 +506,76 @@ impl VMCodeGen {
         init: &Option<Box<Node>>,
         iseq: &mut ByteCode,
         var_kind: &VarKind,
+        node: &Node,
     ) -> Result<(), Error> {
+        fn check_duplicate_decl_in_block(
+            self_: &mut VMCodeGen,
+            name: &String,
+            pos: usize,
+            kind: DeclSection,
+        ) -> Result<(), Error> {
+            let info = self_.state.block_header_info.last_mut().unwrap();
+            match info.iter().find(|x| &x.0 == name) {
+                None => {}
+                Some(_) => {
+                    return Err(Error::General {
+                        msg: format!("Identifier '{}' has already been declared", name),
+                        token_pos: pos,
+                    });
+                }
+            }
+            info.push_back((name.clone(), kind));
+            Ok(())
+        }
+
+        let mut is_initialized = false;
+        if let &Some(ref init) = init {
+            self.run(&*init, iseq, true)?;
+            self.bytecode_gen.gen_set_value(name, iseq);
+            is_initialized = true;
+        };
+
         match var_kind {
             VarKind::Var => {
+                // check duplicate variables in all block variables.
+                for info in &self.state.block_header_info {
+                    match info
+                        .iter()
+                        .find(|x| x.1 != DeclSection::DeclVar && &x.0 == name)
+                    {
+                        None => {}
+                        Some(_) => {
+                            return Err(Error::General {
+                                msg: format!("Identifier '{}' has already been declared", name),
+                                token_pos: node.pos,
+                            });
+                        }
+                    }
+                }
                 self.state
                     .func_header_info
                     .last_mut()
                     .unwrap()
-                    .push_back(DeclSection::DeclVar(name.clone()));
+                    .push_back((name.clone(), DeclSection::DeclVar));
+                self.state
+                    .block_header_info
+                    .last_mut()
+                    .unwrap()
+                    .push_back((name.clone(), DeclSection::DeclVar));
             }
             VarKind::Let => {
-                self.state
-                    .block_header_info
-                    .last_mut()
-                    .unwrap()
-                    .push_back(DeclSection::DeclLet(name.clone()));
+                // check duplicate variables in the current block.
+                check_duplicate_decl_in_block(self, name, node.pos, DeclSection::DeclLet)?;
             }
             VarKind::Const => {
-                self.state
-                    .block_header_info
-                    .last_mut()
-                    .unwrap()
-                    .push_back(DeclSection::DeclConst(name.clone()));
+                if !is_initialized {
+                    return Err(Error::General {
+                        msg: format!("missing initializer in const declaration"),
+                        token_pos: node.pos,
+                    });
+                }
+                check_duplicate_decl_in_block(self, name, node.pos, DeclSection::DeclConst)?;
             }
-        }
-        if let &Some(ref init) = init {
-            self.run(&*init, iseq, true)?;
-            self.bytecode_gen.gen_set_value(name, iseq);
         }
 
         Ok(())
