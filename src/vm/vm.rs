@@ -146,7 +146,14 @@ pub enum TryReturn {
 impl TryReturn {
     pub fn to_string(&self) -> String {
         match self {
-            TryReturn::Value(val) => val.to_string(),
+            TryReturn::Value(val) => {
+                let format = val.format(0, false);
+                if format.len() > 7 {
+                    val.kind()
+                } else {
+                    format
+                }
+            }
             TryReturn::Error(err) => err.to_value().to_string(),
             TryReturn::None => "None".to_string(),
         }
@@ -552,10 +559,12 @@ impl VM {
             if self.is_debug {
                 print!("stack trace: ");
                 for (n, v) in self.state.stack.iter().enumerate() {
+                    let format = v.format(1, false);
+                    let format = if format.len() > 20 { v.kind() } else { format };
                     if n == 0 {
-                        print!("{}", v.format(1, false));
+                        print!("{}", format);
                     } else {
-                        print!(" | {}", v.format(1, false));
+                        print!(" | {}", format);
                     }
                 }
                 println!();
@@ -577,14 +586,15 @@ impl VM {
         if self.is_debug {
             println!("ENTER NEW CONTEXT");
             println!(
-                " {:<8} {:<8} {:<5} {:<5} {:<16} {:<4} {}",
-                "tryst".to_string(),
-                "tryret".to_string(),
-                "scope".to_string(),
-                "stack".to_string(),
-                "  top".to_string(),
+                " {:<4} {:<25} {:<8} {:<8} {:<5} {:<5} {:<5} {:<16}",
                 "PC".to_string(),
                 "INST".to_string(),
+                "tryst".to_string(),
+                "tryret".to_string(),
+                "ctx".to_string(),
+                "scope".to_string(),
+                "stack".to_string(),
+                "top".to_string(),
             );
         }
         self.state
@@ -594,24 +604,34 @@ impl VM {
             let code = self.state.iseq[self.state.pc as usize];
             if self.is_debug {
                 let trystate = self.state.trystate.last().unwrap();
+                let ctxlen = self.context_stack.len();
                 let scopelen = self.state.scope.len();
                 let stacklen = self.state.stack.len();
                 let stacktop = self.state.stack.last();
-                print!(
-                    " {:<8} {:<8} {:<5} {:<5} {:<16} ",
-                    trystate.0.to_string().0,
-                    trystate.0.to_string().1,
-                    scopelen,
-                    stacklen,
-                    match stacktop {
-                        Some(val) => val.format(0, false),
-                        None => "".to_string(),
-                    },
-                );
+                print!(" ");
                 bytecode_gen::show_inst(
                     &self.state.iseq,
                     self.state.pc as usize,
                     &self.codegen.bytecode_gen.const_table,
+                );
+                print!(
+                    " {:<8} {:<8} {:<5} {:<5} {:<5} {:<16} ",
+                    trystate.0.to_string().0,
+                    trystate.0.to_string().1,
+                    ctxlen,
+                    scopelen,
+                    stacklen,
+                    match stacktop {
+                        Some(val) => {
+                            let format = val.format(0, false);
+                            if format.len() > 15 {
+                                val.kind()
+                            } else {
+                                format
+                            }
+                        }
+                        None => "".to_string(),
+                    },
                 );
                 println!();
             }

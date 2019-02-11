@@ -1,12 +1,10 @@
-var a = 0
-function f() {
-  //let a = 0
-  {
-    while (true) {
-      var a = 0
-      var a = 3
-      break
-    }
+function f(x) {
+  try {
+    if (x === 1) throw 10
+    return x * f(x - 1)
+  } catch (e) {
+    return 1
   }
 }
-f()
+
+console.log(f(100))

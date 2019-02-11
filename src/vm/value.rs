@@ -617,6 +617,21 @@ impl Value {
             Value::Object(_, ObjectKind::Arguments(_)) => "arguments".to_string(),
         }
     }
+
+    pub fn kind(&self) -> String {
+        match self {
+            Value::Undefined | Value::Bool(_) | Value::Null | Value::Empty => self.to_string(),
+            Value::Uninitialized => "uninitialized".to_string(),
+            Value::Number(_) => "[Number]".to_string(),
+            Value::String(_) => "[String]".to_string(),
+            Value::Object(_, ObjectKind::Array(_)) => "[Array]".to_string(),
+            Value::Object(_, ObjectKind::Date(_)) => "[Date]".to_string(),
+            Value::Object(_, ObjectKind::Function(_)) => "[Function]".to_string(),
+            Value::Object(_, ObjectKind::BuiltinFunction(_)) => "[BuiltinFunc]".to_string(),
+            Value::Object(_, ObjectKind::Arguments(_)) => "[Arguments]".to_string(),
+            Value::Object(_, _) => "[Object]".to_string(),
+        }
+    }
 }
 
 impl Value {

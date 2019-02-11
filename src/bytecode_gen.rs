@@ -437,219 +437,126 @@ pub fn show(code: &ByteCode, const_table: &ConstantTable) {
 }
 
 pub fn show_inst(code: &ByteCode, i: usize, const_table: &ConstantTable) {
-    print!("{:04x} ", i);
-    match code[i] {
-        VMInst::END => {
-            print!("End");
+    print!(
+        "{:04x} {:<25}",
+        i,
+        match code[i] {
+            VMInst::END => format!("End"),
+            VMInst::CREATE_CONTEXT => format!("CreateContext"),
+            VMInst::CONSTRUCT => {
+                let int32 = read_int32(code, i + 1);
+                format!("Construct {} params", int32)
+            }
+            VMInst::CREATE_OBJECT => {
+                let int32 = read_int32(code, i + 1);
+                format!("CreateObject {} params", int32)
+            }
+            VMInst::CREATE_ARRAY => {
+                let int32 = read_int32(code, i + 1);
+                format!("CreateArray {} params", int32)
+            }
+            VMInst::PUSH_INT8 => {
+                let int8 = code[i + 1] as i32;
+                format!("PushInt8 {}", int8)
+            }
+            VMInst::PUSH_INT32 => {
+                let int32 = read_int32(code, i + 1);
+                format!("PushInt32 {}", int32)
+            }
+            VMInst::PUSH_FALSE => format!("PushFalse"),
+            VMInst::PUSH_TRUE => format!("PushTrue"),
+            VMInst::PUSH_CONST => {
+                let int32 = read_int32(code, i + 1);
+                let value = &const_table.value[int32 as usize];
+                format!("PushConst {}", value.format(1, false))
+            }
+            VMInst::PUSH_THIS => format!("PushThis"),
+            VMInst::PUSH_ARGUMENTS => format!("PushArguments"),
+            VMInst::PUSH_UNDEFINED => format!("PushUndefined"),
+            VMInst::LNOT => format!("LogNot"),
+            VMInst::POSI => format!("Posi"),
+            VMInst::NEG => format!("Neg"),
+            VMInst::ADD => format!("Add"),
+            VMInst::SUB => format!("Sub"),
+            VMInst::MUL => format!("Mul"),
+            VMInst::DIV => format!("Div"),
+            VMInst::REM => format!("Rem"),
+            VMInst::LT => format!("Lt"),
+            VMInst::GT => format!("Gt"),
+            VMInst::LE => format!("Le"),
+            VMInst::GE => format!("Ge"),
+            VMInst::EQ => format!("Eq"),
+            VMInst::NE => format!("Ne"),
+            VMInst::SEQ => format!("SEq"),
+            VMInst::SNE => format!("SNeg"),
+            VMInst::AND => format!("BitwiseAnd"),
+            VMInst::OR => format!("BitwiseOr"),
+            VMInst::XOR => format!("BitwiseXor"),
+            VMInst::SHL => format!("Shift-L"),
+            VMInst::SHR => format!("Shift-R"),
+            VMInst::ZFSHR => format!("ZeroFill-Shift-R"),
+            VMInst::GET_MEMBER => format!("GetMember"),
+            VMInst::SET_MEMBER => format!("SetMember"),
+            VMInst::JMP_IF_FALSE => {
+                let int32 = read_int32(code, i + 1);
+                format!("JmpIfFalse {:04x}", i as i32 + int32 + 5)
+            }
+            VMInst::JMP => {
+                let int32 = read_int32(code, i + 1);
+                format!("Jmp {:04x}", i as i32 + int32 + 5)
+            }
+            VMInst::JMP_UNWIND => {
+                let dest = read_int32(code, i + 1);
+                let pop = read_int32(code, i + 5);
+                format!("JmpUnwind {:04x} {}", i as i32 + dest + 5, pop)
+            }
+            VMInst::CALL => {
+                let int32 = read_int32(code, i + 1);
+                format!("Call {} params", int32)
+            }
+            VMInst::RETURN => format!("Return"),
+            VMInst::DOUBLE => format!("Double"),
+            VMInst::POP => format!("Pop"),
+            VMInst::LAND => format!("LogAnd"),
+            VMInst::LOR => format!("LogOr"),
+            VMInst::UPDATE_PARENT_SCOPE => format!("UpdateParentScope"),
+            VMInst::GET_VALUE => {
+                let int32 = read_int32(code, i + 1);
+                let name = &const_table.string[int32 as usize];
+                format!("GetValue '{}'", name)
+            }
+            VMInst::SET_VALUE => {
+                let int32 = read_int32(code, i + 1);
+                let name = &const_table.string[int32 as usize];
+                format!("SetValue '{}'", name)
+            }
+            VMInst::DECL_VAR => {
+                let int32 = read_int32(code, i + 1);
+                let name = &const_table.string[int32 as usize];
+                format!("DeclVar '{}'", name)
+            }
+            VMInst::DECL_CONST => {
+                let int32 = read_int32(code, i + 1);
+                let name = &const_table.string[int32 as usize];
+                format!("DeclConst '{}'", name)
+            }
+            VMInst::DECL_LET => {
+                let int32 = read_int32(code, i + 1);
+                let name = &const_table.string[int32 as usize];
+                format!("DeclLet '{}'", name)
+            }
+            VMInst::COND_OP => format!("CondOp"),
+            VMInst::LOOP_START => format!("LoopStart"),
+            VMInst::THROW => format!("Throw"),
+            VMInst::ENTER_TRY => format!("EnterTry"),
+            VMInst::LEAVE_TRY => format!("LeaveTry"),
+            VMInst::CATCH => format!("Catch"),
+            VMInst::FINALLY => format!("Finally"),
+            VMInst::RETURN_TRY => format!("ReturnTry"),
+            VMInst::PUSH_SCOPE => format!("PushScope"),
+            VMInst::POP_SCOPE => format!("PopScope"),
+            VMInst::NOT => format!("BitwiseNot"),
+            _ => unreachable!("sorry. need to implement more opcodes"),
         }
-        VMInst::CREATE_CONTEXT => {
-            print!("CreateContext");
-        }
-        VMInst::CONSTRUCT => {
-            let int32 = read_int32(code, i + 1);
-            print!("Construct {} params", int32);
-        }
-        VMInst::CREATE_OBJECT => {
-            let int32 = read_int32(code, i + 1);
-            print!("CreateObject {} params", int32);
-        }
-        VMInst::CREATE_ARRAY => {
-            let int32 = read_int32(code, i + 1);
-            print!("CreateArray {} params", int32);
-        }
-        VMInst::PUSH_INT8 => {
-            let int8 = code[i + 1] as i32;
-            print!("PushInt8 {}", int8);
-        }
-        VMInst::PUSH_INT32 => {
-            let int32 = read_int32(code, i + 1);
-            print!("PushInt32 {}", int32);
-        }
-        VMInst::PUSH_FALSE => {
-            print!("PushFalse");
-        }
-        VMInst::PUSH_TRUE => {
-            print!("PushTrue");
-        }
-        VMInst::PUSH_CONST => {
-            let int32 = read_int32(code, i + 1);
-            let value = &const_table.value[int32 as usize];
-            print!("PushConst {}", value.format(1, false));
-        }
-        VMInst::PUSH_THIS => {
-            print!("PushThis");
-        }
-        VMInst::PUSH_ARGUMENTS => {
-            print!("PushArguments");
-        }
-        VMInst::PUSH_UNDEFINED => {
-            print!("PushUndefined");
-        }
-        VMInst::LNOT => {
-            print!("LogNot");
-        }
-        VMInst::POSI => {
-            print!("Posi");
-        }
-        VMInst::NEG => {
-            print!("Neg");
-        }
-        VMInst::ADD => {
-            print!("Add");
-        }
-        VMInst::SUB => {
-            print!("Sub");
-        }
-        VMInst::MUL => {
-            print!("Mul");
-        }
-        VMInst::DIV => {
-            print!("Div");
-        }
-        VMInst::REM => {
-            print!("Rem");
-        }
-        VMInst::LT => {
-            print!("Lt");
-        }
-        VMInst::GT => {
-            print!("Gt");
-        }
-        VMInst::LE => {
-            print!("Le");
-        }
-        VMInst::GE => {
-            print!("Ge");
-        }
-        VMInst::EQ => {
-            print!("Eq");
-        }
-        VMInst::NE => {
-            print!("Ne");
-        }
-        VMInst::SEQ => {
-            print!("SEq");
-        }
-        VMInst::SNE => {
-            print!("SNeg");
-        }
-        VMInst::AND => {
-            print!("BitwiseAnd");
-        }
-        VMInst::OR => {
-            print!("BitwiseOr");
-        }
-        VMInst::XOR => {
-            print!("BitwiseXor");
-        }
-        VMInst::SHL => {
-            print!("Shift-L");
-        }
-        VMInst::SHR => {
-            print!("Shift-R");
-        }
-        VMInst::ZFSHR => {
-            print!("ZeroFill-Shift-R");
-        }
-        VMInst::GET_MEMBER => {
-            print!("GetMember");
-        }
-        VMInst::SET_MEMBER => {
-            print!("SetMember");
-        }
-        VMInst::JMP_IF_FALSE => {
-            let int32 = read_int32(code, i + 1);
-            print!("JmpIfFalse {:04x}", i as i32 + int32 + 5);
-        }
-        VMInst::JMP => {
-            let int32 = read_int32(code, i + 1);
-            print!("Jmp {:04x}", i as i32 + int32 + 5);
-        }
-        VMInst::JMP_UNWIND => {
-            let dest = read_int32(code, i + 1);
-            let pop = read_int32(code, i + 5);
-            print!("JmpUnwind {:04x} {}", i as i32 + dest + 5, pop);
-        }
-        VMInst::CALL => {
-            let int32 = read_int32(code, i + 1);
-            print!("Call {} params", int32);
-        }
-        VMInst::RETURN => {
-            print!("Return");
-        }
-        VMInst::DOUBLE => {
-            print!("Double");
-        }
-        VMInst::POP => {
-            print!("Pop");
-        }
-        VMInst::LAND => {
-            print!("LogAnd");
-        }
-        VMInst::LOR => {
-            print!("LogOr");
-        }
-        VMInst::UPDATE_PARENT_SCOPE => {
-            print!("UpdateParentScope");
-        }
-        VMInst::GET_VALUE => {
-            let int32 = read_int32(code, i + 1);
-            let name = &const_table.string[int32 as usize];
-            print!("GetValue '{}'", name);
-        }
-        VMInst::SET_VALUE => {
-            let int32 = read_int32(code, i + 1);
-            let name = &const_table.string[int32 as usize];
-            print!("SetValue '{}'", name);
-        }
-        VMInst::DECL_VAR => {
-            let int32 = read_int32(code, i + 1);
-            let name = &const_table.string[int32 as usize];
-            print!("DeclVar '{}'", name);
-        }
-        VMInst::DECL_CONST => {
-            let int32 = read_int32(code, i + 1);
-            let name = &const_table.string[int32 as usize];
-            print!("DeclConst '{}'", name);
-        }
-        VMInst::DECL_LET => {
-            let int32 = read_int32(code, i + 1);
-            let name = &const_table.string[int32 as usize];
-            print!("DeclLet '{}'", name);
-        }
-        VMInst::COND_OP => {
-            print!("CondOp");
-        }
-        VMInst::LOOP_START => {
-            print!("LoopStart");
-        }
-        VMInst::THROW => {
-            print!("Throw");
-        }
-        VMInst::ENTER_TRY => {
-            print!("EnterTry");
-        }
-        VMInst::LEAVE_TRY => {
-            print!("LeaveTry");
-        }
-        VMInst::CATCH => {
-            print!("Catch");
-        }
-        VMInst::FINALLY => {
-            print!("Finally");
-        }
-        VMInst::RETURN_TRY => {
-            print!("ReturnTry");
-        }
-        VMInst::PUSH_SCOPE => {
-            print!("PushScope");
-        }
-        VMInst::POP_SCOPE => {
-            print!("PopScope");
-        }
-        VMInst::NOT => {
-            print!("BitwiseNot");
-        }
-        _ => unreachable!("sorry. need to implement more opcodes"),
-    }
+    );
 }
