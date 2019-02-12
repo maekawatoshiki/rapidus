@@ -2,6 +2,7 @@ extern crate rapidus;
 use rapidus::bytecode_gen;
 use rapidus::parser;
 use rapidus::vm;
+use rapidus::vm::value::Value;
 use rapidus::vm::vm::VM;
 use rapidus::vm_codegen;
 
@@ -129,10 +130,10 @@ fn repl(trace: bool) {
                             if vm.state.stack.len() == 0 {
                                 vm.state.stack.push(vm::value::Value::Undefined);
                             };
-                            if vm.state.history.len() != 1 {
+                            if vm.context_stack.len() != 0 {
                                 println!(
-                                    "Warning: history length is {} (should be 1)",
-                                    vm.state.history.len()
+                                    "Warning: context length is {} (should be 0)",
+                                    vm.context_stack.len()
                                 );
                             };
                             match res {
@@ -142,7 +143,15 @@ fn repl(trace: bool) {
                                 _ => {
                                     // Show the evaluated result
                                     if let Some(value) = vm.state.stack.pop() {
-                                        print!("{}", value.format(3, true));
+                                        if value == Value::Undefined {
+                                            print!(
+                                                "{}",
+                                                Colour::Fixed(8).paint(value.format(3, true))
+                                            );
+                                        } else {
+                                            print!("{}", value.format(3, true));
+                                        }
+
                                         println!();
                                         /*
                                         unsafe {
@@ -266,10 +275,16 @@ fn vm_test() {
     assert_file("trinity".to_string());
     assert_file("closure".to_string());
     assert_file("fact".to_string());
+    assert_file("operator".to_string());
+    assert_file("letconst".to_string());
+    assert_file("nested_block".to_string());
+    assert_file("nested_block2".to_string());
     test_file(
         "array".to_string(),
         "'2,3,6,7,3,4,2,3,three1,5,4,1,2,three'".to_string(),
     );
+    test_code("+(5>3)+60%7+(3>=5)+!!5+(-6)".to_string(), "0".to_string());
+    test_code("'true'*3".to_string(), "'truetruetrue'".to_string());
     test_code("(100).toString(15)".to_string(), "'6a'".to_string());
     test_code(
         "'死して屍拾う者なし'[4]".to_string(),
@@ -281,10 +296,10 @@ fn vm_test() {
     );
     test_file(
         "label".to_string(),
-        "[0,0,0,1,0,2,1,0,2,0,2,1,2,2]".to_string(),
+        "[ 0, 0, 0, 1, 0, 2, 1, 0, 2, 0, 3, 0, 3, 1, 4, 1, 4, 2, 0 ]".to_string(),
     );
     test_file("this".to_string(), "[1,101,124]".to_string());
-    test_file("trycatch".to_string(), "[ 0, 2, 1, 10110 ]".to_string());
+    test_file("trycatch".to_string(), "[ 0, 2, 123, 10110 ]".to_string());
     test_file(
         "prototypes".to_string(),
         "[true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true]"

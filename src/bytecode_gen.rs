@@ -63,6 +63,10 @@ pub mod VMInst {
     pub const RETURN_TRY: u8 = 0x38;
     pub const PUSH_SCOPE: u8 = 0x39;
     pub const POP_SCOPE: u8 = 0x3a;
+    pub const DECL_CONST: u8 = 0x3b;
+    pub const DECL_LET: u8 = 0x3c;
+    pub const NOT: u8 = 0x3d;
+    pub const JMP_UNWIND: u8 = 0x3e;
 
     pub fn get_inst_size(inst: u8) -> Option<usize> {
         match inst {
@@ -70,13 +74,15 @@ pub mod VMInst {
                 Some(1)
             }
             CONSTRUCT | CREATE_OBJECT | PUSH_CONST | PUSH_INT32 | CREATE_ARRAY | JMP_IF_FALSE
-            | RETURN_TRY | DECL_VAR | LOOP_START | JMP | SET_VALUE | GET_VALUE | CALL => Some(5),
+            | RETURN_TRY | DECL_VAR | LOOP_START | JMP | SET_VALUE | GET_VALUE | CALL
+            | DECL_LET | DECL_CONST => Some(5),
             PUSH_INT8 => Some(2),
             PUSH_FALSE | END | PUSH_TRUE | PUSH_THIS | ADD | SUB | MUL | DIV | REM | LT
             | PUSH_ARGUMENTS | NEG | POSI | GT | LE | GE | EQ | NE | GET_MEMBER | RETURN | SNE
-            | ZFSHR | POP | DOUBLE | AND | COND_OP | OR | SEQ | SET_MEMBER
-            | UPDATE_PARENT_SCOPE | PUSH_UNDEFINED | LAND | SHR | SHL | XOR | LOR => Some(1),
+            | ZFSHR | POP | DOUBLE | AND | COND_OP | OR | SEQ | SET_MEMBER | LNOT
+            | UPDATE_PARENT_SCOPE | PUSH_UNDEFINED | LAND | SHR | SHL | XOR | LOR | NOT => Some(1),
             ENTER_TRY => Some(9),
+            JMP_UNWIND => Some(13),
             _ => None,
         }
     }
@@ -172,22 +178,15 @@ impl ByteCodeGen {
         iseq.push(VMInst::PUSH_UNDEFINED);
     }
 
-    // pub fn gen_push_null(&self, iseq: &mut ByteCode) {
-    //     iseq.push(VMInst::PUSH_ARGUMENTS);
-    // }
-
     pub fn gen_lnot(&self, iseq: &mut ByteCode) {
         iseq.push(VMInst::LNOT);
     }
-
     pub fn gen_posi(&self, iseq: &mut ByteCode) {
         iseq.push(VMInst::POSI);
     }
-
     pub fn gen_neg(&self, iseq: &mut ByteCode) {
         iseq.push(VMInst::NEG);
     }
-
     pub fn gen_add(&self, iseq: &mut ByteCode) {
         iseq.push(VMInst::ADD);
     }
@@ -227,6 +226,9 @@ impl ByteCodeGen {
     pub fn gen_sne(&self, iseq: &mut ByteCode) {
         iseq.push(VMInst::SNE);
     }
+    pub fn gen_not(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::NOT);
+    }
     pub fn gen_and(&self, iseq: &mut ByteCode) {
         iseq.push(VMInst::AND);
     }
@@ -245,21 +247,18 @@ impl ByteCodeGen {
     pub fn gen_zfshr(&self, iseq: &mut ByteCode) {
         iseq.push(VMInst::ZFSHR);
     }
-
     pub fn gen_land(&self, iseq: &mut ByteCode) {
         iseq.push(VMInst::LAND);
     }
     pub fn gen_lor(&self, iseq: &mut ByteCode) {
         iseq.push(VMInst::LOR);
     }
-
     pub fn gen_double(&self, iseq: &mut ByteCode) {
         iseq.push(VMInst::DOUBLE);
     }
     pub fn gen_pop(&self, iseq: &mut ByteCode) {
         iseq.push(VMInst::POP);
     }
-
     pub fn gen_get_member(&self, iseq: &mut ByteCode) {
         iseq.push(VMInst::GET_MEMBER);
     }
@@ -281,6 +280,13 @@ impl ByteCodeGen {
     pub fn gen_jmp_if_false(&self, dst: i32, iseq: &mut ByteCode) {
         iseq.push(VMInst::JMP_IF_FALSE);
         self.gen_int32(dst, iseq);
+    }
+
+    pub fn gen_jmp_unwind(&self, dst: i32, scope_level: u32, try_level: u32, iseq: &mut ByteCode) {
+        iseq.push(VMInst::JMP_UNWIND);
+        self.gen_int32(dst, iseq);
+        self.gen_uint32(scope_level, iseq);
+        self.gen_uint32(try_level, iseq);
     }
 
     pub fn gen_return(&self, iseq: &mut ByteCode) {
@@ -322,6 +328,18 @@ impl ByteCodeGen {
         self.gen_int32(id as i32, iseq);
     }
 
+    pub fn gen_decl_const(&mut self, name: &String, iseq: &mut ByteCode) {
+        let id = self.add_const_string(name);
+        iseq.push(VMInst::DECL_CONST);
+        self.gen_int32(id as i32, iseq);
+    }
+
+    pub fn gen_decl_let(&mut self, name: &String, iseq: &mut ByteCode) {
+        let id = self.add_const_string(name);
+        iseq.push(VMInst::DECL_LET);
+        self.gen_int32(id as i32, iseq);
+    }
+
     pub fn gen_cond_op(&mut self, iseq: &mut ByteCode) {
         iseq.push(VMInst::COND_OP);
     }
@@ -335,10 +353,11 @@ impl ByteCodeGen {
         iseq.push(VMInst::THROW);
     }
 
-    pub fn gen_enter_try(&mut self, iseq: &mut ByteCode) {
+    pub fn gen_enter_try(&mut self, iseq: &mut ByteCode, scope_level: usize) {
         iseq.push(VMInst::ENTER_TRY);
         self.gen_int32(0, iseq); // distance from ENTER_TRY to CATCH
         self.gen_int32(0, iseq); // distance from ENTER_TRY to FINALLY
+        self.gen_uint32(scope_level as u32, iseq); // basal scope level
     }
 
     pub fn gen_leave_try(&mut self, iseq: &mut ByteCode) {
@@ -364,6 +383,13 @@ impl ByteCodeGen {
         iseq.push(((n >> 8) & 0xff as i32) as u8);
         iseq.push(((n >> 16) & 0xff as i32) as u8);
         iseq.push(((n >> 24) & 0xff as i32) as u8);
+    }
+
+    pub fn gen_uint32(&self, n: u32, iseq: &mut ByteCode) {
+        iseq.push(((n >> 0) & 0xff as u32) as u8);
+        iseq.push(((n >> 8) & 0xff as u32) as u8);
+        iseq.push(((n >> 16) & 0xff as u32) as u8);
+        iseq.push(((n >> 24) & 0xff as u32) as u8);
     }
 
     pub fn replace_int32(&self, n: i32, iseq: &mut [u8]) {
@@ -411,201 +437,126 @@ pub fn show(code: &ByteCode, const_table: &ConstantTable) {
 }
 
 pub fn show_inst(code: &ByteCode, i: usize, const_table: &ConstantTable) {
-    print!("{:04x} ", i);
-    match code[i] {
-        VMInst::END => {
-            print!("End");
+    print!(
+        "{:04x} {:<25}",
+        i,
+        match code[i] {
+            VMInst::END => format!("End"),
+            VMInst::CREATE_CONTEXT => format!("CreateContext"),
+            VMInst::CONSTRUCT => {
+                let int32 = read_int32(code, i + 1);
+                format!("Construct {} params", int32)
+            }
+            VMInst::CREATE_OBJECT => {
+                let int32 = read_int32(code, i + 1);
+                format!("CreateObject {} params", int32)
+            }
+            VMInst::CREATE_ARRAY => {
+                let int32 = read_int32(code, i + 1);
+                format!("CreateArray {} params", int32)
+            }
+            VMInst::PUSH_INT8 => {
+                let int8 = code[i + 1] as i32;
+                format!("PushInt8 {}", int8)
+            }
+            VMInst::PUSH_INT32 => {
+                let int32 = read_int32(code, i + 1);
+                format!("PushInt32 {}", int32)
+            }
+            VMInst::PUSH_FALSE => format!("PushFalse"),
+            VMInst::PUSH_TRUE => format!("PushTrue"),
+            VMInst::PUSH_CONST => {
+                let int32 = read_int32(code, i + 1);
+                let value = &const_table.value[int32 as usize];
+                format!("PushConst {}", value.format(1, false))
+            }
+            VMInst::PUSH_THIS => format!("PushThis"),
+            VMInst::PUSH_ARGUMENTS => format!("PushArguments"),
+            VMInst::PUSH_UNDEFINED => format!("PushUndefined"),
+            VMInst::LNOT => format!("LogNot"),
+            VMInst::POSI => format!("Posi"),
+            VMInst::NEG => format!("Neg"),
+            VMInst::ADD => format!("Add"),
+            VMInst::SUB => format!("Sub"),
+            VMInst::MUL => format!("Mul"),
+            VMInst::DIV => format!("Div"),
+            VMInst::REM => format!("Rem"),
+            VMInst::LT => format!("Lt"),
+            VMInst::GT => format!("Gt"),
+            VMInst::LE => format!("Le"),
+            VMInst::GE => format!("Ge"),
+            VMInst::EQ => format!("Eq"),
+            VMInst::NE => format!("Ne"),
+            VMInst::SEQ => format!("SEq"),
+            VMInst::SNE => format!("SNeg"),
+            VMInst::AND => format!("BitwiseAnd"),
+            VMInst::OR => format!("BitwiseOr"),
+            VMInst::XOR => format!("BitwiseXor"),
+            VMInst::SHL => format!("Shift-L"),
+            VMInst::SHR => format!("Shift-R"),
+            VMInst::ZFSHR => format!("ZeroFill-Shift-R"),
+            VMInst::GET_MEMBER => format!("GetMember"),
+            VMInst::SET_MEMBER => format!("SetMember"),
+            VMInst::JMP_IF_FALSE => {
+                let int32 = read_int32(code, i + 1);
+                format!("JmpIfFalse {:04x}", i as i32 + int32 + 5)
+            }
+            VMInst::JMP => {
+                let int32 = read_int32(code, i + 1);
+                format!("Jmp {:04x}", i as i32 + int32 + 5)
+            }
+            VMInst::JMP_UNWIND => {
+                let dest = read_int32(code, i + 1);
+                let pop = read_int32(code, i + 5);
+                format!("JmpUnwind {:04x} {}", i as i32 + dest + 5, pop)
+            }
+            VMInst::CALL => {
+                let int32 = read_int32(code, i + 1);
+                format!("Call {} params", int32)
+            }
+            VMInst::RETURN => format!("Return"),
+            VMInst::DOUBLE => format!("Double"),
+            VMInst::POP => format!("Pop"),
+            VMInst::LAND => format!("LogAnd"),
+            VMInst::LOR => format!("LogOr"),
+            VMInst::UPDATE_PARENT_SCOPE => format!("UpdateParentScope"),
+            VMInst::GET_VALUE => {
+                let int32 = read_int32(code, i + 1);
+                let name = &const_table.string[int32 as usize];
+                format!("GetValue '{}'", name)
+            }
+            VMInst::SET_VALUE => {
+                let int32 = read_int32(code, i + 1);
+                let name = &const_table.string[int32 as usize];
+                format!("SetValue '{}'", name)
+            }
+            VMInst::DECL_VAR => {
+                let int32 = read_int32(code, i + 1);
+                let name = &const_table.string[int32 as usize];
+                format!("DeclVar '{}'", name)
+            }
+            VMInst::DECL_CONST => {
+                let int32 = read_int32(code, i + 1);
+                let name = &const_table.string[int32 as usize];
+                format!("DeclConst '{}'", name)
+            }
+            VMInst::DECL_LET => {
+                let int32 = read_int32(code, i + 1);
+                let name = &const_table.string[int32 as usize];
+                format!("DeclLet '{}'", name)
+            }
+            VMInst::COND_OP => format!("CondOp"),
+            VMInst::LOOP_START => format!("LoopStart"),
+            VMInst::THROW => format!("Throw"),
+            VMInst::ENTER_TRY => format!("EnterTry"),
+            VMInst::LEAVE_TRY => format!("LeaveTry"),
+            VMInst::CATCH => format!("Catch"),
+            VMInst::FINALLY => format!("Finally"),
+            VMInst::RETURN_TRY => format!("ReturnTry"),
+            VMInst::PUSH_SCOPE => format!("PushScope"),
+            VMInst::POP_SCOPE => format!("PopScope"),
+            VMInst::NOT => format!("BitwiseNot"),
+            _ => unreachable!("sorry. need to implement more opcodes"),
         }
-        VMInst::CREATE_CONTEXT => {
-            print!("CreateContext");
-        }
-        VMInst::CONSTRUCT => {
-            let int32 = read_int32(code, i + 1);
-            print!("Construct {} params", int32);
-        }
-        VMInst::CREATE_OBJECT => {
-            let int32 = read_int32(code, i + 1);
-            print!("CreateObject {} params", int32);
-        }
-        VMInst::CREATE_ARRAY => {
-            let int32 = read_int32(code, i + 1);
-            print!("CreateArray {} params", int32);
-        }
-        VMInst::PUSH_INT8 => {
-            let int8 = code[i + 1] as i32;
-            print!("PushInt8 {}", int8);
-        }
-        VMInst::PUSH_INT32 => {
-            let int32 = read_int32(code, i + 1);
-            print!("PushInt32 {}", int32);
-        }
-        VMInst::PUSH_FALSE => {
-            print!("PushFalse");
-        }
-        VMInst::PUSH_TRUE => {
-            print!("PushTrue");
-        }
-        VMInst::PUSH_CONST => {
-            let int32 = read_int32(code, i + 1);
-            let value = &const_table.value[int32 as usize];
-            print!("PushConst {}", value.format(1, false));
-        }
-        VMInst::PUSH_THIS => {
-            print!("PushThis");
-        }
-        VMInst::PUSH_ARGUMENTS => {
-            print!("PushArguments");
-        }
-        VMInst::PUSH_UNDEFINED => {
-            print!("PushUndefined");
-        }
-        VMInst::LNOT => {
-            print!("LogNot");
-        }
-        VMInst::POSI => {
-            print!("Posi");
-        }
-        VMInst::NEG => {
-            print!("Neg");
-        }
-        VMInst::ADD => {
-            print!("Add");
-        }
-        VMInst::SUB => {
-            print!("Sub");
-        }
-        VMInst::MUL => {
-            print!("Mul");
-        }
-        VMInst::DIV => {
-            print!("Div");
-        }
-        VMInst::REM => {
-            print!("Rem");
-        }
-        VMInst::LT => {
-            print!("Lt");
-        }
-        VMInst::GT => {
-            print!("Gt");
-        }
-        VMInst::LE => {
-            print!("Le");
-        }
-        VMInst::GE => {
-            print!("Ge");
-        }
-        VMInst::EQ => {
-            print!("Eq");
-        }
-        VMInst::NE => {
-            print!("Ne");
-        }
-        VMInst::SEQ => {
-            print!("SEq");
-        }
-        VMInst::SNE => {
-            print!("SNeg");
-        }
-        VMInst::AND => {
-            print!("And");
-        }
-        VMInst::OR => {
-            print!("Or");
-        }
-        VMInst::XOR => {
-            print!("Xor");
-        }
-        VMInst::SHL => {
-            print!("Shift-L");
-        }
-        VMInst::SHR => {
-            print!("Shift-R");
-        }
-        VMInst::ZFSHR => {
-            print!("ZeroFill-Shift-R");
-        }
-        VMInst::GET_MEMBER => {
-            print!("GetMember");
-        }
-        VMInst::SET_MEMBER => {
-            print!("SetMember");
-        }
-        VMInst::JMP_IF_FALSE => {
-            let int32 = read_int32(code, i + 1);
-            print!("JmpIfFalse {:04x}", i as i32 + int32 + 5);
-        }
-        VMInst::JMP => {
-            let int32 = read_int32(code, i + 1);
-            print!("Jmp {:04x}", i as i32 + int32 + 5);
-        }
-        VMInst::CALL => {
-            let int32 = read_int32(code, i + 1);
-            print!("Call {} params", int32);
-        }
-        VMInst::RETURN => {
-            print!("Return");
-        }
-        VMInst::DOUBLE => {
-            print!("Double");
-        }
-        VMInst::POP => {
-            print!("Pop");
-        }
-        VMInst::LAND => {
-            print!("LogAnd");
-        }
-        VMInst::LOR => {
-            print!("LogOr");
-        }
-        VMInst::UPDATE_PARENT_SCOPE => {
-            print!("UpdateParentScope");
-        }
-        VMInst::GET_VALUE => {
-            let int32 = read_int32(code, i + 1);
-            let name = &const_table.string[int32 as usize];
-            print!("GetValue '{}'", name);
-        }
-        VMInst::SET_VALUE => {
-            let int32 = read_int32(code, i + 1);
-            let name = &const_table.string[int32 as usize];
-            print!("SetValue '{}'", name);
-        }
-        VMInst::DECL_VAR => {
-            let int32 = read_int32(code, i + 1);
-            let name = &const_table.string[int32 as usize];
-            print!("DeclVar '{}'", name);
-        }
-        VMInst::COND_OP => {
-            print!("CondOp");
-        }
-        VMInst::LOOP_START => {
-            print!("LoopStart");
-        }
-        VMInst::THROW => {
-            print!("Throw");
-        }
-        VMInst::ENTER_TRY => {
-            print!("EnterTry");
-        }
-        VMInst::LEAVE_TRY => {
-            print!("LeaveTry");
-        }
-        VMInst::CATCH => {
-            print!("Catch");
-        }
-        VMInst::FINALLY => {
-            print!("Finally");
-        }
-        VMInst::RETURN_TRY => {
-            print!("ReturnTry");
-        }
-        VMInst::PUSH_SCOPE => {
-            print!("PushScope");
-        }
-        VMInst::POP_SCOPE => {
-            print!("PopScope");
-        }
-        _ => unreachable!("sorry. need to implement more opcodes"),
-    }
+    );
 }

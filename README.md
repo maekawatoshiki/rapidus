@@ -10,7 +10,7 @@ A toy JavaScript engine (now aiming for ES5)
 
 - Small
 - Partly support for Tracing-JIT compiling
-- Simple REPL 
+- REPL 
 
 # Building from Source
 
@@ -60,7 +60,69 @@ cargo run --release
 6. Run
 
 ```sh
-cargo run --release example/XXX.js
+cargo run --release examples/XXX.js
+```
+
+7. multilined-aware REPL
+
+```sh
+$ cargo run
+> function fact(n) {
+... if (n < 2) {     <- recognize multilined input
+... return n
+... } else {
+... return n * fact(n-1)
+... }
+... }                <- recognize the end of input
+undefined
+> fact(10)
+3628800
+```
+
+8. Debug mode (tracing bytecode execution)
+   
+   use --trace option.
+
+```sh
+$ cargo run -- --trace
+> function fact(n) { if (n<2) { return n } else { return n*fact(n-1) } }
+ tryst    tryret   scope stack   top            PC   INST
+ None              1     0                      0000 CreateContext
+ None              1     0                      0001 DeclVar 'fact'
+ None              1     0                      0006 PushConst [Function]
+ None              1     1     [Function]       000b UpdateParentScope
+ None              1     1     [Function]       000c SetValue 'fact'
+ None              1     0                      0011 End
+stack trace:
+undefined
+> fact(3)
+ tryst    tryret   scope stack   top            PC   INST
+ None              1     0                      0000 CreateContext
+ None              1     0                      0001 PushInt8 3
+ None              1     1     3                0003 GetValue 'fact'
+ None              1     2     [Function]       0008 Call 1 params
+ None              2     0                      0000 CreateContext
+ None              2     0                      0001 GetValue 'n'
+ None              2     1     3                0006 PushInt8 2
+ None              2     2     2                0008 Lt
+ None              2     1     false            0009 JmpIfFalse 0019
+ None              2     0                      0019 GetValue 'n'
+ None              2     1     3                001e GetValue 'n'
+ None              2     2     3                0023 PushInt8 1
+ None              2     3     1                0025 Sub
+ None              2     2     2                0026 GetValue 'fact'
+ None              2     3     [Function]       002b Call 1 params
+ None              2     2     2                0030 Mul
+ None              2     1     6                0031 Return
+stack trace: 6
+ None              1     1     6                000d End
+stack trace: 6
+6
+                   |     |     |                 |  bytecode instruction
+                   |     |     |                 \- program counter
+                   |     |     \------------------- value on the stack top
+                   |     \------------------------- execution stack depth
+                   \------------------------------- scope stack depth
 ```
 
 ## Building on other platforms

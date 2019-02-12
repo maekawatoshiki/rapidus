@@ -50,8 +50,6 @@ impl Hash for GcPtr {
 /// let callobjectref =
 ///     gc::new(CallObject {
 ///         vals: gc::new(FxHashMap::default()),
-///         rest_params: None,
-///         arguments: vec![],
 ///         this: Box::new(Value::Undefined),
 ///         parent: None,
 ///     }
@@ -106,7 +104,7 @@ impl<X: Gc> PartialEq for GcType<X> {
 
 impl<X: Gc> Debug for GcType<X> {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(f, "{{{:?}}}", *self)
+        write!(f, " 0x{:x?} ", self.inner)
     }
 }
 
@@ -127,7 +125,8 @@ impl Gc for Value {
             return;
         };
         match self {
-            Value::Empty
+            Value::Uninitialized
+            | Value::Empty
             | Value::Null
             | Value::Undefined
             | Value::Bool(_)
@@ -147,9 +146,8 @@ impl Gc for Value {
             Value::Object(map, ObjectKind::Ordinary) | Value::Object(map, ObjectKind::Date(_)) => {
                 map.trace(marked);
             }
-            Value::Object(map, ObjectKind::Arguments(c)) => {
+            Value::Object(map, ObjectKind::Arguments(_)) => {
                 map.trace(marked);
-                c.trace(marked);
             }
         }
     }
@@ -183,11 +181,11 @@ impl Gc for CallObject {
             return;
         };
         self.vals.trace(marked);
-
+        /*
         for (_, val) in &mut self.arguments {
             val.trace(marked);
         }
-        /*
+
         if let Some(ref mut parent) = *self.parent {
             parent.trace(marked);
         }

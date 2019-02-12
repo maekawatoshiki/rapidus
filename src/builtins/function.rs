@@ -58,11 +58,11 @@ fn prototype_apply(
             }
             elems
         }
-        Value::Object(_, ObjectKind::Arguments(callobj)) => {
+        Value::Object(_, ObjectKind::Arguments(state)) => {
             let mut elems = vec![];
-            let length = callobj.get_arguments_length();
+            let length = state.get_arguments_length();
             for i in 0..length {
-                elems.push(callobj.get_arguments_nth_value(i).unwrap());
+                elems.push(state.get_arguments_nth_value(i).unwrap());
             }
             elems
         }

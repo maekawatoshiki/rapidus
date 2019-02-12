@@ -33,11 +33,19 @@ pub struct Node {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub enum VarKind {
+    Var,
+    Const,
+    Let,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum NodeBase {
     StatementList(Vec<Node>),
+    Block(Vec<Node>),
     FunctionDecl(String, FormalParameters, Box<Node>), // name, params, body
     FunctionExpr(Option<String>, FormalParameters, Box<Node>), // Name, params, body
-    VarDecl(String, Option<Box<Node>>),
+    VarDecl(String, Option<Box<Node>>, VarKind),
     Member(Box<Node>, String),
     Index(Box<Node>, Box<Node>),
     New(Box<Node>),
@@ -75,7 +83,7 @@ impl Node {
             pos: pos,
         }
     }
-
+    /*
     pub fn definitely_returns(&self) -> bool {
         match self.base {
             NodeBase::StatementList(ref body) => match body.last() {
@@ -111,13 +119,14 @@ impl Node {
             | NodeBase::For(_, _, _, _)
             | NodeBase::New(_)
             | NodeBase::Call(_, _)
-            | NodeBase::VarDecl(_, _)
+            | NodeBase::VarDecl(_, _, _)
             | NodeBase::Member(_, _)
             | NodeBase::Index(_, _)
             | NodeBase::Throw(_)
             | NodeBase::Try(_, _, _, _) => false,
         }
     }
+    */
 }
 
 impl NodeBase {

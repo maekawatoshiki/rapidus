@@ -12,13 +12,8 @@ var f = function() {
 
 new f().g() // -> error in rapidus (parsed as "new (f().g())" )
 
-function c (a, b, c) {
-  try {
-    console.log(arguments, [a, b, c])
-    throw 100
-  } catch (e) {
-    console.log(arguments, [a, b, c])
-  }
+label1: // -> this label is invalid in node.js.
+var a = 0
+for (let i = 0; i < 10; i++) {
+  break label2 // -> error in node.js
 }
-
-c(1, 2, 3) // -> can not access arguments in catch clause.

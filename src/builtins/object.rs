@@ -64,9 +64,11 @@ fn create(vm: &mut VM, args: &Vec<Value>, _: CallObjectRef) -> Result<(), Runtim
             let new_obj = Value::object_from_npp(&vec![]);
             let proto = new_obj.get_property(Value::string("__proto__".to_string()), None);
             for (name, prop) in (*map).iter() {
-                proto
-                    .clone()
-                    .set_property(Value::string(name.to_string()), prop.clone().val, None)
+                proto.clone().set_property(
+                    Value::string(name.to_string()),
+                    prop.clone().val,
+                    None,
+                )?;
             }
             new_obj
         }

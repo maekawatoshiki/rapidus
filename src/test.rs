@@ -36,6 +36,7 @@ pub fn test_code(code: String, answer: String) {
 
 pub fn execute_script(text: String, debug: bool) -> String {
     let mut vm = vm::vm::VM::new();
+    //vm.jit_on = false;
 
     let mut parser = parser::Parser::new(text);
     let node = parser.parse_all().unwrap();

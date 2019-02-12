@@ -12,6 +12,7 @@ use std::ffi::CString;
 use std::mem::transmute;
 use std::ptr;
 use vm;
+use vm::error::RuntimeError;
 use vm::value::*;
 
 const MAX_FUNCTION_PARAMS: usize = 3;
@@ -197,13 +198,13 @@ impl TracingJit {
     pub unsafe fn can_jit(
         &mut self,
         func_info: vm::value::FuncInfo,
-        scope: CallObjectRef,
+        state: vm::vm::VMState,
         const_table: &vm::vm::ConstantTable,
         argc: usize,
     ) -> Option<fn()> {
-        let vm::value::FuncInfo { id, .. } = func_info.clone();
-        if !self.func_is_called_enough_times(id, 0) {
-            self.inc_count(id, 0);
+        let vm::value::FuncInfo { func_id, .. } = func_info.clone();
+        if !self.func_is_called_enough_times(func_id, 0) {
+            self.inc_count(func_id, 0);
             return None;
         }
 
@@ -212,7 +213,7 @@ impl TracingJit {
                 func_addr,
                 jit_info: JITInfo { cannot_jit },
                 ..
-            } = self.func_info.entry(id).or_insert(FuncInfo::new());
+            } = self.func_info.entry(func_id).or_insert(FuncInfo::new());
             if *cannot_jit {
                 return None;
             }
@@ -227,11 +228,15 @@ impl TracingJit {
         // compiled. (cannot_jit = true)
         // llvm::execution_engine::LLVMAddModule(self.exec_engine, self.module);
         let llvm_func =
-            match self.gen_code_for_func(name.clone(), func_info.clone(), scope, const_table, argc)
+            match self.gen_code_for_func(name.clone(), func_info.clone(), state, const_table, argc)
             {
                 Ok(llvm_func) => llvm_func,
                 Err(()) => {
-                    self.func_info.get_mut(&id).unwrap().jit_info.cannot_jit = true;
+                    self.func_info
+                        .get_mut(&func_id)
+                        .unwrap()
+                        .jit_info
+                        .cannot_jit = true;
                     return None;
                 }
             };
@@ -264,7 +269,7 @@ impl TracingJit {
         );
         let f = transmute::<u64, fn()>(f_raw);
 
-        let info = self.func_info.get_mut(&id).unwrap();
+        let info = self.func_info.get_mut(&func_id).unwrap();
         info.func_addr = Some(f);
         info.llvm_func = Some(llvm_func);
 
@@ -275,15 +280,15 @@ impl TracingJit {
         &mut self,
         name: String,
         func_info: vm::value::FuncInfo,
-        scope: CallObjectRef,
+        state: vm::vm::VMState,
         const_table: &vm::vm::ConstantTable,
         argc: usize,
     ) -> Result<LLVMValueRef, ()> {
         if argc > MAX_FUNCTION_PARAMS {
             return Err(());
         }
-        let vm::value::FuncInfo { id, iseq, .. } = func_info.clone();
-        let func_ret_ty = if let Some(ty) = self.function_return_types.get(&id) {
+        let vm::value::FuncInfo { func_id, iseq, .. } = func_info.clone();
+        let func_ret_ty = if let Some(ty) = self.function_return_types.get(&func_id) {
             ty.to_llvmty(self.context)
         } else {
             LLVMDoubleTypeInContext(self.context) // Assume as double
@@ -317,7 +322,7 @@ impl TracingJit {
                 self.builder,
                 LLVMGetParam(func, i as u32),
                 self.declare_local_var(
-                    scope.get_parameter_nth_name(func_info.clone(), i).unwrap(),
+                    state.get_parameter_nth_name(func_info.clone(), i).unwrap(),
                     &mut env,
                 ),
             );
@@ -326,9 +331,9 @@ impl TracingJit {
         let mut compilation_failed = false;
         if let Err(_) = self.gen_body(
             &iseq,
-            scope,
+            (*state.scope.last().unwrap()).clone(),
             const_table,
-            id,
+            func_id,
             1, // 0 + 1(CreateContext)
             iseq.len(),
             true,
@@ -371,15 +376,14 @@ impl TracingJit {
     pub unsafe fn can_loop_jit(
         &mut self,
         func_id: FuncId,
-        iseq: &ByteCode,
         const_table: &vm::vm::ConstantTable,
         vm_state: &mut vm::vm::VMState,
         bgn: usize,
         end: usize,
-    ) -> Option<isize> {
+    ) -> Result<Option<isize>, RuntimeError> {
         if !self.loop_is_called_enough_times(func_id, bgn) {
             self.inc_count(func_id, bgn);
-            return None;
+            return Ok(None);
         }
 
         {
@@ -394,11 +398,16 @@ impl TracingJit {
                 .or_insert(LoopInfo::new());
 
             if *cannot_jit {
-                return None;
+                return Ok(None);
             }
 
             if let Some(raw_func) = raw_func {
-                return run_loop_llvm_func(*raw_func, vm_state, const_table, local_vars);
+                return Ok(run_loop_llvm_func(
+                    *raw_func,
+                    vm_state,
+                    const_table,
+                    local_vars,
+                )?);
             }
         }
 
@@ -407,7 +416,7 @@ impl TracingJit {
         // If gen_code fails, it means the function can't be JIT-compiled and should never be
         // compiled. (cannot_jit = true)
         let (llvm_func, local_vars) =
-            match self.gen_code_for_loop(name.clone(), vm_state, iseq, const_table, bgn, end) {
+            match self.gen_code_for_loop(name.clone(), vm_state, const_table, bgn, end) {
                 Ok(info) => info,
                 Err(()) => {
                     self.loop_info
@@ -415,7 +424,7 @@ impl TracingJit {
                         .unwrap()
                         .jit_info
                         .cannot_jit = true;
-                    return None;
+                    return Ok(None);
                 }
             };
 
@@ -456,20 +465,24 @@ impl TracingJit {
         info.llvm_func = Some(llvm_func);
         info.local_vars = local_vars.clone();
 
-        run_loop_llvm_func(raw_func, vm_state, const_table, &local_vars)
+        Ok(run_loop_llvm_func(
+            raw_func,
+            vm_state,
+            const_table,
+            &local_vars,
+        )?)
     }
 
     unsafe fn gen_code_for_loop(
         &mut self,
         name: String,
         vm_state: &mut vm::vm::VMState,
-        iseq: &ByteCode,
         const_table: &vm::vm::ConstantTable,
         bgn: usize,
         end: usize,
     ) -> Result<(LLVMValueRef, Vec<(usize, ValueType)>), ()> {
-        let local_vars = self.collect_local_variables(vm_state, iseq, const_table, bgn, end)?;
-
+        let local_vars = self.collect_local_variables(vm_state, const_table, bgn, end)?;
+        let iseq = &vm_state.iseq;
         let func_ret_ty = LLVMInt32TypeInContext(self.context);
         let func_ty = LLVMFunctionType(
             func_ret_ty,
@@ -531,8 +544,8 @@ impl TracingJit {
 
         let mut compilation_failed = false;
         if let Err(_) = self.gen_body(
-            iseq,
-            vm_state.scope.last().unwrap().clone(),
+            &iseq,
+            (*vm_state.scope.last().unwrap()).clone(),
             const_table,
             bgn,
             bgn,
@@ -608,14 +621,13 @@ impl TracingJit {
     unsafe fn collect_local_variables(
         &mut self,
         vm_state: &mut vm::vm::VMState,
-        iseq: &ByteCode,
         const_table: &vm::vm::ConstantTable,
         mut pc: usize,
         end: usize,
     ) -> Result<Vec<(usize, ValueType)>, ()> {
         let mut local_vars = FxHashSet::default();
         let local_scope = &*vm_state.scope.last().unwrap();
-
+        let iseq = &vm_state.iseq;
         while pc < end {
             let inst_size = try_opt!(VMInst::get_inst_size(iseq[pc]));
             match iseq[pc] {
@@ -642,9 +654,9 @@ impl TracingJit {
     unsafe fn gen_body(
         &mut self,
         iseq: &ByteCode,
-        scope: CallObjectRef,
+        callobj: vm::value::CallObjectRef,
         const_table: &vm::vm::ConstantTable,
-        func_id: FuncId,
+        cur_func_id: FuncId,
         bgn: usize,
         end: usize,
         is_func_jit: bool,
@@ -1366,17 +1378,17 @@ impl TracingJit {
                                 None,
                             ));
                         }
-                        None => match scope.get_value(name).unwrap() {
+                        None => match callobj.get_value(name).unwrap() {
                             Value::Object(
                                 _,
-                                ObjectKind::Function(box (vm::value::FuncInfo { id, .. }, _)),
-                            ) if id == func_id => {
+                                ObjectKind::Function(box (vm::value::FuncInfo { func_id, .. }, _)),
+                            ) if func_id == cur_func_id => {
                                 stack.push((func, None));
                             }
                             Value::Object(
                                 _,
-                                ObjectKind::Function(box (vm::value::FuncInfo { id, .. }, _)),
-                            ) => match self.func_info.get(&id) {
+                                ObjectKind::Function(box (vm::value::FuncInfo { func_id, .. }, _)),
+                            ) => match self.func_info.get(&func_id) {
                                 Some(FuncInfo { llvm_func, .. }) if llvm_func.is_some() => {
                                     stack.push((llvm_func.unwrap(), None));
                                 }
@@ -1477,13 +1489,13 @@ impl TracingJit {
                         )),
                         Value::Object(
                             _,
-                            ObjectKind::Function(box (vm::value::FuncInfo { id, .. }, _)),
-                        ) if is_func_jit && id == func_id => stack.push((func, None)),
+                            ObjectKind::Function(box (vm::value::FuncInfo { func_id, .. }, _)),
+                        ) if is_func_jit && func_id == cur_func_id => stack.push((func, None)),
                         Value::Object(
                             _,
-                            ObjectKind::Function(box (vm::value::FuncInfo { id, .. }, _)),
+                            ObjectKind::Function(box (vm::value::FuncInfo { func_id, .. }, _)),
                         ) => stack.push((
-                            match self.func_info.get(&id) {
+                            match self.func_info.get(&func_id) {
                                 Some(FuncInfo { llvm_func, .. }) if llvm_func.is_some() => {
                                     llvm_func.unwrap()
                                 }
@@ -1652,7 +1664,7 @@ pub unsafe fn run_loop_llvm_func(
     vm_state: &mut vm::vm::VMState,
     const_table: &vm::vm::ConstantTable,
     local_vars: &Vec<(usize, ValueType)>,
-) -> Option<isize> {
+) -> Result<Option<isize>, RuntimeError> {
     let scope = &*vm_state.scope.last().unwrap();
     let mut args_of_local_vars = vec![];
 
@@ -1661,7 +1673,7 @@ pub unsafe fn run_loop_llvm_func(
         args_of_local_vars.push(match scope.get_value(name).unwrap() {
             vm::value::Value::Number(f) => Box::into_raw(Box::new(f)) as *mut libc::c_void,
             vm::value::Value::Bool(b) => Box::into_raw(Box::new(b)) as *mut libc::c_void,
-            _ => return None,
+            _ => return Ok(None),
         });
     }
 
@@ -1673,18 +1685,18 @@ pub unsafe fn run_loop_llvm_func(
 
     for (i, (id, ty)) in local_vars.iter().enumerate() {
         let name = const_table.string[*id].clone();
-        scope.clone().set_value_if_exist(
+        scope.clone().set_value(
             name,
             match ty {
                 ValueType::Number => vm::value::Value::Number(*(args_of_local_vars[i] as *mut f64)),
                 ValueType::Bool => vm::value::Value::Bool(*(args_of_local_vars[i] as *mut bool)),
                 _ => unimplemented!(),
             },
-        );
+        )?;
         Box::from_raw(args_of_local_vars[i]);
     }
 
-    Some(pc as isize)
+    Ok(Some(pc as isize))
 }
 
 impl TracingJit {

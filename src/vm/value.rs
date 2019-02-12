@@ -10,6 +10,7 @@ use gc::GcType;
 use id::{get_unique_id, Id};
 pub use rustc_hash::FxHashMap;
 use std::ffi::CString;
+use vm;
 
 pub type FuncId = Id;
 
@@ -31,7 +32,7 @@ pub struct Property {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct FuncInfo {
-    pub id: FuncId,
+    pub func_id: FuncId,
     pub iseq: ByteCode,
     pub params: Vec<(String, bool)>, // (name, rest param?)
 }
@@ -39,7 +40,7 @@ pub struct FuncInfo {
 impl FuncInfo {
     pub fn new(id: FuncId, iseq: ByteCode, params: Vec<(String, bool)>) -> FuncInfo {
         FuncInfo {
-            id: id,
+            func_id: id,
             iseq: iseq,
             params: params,
         }
@@ -53,12 +54,13 @@ pub enum ObjectKind {
     Ordinary,
     Array(ArrayValueRef),
     Date(Box<(DateTime<Utc>)>),
-    Arguments(CallObjectRef),
+    Arguments(vm::vm::VMState),
 }
 
 // 32 bytes
 #[derive(Clone, PartialEq, Debug)]
 pub enum Value {
+    Uninitialized,
     Empty,
     Null,
     Undefined,
@@ -232,10 +234,10 @@ impl Value {
         )
     }
 
-    pub fn arguments(callobj: CallObjectRef) -> Value {
+    pub fn arguments(state: vm::vm::VMState) -> Value {
         Value::Object(
             Value::propmap_from_npp(&vec![]),
-            ObjectKind::Arguments(callobj),
+            ObjectKind::Arguments(state),
         )
     }
 
@@ -313,20 +315,18 @@ impl Value {
             }
         };
 
-        let property_of_arguments = || -> Value {
+        let property_of_arguments = |state: vm::vm::VMState| -> Value {
             {
                 match property {
                     // Index
                     Value::Number(n) if is_integer(n) && n >= 0.0 => callobjref
                         .and_then(|co| {
-                            let co = &*co;
-                            Some(co.get_arguments_nth_value(n as usize).unwrap())
+                            let _co = &*co;
+                            Some(state.get_arguments_nth_value(n as usize).unwrap())
                         })
                         .unwrap_or_else(|| Value::Undefined),
                     Value::String(ref s) if s.to_str().unwrap() == "length" => {
-                        let length = callobjref
-                            .and_then(|co| Some((*co).get_arguments_length()))
-                            .unwrap_or(0);
+                        let length = state.get_arguments_length();
                         Value::Number(length as f64)
                     }
                     _ => Value::Undefined,
@@ -338,13 +338,18 @@ impl Value {
             Value::Number(_) => property_of_number(),
             Value::String(ref s) => property_of_string(s),
             Value::Object(_, ObjectKind::Array(_)) => property_of_array(&*self),
-            Value::Object(_, ObjectKind::Arguments(_)) => property_of_arguments(),
+            Value::Object(_, ObjectKind::Arguments(state)) => property_of_arguments(state.clone()),
             Value::Object(_, _) => property_of_object(self.clone()),
             _ => Value::Undefined,
         }
     }
 
-    pub fn set_property(&mut self, property: Value, value: Value, callobj: Option<CallObjectRef>) {
+    pub fn set_property(
+        &mut self,
+        property: Value,
+        value: Value,
+        _callobj: Option<CallObjectRef>,
+    ) -> Result<(), RuntimeError> {
         fn set_by_idx(ary: &mut ArrayValue, n: usize, val: Value) {
             if n >= ary.length as usize {
                 ary.length = n + 1;
@@ -387,14 +392,11 @@ impl Value {
                     }
                 }
             }
-            Value::Object(_, ObjectKind::Arguments(_)) => {
+            Value::Object(_, ObjectKind::Arguments(ref mut state)) => {
                 match property {
                     // Index
                     Value::Number(n) if n - n.floor() == 0.0 => {
-                        callobj
-                            .unwrap()
-                            .clone()
-                            .set_arguments_nth_value(n as usize, value);
+                        state.set_arguments_nth_value(n as usize, value)?;
                     }
                     // TODO: 'length'
                     _ => {}
@@ -408,6 +410,7 @@ impl Value {
             }
             _ => {}
         };
+        Ok(())
     }
 
     pub fn set_number_if_possible(&mut self, n: f64) {
@@ -561,6 +564,7 @@ impl Value {
             Value::Undefined | Value::Bool(_) | Value::Number(_) | Value::Null | Value::Empty => {
                 self.to_string()
             }
+            Value::Uninitialized => "uninitialized".to_string(),
             Value::String(_) => format!("'{}'", self.to_string()),
             Value::Object(_, ObjectKind::Array(aryval)) => match depth {
                 0 => "[Array]".to_string(),
@@ -571,7 +575,7 @@ impl Value {
                         .fold("".to_string(), |acc, prop| {
                             acc + prop.val.format_(max_depth, depth - 1, indent).as_str() + ","
                         })
-                        .trim_right_matches(",")
+                        .trim_end_matches(",")
                         .to_string();
                     format!("[{}]", str)
                 }
@@ -602,7 +606,7 @@ impl Value {
                                 )
                             }
                         })
-                        .trim_right_matches(",")
+                        .trim_end_matches(",")
                         .to_string();
                     format!("{{{}{}}}", str, cr(0))
                 }
@@ -611,6 +615,21 @@ impl Value {
             Value::Object(_, ObjectKind::Function(_)) => "[Function]".to_string(),
             Value::Object(_, ObjectKind::BuiltinFunction(_)) => "[BuiltinFunc]".to_string(),
             Value::Object(_, ObjectKind::Arguments(_)) => "arguments".to_string(),
+        }
+    }
+
+    pub fn kind(&self) -> String {
+        match self {
+            Value::Undefined | Value::Bool(_) | Value::Null | Value::Empty => self.to_string(),
+            Value::Uninitialized => "uninitialized".to_string(),
+            Value::Number(_) => "[Number]".to_string(),
+            Value::String(_) => "[String]".to_string(),
+            Value::Object(_, ObjectKind::Array(_)) => "[Array]".to_string(),
+            Value::Object(_, ObjectKind::Date(_)) => "[Date]".to_string(),
+            Value::Object(_, ObjectKind::Function(_)) => "[Function]".to_string(),
+            Value::Object(_, ObjectKind::BuiltinFunction(_)) => "[BuiltinFunc]".to_string(),
+            Value::Object(_, ObjectKind::Arguments(_)) => "[Arguments]".to_string(),
+            Value::Object(_, _) => "[Object]".to_string(),
         }
     }
 }
@@ -684,8 +703,8 @@ impl Value {
                 Ok(l == r)
             }
             (
-                Value::Object(l2, ObjectKind::Function(box (FuncInfo { id: l1, .. }, _))),
-                Value::Object(r2, ObjectKind::Function(box (FuncInfo { id: r1, .. }, _))),
+                Value::Object(l2, ObjectKind::Function(box (FuncInfo { func_id: l1, .. }, _))),
+                Value::Object(r2, ObjectKind::Function(box (FuncInfo { func_id: r1, .. }, _))),
             ) => Ok(l1 == r1 && l2 == r2),
             (
                 Value::Object(l2, ObjectKind::BuiltinFunction(box (l1, _))),
@@ -720,7 +739,7 @@ impl ArrayValue {
             .fold("".to_string(), |acc, prop| {
                 acc + prop.val.to_string().as_str() + ","
             })
-            .trim_right_matches(",")
+            .trim_end_matches(",")
             .to_string()
     }
 
@@ -774,13 +793,16 @@ pub fn set_this(val: Value, this: &Value) -> Value {
             map,
             ObjectKind::Function(box (
                 FuncInfo {
-                    id, iseq, params, ..
+                    func_id,
+                    iseq,
+                    params,
+                    ..
                 },
                 callobj,
             )),
         ) => Value::Object(
             map,
-            ObjectKind::Function(Box::new((FuncInfo::new(id, iseq, params), {
+            ObjectKind::Function(Box::new((FuncInfo::new(func_id, iseq, params), {
                 let co = CallObject {
                     this: Box::new(this.clone()),
                     ..(*callobj).clone()
