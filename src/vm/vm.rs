@@ -5,7 +5,10 @@ use std::{ffi::CString, thread, time};
 
 use super::{
     callobj::CallObject,
+    codegen::CodeGenerator,
+    constant,
     error::*,
+    frame,
     task::{Task, TaskManager, TimerKind},
     value::*,
 };
@@ -18,6 +21,42 @@ use bytecode_gen::ByteCode;
 use gc;
 use jit::TracingJit;
 use vm_codegen;
+
+// New VM
+
+pub type VMResult = Result<(), RuntimeError>;
+
+pub struct VM2<'a> {
+    code_generator: CodeGenerator<'a>,
+    memory_allocator: &'a mut gc::MemoryAllocator,
+}
+
+impl<'a> VM2<'a> {
+    pub fn new(
+        constant_table: &'a mut constant::ConstantTable,
+        memory_allocator: &'a mut gc::MemoryAllocator,
+    ) -> Self {
+        VM2 {
+            code_generator: CodeGenerator::new(constant_table),
+            memory_allocator,
+        }
+    }
+
+    pub fn run_global(&mut self, iseq: &mut ByteCode) -> VMResult {
+        let exec_ctx = frame::ExecutionContext::new(self.memory_allocator.alloc(
+            frame::LexicalEnvironment::new_object(Value2::Number(0.0), None),
+        ));
+        Ok(())
+    }
+}
+
+impl<'a> VM2<'a> {
+    pub fn run(&mut self, cur_frame: frame::Frame, iseq: &mut ByteCode) -> VMResult {
+        Ok(())
+    }
+}
+
+// Old VM below
 
 pub struct VM {
     pub jit: TracingJit,

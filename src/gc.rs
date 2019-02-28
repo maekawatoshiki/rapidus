@@ -1,3 +1,5 @@
+// TODO: Support for Incremental GC
+
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::cell::RefCell;
 use std::fmt::{Debug, Formatter, Result};
@@ -8,9 +10,35 @@ use std::sync::atomic::{self, AtomicUsize};
 use stopwatch::Stopwatch;
 use vm::{
     callobj::CallObject,
+    frame,
     value::{ArrayValue, ObjectKind, Property, Value},
     vm::VM,
 };
+
+pub type RawPointer = *mut u8;
+
+#[derive(Debug)]
+pub struct MemoryAllocator {
+    allocated_memory: FxHashSet<RawPointer>,
+    allocated_size: usize,
+}
+
+impl MemoryAllocator {
+    pub fn new() -> Self {
+        MemoryAllocator {
+            allocated_memory: FxHashSet::default(),
+            allocated_size: 0,
+        }
+    }
+
+    pub fn alloc<T>(&mut self, data: T) -> *mut T {
+        let data_size = mem::size_of_val(&data);
+        let ptr = Box::into_raw(Box::new(data));
+        self.allocated_size += data_size;
+        self.allocated_memory.insert(ptr as RawPointer);
+        ptr
+    }
+}
 
 static ALLOCATED_MEM_SIZE_BYTE: AtomicUsize = AtomicUsize::new(0);
 
@@ -114,6 +142,84 @@ pub trait Gc {
     fn trace(&mut self, &mut FxHashSet<GcPtr>);
 }
 
+// impl Gc for frame::EnvironmentRecord {
+//     fn free(&self) -> usize {
+//         mem::drop(self);
+//         mem::size_of::<frame::EnvironmentRecord>()
+//     }
+//
+//     fn trace(&mut self, marked: &mut FxHashSet<GcPtr>) {
+//         if !mark(self, marked) {
+//             return;
+//         }
+//
+//         match self {
+//             frame::EnvironmentRecord::Declarative(record) => {
+//                 for (_, val) in record {
+//                     val.trace(marked);
+//                 }
+//             }
+//         }
+//     }
+// }
+//
+// impl Gc for frame::LexicalEnvironment {
+//     fn free(&self) -> usize {
+//         mem::drop(self);
+//         mem::size_of::<frame::LexicalEnvironment>()
+//     }
+//
+//     fn trace(&mut self, marked: &mut FxHashSet<GcPtr>) {
+//         if !mark(self, marked) {
+//             return;
+//         }
+//
+//         self.record.trace(marked);
+//
+//         if let Some(outer) = self.outer {
+//             outer.trace(marked);
+//         }
+//     }
+// }
+//
+// // impl Gc for Value2 {
+// //     fn free(&self) -> usize {
+// //         mem::drop(self);
+// //         mem::size_of::<Value2>()
+// //     }
+// //     fn trace(&mut self, marked: &mut FxHashSet<GcPtr>) {
+// //         if !mark(self, marked) {
+// //             return;
+// //         };
+// //         match self {
+// //             Value::Uninitialized
+// //             | Value::Empty
+// //             | Value::Null
+// //             | Value::Undefined
+// //             | Value::Bool(_)
+// //             | Value::Number(_)
+// //             | Value::String(_) => {}
+// //             Value::Object(map, ObjectKind::Function(box (_, c))) => {
+// //                 map.trace(marked);
+// //                 c.trace(marked);
+// //             }
+// //             // Never trace _xxx
+// //             Value::Object(_, ObjectKind::BuiltinFunction(box (_, c))) => (*c).trace(marked),
+// //
+// //             Value::Object(map, ObjectKind::Array(a)) => {
+// //                 map.trace(marked);
+// //                 a.trace(marked);
+// //             }
+// //             Value::Object(map, ObjectKind::Ordinary) | Value::Object(map, ObjectKind::Date(_)) => {
+// //                 map.trace(marked);
+// //             }
+// //             Value::Object(map, ObjectKind::Arguments(_)) => {
+// //                 map.trace(marked);
+// //             }
+// //         }
+// //     }
+// // }
+
 impl Gc for Value {
     fn free(&self) -> usize {
         mem::drop(self);
@@ -123,7 +229,8 @@ impl Gc for Value {
     fn trace(&mut self, marked: &mut FxHashSet<GcPtr>) {
         if !mark(self, marked) {
             return;
-        };
+        }
+
         match self {
             Value::Uninitialized
             | Value::Empty
@@ -162,7 +269,8 @@ impl Gc for FxHashMap<String, Property> {
     fn trace(&mut self, marked: &mut FxHashSet<GcPtr>) {
         if !mark(self, marked) {
             return;
-        };
+        }
+
         let map = self;
         for (_, prop) in map {
             prop.val.trace(marked);
@@ -225,8 +333,7 @@ pub fn new<X: Gc + 'static>(data: X) -> GcType<X> {
 
 pub fn mark_and_sweep(vm: &mut VM) {
     fn over16kb_allocated() -> bool {
-        //ALLOCATED_MEM_SIZE_BYTE.load(atomic::Ordering::SeqCst) > 16 * 1024
-        true
+        ALLOCATED_MEM_SIZE_BYTE.load(atomic::Ordering::SeqCst) > 16 * 1024
     }
 
     if vm.gc_on && over16kb_allocated() {
