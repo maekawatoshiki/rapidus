@@ -11,7 +11,7 @@ use std::path;
 use vm::{
     error::RuntimeError,
     task::{Task, TimerID, TimerKind},
-    value::{CallObjectRef, FuncInfo, ObjectKind, Property, RawStringPtr, Value},
+    value::{CallObjectRef, FuncInfo, ObjectKind, Property, RawStringPtr, Value,Value2},
     vm::VM,
 };
 use vm_codegen;

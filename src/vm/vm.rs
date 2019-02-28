@@ -28,6 +28,7 @@ use vm_codegen;
 pub type VMResult = Result<(), RuntimeError>;
 
 pub struct VM2<'a> {
+    pub global_environment: frame::LexicalEnvironmentRef,
     pub code_generator: CodeGenerator<'a>,
     pub stack: Vec<BoxedValue>,
     pub saved_frame: Vec<frame::Frame>,
@@ -35,10 +36,12 @@ pub struct VM2<'a> {
 
 impl<'a> VM2<'a> {
     pub fn new(
+        global_environment: frame::LexicalEnvironmentRef,
         constant_table: &'a mut constant::ConstantTable,
         memory_allocator: &'a mut gc::MemoryAllocator,
     ) -> Self {
         VM2 {
+            global_environment,
             code_generator: CodeGenerator::new(constant_table, memory_allocator),
             stack: vec![],
             saved_frame: vec![],
@@ -46,9 +49,7 @@ impl<'a> VM2<'a> {
     }
 
     pub fn run_global(&mut self, global_info: codegen::FunctionInfo, iseq: ByteCode) -> VMResult {
-        let global_env = self
-            .memory_allocator()
-            .alloc(frame::LexicalEnvironment::new_global());
+        let global_env = self.global_environment;
         let var_env = self.memory_allocator().alloc(frame::LexicalEnvironment {
             record: frame::EnvironmentRecord::Declarative({
                 let mut record = FxHashMap::default();
@@ -116,8 +117,16 @@ impl<'a> VM2<'a> {
                     let name = self.constant_table().get(name_id).as_string();
                     cur_frame.lex_env().set_value(name.clone(), val.into())?
                 }
+                VMInst::GET_VALUE => {
+                    cur_frame.pc += 1;
+                    read_int32!(cur_frame.bytecode, cur_frame.pc, name_id, usize);
+                    let val = cur_frame
+                        .lex_env()
+                        .get_value(self.constant_table().get(name_id).as_string())?;
+                    self.stack.push(val.into());
+                }
                 VMInst::END => break,
-                _ => unimplemented!(),
+                e => unimplemented!("code: {}", e),
             }
         }
 

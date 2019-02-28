@@ -231,11 +231,11 @@ impl<'a> ByteCodeGenerator<'a> {
         iseq.push(VMInst::UPDATE_PARENT_SCOPE);
     }
 
-    // pub fn append_get_value(&mut self, name: &String, iseq: &mut ByteCode) {
-    //     let id = self.add_const_string(name);
-    //     iseq.push(VMInst::GET_VALUE);
-    //     self.append_int32(id as i32, iseq);
-    // }
+    pub fn append_get_value(&mut self, name: &String, iseq: &mut ByteCode) {
+        let id = self.constant_table.add_string(name.clone());
+        iseq.push(VMInst::GET_VALUE);
+        self.append_int32(id as i32, iseq);
+    }
 
     pub fn append_set_value(&mut self, name: &String, iseq: &mut ByteCode) {
         let id = self.constant_table.add_string(name.clone());
@@ -673,15 +673,15 @@ pub fn show_inst2(code: &ByteCode, i: usize, const_table: &constant::ConstantTab
             VMInst::CREATE_CONTEXT => format!("CreateContext"),
             VMInst::CONSTRUCT => {
                 let int32 = read_int32(code, i + 1);
-                format!("Construct {} params", int32)
+                format!("Construct {}", int32)
             }
             VMInst::CREATE_OBJECT => {
                 let int32 = read_int32(code, i + 1);
-                format!("CreateObject {} params", int32)
+                format!("CreateObject {}", int32)
             }
             VMInst::CREATE_ARRAY => {
                 let int32 = read_int32(code, i + 1);
-                format!("CreateArray {} params", int32)
+                format!("CreateArray {}", int32)
             }
             VMInst::PUSH_INT8 => {
                 let int8 = code[i + 1] as i32;
@@ -741,7 +741,7 @@ pub fn show_inst2(code: &ByteCode, i: usize, const_table: &constant::ConstantTab
             }
             VMInst::CALL => {
                 let int32 = read_int32(code, i + 1);
-                format!("Call {} params", int32)
+                format!("Call {}", int32)
             }
             VMInst::RETURN => format!("Return"),
             VMInst::DOUBLE => format!("Double"),

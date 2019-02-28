@@ -1,8 +1,12 @@
+#![macro_use]
+
 use bytecode_gen::ByteCode;
 use rustc_hash::FxHashMap;
 use vm::error::RuntimeError;
 use vm::value::Value2;
 use vm::vm::VMResult;
+
+pub type LexicalEnvironmentRef = *mut LexicalEnvironment;
 
 #[derive(Debug, Clone)]
 pub struct Frame {
@@ -14,15 +18,15 @@ pub struct Frame {
 
 #[derive(Debug, Clone)]
 pub struct ExecutionContext {
-    pub variable_environment: *mut LexicalEnvironment,
-    pub lexical_environment: *mut LexicalEnvironment,
-    pub saved_lexical_environment: Vec<*mut LexicalEnvironment>,
+    pub variable_environment: LexicalEnvironmentRef,
+    pub lexical_environment: LexicalEnvironmentRef,
+    pub saved_lexical_environment: Vec<LexicalEnvironmentRef>,
 }
 
 #[derive(Debug, Clone)]
 pub struct LexicalEnvironment {
     pub record: EnvironmentRecord,
-    pub outer: Option<*mut LexicalEnvironment>,
+    pub outer: Option<LexicalEnvironmentRef>,
 }
 
 #[derive(Debug, Clone)]
@@ -57,6 +61,15 @@ impl ExecutionContext {
     }
 }
 
+#[macro_export]
+macro_rules! make_global_env {
+    ($($property_name:ident : $val:expr),*) => { {
+        let mut record = FxHashMap::default();
+        $( record.insert((stringify!($property_name)).to_string(), $val); )*
+        record
+    } };
+}
+
 impl LexicalEnvironment {
     pub fn new_declarative(outer: Option<*mut LexicalEnvironment>) -> Self {
         LexicalEnvironment {
@@ -76,6 +89,41 @@ impl LexicalEnvironment {
         LexicalEnvironment {
             record: EnvironmentRecord::Global(FxHashMap::default()),
             outer: None,
+        }
+    }
+
+    pub fn new_global_initialized() -> Self {
+        LexicalEnvironment {
+            // TODO: 'log' for the time being
+            record: EnvironmentRecord::Global(make_global_env!(log: Value2::Number(1.0))),
+            outer: None,
+        }
+    }
+
+    pub fn get_value(&self, name: &String) -> Result<Value2, RuntimeError> {
+        match self.record {
+            EnvironmentRecord::Declarative(ref record) | EnvironmentRecord::Global(ref record) => {
+                match record.get(name) {
+                    Some(binding) if binding == &Value2::uninitialized() => {
+                        return Err(RuntimeError::Reference(format!(
+                            "'{}' is not defined",
+                            name
+                        )));
+                    }
+                    Some(binding) => return Ok(*binding),
+                    None => {}
+                }
+            }
+            EnvironmentRecord::Object(_) => unimplemented!(),
+        };
+
+        if let Some(outer) = self.get_outer() {
+            outer.get_value(name)
+        } else {
+            Err(RuntimeError::Reference(format!(
+                "'{}' is not defined",
+                name
+            )))
         }
     }
 

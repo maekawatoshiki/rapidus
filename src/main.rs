@@ -2,10 +2,8 @@ extern crate rapidus;
 use rapidus::bytecode_gen;
 use rapidus::gc;
 use rapidus::parser;
-use rapidus::vm;
-use rapidus::vm::value::Value;
-use rapidus::vm::vm::VM2;
 use rapidus::vm_codegen;
+use rapidus::{vm, vm::frame, vm::value::Value, vm::vm::VM2};
 
 extern crate libc;
 
@@ -87,7 +85,8 @@ fn main() {
 
     let mut const_table = vm::constant::ConstantTable::new();
     let mut mem_allocator = gc::MemoryAllocator::new();
-    let mut vm = VM2::new(&mut const_table, &mut mem_allocator);
+    let global_env = mem_allocator.alloc(frame::LexicalEnvironment::new_global_initialized());
+    let mut vm = VM2::new(global_env, &mut const_table, &mut mem_allocator);
     let mut iseq = vec![];
     let global_info = vm.code_generator.compile(&node, &mut iseq, false).unwrap();
 

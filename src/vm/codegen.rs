@@ -2,7 +2,6 @@ use bytecode_gen::{ByteCode, ByteCodeGenerator};
 use gc::MemoryAllocator;
 use node::{Node, NodeBase};
 use vm::constant::ConstantTable;
-use vm::frame;
 
 pub type CodeGenResult = Result<(), Error>;
 
@@ -69,6 +68,10 @@ impl<'a> CodeGenerator<'a> {
             NodeBase::Assign(ref dst, ref src) => {
                 self.visit_assign(&*dst, &*src, iseq, use_value)?
             }
+            NodeBase::Call(ref callee, ref args) => {
+                self.visit_call(&*callee, args, iseq, use_value)?
+            }
+            NodeBase::Identifier(ref name) => self.bytecode_generator.append_get_value(name, iseq),
             NodeBase::Number(n) => self.bytecode_generator.append_push_number(n, iseq),
             _ => unimplemented!(),
         }
@@ -103,6 +106,28 @@ impl<'a> CodeGenerator<'a> {
         }
 
         self.assign_stack_top_to(dst, iseq)?;
+
+        Ok(())
+    }
+
+    fn visit_call(
+        &mut self,
+        callee: &Node,
+        args: &Vec<Node>,
+        iseq: &mut ByteCode,
+        use_value: bool,
+    ) -> CodeGenResult {
+        for arg in args.iter().rev() {
+            self.visit(arg, iseq, true)?
+        }
+
+        self.visit(callee, iseq, true)?;
+
+        self.bytecode_generator.append_call(args.len() as u32, iseq);
+
+        if !use_value {
+            self.bytecode_generator.append_pop(iseq);
+        }
 
         Ok(())
     }
