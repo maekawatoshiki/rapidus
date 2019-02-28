@@ -12,6 +12,25 @@ pub use rustc_hash::FxHashMap;
 use std::ffi::CString;
 use vm;
 
+const UNINITIALIZED: u32 = 0;
+const EMPTY: u32 = 1;
+const NULL: u32 = 2;
+const UNDEFINED: u32 = 3;
+
+make_nanbox! {
+    #[derive(Clone, PartialEq, Debug)]
+    pub unsafe enum BoxedValue, Value2 {
+        Number(f64),
+        Bool(u8), // 0 | 1 = false | true
+        String(*mut CString), // TODO: Using CString is good for JIT. However, we need better one instead.
+        Object(*mut ObjectInfo), // Object(FxHashMap<String, Value>),
+        Other(u32) // UNINITIALIZED | EMPTY | NULL | UNDEFINED
+    }
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct ObjectInfo {}
+
 pub type FuncId = Id;
 
 pub type RawStringPtr = *mut libc::c_char;
