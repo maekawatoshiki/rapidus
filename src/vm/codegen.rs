@@ -30,7 +30,9 @@ impl<'a> CodeGenerator<'a> {
     }
 
     pub fn compile(&mut self, node: &Node, iseq: &mut ByteCode, use_value: bool) -> CodeGenResult {
-        self.visit(node, iseq, use_value)
+        self.visit(node, iseq, use_value)?;
+        self.bytecode_generator.append_end(iseq);
+        Ok(())
     }
 }
 

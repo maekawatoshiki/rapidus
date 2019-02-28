@@ -28,7 +28,6 @@ use vm_codegen;
 pub type VMResult = Result<(), RuntimeError>;
 
 pub struct VM2<'a> {
-    pub global_object: Value2,
     pub code_generator: CodeGenerator<'a>,
     pub memory_allocator: &'a mut gc::MemoryAllocator,
     pub stack: Vec<BoxedValue>,
@@ -37,12 +36,10 @@ pub struct VM2<'a> {
 
 impl<'a> VM2<'a> {
     pub fn new(
-        global_object: Value2,
         constant_table: &'a mut constant::ConstantTable,
         memory_allocator: &'a mut gc::MemoryAllocator,
     ) -> Self {
         VM2 {
-            global_object,
             code_generator: CodeGenerator::new(constant_table),
             memory_allocator,
             stack: vec![],
@@ -50,44 +47,77 @@ impl<'a> VM2<'a> {
         }
     }
 
-    pub fn run_global(&mut self, iseq: &mut ByteCode) -> VMResult {
-        let exec_ctx = frame::ExecutionContext::new(self.memory_allocator.alloc(
-            frame::LexicalEnvironment::new_object(self.global_object, None),
-        ));
-        let frame = frame::Frame::new(exec_ctx);
+    pub fn run_global(&mut self, iseq: ByteCode) -> VMResult {
+        let exec_ctx = frame::ExecutionContext::new(
+            self.memory_allocator
+                .alloc(frame::LexicalEnvironment::new_global()),
+        );
+        let frame = frame::Frame::new(exec_ctx, iseq);
 
-        self.run(frame, iseq)?;
+        self.run(frame)?;
 
         Ok(())
     }
 }
 
-// macro_rules! read_int8 {
-//     ($self:ident, $var:ident, $ty:ty) => {
-//         let iseq = &$self.state.iseq;
-//         let $var = iseq[$self.state.pc as usize] as $ty;
-//         $self.state.pc += 1;
-//     };
-// }
-//
-// macro_rules! read_int32 {
-//     ($self:ident, $var:ident, $ty:ty) => {
-//         let $var = (($self.state.iseq[$self.state.pc as usize + 3] as $ty) << 24)
-//             + (($self.state.iseq[$self.state.pc as usize + 2] as $ty) << 16)
-//             + (($self.state.iseq[$self.state.pc as usize + 1] as $ty) << 8)
-//             + ($self.state.iseq[$self.state.pc as usize + 0] as $ty);
-//         $self.state.pc += 4;
-//     };
-// }
+macro_rules! read_int8 {
+    ($iseq:expr, $pc:expr, $var:ident, $ty:ty) => {
+        let $var = $iseq[$pc] as $ty;
+        $pc += 1;
+    };
+}
+
+macro_rules! read_int32 {
+    ($iseq:expr, $pc:expr, $var:ident, $ty:ty) => {
+        let $var = (($iseq[$pc as usize + 3] as $ty) << 24)
+            + (($iseq[$pc as usize + 2] as $ty) << 16)
+            + (($iseq[$pc as usize + 1] as $ty) << 8)
+            + ($iseq[$pc as usize + 0] as $ty);
+        $pc += 4;
+    };
+}
 
 impl<'a> VM2<'a> {
-    pub fn run(&mut self, cur_frame: frame::Frame, iseq: &mut ByteCode) -> VMResult {
-        match iseq[cur_frame.pc] {
-            VMInst::PUSH_INT8 => {}
-            _ => unimplemented!(),
+    pub fn run(&mut self, mut cur_frame: frame::Frame) -> VMResult {
+        loop {
+            match cur_frame.bytecode[cur_frame.pc] {
+                VMInst::PUSH_INT8 => {
+                    cur_frame.pc += 1;
+                    read_int8!(cur_frame.bytecode, cur_frame.pc, num, f64);
+                    self.stack.push(Value2::Number(num).into());
+                }
+                VMInst::SET_VALUE => {
+                    cur_frame.pc += 1;
+                    read_int32!(cur_frame.bytecode, cur_frame.pc, name_id, usize);
+                    let name = self.constant_table().get(name_id).as_string();
+                }
+                // fn set_value(self_: &mut VM) -> Result<bool, RuntimeError> {
+                //     self_.state.pc += 1;
+                //     get_int32!(self_, name_id, usize);
+                //     let name = self_.codegen.bytecode_gen.const_table.string[name_id].clone();
+                //     let mut val = self_.state.stack.pop().unwrap();
+                //
+                //     // We have to change cobj.this to the current scope one. (./examples/this.js)
+                //     if let Value::Object(_, ObjectKind::Function(box (_, ref mut cobj)))
+                //     | Value::Object(_, ObjectKind::BuiltinFunction(box (_, ref mut cobj))) = &mut val
+                //     {
+                //         cobj.this = self_.state.scope.last().unwrap().this.clone();
+                //     }
+                //
+                //     self_.state.scope.last_mut().unwrap().set_value(name, val)?;
+                //
+                //     Ok(true)
+                // }
+                VMInst::END => break,
+                _ => unimplemented!(),
+            }
         }
 
         Ok(())
+    }
+
+    pub fn constant_table(&self) -> &constant::ConstantTable {
+        &self.code_generator.bytecode_generator.constant_table
     }
 }
 

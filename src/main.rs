@@ -85,10 +85,9 @@ fn main() {
     };
     println!("{:?}", node);
 
-    let global_object = vm::value::Value2::Other(vm::value::UNDEFINED);
     let mut const_table = vm::constant::ConstantTable::new();
     let mut mem_allocator = gc::MemoryAllocator::new();
-    let mut vm = VM2::new(global_object, &mut const_table, &mut mem_allocator);
+    let mut vm = VM2::new(&mut const_table, &mut mem_allocator);
     let mut iseq = vec![];
     vm.code_generator.compile(&node, &mut iseq, false).unwrap();
 
