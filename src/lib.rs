@@ -1,5 +1,4 @@
 #![feature(box_patterns)]
-#![feature(if_while_or_patterns)]
 #![feature(repeat_generic_slice)]
 #[macro_use]
 pub mod util;
@@ -29,4 +28,5 @@ extern crate rand;
 extern crate rustc_hash;
 extern crate rustyline;
 extern crate stopwatch; 
+extern crate nanbox;
 // extern crate cpuprofiler;
