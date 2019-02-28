@@ -1,7 +1,7 @@
 #![macro_use]
 use super::callobj::CallObject;
 use super::error::*;
-use builtin::{BuiltinFuncInfo, BuiltinFuncTy, BuiltinJITFuncInfo};
+use builtin::{BuiltinFuncInfo, BuiltinFuncTy, BuiltinFuncTy2, BuiltinJITFuncInfo};
 use builtins::function;
 use bytecode_gen::ByteCode;
 use chrono::{DateTime, Utc};
@@ -28,13 +28,13 @@ make_nanbox! {
     }
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Debug)]
 pub struct ObjectInfo {
     kind: ObjectKind2,
     property: FxHashMap<String, Property2>,
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Debug)]
 pub enum ObjectKind2 {
     Function(FunctionObjectInfo),
     Normal,
@@ -48,21 +48,21 @@ pub struct Property2 {
     pub configurable: bool,
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Debug)]
 pub struct FunctionObjectInfo {
-    id: usize,
-    name: Option<String>,
-    kind: FunctionObjectKind,
+    pub id: usize,
+    pub name: Option<String>,
+    pub kind: FunctionObjectKind,
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone)]
 pub enum FunctionObjectKind {
     User {
         param_names: Vec<String>,
         var_names: Vec<String>,
         lex_names: Vec<String>,
     },
-    Builtin,
+    Builtin(BuiltinFuncTy2),
 }
 
 impl Value2 {
@@ -72,6 +72,47 @@ impl Value2 {
 
     pub fn uninitialized() -> Self {
         Value2::Other(UNINITIALIZED)
+    }
+
+    pub fn builtin_function(
+        memory_allocator: &mut gc::MemoryAllocator,
+        name: String,
+        func: BuiltinFuncTy2,
+    ) -> Self {
+        Value2::Object(memory_allocator.alloc(ObjectInfo {
+            kind: ObjectKind2::Function(FunctionObjectInfo {
+                id: 0,
+                name: Some(name),
+                kind: FunctionObjectKind::Builtin(func),
+            }),
+            property: FxHashMap::default(),
+        }))
+    }
+
+    pub fn as_function(self) -> FunctionObjectInfo {
+        match self {
+            Value2::Object(obj) => {
+                let obj = unsafe { &*obj };
+                match obj.kind {
+                    ObjectKind2::Function(ref info) => return info.clone(),
+                    _ => panic!(),
+                }
+            }
+            _ => panic!(),
+        }
+    }
+}
+
+impl ::std::fmt::Debug for FunctionObjectKind {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                FunctionObjectKind::User { .. } => "User",
+                FunctionObjectKind::Builtin(_) => "Builtin",
+            }
+        )
     }
 }
 

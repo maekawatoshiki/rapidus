@@ -10,11 +10,30 @@ use std::io::prelude::*;
 use std::path;
 use vm::{
     error::RuntimeError,
+    frame::Frame,
     task::{Task, TimerID, TimerKind},
-    value::{CallObjectRef, FuncInfo, ObjectKind, Property, RawStringPtr, Value,Value2},
+    value::{CallObjectRef, FuncInfo, ObjectKind, Property, RawStringPtr, Value, Value2},
     vm::VM,
+    vm::VM2,
 };
 use vm_codegen;
+
+pub type BuiltinFuncTy2 = fn(&mut VM2, &Vec<Value2>, &Frame) -> Result<(), RuntimeError>;
+
+pub fn builtin_log(
+    vm: &mut VM2,
+    args: &Vec<Value2>,
+    cur_frame: &Frame,
+) -> Result<(), RuntimeError> {
+    match args[0] {
+        Value2::Number(n) => println!("{}", n),
+        _ => {}
+    }
+
+    Ok(())
+}
+
+////////////////////////////
 
 pub type BuiltinFuncTy = fn(&mut VM, &Vec<Value>, CallObjectRef) -> Result<(), RuntimeError>;
 pub type BuiltinJITFuncTy = *mut libc::c_void;

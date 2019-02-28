@@ -125,12 +125,39 @@ impl<'a> VM2<'a> {
                         .get_value(self.constant_table().get(name_id).as_string())?;
                     self.stack.push(val.into());
                 }
+                VMInst::CALL => {
+                    cur_frame.pc += 1;
+                    read_int32!(cur_frame.bytecode, cur_frame.pc, argc, usize);
+                    let callee: Value2 = self.stack.pop().unwrap().into();
+                    let mut args: Vec<Value2> = vec![];
+                    for _ in 0..argc {
+                        args.push(self.stack.pop().unwrap().into());
+                    }
+                    self.call_function(callee, args, &cur_frame)?;
+                }
+                VMInst::POP => {
+                    cur_frame.pc += 1;
+                    self.stack.pop();
+                }
                 VMInst::END => break,
                 e => unimplemented!("code: {}", e),
             }
         }
 
         Ok(())
+    }
+
+    fn call_function(
+        &mut self,
+        callee: Value2,
+        args: Vec<Value2>,
+        cur_frame: &frame::Frame,
+    ) -> VMResult {
+        let info = callee.as_function();
+        match info.kind {
+            FunctionObjectKind::Builtin(func) => func(self, &args, cur_frame),
+            _ => unimplemented!(),
+        }
     }
 
     #[inline]

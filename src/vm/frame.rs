@@ -1,6 +1,7 @@
 #![macro_use]
 
 use bytecode_gen::ByteCode;
+use gc;
 use rustc_hash::FxHashMap;
 use vm::error::RuntimeError;
 use vm::value::Value2;
@@ -92,10 +93,13 @@ impl LexicalEnvironment {
         }
     }
 
-    pub fn new_global_initialized() -> Self {
+    pub fn new_global_initialized(memory_allocator: &mut gc::MemoryAllocator) -> Self {
+        use builtin::builtin_log;
         LexicalEnvironment {
             // TODO: 'log' for the time being
-            record: EnvironmentRecord::Global(make_global_env!(log: Value2::Number(1.0))),
+            record: EnvironmentRecord::Global(make_global_env!(
+                log: Value2::builtin_function(memory_allocator, "log".to_string(), builtin_log)
+            )),
             outer: None,
         }
     }
