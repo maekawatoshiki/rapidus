@@ -4,6 +4,8 @@ use vm::value::Value2;
 #[derive(Debug, Clone)]
 pub struct Frame {
     pub execution_context: ExecutionContext,
+    pub pc: usize,
+    pub sp: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -24,11 +26,15 @@ pub enum EnvironmentRecord {
     Object(Value2),
 }
 
-// impl Frame {
-//     pub fn new() -> Self {
-//         Frame {}
-//     }
-// }
+impl Frame {
+    pub fn new(execution_context: ExecutionContext) -> Self {
+        Frame {
+            execution_context,
+            pc: 0,
+            sp: 0,
+        }
+    }
+}
 
 impl ExecutionContext {
     pub fn new(env: *mut LexicalEnvironment) -> Self {

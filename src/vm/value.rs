@@ -12,13 +12,13 @@ pub use rustc_hash::FxHashMap;
 use std::ffi::CString;
 use vm;
 
-const UNINITIALIZED: u32 = 0;
-const EMPTY: u32 = 1;
-const NULL: u32 = 2;
-const UNDEFINED: u32 = 3;
+pub const UNINITIALIZED: u32 = 0;
+pub const EMPTY: u32 = 1;
+pub const NULL: u32 = 2;
+pub const UNDEFINED: u32 = 3;
 
 make_nanbox! {
-    #[derive(Clone, PartialEq, Debug)]
+    #[derive(Clone, PartialEq, Debug, Copy)]
     pub unsafe enum BoxedValue, Value2 {
         Number(f64),
         Bool(u8), // 0 | 1 = false | true
@@ -29,7 +29,42 @@ make_nanbox! {
 }
 
 #[derive(Clone, PartialEq, Debug)]
-pub struct ObjectInfo {}
+pub struct ObjectInfo {
+    kind: ObjectKind2,
+    property: FxHashMap<String, Property2>,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub enum ObjectKind2 {
+    Function(FunctionObjectInfo),
+    Normal,
+}
+
+#[derive(Clone, PartialEq, Debug, Copy)]
+pub struct Property2 {
+    pub val: Value2,
+    pub writable: bool,
+    pub enumerable: bool,
+    pub configurable: bool,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct FunctionObjectInfo {
+    id: usize,
+    name: Option<String>,
+    kind: FunctionObjectKind,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub enum FunctionObjectKind {
+    User {
+        param_names: Vec<String>,
+        var_names: Vec<String>,
+    },
+    Builtin,
+}
+
+/////////////////////////////////////////////////////////
 
 pub type FuncId = Id;
 

@@ -18,6 +18,7 @@ use builtin::BuiltinJITFuncInfo;
 use builtins;
 use bytecode_gen;
 use bytecode_gen::ByteCode;
+use bytecode_gen::VMInst;
 use gc;
 use jit::TracingJit;
 use vm_codegen;
@@ -27,31 +28,65 @@ use vm_codegen;
 pub type VMResult = Result<(), RuntimeError>;
 
 pub struct VM2<'a> {
-    code_generator: CodeGenerator<'a>,
-    memory_allocator: &'a mut gc::MemoryAllocator,
+    pub global_object: Value2,
+    pub code_generator: CodeGenerator<'a>,
+    pub memory_allocator: &'a mut gc::MemoryAllocator,
+    pub stack: Vec<BoxedValue>,
+    pub saved_frame: Vec<frame::Frame>,
 }
 
 impl<'a> VM2<'a> {
     pub fn new(
+        global_object: Value2,
         constant_table: &'a mut constant::ConstantTable,
         memory_allocator: &'a mut gc::MemoryAllocator,
     ) -> Self {
         VM2 {
+            global_object,
             code_generator: CodeGenerator::new(constant_table),
             memory_allocator,
+            stack: vec![],
+            saved_frame: vec![],
         }
     }
 
     pub fn run_global(&mut self, iseq: &mut ByteCode) -> VMResult {
         let exec_ctx = frame::ExecutionContext::new(self.memory_allocator.alloc(
-            frame::LexicalEnvironment::new_object(Value2::Number(0.0), None),
+            frame::LexicalEnvironment::new_object(self.global_object, None),
         ));
+        let frame = frame::Frame::new(exec_ctx);
+
+        self.run(frame, iseq)?;
+
         Ok(())
     }
 }
 
+// macro_rules! read_int8 {
+//     ($self:ident, $var:ident, $ty:ty) => {
+//         let iseq = &$self.state.iseq;
+//         let $var = iseq[$self.state.pc as usize] as $ty;
+//         $self.state.pc += 1;
+//     };
+// }
+//
+// macro_rules! read_int32 {
+//     ($self:ident, $var:ident, $ty:ty) => {
+//         let $var = (($self.state.iseq[$self.state.pc as usize + 3] as $ty) << 24)
+//             + (($self.state.iseq[$self.state.pc as usize + 2] as $ty) << 16)
+//             + (($self.state.iseq[$self.state.pc as usize + 1] as $ty) << 8)
+//             + ($self.state.iseq[$self.state.pc as usize + 0] as $ty);
+//         $self.state.pc += 4;
+//     };
+// }
+
 impl<'a> VM2<'a> {
     pub fn run(&mut self, cur_frame: frame::Frame, iseq: &mut ByteCode) -> VMResult {
+        match iseq[cur_frame.pc] {
+            VMInst::PUSH_INT8 => {}
+            _ => unimplemented!(),
+        }
+
         Ok(())
     }
 }

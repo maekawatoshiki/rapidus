@@ -10,7 +10,6 @@ use std::sync::atomic::{self, AtomicUsize};
 use stopwatch::Stopwatch;
 use vm::{
     callobj::CallObject,
-    frame,
     value::{ArrayValue, ObjectKind, Property, Value},
     vm::VM,
 };

@@ -1,9 +1,10 @@
 extern crate rapidus;
 use rapidus::bytecode_gen;
+use rapidus::gc;
 use rapidus::parser;
 use rapidus::vm;
 use rapidus::vm::value::Value;
-use rapidus::vm::vm::VM;
+use rapidus::vm::vm::VM2;
 use rapidus::vm_codegen;
 
 extern crate libc;
@@ -84,15 +85,15 @@ fn main() {
     };
     println!("{:?}", node);
 
-    // let mut vm = VM::new();
-    let mut iseq = vec![];
+    let global_object = vm::value::Value2::Other(vm::value::UNDEFINED);
     let mut const_table = vm::constant::ConstantTable::new();
-    let mut codegen = vm::codegen::CodeGenerator::new(&mut const_table);
-    codegen.compile(&node, &mut iseq, false).unwrap();
-    // vm.codegen.compile(&node, &mut iseq, false).unwrap();
+    let mut mem_allocator = gc::MemoryAllocator::new();
+    let mut vm = VM2::new(global_object, &mut const_table, &mut mem_allocator);
+    let mut iseq = vec![];
+    vm.code_generator.compile(&node, &mut iseq, false).unwrap();
 
     println!("New CodeGenerator generated:");
-    bytecode_gen::show2(&iseq, codegen.bytecode_generator.constant_table);
+    bytecode_gen::show2(&iseq, vm.code_generator.bytecode_generator.constant_table);
 
     // println!("Result:");
     // let mut vm = vm::VM::new();
