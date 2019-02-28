@@ -1,8 +1,4 @@
-**This branch is for the development of next-generation Rapidus.**
-
-**Some information in this README may be incorrect. **
-
-**Issues are welcome. **
+**This branch is for the development of next-generation Rapidus. Some information in this README may be incorrect. Issues are welcome. **
 
 # Rapidus
 
