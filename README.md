@@ -1,10 +1,16 @@
+**This branch is for the development of next-generation Rapidus.**
+
+**Some information in this README may be incorrect. **
+
+**Issues are welcome. **
+
 # Rapidus
 
 [![CircleCI](https://circleci.com/gh/maekawatoshiki/rapidus.svg?style=shield)](https://circleci.com/gh/maekawatoshiki/rapidus)
 [![codecov](https://codecov.io/gh/maekawatoshiki/rapidus/branch/master/graph/badge.svg)](https://codecov.io/gh/maekawatoshiki/rapidus)
 [![](http://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
-A toy JavaScript engine (now aiming for ES5)
+A toy JavaScript engine (now aiming for ES6).
 
 # Features 
 
