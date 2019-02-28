@@ -1,10 +1,6 @@
-use chrono::Utc;
-use libc;
-use llvm::core::*;
-use std::{ffi::CString, thread, time};
-
 use super::{
     callobj::CallObject,
+    codegen,
     codegen::CodeGenerator,
     constant,
     error::*,
@@ -12,15 +8,19 @@ use super::{
     task::{Task, TaskManager, TimerKind},
     value::*,
 };
-
 use builtin;
 use builtin::BuiltinJITFuncInfo;
 use builtins;
 use bytecode_gen;
 use bytecode_gen::ByteCode;
 use bytecode_gen::VMInst;
+use chrono::Utc;
 use gc;
 use jit::TracingJit;
+use libc;
+use llvm::core::*;
+use rustc_hash::FxHashMap;
+use std::{ffi::CString, thread, time};
 use vm_codegen;
 
 // New VM
@@ -29,7 +29,6 @@ pub type VMResult = Result<(), RuntimeError>;
 
 pub struct VM2<'a> {
     pub code_generator: CodeGenerator<'a>,
-    pub memory_allocator: &'a mut gc::MemoryAllocator,
     pub stack: Vec<BoxedValue>,
     pub saved_frame: Vec<frame::Frame>,
 }
@@ -40,18 +39,42 @@ impl<'a> VM2<'a> {
         memory_allocator: &'a mut gc::MemoryAllocator,
     ) -> Self {
         VM2 {
-            code_generator: CodeGenerator::new(constant_table),
-            memory_allocator,
+            code_generator: CodeGenerator::new(constant_table, memory_allocator),
             stack: vec![],
             saved_frame: vec![],
         }
     }
 
-    pub fn run_global(&mut self, iseq: ByteCode) -> VMResult {
-        let exec_ctx = frame::ExecutionContext::new(
-            self.memory_allocator
-                .alloc(frame::LexicalEnvironment::new_global()),
-        );
+    pub fn run_global(&mut self, global_info: codegen::FunctionInfo, iseq: ByteCode) -> VMResult {
+        let global_env = self
+            .memory_allocator()
+            .alloc(frame::LexicalEnvironment::new_global());
+        let var_env = self.memory_allocator().alloc(frame::LexicalEnvironment {
+            record: frame::EnvironmentRecord::Declarative({
+                let mut record = FxHashMap::default();
+                for name in global_info.var_names {
+                    record.insert(name, Value2::undefined());
+                }
+                record
+            }),
+            outer: Some(global_env),
+        });
+        let lex_env = self.memory_allocator().alloc(frame::LexicalEnvironment {
+            record: frame::EnvironmentRecord::Declarative({
+                let mut record = FxHashMap::default();
+                for name in global_info.lex_names {
+                    record.insert(name, Value2::uninitialized());
+                }
+                record
+            }),
+            outer: Some(var_env),
+        });
+
+        let exec_ctx = frame::ExecutionContext {
+            variable_environment: var_env,
+            lexical_environment: lex_env,
+            saved_lexical_environment: vec![],
+        };
         let frame = frame::Frame::new(exec_ctx, iseq);
 
         self.run(frame)?;
@@ -89,25 +112,10 @@ impl<'a> VM2<'a> {
                 VMInst::SET_VALUE => {
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, name_id, usize);
+                    let val = self.stack.pop().unwrap();
                     let name = self.constant_table().get(name_id).as_string();
+                    cur_frame.lex_env().set_value(name.clone(), val.into())?
                 }
-                // fn set_value(self_: &mut VM) -> Result<bool, RuntimeError> {
-                //     self_.state.pc += 1;
-                //     get_int32!(self_, name_id, usize);
-                //     let name = self_.codegen.bytecode_gen.const_table.string[name_id].clone();
-                //     let mut val = self_.state.stack.pop().unwrap();
-                //
-                //     // We have to change cobj.this to the current scope one. (./examples/this.js)
-                //     if let Value::Object(_, ObjectKind::Function(box (_, ref mut cobj)))
-                //     | Value::Object(_, ObjectKind::BuiltinFunction(box (_, ref mut cobj))) = &mut val
-                //     {
-                //         cobj.this = self_.state.scope.last().unwrap().this.clone();
-                //     }
-                //
-                //     self_.state.scope.last_mut().unwrap().set_value(name, val)?;
-                //
-                //     Ok(true)
-                // }
                 VMInst::END => break,
                 _ => unimplemented!(),
             }
@@ -116,8 +124,14 @@ impl<'a> VM2<'a> {
         Ok(())
     }
 
+    #[inline]
     pub fn constant_table(&self) -> &constant::ConstantTable {
         &self.code_generator.bytecode_generator.constant_table
+    }
+
+    #[inline]
+    pub fn memory_allocator(&mut self) -> &mut gc::MemoryAllocator {
+        self.code_generator.memory_allocator
     }
 }
 

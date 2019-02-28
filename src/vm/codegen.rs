@@ -1,6 +1,8 @@
 use bytecode_gen::{ByteCode, ByteCodeGenerator};
+use gc::MemoryAllocator;
 use node::{Node, NodeBase};
 use vm::constant::ConstantTable;
+use vm::frame;
 
 pub type CodeGenResult = Result<(), Error>;
 
@@ -20,19 +22,39 @@ pub enum ErrorKind {
 #[derive(Debug)]
 pub struct CodeGenerator<'a> {
     pub bytecode_generator: ByteCodeGenerator<'a>,
+    pub memory_allocator: &'a mut MemoryAllocator,
+    pub function_stack: Vec<FunctionInfo>,
+}
+
+#[derive(Debug, Clone)]
+pub struct FunctionInfo {
+    pub name: Option<String>,
+    pub param_names: Vec<String>,
+    pub var_names: Vec<String>,
+    pub lex_names: Vec<String>,
 }
 
 impl<'a> CodeGenerator<'a> {
-    pub fn new(constant_table: &'a mut ConstantTable) -> Self {
+    pub fn new(
+        constant_table: &'a mut ConstantTable,
+        memory_allocator: &'a mut MemoryAllocator,
+    ) -> Self {
         CodeGenerator {
             bytecode_generator: ByteCodeGenerator::new(constant_table),
+            memory_allocator,
+            function_stack: vec![FunctionInfo::new()],
         }
     }
 
-    pub fn compile(&mut self, node: &Node, iseq: &mut ByteCode, use_value: bool) -> CodeGenResult {
+    pub fn compile(
+        &mut self,
+        node: &Node,
+        iseq: &mut ByteCode,
+        use_value: bool,
+    ) -> Result<FunctionInfo, Error> {
         self.visit(node, iseq, use_value)?;
         self.bytecode_generator.append_end(iseq);
-        Ok(())
+        Ok(self.function_stack[0].clone() /* = global */)
     }
 }
 
@@ -115,6 +137,19 @@ impl Error {
             msg,
             token_pos,
             kind: ErrorKind::Unimplemented,
+        }
+    }
+}
+
+// FunctionInfo
+
+impl FunctionInfo {
+    pub fn new() -> Self {
+        FunctionInfo {
+            name: None,
+            var_names: vec![],
+            lex_names: vec![],
+            param_names: vec![],
         }
     }
 }

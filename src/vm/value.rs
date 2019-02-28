@@ -60,8 +60,19 @@ pub enum FunctionObjectKind {
     User {
         param_names: Vec<String>,
         var_names: Vec<String>,
+        lex_names: Vec<String>,
     },
     Builtin,
+}
+
+impl Value2 {
+    pub fn undefined() -> Self {
+        Value2::Other(UNDEFINED)
+    }
+
+    pub fn uninitialized() -> Self {
+        Value2::Other(UNINITIALIZED)
+    }
 }
 
 /////////////////////////////////////////////////////////

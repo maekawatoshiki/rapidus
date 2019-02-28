@@ -16,6 +16,7 @@ pub struct Frame {
 pub struct ExecutionContext {
     pub variable_environment: *mut LexicalEnvironment,
     pub lexical_environment: *mut LexicalEnvironment,
+    pub saved_lexical_environment: Vec<*mut LexicalEnvironment>,
 }
 
 #[derive(Debug, Clone)]
@@ -40,6 +41,10 @@ impl Frame {
             bytecode,
         }
     }
+
+    pub fn lex_env(&mut self) -> &mut LexicalEnvironment {
+        unsafe { &mut *self.execution_context.lexical_environment }
+    }
 }
 
 impl ExecutionContext {
@@ -47,6 +52,7 @@ impl ExecutionContext {
         ExecutionContext {
             variable_environment: env,
             lexical_environment: env,
+            saved_lexical_environment: vec![],
         }
     }
 }

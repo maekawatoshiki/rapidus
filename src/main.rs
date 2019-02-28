@@ -89,12 +89,14 @@ fn main() {
     let mut mem_allocator = gc::MemoryAllocator::new();
     let mut vm = VM2::new(&mut const_table, &mut mem_allocator);
     let mut iseq = vec![];
-    vm.code_generator.compile(&node, &mut iseq, false).unwrap();
+    let global_info = vm.code_generator.compile(&node, &mut iseq, false).unwrap();
 
     println!("New CodeGenerator generated:");
     bytecode_gen::show2(&iseq, vm.code_generator.bytecode_generator.constant_table);
 
-    // println!("Result:");
+    println!("Result:");
+    vm.run_global(global_info, iseq).unwrap();
+    println!("{:?}", vm.stack);
     // let mut vm = vm::VM::new();
     // vm.global_objects.extend(vm_codegen.global_varmap);
     // vm.run(iseq);
