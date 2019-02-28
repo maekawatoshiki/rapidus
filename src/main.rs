@@ -84,11 +84,15 @@ fn main() {
     };
     println!("{:?}", node);
 
-    let mut vm = VM::new();
+    // let mut vm = VM::new();
     let mut iseq = vec![];
-    vm.codegen.compile(&node, &mut iseq, false).unwrap();
+    let mut const_table = vm::constant::ConstantTable::new();
+    let mut codegen = vm::codegen::CodeGenerator::new(&mut const_table);
+    codegen.compile(&node, &mut iseq, false).unwrap();
+    // vm.codegen.compile(&node, &mut iseq, false).unwrap();
 
-    bytecode_gen::show(&iseq, &vm.codegen.bytecode_gen.const_table);
+    println!("New CodeGenerator generated:");
+    bytecode_gen::show2(&iseq, codegen.bytecode_generator.constant_table);
 
     // println!("Result:");
     // let mut vm = vm::VM::new();

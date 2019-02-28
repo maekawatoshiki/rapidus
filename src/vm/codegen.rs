@@ -19,7 +19,7 @@ pub enum ErrorKind {
 
 #[derive(Debug)]
 pub struct CodeGenerator<'a> {
-    bytecode_generator: ByteCodeGenerator<'a>,
+    pub bytecode_generator: ByteCodeGenerator<'a>,
 }
 
 impl<'a> CodeGenerator<'a> {

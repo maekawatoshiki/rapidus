@@ -42,4 +42,24 @@ impl ConstantTable {
         self.table.push(Constant::Value(value));
         id
     }
+
+    pub fn get(&self, id: usize) -> &Constant {
+        &self.table[id]
+    }
+}
+
+impl Constant {
+    pub fn as_string(&self) -> &String {
+        match self {
+            Constant::String(string) => string,
+            _ => panic!(),
+        }
+    }
+
+    pub fn as_value(&self) -> &Value2 {
+        match self {
+            Constant::Value(value) => value,
+            _ => panic!(),
+        }
+    }
 }

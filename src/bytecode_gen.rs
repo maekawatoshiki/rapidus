@@ -651,6 +651,145 @@ pub fn read_int32(iseq: &ByteCode, pc: usize) -> i32 {
         + (iseq[pc as usize + 0] as u32)) as i32
 }
 
+pub fn show2(code: &ByteCode, const_table: &constant::ConstantTable) {
+    let mut i = 0;
+    while i < code.len() {
+        show_inst2(code, i, const_table);
+        println!();
+        i = i + if let Some(size) = VMInst::get_inst_size(code[i]) {
+            size
+        } else {
+            unreachable!("inst_size not defined.");
+        };
+    }
+}
+
+pub fn show_inst2(code: &ByteCode, i: usize, const_table: &constant::ConstantTable) {
+    print!(
+        "{:04x} {:<25}",
+        i,
+        match code[i] {
+            VMInst::END => format!("End"),
+            VMInst::CREATE_CONTEXT => format!("CreateContext"),
+            VMInst::CONSTRUCT => {
+                let int32 = read_int32(code, i + 1);
+                format!("Construct {} params", int32)
+            }
+            VMInst::CREATE_OBJECT => {
+                let int32 = read_int32(code, i + 1);
+                format!("CreateObject {} params", int32)
+            }
+            VMInst::CREATE_ARRAY => {
+                let int32 = read_int32(code, i + 1);
+                format!("CreateArray {} params", int32)
+            }
+            VMInst::PUSH_INT8 => {
+                let int8 = code[i + 1] as i32;
+                format!("PushInt8 {}", int8)
+            }
+            VMInst::PUSH_INT32 => {
+                let int32 = read_int32(code, i + 1);
+                format!("PushInt32 {}", int32)
+            }
+            VMInst::PUSH_FALSE => format!("PushFalse"),
+            VMInst::PUSH_TRUE => format!("PushTrue"),
+            VMInst::PUSH_CONST => {
+                let int32 = read_int32(code, i + 1);
+                let value = const_table.get(int32 as usize).as_value();
+                // TODO: Implement 'format' for 'value'
+                format!("PushConst {:?}", value)
+            }
+            VMInst::PUSH_THIS => format!("PushThis"),
+            VMInst::PUSH_ARGUMENTS => format!("PushArguments"),
+            VMInst::PUSH_UNDEFINED => format!("PushUndefined"),
+            VMInst::LNOT => format!("LogNot"),
+            VMInst::POSI => format!("Posi"),
+            VMInst::NEG => format!("Neg"),
+            VMInst::ADD => format!("Add"),
+            VMInst::SUB => format!("Sub"),
+            VMInst::MUL => format!("Mul"),
+            VMInst::DIV => format!("Div"),
+            VMInst::REM => format!("Rem"),
+            VMInst::LT => format!("Lt"),
+            VMInst::GT => format!("Gt"),
+            VMInst::LE => format!("Le"),
+            VMInst::GE => format!("Ge"),
+            VMInst::EQ => format!("Eq"),
+            VMInst::NE => format!("Ne"),
+            VMInst::SEQ => format!("SEq"),
+            VMInst::SNE => format!("SNeg"),
+            VMInst::AND => format!("BitwiseAnd"),
+            VMInst::OR => format!("BitwiseOr"),
+            VMInst::XOR => format!("BitwiseXor"),
+            VMInst::SHL => format!("Shift-L"),
+            VMInst::SHR => format!("Shift-R"),
+            VMInst::ZFSHR => format!("ZeroFill-Shift-R"),
+            VMInst::GET_MEMBER => format!("GetMember"),
+            VMInst::SET_MEMBER => format!("SetMember"),
+            VMInst::JMP_IF_FALSE => {
+                let int32 = read_int32(code, i + 1);
+                format!("JmpIfFalse {:04x}", i as i32 + int32 + 5)
+            }
+            VMInst::JMP => {
+                let int32 = read_int32(code, i + 1);
+                format!("Jmp {:04x}", i as i32 + int32 + 5)
+            }
+            VMInst::JMP_UNWIND => {
+                let dest = read_int32(code, i + 1);
+                let pop = read_int32(code, i + 5);
+                format!("JmpUnwind {:04x} {}", i as i32 + dest + 5, pop)
+            }
+            VMInst::CALL => {
+                let int32 = read_int32(code, i + 1);
+                format!("Call {} params", int32)
+            }
+            VMInst::RETURN => format!("Return"),
+            VMInst::DOUBLE => format!("Double"),
+            VMInst::POP => format!("Pop"),
+            VMInst::LAND => format!("LogAnd"),
+            VMInst::LOR => format!("LogOr"),
+            VMInst::UPDATE_PARENT_SCOPE => format!("UpdateParentScope"),
+            VMInst::GET_VALUE => {
+                let int32 = read_int32(code, i + 1);
+                let name = const_table.get(int32 as usize).as_string();
+                format!("GetValue '{}'", name)
+            }
+            VMInst::SET_VALUE => {
+                let int32 = read_int32(code, i + 1);
+                let name = const_table.get(int32 as usize).as_string();
+                format!("SetValue '{}'", name)
+            }
+            VMInst::DECL_VAR => {
+                let int32 = read_int32(code, i + 1);
+                let name = const_table.get(int32 as usize).as_string();
+                format!("DeclVar '{}'", name)
+            }
+            VMInst::DECL_CONST => {
+                let int32 = read_int32(code, i + 1);
+                let name = const_table.get(int32 as usize).as_string();
+                format!("DeclConst '{}'", name)
+            }
+            VMInst::DECL_LET => {
+                let int32 = read_int32(code, i + 1);
+                let name = const_table.get(int32 as usize).as_string();
+                format!("DeclLet '{}'", name)
+            }
+            VMInst::COND_OP => format!("CondOp"),
+            VMInst::LOOP_START => format!("LoopStart"),
+            VMInst::THROW => format!("Throw"),
+            VMInst::ENTER_TRY => format!("EnterTry"),
+            VMInst::LEAVE_TRY => format!("LeaveTry"),
+            VMInst::CATCH => format!("Catch"),
+            VMInst::FINALLY => format!("Finally"),
+            VMInst::RETURN_TRY => format!("ReturnTry"),
+            VMInst::PUSH_SCOPE => format!("PushScope"),
+            VMInst::POP_SCOPE => format!("PopScope"),
+            VMInst::NOT => format!("BitwiseNot"),
+            _ => unreachable!("sorry. need to implement more opcodes"),
+        }
+    );
+}
+
 pub fn show(code: &ByteCode, const_table: &ConstantTable) {
     let mut i = 0;
     while i < code.len() {
