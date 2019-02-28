@@ -35,6 +35,7 @@ pub enum EnvironmentRecord {
     Declarative(FxHashMap<String, Value2>),
     Object(Value2),
     Global(FxHashMap<String, Value2>),
+    // TODO: Function...
 }
 
 impl Frame {
@@ -148,15 +149,13 @@ impl LexicalEnvironment {
         };
 
         if let Some(outer) = self.get_outer() {
-            outer.set_value(name, val)?
+            outer.set_value(name, val)
         } else {
-            return Err(RuntimeError::Reference(format!(
+            Err(RuntimeError::Reference(format!(
                 "Assignment to undeclared identifier '{}'",
                 name
-            )));
+            )))
         }
-
-        Ok(())
     }
 
     pub fn get_outer(&self) -> Option<&mut LexicalEnvironment> {

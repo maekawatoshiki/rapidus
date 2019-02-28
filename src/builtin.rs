@@ -27,7 +27,9 @@ pub fn builtin_log(
 ) -> Result<(), RuntimeError> {
     match args[0] {
         Value2::Number(n) => println!("{}", n),
-        _ => {}
+        _ => unimplemented!(
+            "temporal builtin function 'log' doesn't support any value other than Number"
+        ),
     }
 
     Ok(())
