@@ -36,6 +36,13 @@ pub struct FunctionInfo {
     pub var_names: Vec<String>,
     pub lex_names: Vec<String>,
     pub func_decls: Vec<Value2>,
+    pub level: Vec<Level>,
+}
+
+#[derive(Debug, Clone)]
+pub enum Level {
+    Function,
+    Block { names: Vec<String> },
 }
 
 impl<'a> CodeGenerator<'a> {
@@ -70,8 +77,14 @@ impl<'a> CodeGenerator<'a> {
             NodeBase::StatementList(ref node_list) => {
                 self.visit_statement_list(node_list, iseq, use_value)?
             }
+            NodeBase::Block(ref node_list) => {
+                self.visit_block_statement(node_list, iseq, use_value)?
+            }
             NodeBase::FunctionDecl(ref name, ref params, ref body) => {
                 self.visit_function_decl(name, params, &*body)?
+            }
+            NodeBase::VarDecl(ref name, ref init, ref kind) => {
+                self.visit_var_decl(name, init, kind, iseq)?
             }
             NodeBase::BinaryOp(ref lhs, ref rhs, ref op) => {
                 self.visit_binary_op(&*lhs, &*rhs, op, iseq, use_value)?
@@ -99,6 +112,40 @@ impl<'a> CodeGenerator<'a> {
         for node in node_list {
             self.visit(node, iseq, use_value)?;
         }
+
+        Ok(())
+    }
+
+    fn visit_block_statement(
+        &mut self,
+        node_list: &Vec<Node>,
+        iseq: &mut ByteCode,
+        use_value: bool,
+    ) -> CodeGenResult {
+        let id = self
+            .bytecode_generator
+            .constant_table
+            .add_lex_env_info(vec![]);
+        self.bytecode_generator.append_push_env(id as u32, iseq);
+
+        self.current_function().level.push(Level::new_block_level());
+
+        for node in node_list {
+            self.visit(node, iseq, use_value)?;
+        }
+
+        match self.current_function().level.pop().unwrap() {
+            Level::Block { names } => {
+                *self
+                    .bytecode_generator
+                    .constant_table
+                    .get_mut(id)
+                    .as_lex_env_info_mut() = names;
+            }
+            _ => unreachable!(),
+        };
+
+        self.bytecode_generator.append_pop_env(iseq);
 
         Ok(())
     }
@@ -162,6 +209,45 @@ impl<'a> CodeGenerator<'a> {
         ))
     }
 
+    pub fn visit_var_decl(
+        &mut self,
+        name: &String,
+        init: &Option<Box<Node>>,
+        kind: &VarKind,
+        iseq: &mut ByteCode,
+    ) -> CodeGenResult {
+        fn let_decl(codegen: &mut CodeGenerator, name: String) {
+            let cur_func = codegen.function_stack.last_mut().unwrap();
+            let cur_level = cur_func.level.last_mut().unwrap();
+            match cur_level {
+                Level::Function => cur_func.lex_names.push(name),
+                Level::Block { ref mut names } => names.push(name),
+            }
+        }
+
+        let mut is_initialized = false;
+
+        if let &Some(ref init) = init {
+            self.visit(&*init, iseq, true)?;
+            self.bytecode_generator.append_set_value(name, iseq);
+            is_initialized = true;
+        }
+
+        match kind {
+            VarKind::Var => {
+                self.function_stack
+                    .last_mut()
+                    .unwrap()
+                    .var_names
+                    .push(name.clone());
+            }
+            VarKind::Let => let_decl(self, name.clone()),
+            _ => unimplemented!(),
+        }
+
+        Ok(())
+    }
+
     pub fn visit_binary_op(
         &mut self,
         lhs: &Node,
@@ -169,7 +255,7 @@ impl<'a> CodeGenerator<'a> {
         op: &BinOp,
         iseq: &mut ByteCode,
         use_value: bool,
-    ) -> Result<(), Error> {
+    ) -> CodeGenResult {
         if !use_value {
             return Ok(());
         }
@@ -255,6 +341,10 @@ impl<'a> CodeGenerator<'a> {
 
         Ok(())
     }
+
+    fn current_function(&mut self) -> &mut FunctionInfo {
+        self.function_stack.last_mut().unwrap()
+    }
 }
 
 // Methods for Error handling
@@ -287,6 +377,19 @@ impl FunctionInfo {
             lex_names: vec![],
             func_decls: vec![],
             param_names: vec![],
+            level: vec![Level::Function],
         }
+    }
+}
+
+// Level
+
+impl Level {
+    pub fn new_function_level() -> Self {
+        Level::Function
+    }
+
+    pub fn new_block_level() -> Self {
+        Level::Block { names: vec![] }
     }
 }

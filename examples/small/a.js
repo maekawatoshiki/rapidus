@@ -1,8 +1,11 @@
 function f(x) {
-  log(x);
-  f(x+1);
+  var a = x;
+  {
+    let a = x + x;
+    log(a);
+  }
+  log(a);
 }
 
-a = 1;
+a = 2;
 f(a);
-log(2);

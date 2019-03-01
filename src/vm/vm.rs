@@ -154,6 +154,25 @@ impl<'a> VM2<'a> {
                     cur_frame = frame;
                     self.stack.push(ret_val);
                 }
+                VMInst::PUSH_ENV => {
+                    cur_frame.pc += 1;
+                    read_int32!(cur_frame.bytecode, cur_frame.pc, id, usize);
+                    let names = self.constant_table().get(id).as_lex_env_info();
+                    self.push_env(names, &mut cur_frame);
+                }
+                VMInst::POP_ENV => {
+                    cur_frame.pc += 1;
+                    let lex_env = unsafe {
+                        &*cur_frame
+                            .execution_context
+                            .saved_lexical_environment
+                            .pop()
+                            .unwrap()
+                    };
+                    unsafe {
+                        *cur_frame.execution_context.lexical_environment = lex_env.clone();
+                    }
+                }
                 VMInst::POP => {
                     cur_frame.pc += 1;
                     self.stack.pop();
@@ -168,6 +187,24 @@ impl<'a> VM2<'a> {
         }
 
         Ok(())
+    }
+
+    fn push_env(&mut self, lex_names: &Vec<String>, cur_frame: &mut frame::Frame) -> VMResult {
+        let mut record = FxHashMap::default();
+        for name in lex_names {
+            record.insert(name.clone(), Value2::uninitialized());
+        }
+
+        let lex_env = self.memory_allocator().alloc(frame::LexicalEnvironment {
+            record: frame::EnvironmentRecord::Declarative(record),
+            outer: Some(cur_frame.execution_context.lexical_environment),
+        });
+
+        cur_frame
+            .execution_context
+            .saved_lexical_environment
+            .push(cur_frame.execution_context.lexical_environment);
+        cur_frame.execution_context.lexical_environment = lex_env;
     }
 
     fn call_function(

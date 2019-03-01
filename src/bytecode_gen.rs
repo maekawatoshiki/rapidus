@@ -1,5 +1,5 @@
 use vm::constant;
-use vm::{value::Value, jsvalue::value::Value2, vm::ConstantTable};
+use vm::{jsvalue::value::Value2, value::Value, vm::ConstantTable};
 
 pub type ByteCode = Vec<u8>;
 
@@ -291,6 +291,15 @@ impl<'a> ByteCodeGenerator<'a> {
 
     pub fn append_finally(&mut self, iseq: &mut ByteCode) {
         iseq.push(VMInst::FINALLY);
+    }
+
+    pub fn append_push_env(&mut self, id: u32, iseq: &mut ByteCode) {
+        iseq.push(VMInst::PUSH_ENV);
+        self.append_uint32(id, iseq);
+    }
+
+    pub fn append_pop_env(&mut self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::POP_ENV);
     }
 
     // Utils
@@ -774,6 +783,12 @@ pub fn show_inst2(code: &ByteCode, i: usize, const_table: &constant::ConstantTab
                 let name = const_table.get(int32 as usize).as_string();
                 format!("DeclLet '{}'", name)
             }
+            VMInst::PUSH_ENV => {
+                let int32 = read_int32(code, i + 1);
+                let names = const_table.get(int32 as usize).as_lex_env_info();
+                format!("PushEnv '{:?}'", names)
+            }
+            VMInst::POP_ENV => format!("PopEnv"),
             VMInst::COND_OP => format!("CondOp"),
             VMInst::LOOP_START => format!("LoopStart"),
             VMInst::THROW => format!("Throw"),
@@ -993,15 +1008,16 @@ pub mod VMInst {
     pub const DECL_LET: u8 = 0x3c;
     pub const NOT: u8 = 0x3d;
     pub const JMP_UNWIND: u8 = 0x3e;
+    pub const PUSH_ENV: u8 = 0x3f;
+    pub const POP_ENV: u8 = 0x40;
 
     pub fn get_inst_size(inst: u8) -> Option<usize> {
         match inst {
-            CREATE_CONTEXT | THROW | LEAVE_TRY | CATCH | FINALLY | POP_SCOPE | PUSH_SCOPE => {
-                Some(1)
-            }
+            CREATE_CONTEXT | THROW | LEAVE_TRY | CATCH | FINALLY | POP_SCOPE | PUSH_SCOPE
+            | POP_ENV => Some(1),
             CONSTRUCT | CREATE_OBJECT | PUSH_CONST | PUSH_INT32 | CREATE_ARRAY | JMP_IF_FALSE
             | RETURN_TRY | DECL_VAR | LOOP_START | JMP | SET_VALUE | GET_VALUE | CALL
-            | DECL_LET | DECL_CONST => Some(5),
+            | PUSH_ENV | DECL_LET | DECL_CONST => Some(5),
             PUSH_INT8 => Some(2),
             PUSH_FALSE | END | PUSH_TRUE | PUSH_THIS | ADD | SUB | MUL | DIV | REM | LT
             | PUSH_ARGUMENTS | NEG | POSI | GT | LE | GE | EQ | NE | GET_MEMBER | RETURN | SNE
