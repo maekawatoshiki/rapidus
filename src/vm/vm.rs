@@ -172,30 +172,23 @@ impl<'a> VM2<'a> {
         let info = callee.as_function();
         match info.kind {
             FunctionObjectKind::Builtin(func) => func(self, &args, cur_frame),
-            FunctionObjectKind::User {
-                params,
-                var_names,
-                lex_names,
-                func_decls,
-                code,
-            } => self.call_user_function(
-                args, params, var_names, lex_names, func_decls, code, cur_frame,
-            ),
+            FunctionObjectKind::User(user_func) => {
+                self.call_user_function(user_func, args, cur_frame)
+            }
             e => unimplemented!("{:?}", e),
         }
     }
 
     fn call_user_function(
         &mut self,
+        user_func: UserFunctionInfo,
         args: Vec<Value2>,
-        params: Vec<FunctionParameter>,
-        var_names: Vec<String>,
-        lex_names: Vec<String>,
-        func_decls: Vec<Value2>,
-        code: ByteCode,
         cur_frame: &mut frame::Frame,
     ) -> VMResult {
-        bytecode_gen::show2(&code, self.code_generator.bytecode_generator.constant_table);
+        bytecode_gen::show2(
+            &user_func.code,
+            self.code_generator.bytecode_generator.constant_table,
+        );
 
         self.saved_frame.push({
             let mut cur_frame = cur_frame.clone();
@@ -206,11 +199,11 @@ impl<'a> VM2<'a> {
         let var_env = self.memory_allocator().alloc(frame::LexicalEnvironment {
             record: frame::EnvironmentRecord::Declarative({
                 let mut record = FxHashMap::default();
-                for name in var_names {
+                for name in user_func.var_names {
                     record.insert(name, Value2::undefined());
                 }
                 // TODO: rest parameter
-                for (FunctionParameter { name, .. }, arg) in params.iter().zip(args) {
+                for (FunctionParameter { name, .. }, arg) in user_func.params.iter().zip(args) {
                     record.insert(name.clone(), arg);
                 }
                 record
@@ -221,7 +214,7 @@ impl<'a> VM2<'a> {
         let lex_env = self.memory_allocator().alloc(frame::LexicalEnvironment {
             record: frame::EnvironmentRecord::Declarative({
                 let mut record = FxHashMap::default();
-                for name in lex_names {
+                for name in user_func.lex_names {
                     record.insert(name, Value2::uninitialized());
                 }
                 record
@@ -235,7 +228,7 @@ impl<'a> VM2<'a> {
             saved_lexical_environment: vec![],
         };
 
-        let frame = frame::Frame::new(exec_ctx, code);
+        let frame = frame::Frame::new(exec_ctx, user_func.code);
 
         *cur_frame = frame;
 

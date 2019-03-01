@@ -58,17 +58,20 @@ pub struct FunctionObjectInfo {
 
 #[derive(Clone)]
 pub enum FunctionObjectKind {
-    User {
-        params: Vec<FunctionParameter>,
-        var_names: Vec<String>,
-        lex_names: Vec<String>,
-        func_decls: Vec<Value2>,
-        code: ByteCode,
-    },
+    User(UserFunctionInfo),
     Builtin(BuiltinFuncTy2),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
+pub struct UserFunctionInfo {
+    pub params: Vec<FunctionParameter>,
+    pub var_names: Vec<String>,
+    pub lex_names: Vec<String>,
+    pub func_decls: Vec<Value2>,
+    pub code: ByteCode,
+}
+
+#[derive(Clone, Debug)]
 pub struct FunctionParameter {
     pub name: String,
     pub is_rest_param: bool,
@@ -112,13 +115,13 @@ impl Value2 {
             kind: ObjectKind2::Function(FunctionObjectInfo {
                 id: random::<usize>(),
                 name: name,
-                kind: FunctionObjectKind::User {
+                kind: FunctionObjectKind::User(UserFunctionInfo {
                     params,
                     var_names,
                     lex_names,
                     func_decls,
                     code,
-                },
+                }),
             }),
             // TODO
             property: FxHashMap::default(),
@@ -145,8 +148,8 @@ impl ::std::fmt::Debug for FunctionObjectKind {
             f,
             "{}",
             match self {
-                FunctionObjectKind::User { .. } => "User",
-                FunctionObjectKind::Builtin(_) => "Builtin",
+                FunctionObjectKind::User(user_func) => format!("{:?}", user_func),
+                FunctionObjectKind::Builtin(_) => "[BuiltinFunction]".to_string(),
             }
         )
     }
