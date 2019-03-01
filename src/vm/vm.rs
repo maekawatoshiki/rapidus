@@ -49,16 +49,20 @@ impl<'a> VM2<'a> {
     }
 
     pub fn run_global(&mut self, global_info: codegen::FunctionInfo, iseq: ByteCode) -> VMResult {
-        let global_env = self.global_environment;
+        let global_env_ref = self.global_environment;
         let var_env = self.memory_allocator().alloc(frame::LexicalEnvironment {
             record: frame::EnvironmentRecord::Declarative({
                 let mut record = FxHashMap::default();
                 for name in global_info.var_names {
                     record.insert(name, Value2::undefined());
                 }
+                for val in global_info.func_decls {
+                    let name = val.as_function().name.unwrap();
+                    record.insert(name, val);
+                }
                 record
             }),
-            outer: Some(global_env),
+            outer: Some(global_env_ref),
         });
         let lex_env = self.memory_allocator().alloc(frame::LexicalEnvironment {
             record: frame::EnvironmentRecord::Declarative({
@@ -156,7 +160,7 @@ impl<'a> VM2<'a> {
         let info = callee.as_function();
         match info.kind {
             FunctionObjectKind::Builtin(func) => func(self, &args, cur_frame),
-            _ => unimplemented!(),
+            e => unimplemented!("{:?}", e),
         }
     }
 

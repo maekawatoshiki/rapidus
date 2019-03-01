@@ -21,9 +21,9 @@ use vm_codegen;
 pub type BuiltinFuncTy2 = fn(&mut VM2, &Vec<Value2>, &Frame) -> Result<(), RuntimeError>;
 
 pub fn builtin_log(
-    vm: &mut VM2,
+    _vm: &mut VM2,
     args: &Vec<Value2>,
-    cur_frame: &Frame,
+    _cur_frame: &Frame,
 ) -> Result<(), RuntimeError> {
     match args[0] {
         Value2::Number(n) => println!("{}", n),

@@ -8,6 +8,7 @@ use chrono::{DateTime, Utc};
 use gc;
 use gc::GcType;
 use id::{get_unique_id, Id};
+use rand::random;
 pub use rustc_hash::FxHashMap;
 use std::ffi::CString;
 use vm;
@@ -58,11 +59,19 @@ pub struct FunctionObjectInfo {
 #[derive(Clone)]
 pub enum FunctionObjectKind {
     User {
-        param_names: Vec<String>,
+        params: Vec<FunctionParameter>,
         var_names: Vec<String>,
         lex_names: Vec<String>,
+        func_decls: Vec<Value2>,
+        code: ByteCode,
     },
     Builtin(BuiltinFuncTy2),
+}
+
+#[derive(Clone)]
+pub struct FunctionParameter {
+    pub name: String,
+    pub is_rest_param: bool,
 }
 
 impl Value2 {
@@ -81,24 +90,51 @@ impl Value2 {
     ) -> Self {
         Value2::Object(memory_allocator.alloc(ObjectInfo {
             kind: ObjectKind2::Function(FunctionObjectInfo {
-                id: 0,
+                id: random::<usize>(),
                 name: Some(name),
                 kind: FunctionObjectKind::Builtin(func),
             }),
+            // TODO
             property: FxHashMap::default(),
         }))
     }
 
-    pub fn as_function(self) -> FunctionObjectInfo {
+    pub fn function(
+        memory_allocator: &mut gc::MemoryAllocator,
+        name: Option<String>,
+        params: Vec<FunctionParameter>,
+        var_names: Vec<String>,
+        lex_names: Vec<String>,
+        func_decls: Vec<Value2>,
+        code: ByteCode,
+    ) -> Self {
+        Value2::Object(memory_allocator.alloc(ObjectInfo {
+            kind: ObjectKind2::Function(FunctionObjectInfo {
+                id: random::<usize>(),
+                name: name,
+                kind: FunctionObjectKind::User {
+                    params,
+                    var_names,
+                    lex_names,
+                    func_decls,
+                    code,
+                },
+            }),
+            // TODO
+            property: FxHashMap::default(),
+        }))
+    }
+
+    pub fn as_function(&self) -> FunctionObjectInfo {
         match self {
             Value2::Object(obj) => {
-                let obj = unsafe { &*obj };
+                let obj = unsafe { &**obj };
                 match obj.kind {
                     ObjectKind2::Function(ref info) => return info.clone(),
                     _ => panic!(),
                 }
             }
-            _ => panic!(),
+            e => panic!("{:?}", e),
         }
     }
 }

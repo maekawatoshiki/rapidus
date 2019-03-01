@@ -1,7 +1,11 @@
 use bytecode_gen::{ByteCode, ByteCodeGenerator};
 use gc::MemoryAllocator;
-use node::{Node, NodeBase};
+use node::{
+    BinOp, FormalParameter, FormalParameters, Node, NodeBase, PropertyDefinition, UnaryOp, VarKind,
+};
 use vm::constant::ConstantTable;
+use vm::value;
+use vm::value::Value2;
 
 pub type CodeGenResult = Result<(), Error>;
 
@@ -31,6 +35,7 @@ pub struct FunctionInfo {
     pub param_names: Vec<String>,
     pub var_names: Vec<String>,
     pub lex_names: Vec<String>,
+    pub func_decls: Vec<Value2>,
 }
 
 impl<'a> CodeGenerator<'a> {
@@ -41,7 +46,7 @@ impl<'a> CodeGenerator<'a> {
         CodeGenerator {
             bytecode_generator: ByteCodeGenerator::new(constant_table),
             memory_allocator,
-            function_stack: vec![FunctionInfo::new()],
+            function_stack: vec![FunctionInfo::new(None) /* = global */],
         }
     }
 
@@ -64,6 +69,9 @@ impl<'a> CodeGenerator<'a> {
         match node.base {
             NodeBase::StatementList(ref node_list) => {
                 self.visit_statement_list(node_list, iseq, use_value)?
+            }
+            NodeBase::FunctionDecl(ref name, ref params, ref body) => {
+                self.visit_function_decl(name, params, &*body)?
             }
             NodeBase::Assign(ref dst, ref src) => {
                 self.visit_assign(&*dst, &*src, iseq, use_value)?
@@ -90,6 +98,61 @@ impl<'a> CodeGenerator<'a> {
         }
 
         Ok(())
+    }
+
+    fn visit_function_decl(
+        &mut self,
+        name: &String,
+        params: &FormalParameters,
+        body: &Node,
+    ) -> CodeGenResult {
+        let func = self.visit_function(Some(name.clone()), params, body)?;
+        self.function_stack
+            .last_mut()
+            .unwrap()
+            .func_decls
+            .push(func);
+        Ok(())
+    }
+
+    fn visit_function(
+        &mut self,
+        name: Option<String>,
+        params: &FormalParameters,
+        body: &Node,
+    ) -> Result<Value2, Error> {
+        self.function_stack.push(FunctionInfo::new(name));
+
+        let mut func_iseq = vec![];
+
+        self.visit(body, &mut func_iseq, false)?;
+
+        let params = params
+            .clone()
+            .iter()
+            .map(
+                |FormalParameter {
+                     name,
+                     is_rest_param,
+                     ..
+                 }| value::FunctionParameter {
+                    name: name.clone(),
+                    is_rest_param: *is_rest_param,
+                },
+            )
+            .collect();
+
+        let function_info = self.function_stack.pop().unwrap();
+
+        Ok(Value2::function(
+            self.memory_allocator,
+            function_info.name,
+            params,
+            function_info.var_names,
+            function_info.lex_names,
+            function_info.func_decls,
+            func_iseq,
+        ))
     }
 
     fn visit_assign(
@@ -169,11 +232,12 @@ impl Error {
 // FunctionInfo
 
 impl FunctionInfo {
-    pub fn new() -> Self {
+    pub fn new(name: Option<String>) -> Self {
         FunctionInfo {
-            name: None,
+            name,
             var_names: vec![],
             lex_names: vec![],
+            func_decls: vec![],
             param_names: vec![],
         }
     }
