@@ -127,6 +127,10 @@ impl<'a> CodeGenerator<'a> {
 
         self.visit(body, &mut func_iseq, false)?;
 
+        self.bytecode_generator
+            .append_push_undefined(&mut func_iseq);
+        self.bytecode_generator.append_return(&mut func_iseq);
+
         let params = params
             .clone()
             .iter()

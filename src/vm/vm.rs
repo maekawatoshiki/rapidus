@@ -137,11 +137,23 @@ impl<'a> VM2<'a> {
                     for _ in 0..argc {
                         args.push(self.stack.pop().unwrap().into());
                     }
-                    self.call_function(callee, args, &cur_frame)?;
+                    self.call_function(callee, args, &mut cur_frame)?;
+                }
+                VMInst::RETURN => {
+                    cur_frame.pc += 1;
+                    let ret_val = self.stack.pop().unwrap();
+                    let frame = self.saved_frame.pop().unwrap();
+                    unsafe { self.stack.set_len(frame.saved_stack_len) };
+                    cur_frame = frame;
+                    self.stack.push(ret_val);
                 }
                 VMInst::POP => {
                     cur_frame.pc += 1;
                     self.stack.pop();
+                }
+                VMInst::PUSH_UNDEFINED => {
+                    cur_frame.pc += 1;
+                    self.stack.push(Value2::undefined().into());
                 }
                 VMInst::END => break,
                 e => unimplemented!("code: {}", e),
@@ -155,13 +167,79 @@ impl<'a> VM2<'a> {
         &mut self,
         callee: Value2,
         args: Vec<Value2>,
-        cur_frame: &frame::Frame,
+        cur_frame: &mut frame::Frame,
     ) -> VMResult {
         let info = callee.as_function();
         match info.kind {
             FunctionObjectKind::Builtin(func) => func(self, &args, cur_frame),
+            FunctionObjectKind::User {
+                params,
+                var_names,
+                lex_names,
+                func_decls,
+                code,
+            } => self.call_user_function(
+                args, params, var_names, lex_names, func_decls, code, cur_frame,
+            ),
             e => unimplemented!("{:?}", e),
         }
+    }
+
+    fn call_user_function(
+        &mut self,
+        args: Vec<Value2>,
+        params: Vec<FunctionParameter>,
+        var_names: Vec<String>,
+        lex_names: Vec<String>,
+        func_decls: Vec<Value2>,
+        code: ByteCode,
+        cur_frame: &mut frame::Frame,
+    ) -> VMResult {
+        bytecode_gen::show2(&code, self.code_generator.bytecode_generator.constant_table);
+
+        self.saved_frame.push({
+            let mut cur_frame = cur_frame.clone();
+            cur_frame.saved_stack_len = self.stack.len();
+            cur_frame
+        });
+
+        let var_env = self.memory_allocator().alloc(frame::LexicalEnvironment {
+            record: frame::EnvironmentRecord::Declarative({
+                let mut record = FxHashMap::default();
+                for name in var_names {
+                    record.insert(name, Value2::undefined());
+                }
+                // TODO: rest parameter
+                for (FunctionParameter { name, .. }, arg) in params.iter().zip(args) {
+                    record.insert(name.clone(), arg);
+                }
+                record
+            }),
+            outer: Some(cur_frame.execution_context.lexical_environment),
+        });
+
+        let lex_env = self.memory_allocator().alloc(frame::LexicalEnvironment {
+            record: frame::EnvironmentRecord::Declarative({
+                let mut record = FxHashMap::default();
+                for name in lex_names {
+                    record.insert(name, Value2::uninitialized());
+                }
+                record
+            }),
+            outer: Some(var_env),
+        });
+
+        let exec_ctx = frame::ExecutionContext {
+            variable_environment: var_env,
+            lexical_environment: lex_env,
+            saved_lexical_environment: vec![],
+        };
+
+        let frame = frame::Frame::new(exec_ctx, code);
+
+        *cur_frame = frame;
+
+        Ok(())
     }
 
     #[inline]

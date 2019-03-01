@@ -13,7 +13,7 @@ pub type LexicalEnvironmentRef = *mut LexicalEnvironment;
 pub struct Frame {
     pub execution_context: ExecutionContext,
     pub pc: usize,
-    pub sp: usize,
+    pub saved_stack_len: usize,
     pub bytecode: ByteCode,
 }
 
@@ -43,7 +43,7 @@ impl Frame {
         Frame {
             execution_context,
             pc: 0,
-            sp: 0,
+            saved_stack_len: 0,
             bytecode,
         }
     }
