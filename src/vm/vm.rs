@@ -157,7 +157,7 @@ impl<'a> VM2<'a> {
                 VMInst::PUSH_ENV => {
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, id, usize);
-                    let names = self.constant_table().get(id).as_lex_env_info();
+                    let names = self.constant_table().get(id).as_lex_env_info().clone();
                     self.push_env(names, &mut cur_frame);
                 }
                 VMInst::POP_ENV => {
@@ -189,10 +189,10 @@ impl<'a> VM2<'a> {
         Ok(())
     }
 
-    fn push_env(&mut self, lex_names: &Vec<String>, cur_frame: &mut frame::Frame) -> VMResult {
+    fn push_env(&mut self, lex_names: Vec<String>, cur_frame: &mut frame::Frame) -> VMResult {
         let mut record = FxHashMap::default();
         for name in lex_names {
-            record.insert(name.clone(), Value2::uninitialized());
+            record.insert(name, Value2::uninitialized());
         }
 
         let lex_env = self.memory_allocator().alloc(frame::LexicalEnvironment {
@@ -205,6 +205,8 @@ impl<'a> VM2<'a> {
             .saved_lexical_environment
             .push(cur_frame.execution_context.lexical_environment);
         cur_frame.execution_context.lexical_environment = lex_env;
+
+        Ok(())
     }
 
     fn call_function(
