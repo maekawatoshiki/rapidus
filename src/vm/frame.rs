@@ -4,7 +4,7 @@ use bytecode_gen::ByteCode;
 use gc;
 use rustc_hash::FxHashMap;
 use vm::error::RuntimeError;
-use vm::value::Value2;
+use vm::jsvalue::value::Value2;
 use vm::vm::VMResult;
 
 pub type LexicalEnvironmentRef = *mut LexicalEnvironment;

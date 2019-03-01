@@ -1,161 +1,16 @@
 #![macro_use]
 use super::callobj::CallObject;
 use super::error::*;
-use builtin::{BuiltinFuncInfo, BuiltinFuncTy, BuiltinFuncTy2, BuiltinJITFuncInfo};
+use builtin::{BuiltinFuncInfo, BuiltinFuncTy, BuiltinJITFuncInfo};
 use builtins::function;
 use bytecode_gen::ByteCode;
 use chrono::{DateTime, Utc};
 use gc;
 use gc::GcType;
 use id::{get_unique_id, Id};
-use rand::random;
 pub use rustc_hash::FxHashMap;
 use std::ffi::CString;
 use vm;
-
-pub const UNINITIALIZED: u32 = 0;
-pub const EMPTY: u32 = 1;
-pub const NULL: u32 = 2;
-pub const UNDEFINED: u32 = 3;
-
-make_nanbox! {
-    #[derive(Clone, PartialEq, Debug, Copy)]
-    pub unsafe enum BoxedValue, Value2 {
-        Number(f64),
-        Bool(u8), // 0 | 1 = false | true
-        String(*mut CString), // TODO: Using CString is good for JIT. However, we need better one instead.
-        Object(*mut ObjectInfo), // Object(FxHashMap<String, Value>),
-        Other(u32) // UNINITIALIZED | EMPTY | NULL | UNDEFINED
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct ObjectInfo {
-    kind: ObjectKind2,
-    property: FxHashMap<String, Property2>,
-}
-
-#[derive(Clone, Debug)]
-pub enum ObjectKind2 {
-    Function(FunctionObjectInfo),
-    Normal,
-}
-
-#[derive(Clone, PartialEq, Debug, Copy)]
-pub struct Property2 {
-    pub val: Value2,
-    pub writable: bool,
-    pub enumerable: bool,
-    pub configurable: bool,
-}
-
-#[derive(Clone, Debug)]
-pub struct FunctionObjectInfo {
-    pub id: usize,
-    pub name: Option<String>,
-    pub kind: FunctionObjectKind,
-}
-
-#[derive(Clone)]
-pub enum FunctionObjectKind {
-    User(UserFunctionInfo),
-    Builtin(BuiltinFuncTy2),
-}
-
-#[derive(Clone, Debug)]
-pub struct UserFunctionInfo {
-    pub params: Vec<FunctionParameter>,
-    pub var_names: Vec<String>,
-    pub lex_names: Vec<String>,
-    pub func_decls: Vec<Value2>,
-    pub code: ByteCode,
-}
-
-#[derive(Clone, Debug)]
-pub struct FunctionParameter {
-    pub name: String,
-    pub is_rest_param: bool,
-}
-
-impl Value2 {
-    pub fn undefined() -> Self {
-        Value2::Other(UNDEFINED)
-    }
-
-    pub fn uninitialized() -> Self {
-        Value2::Other(UNINITIALIZED)
-    }
-
-    pub fn builtin_function(
-        memory_allocator: &mut gc::MemoryAllocator,
-        name: String,
-        func: BuiltinFuncTy2,
-    ) -> Self {
-        Value2::Object(memory_allocator.alloc(ObjectInfo {
-            kind: ObjectKind2::Function(FunctionObjectInfo {
-                id: random::<usize>(),
-                name: Some(name),
-                kind: FunctionObjectKind::Builtin(func),
-            }),
-            // TODO
-            property: FxHashMap::default(),
-        }))
-    }
-
-    pub fn function(
-        memory_allocator: &mut gc::MemoryAllocator,
-        name: Option<String>,
-        params: Vec<FunctionParameter>,
-        var_names: Vec<String>,
-        lex_names: Vec<String>,
-        func_decls: Vec<Value2>,
-        code: ByteCode,
-    ) -> Self {
-        Value2::Object(memory_allocator.alloc(ObjectInfo {
-            kind: ObjectKind2::Function(FunctionObjectInfo {
-                id: random::<usize>(),
-                name: name,
-                kind: FunctionObjectKind::User(UserFunctionInfo {
-                    params,
-                    var_names,
-                    lex_names,
-                    func_decls,
-                    code,
-                }),
-            }),
-            // TODO
-            property: FxHashMap::default(),
-        }))
-    }
-
-    pub fn as_function(&self) -> FunctionObjectInfo {
-        match self {
-            Value2::Object(obj) => {
-                let obj = unsafe { &**obj };
-                match obj.kind {
-                    ObjectKind2::Function(ref info) => return info.clone(),
-                    _ => panic!(),
-                }
-            }
-            e => panic!("{:?}", e),
-        }
-    }
-}
-
-impl ::std::fmt::Debug for FunctionObjectKind {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                FunctionObjectKind::User(user_func) => format!("{:?}", user_func),
-                FunctionObjectKind::Builtin(_) => "[BuiltinFunction]".to_string(),
-            }
-        )
-    }
-}
-
-/////////////////////////////////////////////////////////
 
 pub type FuncId = Id;
 

@@ -1,5 +1,5 @@
 use vm::constant;
-use vm::{value::Value, value::Value2, vm::ConstantTable};
+use vm::{value::Value, jsvalue::value::Value2, vm::ConstantTable};
 
 pub type ByteCode = Vec<u8>;
 

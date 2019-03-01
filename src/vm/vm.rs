@@ -5,6 +5,7 @@ use super::{
     constant,
     error::*,
     frame,
+    jsvalue::value::*,
     task::{Task, TaskManager, TimerKind},
     value::*,
 };
@@ -175,7 +176,6 @@ impl<'a> VM2<'a> {
             FunctionObjectKind::User(user_func) => {
                 self.call_user_function(user_func, args, cur_frame)
             }
-            e => unimplemented!("{:?}", e),
         }
     }
 

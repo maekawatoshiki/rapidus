@@ -11,8 +11,9 @@ use std::path;
 use vm::{
     error::RuntimeError,
     frame::Frame,
+    jsvalue::value::Value2,
     task::{Task, TimerID, TimerKind},
-    value::{CallObjectRef, FuncInfo, ObjectKind, Property, RawStringPtr, Value, Value2},
+    value::{CallObjectRef, FuncInfo, ObjectKind, Property, RawStringPtr, Value},
     vm::VM,
     vm::VM2,
 };

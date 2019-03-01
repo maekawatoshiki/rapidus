@@ -4,8 +4,8 @@ use node::{
     BinOp, FormalParameter, FormalParameters, Node, NodeBase, PropertyDefinition, UnaryOp, VarKind,
 };
 use vm::constant::ConstantTable;
-use vm::value;
-use vm::value::Value2;
+use vm::jsvalue::value;
+use vm::jsvalue::value::Value2;
 
 pub type CodeGenResult = Result<(), Error>;
 

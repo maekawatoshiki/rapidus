@@ -1,4 +1,4 @@
-use vm::value::Value2;
+use vm::jsvalue::value::Value2;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Constant {
