@@ -29,3 +29,16 @@ pub struct FunctionParameter {
     pub name: String,
     pub is_rest_param: bool,
 }
+
+impl ::std::fmt::Debug for FunctionObjectKind {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                FunctionObjectKind::User(user_func) => format!("{:?}", user_func),
+                FunctionObjectKind::Builtin(_) => "[BuiltinFunction]".to_string(),
+            }
+        )
+    }
+}

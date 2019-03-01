@@ -110,6 +110,12 @@ impl<'a> VM2<'a> {
     pub fn run(&mut self, mut cur_frame: frame::Frame) -> VMResult {
         loop {
             match cur_frame.bytecode[cur_frame.pc] {
+                VMInst::ADD => {
+                    cur_frame.pc += 1;
+                    let rhs: Value2 = self.stack.pop().unwrap().into();
+                    let lhs: Value2 = self.stack.pop().unwrap().into();
+                    self.stack.push(lhs.add(rhs).into());
+                }
                 VMInst::PUSH_INT8 => {
                     cur_frame.pc += 1;
                     read_int8!(cur_frame.bytecode, cur_frame.pc, num, f64);
@@ -185,10 +191,10 @@ impl<'a> VM2<'a> {
         args: Vec<Value2>,
         cur_frame: &mut frame::Frame,
     ) -> VMResult {
-        bytecode_gen::show2(
-            &user_func.code,
-            self.code_generator.bytecode_generator.constant_table,
-        );
+        // bytecode_gen::show2(
+        //     &user_func.code,
+        //     self.code_generator.bytecode_generator.constant_table,
+        // );
 
         self.saved_frame.push({
             let mut cur_frame = cur_frame.clone();

@@ -90,16 +90,14 @@ impl Value2 {
     }
 }
 
-impl ::std::fmt::Debug for FunctionObjectKind {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                FunctionObjectKind::User(user_func) => format!("{:?}", user_func),
-                FunctionObjectKind::Builtin(_) => "[BuiltinFunction]".to_string(),
-            }
-        )
+impl Value2 {
+    // TODO:
+    // https://www.ecma-international.org/ecma-262/6.0/#sec-addition-operator-plus-runtime-semantics-evaluation
+    pub fn add(self, val: Value2) -> Self {
+        match (self, val) {
+            (Value2::Number(x), Value2::Number(y)) => Value2::Number(x + y),
+            _ => Value2::undefined(),
+        }
     }
 }
 

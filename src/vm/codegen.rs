@@ -73,6 +73,9 @@ impl<'a> CodeGenerator<'a> {
             NodeBase::FunctionDecl(ref name, ref params, ref body) => {
                 self.visit_function_decl(name, params, &*body)?
             }
+            NodeBase::BinaryOp(ref lhs, ref rhs, ref op) => {
+                self.visit_binary_op(&*lhs, &*rhs, op, iseq, use_value)?
+            }
             NodeBase::Assign(ref dst, ref src) => {
                 self.visit_assign(&*dst, &*src, iseq, use_value)?
             }
@@ -157,6 +160,47 @@ impl<'a> CodeGenerator<'a> {
             function_info.func_decls,
             func_iseq,
         ))
+    }
+
+    pub fn visit_binary_op(
+        &mut self,
+        lhs: &Node,
+        rhs: &Node,
+        op: &BinOp,
+        iseq: &mut ByteCode,
+        use_value: bool,
+    ) -> Result<(), Error> {
+        if !use_value {
+            return Ok(());
+        }
+
+        self.visit(lhs, iseq, true)?;
+        self.visit(rhs, iseq, true)?;
+
+        match op {
+            &BinOp::Add => self.bytecode_generator.append_add(iseq),
+            &BinOp::Sub => self.bytecode_generator.append_sub(iseq),
+            &BinOp::Mul => self.bytecode_generator.append_mul(iseq),
+            &BinOp::Div => self.bytecode_generator.append_div(iseq),
+            &BinOp::Rem => self.bytecode_generator.append_rem(iseq),
+            &BinOp::Eq => self.bytecode_generator.append_eq(iseq),
+            &BinOp::Ne => self.bytecode_generator.append_ne(iseq),
+            &BinOp::SEq => self.bytecode_generator.append_seq(iseq),
+            &BinOp::SNe => self.bytecode_generator.append_sne(iseq),
+            &BinOp::And => self.bytecode_generator.append_and(iseq),
+            &BinOp::Or => self.bytecode_generator.append_or(iseq),
+            &BinOp::Xor => self.bytecode_generator.append_xor(iseq),
+            &BinOp::Lt => self.bytecode_generator.append_lt(iseq),
+            &BinOp::Gt => self.bytecode_generator.append_gt(iseq),
+            &BinOp::Le => self.bytecode_generator.append_le(iseq),
+            &BinOp::Ge => self.bytecode_generator.append_ge(iseq),
+            &BinOp::Shl => self.bytecode_generator.append_shl(iseq),
+            &BinOp::Shr => self.bytecode_generator.append_shr(iseq),
+            &BinOp::ZFShr => self.bytecode_generator.append_zfshr(iseq),
+            _ => {}
+        }
+
+        Ok(())
     }
 
     fn visit_assign(

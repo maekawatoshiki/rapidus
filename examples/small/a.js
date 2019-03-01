@@ -1,5 +1,6 @@
 function f(x) {
-  log(a);
+  log(x);
+  f(x+1);
 }
 
 a = 1;
