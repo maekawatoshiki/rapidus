@@ -10,7 +10,7 @@ pub struct ObjectInfo {
 #[derive(Clone, Debug)]
 pub enum ObjectKind2 {
     Function(FunctionObjectInfo),
-    Normal,
+    Ordinary,
 }
 
 #[derive(Clone, PartialEq, Debug, Copy)]

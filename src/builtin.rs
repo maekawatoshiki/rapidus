@@ -11,7 +11,7 @@ use std::path;
 use vm::{
     error::RuntimeError,
     frame::Frame,
-    jsvalue::value::Value2,
+    jsvalue::value::*,
     task::{Task, TimerID, TimerKind},
     value::{CallObjectRef, FuncInfo, ObjectKind, Property, RawStringPtr, Value},
     vm::VM,
@@ -22,18 +22,197 @@ use vm_codegen;
 pub type BuiltinFuncTy2 = fn(&mut VM2, &Vec<Value2>, &Frame) -> Result<(), RuntimeError>;
 
 pub fn builtin_log(
-    _vm: &mut VM2,
+    vm: &mut VM2,
     args: &Vec<Value2>,
     _cur_frame: &Frame,
 ) -> Result<(), RuntimeError> {
-    match args[0] {
-        Value2::Number(n) => println!("{}", n),
-        _ => unimplemented!(
-            "temporal builtin function 'log' doesn't support any value other than Number"
-        ),
+    let args_len = args.len();
+
+    unsafe {
+        for i in 0..args_len {
+            debug_print2(&args[i], false);
+            if args_len - 1 != i {
+                libc::printf(b" \0".as_ptr() as RawStringPtr);
+            }
+        }
+        libc::puts(b"\0".as_ptr() as RawStringPtr);
     }
 
+    vm.stack.push(Value2::undefined().into());
+
     Ok(())
+}
+
+pub fn debug_print2(val: &Value2, nest: bool) {
+    fn show_obj(sorted_key_val: Vec<(&String, &Property2)>) {
+        for (i, tupple) in sorted_key_val.iter().enumerate() {
+            unsafe {
+                libc::printf(
+                    "'%s'\0".as_ptr() as RawStringPtr,
+                    CString::new(tupple.0.as_str()).unwrap().into_raw(),
+                );
+                libc::printf(": \0".as_ptr() as RawStringPtr);
+                debug_print2(&tupple.1.val, true);
+                libc::printf(if i != sorted_key_val.len() - 1 {
+                    ", \0".as_ptr() as RawStringPtr
+                } else {
+                    " \0".as_ptr() as RawStringPtr
+                });
+            }
+        }
+    }
+
+    unsafe {
+        match val {
+            Value2::Other(UNINITIALIZED) => {
+                libc::printf(b"uninitialized\0".as_ptr() as RawStringPtr);
+            }
+            Value2::Other(EMPTY) => {
+                libc::printf(b"empty\0".as_ptr() as RawStringPtr);
+            }
+            // Value::Object(_, ObjectKind::Arguments(state)) => {
+            //     let args = &state.arguments;
+            //     libc::printf("[ \0".as_ptr() as RawStringPtr);
+            //
+            //     let mut i = 0;
+            //     let length = args.len();
+            //     while i < length {
+            //         if i != 0 {
+            //             libc::printf(", \0".as_ptr() as RawStringPtr);
+            //         };
+            //         match state.get_arguments_nth_value(i) {
+            //             Ok(val) => {
+            //                 debug_print(&val, true);
+            //             }
+            //             Err(_) => {
+            //                 libc::printf(" \0".as_ptr() as RawStringPtr);
+            //             }
+            //         };
+            //
+            //         i += 1;
+            //     }
+            //     libc::printf(" ]\0".as_ptr() as RawStringPtr);
+            // }
+            Value2::Other(NULL) => {
+                libc::printf(b"null\0".as_ptr() as RawStringPtr);
+            }
+            Value2::Other(UNDEFINED) => {
+                libc::printf(b"undefined\0".as_ptr() as RawStringPtr);
+            }
+            Value2::Other(_) => unreachable!(),
+            Value2::Bool(1) => {
+                libc::printf(b"true\0".as_ptr() as RawStringPtr);
+            }
+            Value2::Bool(0) => {
+                libc::printf(b"false\0".as_ptr() as RawStringPtr);
+            }
+            Value2::Bool(_) => unreachable!(),
+            Value2::Number(n) => {
+                if n.is_nan() {
+                    libc::printf("NaN\0".as_ptr() as RawStringPtr);
+                } else if n.is_infinite() {
+                    libc::printf("Infinity\0".as_ptr() as RawStringPtr);
+                } else {
+                    libc::printf("%.15g\0".as_ptr() as RawStringPtr, *n);
+                }
+            }
+            Value2::String(ref s) => {
+                libc::printf(
+                    if nest { "'%s'\0" } else { "%s\0" }.as_ptr() as RawStringPtr,
+                    { &**s }.as_ptr(),
+                );
+            }
+            Value2::Object(obj_info) => {
+                let obj_info = &**obj_info;
+                match obj_info.kind {
+                    ObjectKind2::Ordinary => {
+                        libc::printf("{ \0".as_ptr() as RawStringPtr);
+
+                        let mut sorted_key_val =
+                            (&obj_info.property)
+                                .iter()
+                                .collect::<Vec<(&String, &Property2)>>();
+                        sorted_key_val
+                            .sort_by(|(key1, _), (key2, _)| key1.as_str().cmp(key2.as_str()));
+                        sorted_key_val.retain(|(ref key, _)| key != &"__proto__");
+
+                        show_obj(sorted_key_val);
+
+                        libc::printf("}\0".as_ptr() as RawStringPtr);
+                    }
+                    ObjectKind2::Function(ref func_info) => {
+                        libc::printf(
+                            if let Some(ref name) = func_info.name {
+                                format!("[Function: {}]\0", name)
+                            } else {
+                                "[Function]\0".to_string()
+                            }
+                            .as_ptr() as RawStringPtr,
+                        );
+                    }
+                }
+            } // Value::Object(map, ObjectKind::Array(ref values)) => {
+              //     libc::printf("[ \0".as_ptr() as RawStringPtr);
+              //     let arr = &*(values);
+              //     let elems = &arr.elems;
+              //     let is_last_idx = |idx: usize| -> bool { idx == arr.length - 1 };
+              //     let mut i = 0;
+              //     let mut sorted_key_val = (&*map).iter().collect::<Vec<(&String, &Property)>>();
+              //     sorted_key_val.sort_by(|(key1, _), (key2, _)| key1.as_str().cmp(key2.as_str()));
+              //     sorted_key_val.retain(|(ref key, _)| key != &"__proto__");
+              //
+              //     while i < arr.length {
+              //         let mut empty_elems = 0;
+              //         while i < arr.length && Value::Empty == elems[i].val {
+              //             empty_elems += 1;
+              //             i += 1;
+              //         }
+              //
+              //         if empty_elems > 0 {
+              //             libc::printf(
+              //                 "<%u empty item%s>%s\0".as_ptr() as RawStringPtr,
+              //                 empty_elems,
+              //                 if empty_elems >= 2 { "s\0" } else { "\0" }.as_ptr() as RawStringPtr,
+              //                 if is_last_idx(i - 1) && sorted_key_val.len() == 0 {
+              //                     " \0"
+              //                 } else {
+              //                     ", \0"
+              //                 }
+              //                 .as_ptr() as RawStringPtr,
+              //             );
+              //
+              //             if is_last_idx(i - 1) {
+              //                 break;
+              //             }
+              //         }
+              //
+              //         debug_print(&elems[i].val, true);
+              //         libc::printf(
+              //             if is_last_idx(i) && sorted_key_val.len() == 0 {
+              //                 " \0"
+              //             } else {
+              //                 ", \0"
+              //             }
+              //             .as_ptr() as RawStringPtr,
+              //         );
+              //
+              //         i += 1;
+              //     }
+              //
+              //     show_obj(sorted_key_val);
+              //
+              //     libc::printf("]\0".as_ptr() as RawStringPtr);
+              // }
+
+              // Value::Object(_, ObjectKind::Date(box time_val)) => {
+              //     // TODO: Date needs toString() ?
+              //     libc::printf(
+              //         "%s\0".as_ptr() as RawStringPtr,
+              //         CString::new(time_val.to_rfc3339()).unwrap().as_ptr(),
+              //     );
+              // }
+        }
+    }
 }
 
 ////////////////////////////

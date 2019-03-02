@@ -12,7 +12,7 @@ pub struct ObjectPrototypes {
 impl ObjectPrototypes {
     pub fn new(memory_allocator: &mut MemoryAllocator) -> Self {
         let object_prototype = Value2::Object(memory_allocator.alloc(ObjectInfo {
-            kind: ObjectKind2::Normal,
+            kind: ObjectKind2::Ordinary,
             property: make_property_map!(__proto__: Value2::null()),
         }));
 

@@ -9,3 +9,5 @@ function f(x) {
 
 a = 2;
 f(a);
+a = Object;
+log(a);

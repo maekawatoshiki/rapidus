@@ -62,7 +62,7 @@ macro_rules! make_normal_object {
     ($memory_allocator:expr) => { {
         Value2::Object($memory_allocator.alloc(
             ObjectInfo {
-                kind: ObjectKind2::Normal,
+                kind: ObjectKind2::Ordinary,
                 property: FxHashMap::default()
             }
         ))
@@ -70,7 +70,7 @@ macro_rules! make_normal_object {
     ($memory_allocator:expr, $($property_name:ident => $x:ident, $y:ident, $z:ident : $val:expr),*) => { {
         Value2::Object($memory_allocator.alloc(
             ObjectInfo {
-                kind: ObjectKind2::Normal,
+                kind: ObjectKind2::Ordinary,
                 property: make_property_map_sub!($($property_name, $val, $x, $y, $z),* )
             }
             ))
@@ -100,7 +100,7 @@ impl Value2 {
         mut properties: FxHashMap<String, Property2>,
     ) -> Self {
         Value2::Object(memory_allocator.alloc(ObjectInfo {
-            kind: ObjectKind2::Normal,
+            kind: ObjectKind2::Ordinary,
             property: {
                 properties.insert(
                     "__proto__".to_string(),
