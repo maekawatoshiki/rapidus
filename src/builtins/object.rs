@@ -1,4 +1,9 @@
 use vm::{error::RuntimeError, value::*, vm::VM};
+use vm::jsvalue::value;
+
+// pub fn object() -> value::Value2 {
+//     let obj = Value2::builtin_function( 
+// }
 
 thread_local!(
     pub static OBJECT_PROTOTYPE: Value =

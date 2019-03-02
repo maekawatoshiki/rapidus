@@ -85,9 +85,16 @@ fn main() {
 
     let mut const_table = vm::constant::ConstantTable::new();
     let mut mem_allocator = gc::MemoryAllocator::new();
-    let global_env = frame::LexicalEnvironment::new_global_initialized(&mut mem_allocator);
+    let object_prototypes = vm::jsvalue::prototype::ObjectPrototypes::new(&mut mem_allocator);
+    let global_env =
+        frame::LexicalEnvironment::new_global_initialized(&mut mem_allocator, &object_prototypes);
     let global_env_ref = mem_allocator.alloc(global_env);
-    let mut vm = VM2::new(global_env_ref, &mut const_table, &mut mem_allocator);
+    let mut vm = VM2::new(
+        global_env_ref,
+        &mut const_table,
+        &mut mem_allocator,
+        &object_prototypes,
+    );
     let mut iseq = vec![];
     let global_info = vm.code_generator.compile(&node, &mut iseq, false).unwrap();
 

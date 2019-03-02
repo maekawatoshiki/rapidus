@@ -5,6 +5,7 @@ use super::{
     constant,
     error::*,
     frame,
+    jsvalue::prototype::ObjectPrototypes,
     jsvalue::value::*,
     task::{Task, TaskManager, TimerKind},
     value::*,
@@ -40,10 +41,11 @@ impl<'a> VM2<'a> {
         global_environment: frame::LexicalEnvironmentRef,
         constant_table: &'a mut constant::ConstantTable,
         memory_allocator: &'a mut gc::MemoryAllocator,
+        object_prototypes: &'a ObjectPrototypes,
     ) -> Self {
         VM2 {
             global_environment,
-            code_generator: CodeGenerator::new(constant_table, memory_allocator),
+            code_generator: CodeGenerator::new(constant_table, memory_allocator, object_prototypes),
             stack: vec![],
             saved_frame: vec![],
         }
@@ -158,7 +160,7 @@ impl<'a> VM2<'a> {
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, id, usize);
                     let names = self.constant_table().get(id).as_lex_env_info().clone();
-                    self.push_env(names, &mut cur_frame);
+                    self.push_env(names, &mut cur_frame)?;
                 }
                 VMInst::POP_ENV => {
                     cur_frame.pc += 1;

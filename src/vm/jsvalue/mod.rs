@@ -1,3 +1,5 @@
+#[macro_use]
 pub mod value;
-pub mod object;
 pub mod function;
+pub mod object;
+pub mod prototype;

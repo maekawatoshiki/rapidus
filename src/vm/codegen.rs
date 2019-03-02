@@ -4,8 +4,8 @@ use node::{
     BinOp, FormalParameter, FormalParameters, Node, NodeBase, PropertyDefinition, UnaryOp, VarKind,
 };
 use vm::constant::ConstantTable;
-use vm::jsvalue::value;
 use vm::jsvalue::value::Value2;
+use vm::jsvalue::{prototype, value};
 
 pub type CodeGenResult = Result<(), Error>;
 
@@ -26,6 +26,7 @@ pub enum ErrorKind {
 pub struct CodeGenerator<'a> {
     pub bytecode_generator: ByteCodeGenerator<'a>,
     pub memory_allocator: &'a mut MemoryAllocator,
+    pub object_prototypes: &'a prototype::ObjectPrototypes,
     pub function_stack: Vec<FunctionInfo>,
 }
 
@@ -49,11 +50,13 @@ impl<'a> CodeGenerator<'a> {
     pub fn new(
         constant_table: &'a mut ConstantTable,
         memory_allocator: &'a mut MemoryAllocator,
+        object_prototypes: &'a prototype::ObjectPrototypes,
     ) -> Self {
         CodeGenerator {
             bytecode_generator: ByteCodeGenerator::new(constant_table),
-            memory_allocator,
             function_stack: vec![FunctionInfo::new(None) /* = global */],
+            object_prototypes,
+            memory_allocator,
         }
     }
 
@@ -200,6 +203,7 @@ impl<'a> CodeGenerator<'a> {
 
         Ok(Value2::function(
             self.memory_allocator,
+            self.object_prototypes,
             function_info.name,
             params,
             function_info.var_names,
