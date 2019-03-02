@@ -94,6 +94,28 @@ impl Value2 {
         Value2::String(memory_allocator.alloc(CString::new(body).unwrap()))
     }
 
+    pub fn object(
+        memory_allocator: &mut gc::MemoryAllocator,
+        object_prototypes: &ObjectPrototypes,
+        mut properties: FxHashMap<String, Property2>,
+    ) -> Self {
+        Value2::Object(memory_allocator.alloc(ObjectInfo {
+            kind: ObjectKind2::Normal,
+            property: {
+                properties.insert(
+                    "__proto__".to_string(),
+                    Property2 {
+                        val: object_prototypes.object,
+                        writable: false,
+                        enumerable: false,
+                        configurable: false,
+                    },
+                );
+                properties
+            },
+        }))
+    }
+
     pub fn builtin_function(
         memory_allocator: &mut gc::MemoryAllocator,
         object_prototypes: &ObjectPrototypes,
@@ -150,6 +172,18 @@ impl Value2 {
 }
 
 impl Value2 {
+    pub fn set_constructor(&self, val: Value2) {
+        self.get_object_info().property.insert(
+            "constructor".to_string(),
+            Property2 {
+                val,
+                writable: true,
+                enumerable: false,
+                configurable: true,
+            },
+        );
+    }
+
     pub fn as_function(&self) -> FunctionObjectInfo {
         match self {
             Value2::Object(obj) => {
@@ -160,6 +194,13 @@ impl Value2 {
                 }
             }
             e => panic!("{:?}", e),
+        }
+    }
+
+    pub fn get_object_info(&self) -> &mut ObjectInfo {
+        match self {
+            Value2::Object(obj) => unsafe { &mut **obj },
+            _ => panic!(),
         }
     }
 }

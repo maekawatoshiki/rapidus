@@ -1,9 +1,55 @@
+use gc;
 use vm::{error::RuntimeError, value::*, vm::VM};
-use vm::jsvalue::value;
+use vm::{frame, jsvalue, vm};
 
-// pub fn object() -> value::Value2 {
-//     let obj = Value2::builtin_function( 
-// }
+pub fn object(
+    memory_allocator: &mut gc::MemoryAllocator,
+    object_prototypes: &jsvalue::prototype::ObjectPrototypes,
+) -> jsvalue::value::Value2 {
+    let obj = jsvalue::value::Value2::builtin_function(
+        memory_allocator,
+        object_prototypes,
+        "Object".to_string(),
+        object_constructor,
+    );
+    object_prototypes.object.set_constructor(obj);
+    obj
+}
+
+pub fn object_constructor(
+    vm: &mut vm::VM2,
+    args: &Vec<jsvalue::value::Value2>,
+    _cur_frame: &frame::Frame,
+) -> Result<(), RuntimeError> {
+    if args.len() == 0 {
+        let empty_obj = jsvalue::value::Value2::object(
+            vm.memory_allocator(),
+            vm.code_generator.object_prototypes,
+            FxHashMap::default(),
+        );
+        vm.stack.push(empty_obj.into());
+        return Ok(());
+    }
+
+    match &args[0] {
+        jsvalue::value::Value2::Other(jsvalue::value::NULL)
+        | jsvalue::value::Value2::Other(jsvalue::value::UNDEFINED) => {
+            let empty_obj = jsvalue::value::Value2::object(
+                vm.memory_allocator(),
+                vm.code_generator.object_prototypes,
+                FxHashMap::default(),
+            );
+            vm.stack.push(empty_obj.into());
+        }
+        jsvalue::value::Value2::Other(jsvalue::value::EMPTY) => unreachable!(),
+        _ => {
+            // TODO: Follow the specification
+            vm.stack.push(args[0].into());
+        }
+    }
+
+    Ok(())
+}
 
 thread_local!(
     pub static OBJECT_PROTOTYPE: Value =

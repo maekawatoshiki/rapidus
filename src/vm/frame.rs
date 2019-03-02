@@ -100,11 +100,12 @@ impl LexicalEnvironment {
         object_prototypes: &ObjectPrototypes,
     ) -> Self {
         use builtin::builtin_log;
+        use builtins;
         LexicalEnvironment {
             // TODO: 'log' for the time being
             record: EnvironmentRecord::Global(make_global_env!(
-                log: Value2::builtin_function(memory_allocator, object_prototypes, "log".to_string(), builtin_log)
-                // Object: 
+                log: Value2::builtin_function(memory_allocator, object_prototypes, "log".to_string(), builtin_log),
+                Object: builtins::object::object(memory_allocator,object_prototypes)
             )),
             outer: None,
         }

@@ -291,6 +291,11 @@ impl<'a> VM2<'a> {
     pub fn memory_allocator(&mut self) -> &mut gc::MemoryAllocator {
         self.code_generator.memory_allocator
     }
+
+    #[inline]
+    pub fn object_prototypes(&self) -> &ObjectPrototypes {
+        self.code_generator.object_prototypes
+    }
 }
 
 // Old VM below

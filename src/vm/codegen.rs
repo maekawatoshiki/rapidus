@@ -98,7 +98,11 @@ impl<'a> CodeGenerator<'a> {
             NodeBase::Call(ref callee, ref args) => {
                 self.visit_call(&*callee, args, iseq, use_value)?
             }
-            NodeBase::Identifier(ref name) => self.bytecode_generator.append_get_value(name, iseq),
+            NodeBase::Identifier(ref name) => {
+                if use_value {
+                    self.bytecode_generator.append_get_value(name, iseq)
+                }
+            }
             NodeBase::Number(n) => self.bytecode_generator.append_push_number(n, iseq),
             _ => unimplemented!(),
         }
