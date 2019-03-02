@@ -103,7 +103,7 @@ fn main() {
 
     println!("Result:");
     vm.run_global(global_info, iseq).unwrap();
-    println!("{:?}", vm.stack);
+    println!("stack: {:?}", vm.stack);
     // let mut vm = vm::VM::new();
     // vm.global_objects.extend(vm_codegen.global_varmap);
     // vm.run(iseq);

@@ -123,6 +123,7 @@ impl Value2 {
         func: BuiltinFuncTy2,
     ) -> Self {
         let name_prop = Value2::string(memory_allocator, name.clone());
+        let prototype = make_normal_object!(memory_allocator);
         Value2::Object(memory_allocator.alloc(ObjectInfo {
             kind: ObjectKind2::Function(FunctionObjectInfo {
                 id: get_unique_id(),
@@ -131,6 +132,7 @@ impl Value2 {
             }),
             property: make_property_map!(
                 __proto__ => false, false, false: object_prototypes.function,
+                prototype => true , true , true : prototype,
                 length    => false, false, true : Value2::Number(0.0),
                 name      => false, false, true : name_prop
             ),
@@ -172,6 +174,22 @@ impl Value2 {
 }
 
 impl Value2 {
+    pub fn get_property(&self, key: Value2) -> Value2 {
+        match self {
+            Value2::Object(obj_info) => {
+                unsafe { &**obj_info }.get_property(key.to_string().as_str())
+            }
+            _ => Value2::undefined(),
+        }
+    }
+
+    pub fn to_string(&self) -> String {
+        match self {
+            Value2::String(s) => unsafe { &**s }.to_str().unwrap().to_string(),
+            _ => "[unimplemented]".to_string(),
+        }
+    }
+
     pub fn set_constructor(&self, val: Value2) {
         self.get_object_info().property.insert(
             "constructor".to_string(),

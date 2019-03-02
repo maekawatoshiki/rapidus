@@ -89,6 +89,9 @@ impl<'a> CodeGenerator<'a> {
             NodeBase::VarDecl(ref name, ref init, ref kind) => {
                 self.visit_var_decl(name, init, kind, iseq)?
             }
+            NodeBase::Member(ref parent, ref property) => {
+                self.visit_member(&*parent, property, iseq, use_value)?
+            }
             NodeBase::BinaryOp(ref lhs, ref rhs, ref op) => {
                 self.visit_binary_op(&*lhs, &*rhs, op, iseq, use_value)?
             }
@@ -252,6 +255,25 @@ impl<'a> CodeGenerator<'a> {
             VarKind::Let => let_decl(self, name.clone()),
             _ => unimplemented!(),
         }
+
+        Ok(())
+    }
+
+    fn visit_member(
+        &mut self,
+        parent: &Node,
+        member: &String,
+        iseq: &mut ByteCode,
+        use_value: bool,
+    ) -> CodeGenResult {
+        if !use_value {
+            return Ok(());
+        }
+
+        self.visit(parent, iseq, true)?;
+        let property = Value2::string(self.memory_allocator, member.clone());
+        self.bytecode_generator.append_push_const(property, iseq);
+        self.bytecode_generator.append_get_member(iseq);
 
         Ok(())
     }

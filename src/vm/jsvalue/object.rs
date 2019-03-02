@@ -20,3 +20,18 @@ pub struct Property2 {
     pub enumerable: bool,
     pub configurable: bool,
 }
+
+impl ObjectInfo {
+    pub fn get_property(&self, key: &str) -> Value2 {
+        match self.property.get(key) {
+            Some(prop) => prop.val,
+            None => match self.property.get("__proto__") {
+                Some(Property2 {
+                    val: Value2::Object(obj_info),
+                    ..
+                }) => unsafe { &**obj_info }.get_property(key),
+                _ => Value2::undefined(),
+            },
+        }
+    }
+}

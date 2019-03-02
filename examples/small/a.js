@@ -7,7 +7,7 @@ function f(x) {
   log(a);
 }
 
-a = 2;
-f(a);
-a = Object;
-log(a);
+// a = 2;
+// f(a);
+log(Object.name);
+log(Object.__proto__);

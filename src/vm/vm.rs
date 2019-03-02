@@ -123,6 +123,18 @@ impl<'a> VM2<'a> {
                     read_int8!(cur_frame.bytecode, cur_frame.pc, num, f64);
                     self.stack.push(Value2::Number(num).into());
                 }
+                VMInst::PUSH_CONST => {
+                    cur_frame.pc += 1;
+                    read_int32!(cur_frame.bytecode, cur_frame.pc, id, usize);
+                    let val = *self.constant_table().get(id).as_value();
+                    self.stack.push(val.into());
+                }
+                VMInst::GET_MEMBER => {
+                    cur_frame.pc += 1;
+                    let property: Value2 = self.stack.pop().unwrap().into();
+                    let parent: Value2 = self.stack.pop().unwrap().into();
+                    self.stack.push(parent.get_property(property).into());
+                }
                 VMInst::SET_VALUE => {
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, name_id, usize);
