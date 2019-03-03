@@ -362,7 +362,7 @@ impl<'a> CodeGenerator<'a> {
                 );
                 self.visit(&*parent, iseq, true)?;
                 self.bytecode_generator
-                    .append_call_prop(args.len() as u32, iseq);
+                    .append_call_method(args.len() as u32, iseq);
             }
             _ => {
                 self.visit(callee, iseq, true)?;

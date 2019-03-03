@@ -160,17 +160,17 @@ impl<'a> VM2<'a> {
                     }
                     self.call_function(callee, args, None, &mut cur_frame)?;
                 }
-                VMInst::CALL_PROP => {
+                VMInst::CALL_METHOD => {
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, argc, usize);
                     let parent: Value2 = self.stack.pop().unwrap().into();
-                    let prop: Value2 = self.stack.pop().unwrap().into();
+                    let method: Value2 = self.stack.pop().unwrap().into();
                     let mut args: Vec<Value2> = vec![];
                     for _ in 0..argc {
                         args.push(self.stack.pop().unwrap().into());
                     }
                     self.call_function(
-                        parent.get_property(prop),
+                        parent.get_property(method),
                         args,
                         Some(parent),
                         &mut cur_frame,
