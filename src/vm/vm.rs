@@ -70,20 +70,18 @@ impl<'a> VM2<'a> {
 
     pub fn run_global(&mut self, global_info: codegen::FunctionInfo, iseq: ByteCode) -> VMResult {
         let global_env_ref = self.global_environment;
+
         let var_env = memory_allocator!(self).alloc(frame::LexicalEnvironment {
             record: frame::EnvironmentRecord::Declarative({
                 let mut record = FxHashMap::default();
                 for name in global_info.var_names {
                     record.insert(name, Value2::undefined());
                 }
-                for val in global_info.func_decls {
-                    let name = val.as_function().name.unwrap();
-                    record.insert(name, val);
-                }
                 record
             }),
             outer: Some(global_env_ref),
         });
+
         let lex_env = memory_allocator!(self).alloc(frame::LexicalEnvironment {
             record: frame::EnvironmentRecord::Declarative({
                 let mut record = FxHashMap::default();
@@ -94,6 +92,13 @@ impl<'a> VM2<'a> {
             }),
             outer: Some(var_env),
         });
+
+        for val in global_info.func_decls {
+            let mut val = val.copy_object(memory_allocator!(self));
+            let name = val.as_function().name.clone().unwrap();
+            val.set_function_outer_environment(global_env_ref);
+            unsafe { &mut *lex_env }.set_value(name, val)?;
+        }
 
         let exec_ctx = frame::ExecutionContext {
             variable_environment: var_env,
@@ -210,6 +215,15 @@ impl<'a> VM2<'a> {
                         Some(parent),
                         &mut cur_frame,
                     )?;
+                }
+                VMInst::SET_OUTER_ENV => {
+                    cur_frame.pc += 1;
+                    let func_template: Value2 = self.stack.pop().unwrap().into();
+                    let mut func = func_template.copy_object(memory_allocator!(self));
+                    func.set_function_outer_environment(
+                        cur_frame.execution_context.lexical_environment,
+                    );
+                    self.stack.push(func.into());
                 }
                 VMInst::CREATE_OBJECT => {
                     cur_frame.pc += 1;
@@ -330,8 +344,8 @@ impl<'a> VM2<'a> {
         let info = callee.as_function();
         match info.kind {
             FunctionObjectKind::Builtin(func) => func(self, &args, cur_frame),
-            FunctionObjectKind::User(user_func) => {
-                self.call_user_function(user_func, args, this, cur_frame)
+            FunctionObjectKind::User(ref user_func) => {
+                self.call_user_function(user_func.clone(), args, this, cur_frame)
             }
         }
     }
@@ -373,7 +387,7 @@ impl<'a> VM2<'a> {
 
                 record
             }),
-            outer: Some(cur_frame.execution_context.lexical_environment),
+            outer: user_func.outer,
         });
 
         let lex_env = memory_allocator!(self).alloc(frame::LexicalEnvironment {
@@ -386,6 +400,13 @@ impl<'a> VM2<'a> {
             }),
             outer: Some(var_env),
         });
+
+        for func in user_func.func_decls {
+            let mut func = func.copy_object(memory_allocator!(self));
+            let name = func.as_function().name.clone().unwrap();
+            func.set_function_outer_environment(lex_env);
+            unsafe { &mut *lex_env }.set_value(name, func)?;
+        }
 
         let exec_ctx = frame::ExecutionContext {
             variable_environment: var_env,

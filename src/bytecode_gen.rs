@@ -307,6 +307,10 @@ impl<'a> ByteCodeGenerator<'a> {
         iseq.push(VMInst::POP_ENV);
     }
 
+    pub fn append_set_outer_env(&mut self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::SET_OUTER_ENV);
+    }
+
     // Utils
 
     pub fn append_int8(&self, n: i8, iseq: &mut ByteCode) {
@@ -809,6 +813,7 @@ pub fn show_inst2(code: &ByteCode, i: usize, const_table: &constant::ConstantTab
             VMInst::PUSH_SCOPE => format!("PushScope"),
             VMInst::POP_SCOPE => format!("PopScope"),
             VMInst::NOT => format!("BitwiseNot"),
+            VMInst::SET_OUTER_ENV => format!("SetOuterEnv"),
             _ => unreachable!("sorry. need to implement more opcodes"),
         }
     );
@@ -1020,11 +1025,12 @@ pub mod VMInst {
     pub const PUSH_ENV: u8 = 0x3f;
     pub const POP_ENV: u8 = 0x40;
     pub const CALL_METHOD: u8 = 0x41;
+    pub const SET_OUTER_ENV: u8 = 0x42;
 
     pub fn get_inst_size(inst: u8) -> Option<usize> {
         match inst {
             CREATE_CONTEXT | THROW | LEAVE_TRY | CATCH | FINALLY | POP_SCOPE | PUSH_SCOPE
-            | POP_ENV => Some(1),
+            | SET_OUTER_ENV | POP_ENV => Some(1),
             CONSTRUCT | CREATE_OBJECT | PUSH_CONST | PUSH_INT32 | CREATE_ARRAY | JMP_IF_FALSE
             | RETURN_TRY | DECL_VAR | LOOP_START | JMP | SET_VALUE | GET_VALUE | CALL
             | CALL_METHOD | PUSH_ENV | DECL_LET | DECL_CONST => Some(5),

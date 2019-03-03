@@ -89,6 +89,9 @@ impl<'a> CodeGenerator<'a> {
             NodeBase::FunctionDecl(ref name, ref params, ref body) => {
                 self.visit_function_decl(name, params, &*body)?
             }
+            NodeBase::FunctionExpr(ref name, ref params, ref body) => {
+                self.visit_function_expr(name, params, &*body, iseq, use_value)?
+            }
             NodeBase::VarDecl(ref name, ref init, ref kind) => {
                 self.visit_var_decl(name, init, kind, iseq)?
             }
@@ -231,6 +234,25 @@ impl<'a> CodeGenerator<'a> {
             .unwrap()
             .func_decls
             .push(func);
+        Ok(())
+    }
+
+    fn visit_function_expr(
+        &mut self,
+        name: &Option<String>,
+        params: &FormalParameters,
+        body: &Node,
+        iseq: &mut ByteCode,
+        use_value: bool,
+    ) -> CodeGenResult {
+        if !use_value {
+            return Ok(());
+        }
+
+        let func = self.visit_function(name.clone(), params, body)?;
+        self.bytecode_generator.append_push_const(func, iseq);
+        self.bytecode_generator.append_set_outer_env(iseq);
+
         Ok(())
     }
 

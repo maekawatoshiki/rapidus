@@ -1,3 +1,4 @@
+use super::super::frame::LexicalEnvironmentRef;
 pub use super::function::*;
 pub use super::object::*;
 pub use super::prototype::*;
@@ -167,6 +168,7 @@ impl Value2 {
                     lex_names,
                     func_decls,
                     code,
+                    outer:None
                 }),
             }),
         }))
@@ -211,12 +213,34 @@ impl Value2 {
         );
     }
 
-    pub fn as_function(&self) -> FunctionObjectInfo {
+    pub fn set_function_outer_environment(&mut self, env: LexicalEnvironmentRef) {
+        match self {
+            Value2::Object(obj) => {
+                let obj = unsafe { &mut **obj };
+                match obj.kind {
+                    ObjectKind2::Function(ref mut info) => info.set_outer_environment(env),
+                    _ => panic!(),
+                }
+            }
+            _ => panic!(),
+        }
+    }
+
+    pub fn copy_object(&self, memory_allocator: &mut gc::MemoryAllocator) -> Value2 {
+        match self {
+            Value2::Object(obj) => {
+                Value2::Object(memory_allocator.alloc(unsafe { &**obj }.clone()))
+            }
+            e => *e,
+        }
+    }
+
+    pub fn as_function(&self) -> &FunctionObjectInfo {
         match self {
             Value2::Object(obj) => {
                 let obj = unsafe { &**obj };
                 match obj.kind {
-                    ObjectKind2::Function(ref info) => return info.clone(),
+                    ObjectKind2::Function(ref info) => return info,
                     _ => panic!(),
                 }
             }

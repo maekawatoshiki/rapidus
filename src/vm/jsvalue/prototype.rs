@@ -26,6 +26,7 @@ impl ObjectPrototypes {
                     lex_names: vec![],
                     func_decls: vec![],
                     code: vec![],
+                    outer: None,
                 }),
             }),
             property: make_property_map!(__proto__: object_prototype),

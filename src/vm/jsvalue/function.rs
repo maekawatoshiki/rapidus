@@ -1,3 +1,4 @@
+use super::super::frame::LexicalEnvironmentRef;
 use super::value::*;
 use builtin::BuiltinFuncTy2;
 use bytecode_gen::ByteCode;
@@ -22,12 +23,22 @@ pub struct UserFunctionInfo {
     pub lex_names: Vec<String>,
     pub func_decls: Vec<Value2>,
     pub code: ByteCode,
+    pub outer: Option<LexicalEnvironmentRef>,
 }
 
 #[derive(Clone, Debug)]
 pub struct FunctionParameter {
     pub name: String,
     pub is_rest_param: bool,
+}
+
+impl FunctionObjectInfo {
+    pub fn set_outer_environment(&mut self, outer_env: LexicalEnvironmentRef) {
+        match self.kind {
+            FunctionObjectKind::User(UserFunctionInfo { ref mut outer, .. }) => *outer = Some(outer_env),
+            _ => {}
+        }
+    }
 }
 
 impl ::std::fmt::Debug for FunctionObjectKind {
