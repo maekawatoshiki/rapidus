@@ -36,6 +36,23 @@ pub struct VM2<'a> {
     pub saved_frame: Vec<frame::Frame>,
 }
 
+macro_rules! memory_allocator {
+    ($vm:ident) => {{
+        &mut $vm.code_generator.memory_allocator
+    }};
+}
+
+macro_rules! constant_table {
+    ($vm:ident) => {{
+        &$vm.code_generator.bytecode_generator.constant_table
+    }};
+}
+macro_rules! object_prototypes {
+    ($vm:ident) => {{
+        &$vm.code_generator.object_prototypes
+    }};
+}
+
 impl<'a> VM2<'a> {
     pub fn new(
         global_environment: frame::LexicalEnvironmentRef,
@@ -53,7 +70,7 @@ impl<'a> VM2<'a> {
 
     pub fn run_global(&mut self, global_info: codegen::FunctionInfo, iseq: ByteCode) -> VMResult {
         let global_env_ref = self.global_environment;
-        let var_env = self.memory_allocator().alloc(frame::LexicalEnvironment {
+        let var_env = memory_allocator!(self).alloc(frame::LexicalEnvironment {
             record: frame::EnvironmentRecord::Declarative({
                 let mut record = FxHashMap::default();
                 for name in global_info.var_names {
@@ -67,7 +84,7 @@ impl<'a> VM2<'a> {
             }),
             outer: Some(global_env_ref),
         });
-        let lex_env = self.memory_allocator().alloc(frame::LexicalEnvironment {
+        let lex_env = memory_allocator!(self).alloc(frame::LexicalEnvironment {
             record: frame::EnvironmentRecord::Declarative({
                 let mut record = FxHashMap::default();
                 for name in global_info.lex_names {
@@ -126,7 +143,7 @@ impl<'a> VM2<'a> {
                 VMInst::PUSH_CONST => {
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, id, usize);
-                    let val = *self.constant_table().get(id).as_value();
+                    let val = *constant_table!(self).get(id).as_value();
                     self.stack.push(val.into());
                 }
                 VMInst::GET_MEMBER => {
@@ -139,7 +156,7 @@ impl<'a> VM2<'a> {
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, name_id, usize);
                     let val = self.stack.pop().unwrap();
-                    let name = self.constant_table().get(name_id).as_string();
+                    let name = constant_table!(self).get(name_id).as_string();
                     cur_frame.lex_env().set_value(name.clone(), val.into())?
                 }
                 VMInst::GET_VALUE => {
@@ -147,7 +164,7 @@ impl<'a> VM2<'a> {
                     read_int32!(cur_frame.bytecode, cur_frame.pc, name_id, usize);
                     let val = cur_frame
                         .lex_env()
-                        .get_value(self.constant_table().get(name_id).as_string())?;
+                        .get_value(constant_table!(self).get(name_id).as_string())?;
                     self.stack.push(val.into());
                 }
                 VMInst::CALL => {
@@ -176,6 +193,11 @@ impl<'a> VM2<'a> {
                         &mut cur_frame,
                     )?;
                 }
+                VMInst::CREATE_OBJECT => {
+                    cur_frame.pc += 1;
+                    read_int32!(cur_frame.bytecode, cur_frame.pc, len, usize);
+                    self.create_object(len)?;
+                }
                 VMInst::RETURN => {
                     cur_frame.pc += 1;
                     let ret_val = self.stack.pop().unwrap();
@@ -187,7 +209,7 @@ impl<'a> VM2<'a> {
                 VMInst::PUSH_ENV => {
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, id, usize);
-                    let names = self.constant_table().get(id).as_lex_env_info().clone();
+                    let names = constant_table!(self).get(id).as_lex_env_info().clone();
                     self.push_env(names, &mut cur_frame)?;
                 }
                 VMInst::POP_ENV => {
@@ -225,7 +247,7 @@ impl<'a> VM2<'a> {
             record.insert(name, Value2::uninitialized());
         }
 
-        let lex_env = self.memory_allocator().alloc(frame::LexicalEnvironment {
+        let lex_env = memory_allocator!(self).alloc(frame::LexicalEnvironment {
             record: frame::EnvironmentRecord::Declarative(record),
             outer: Some(cur_frame.execution_context.lexical_environment),
         });
@@ -236,6 +258,33 @@ impl<'a> VM2<'a> {
             .push(cur_frame.execution_context.lexical_environment);
         cur_frame.execution_context.lexical_environment = lex_env;
 
+        Ok(())
+    }
+
+    fn create_object(&mut self, len: usize) -> VMResult {
+        let mut properties = FxHashMap::default();
+        for _ in 0..len {
+            let prop: Value2 = self.stack.pop().unwrap().into();
+            let name = prop.to_string();
+            let val: Value2 = self.stack.pop().unwrap().into();
+            properties.insert(
+                name,
+                Property2 {
+                    val,
+                    // TODO
+                    writable: true,
+                    enumerable: true,
+                    configurable: true,
+                },
+            );
+        }
+
+        let obj = Value2::object(
+            memory_allocator!(self),
+            object_prototypes!(self),
+            properties,
+        );
+        self.stack.push(obj.into());
         Ok(())
     }
 
@@ -273,7 +322,7 @@ impl<'a> VM2<'a> {
             cur_frame
         });
 
-        let var_env = self.memory_allocator().alloc(frame::LexicalEnvironment {
+        let var_env = memory_allocator!(self).alloc(frame::LexicalEnvironment {
             record: frame::EnvironmentRecord::Declarative({
                 let mut record = FxHashMap::default();
 
@@ -295,7 +344,7 @@ impl<'a> VM2<'a> {
             outer: Some(cur_frame.execution_context.lexical_environment),
         });
 
-        let lex_env = self.memory_allocator().alloc(frame::LexicalEnvironment {
+        let lex_env = memory_allocator!(self).alloc(frame::LexicalEnvironment {
             record: frame::EnvironmentRecord::Declarative({
                 let mut record = FxHashMap::default();
                 for name in user_func.lex_names {

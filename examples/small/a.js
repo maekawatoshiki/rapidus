@@ -1,4 +1,5 @@
-console.log(Object.name);
-console.log(Object.__proto__);
-console.log(123)
-console.log("hello", "world!!")
+function sum () { console.log(this.x + this.y) }
+var obj = {
+  x: 1, y: 2, sum: sum 
+};
+obj.sum()

@@ -83,6 +83,9 @@ impl<'a> CodeGenerator<'a> {
             NodeBase::Block(ref node_list) => {
                 self.visit_block_statement(node_list, iseq, use_value)?
             }
+            NodeBase::If(ref cond, ref then, ref else_) => {
+                self.visit_if(&*cond, &*then, &*else_, iseq)?
+            }
             NodeBase::FunctionDecl(ref name, ref params, ref body) => {
                 self.visit_function_decl(name, params, &*body)?
             }
@@ -101,6 +104,7 @@ impl<'a> CodeGenerator<'a> {
             NodeBase::Call(ref callee, ref args) => {
                 self.visit_call(&*callee, args, iseq, use_value)?
             }
+            NodeBase::Object(ref properties) => self.visit_object_literal(properties, iseq)?,
             NodeBase::Identifier(ref name) => {
                 if use_value {
                     self.bytecode_generator.append_get_value(name, iseq)
@@ -112,8 +116,14 @@ impl<'a> CodeGenerator<'a> {
                         .append_push_const(Value2::string(self.memory_allocator, s.clone()), iseq)
                 }
             }
+            NodeBase::This => {
+                if use_value {
+                    self.bytecode_generator
+                        .append_get_value(&"this".to_string(), iseq)
+                }
+            }
             NodeBase::Number(n) => self.bytecode_generator.append_push_number(n, iseq),
-            _ => unimplemented!(),
+            ref e => unimplemented!("{:?}", e),
         }
 
         Ok(())
@@ -162,6 +172,48 @@ impl<'a> CodeGenerator<'a> {
         };
 
         self.bytecode_generator.append_pop_env(iseq);
+
+        Ok(())
+    }
+
+    fn visit_if(
+        &mut self,
+        cond: &Node,
+        then: &Node,
+        else_: &Node,
+        iseq: &mut ByteCode,
+    ) -> CodeGenResult {
+        self.visit(cond, iseq, true)?;
+
+        let cond_pos = iseq.len() as isize;
+        self.bytecode_generator.append_jmp_if_false(0, iseq);
+
+        self.visit(then, iseq, false)?;
+
+        if else_.base == NodeBase::Nope {
+            let pos = iseq.len() as isize;
+            self.bytecode_generator.replace_int32(
+                (pos - cond_pos) as i32 - 5,
+                &mut iseq[cond_pos as usize + 1..cond_pos as usize + 5],
+            );
+        } else {
+            let then_end_pos = iseq.len() as isize;
+            self.bytecode_generator.append_jmp(0, iseq);
+
+            let pos = iseq.len() as isize;
+            self.bytecode_generator.replace_int32(
+                (pos - cond_pos) as i32 - 5,
+                &mut iseq[cond_pos as usize + 1..cond_pos as usize + 5],
+            );
+
+            self.visit(else_, iseq, false)?;
+
+            let pos = iseq.len() as isize;
+            self.bytecode_generator.replace_int32(
+                (pos - then_end_pos) as i32 - 5,
+                &mut iseq[then_end_pos as usize + 1..then_end_pos as usize + 5],
+            );
+        }
 
         Ok(())
     }
@@ -373,6 +425,36 @@ impl<'a> CodeGenerator<'a> {
         if !use_value {
             self.bytecode_generator.append_pop(iseq);
         }
+
+        Ok(())
+    }
+
+    fn visit_object_literal(
+        &mut self,
+        properties: &Vec<PropertyDefinition>,
+        iseq: &mut ByteCode,
+    ) -> CodeGenResult {
+        for property in properties {
+            match property {
+                PropertyDefinition::IdentifierReference(name) => {
+                    self.bytecode_generator.append_get_value(name, iseq);
+                    self.bytecode_generator.append_push_const(
+                        Value2::string(self.memory_allocator, name.clone()),
+                        iseq,
+                    );
+                }
+                PropertyDefinition::Property(name, node) => {
+                    self.visit(&node, iseq, true)?;
+                    self.bytecode_generator.append_push_const(
+                        Value2::string(self.memory_allocator, name.clone()),
+                        iseq,
+                    );
+                }
+            }
+        }
+
+        self.bytecode_generator
+            .append_create_object(properties.len() as usize, iseq);
 
         Ok(())
     }
