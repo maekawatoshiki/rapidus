@@ -106,6 +106,12 @@ impl<'a> CodeGenerator<'a> {
                     self.bytecode_generator.append_get_value(name, iseq)
                 }
             }
+            NodeBase::String(ref s) => {
+                if use_value {
+                    self.bytecode_generator
+                        .append_push_const(Value2::string(self.memory_allocator, s.clone()), iseq)
+                }
+            }
             NodeBase::Number(n) => self.bytecode_generator.append_push_number(n, iseq),
             _ => unimplemented!(),
         }
