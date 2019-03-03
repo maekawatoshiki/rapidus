@@ -135,6 +135,24 @@ impl<'a> VM2<'a> {
                     let lhs: Value2 = self.stack.pop().unwrap().into();
                     self.stack.push(lhs.add(rhs).into());
                 }
+                VMInst::SUB => {
+                    cur_frame.pc += 1;
+                    let rhs: Value2 = self.stack.pop().unwrap().into();
+                    let lhs: Value2 = self.stack.pop().unwrap().into();
+                    self.stack.push(lhs.sub(rhs).into());
+                }
+                VMInst::MUL => {
+                    cur_frame.pc += 1;
+                    let rhs: Value2 = self.stack.pop().unwrap().into();
+                    let lhs: Value2 = self.stack.pop().unwrap().into();
+                    self.stack.push(lhs.mul(rhs).into());
+                }
+                VMInst::EQ => {
+                    cur_frame.pc += 1;
+                    let rhs: Value2 = self.stack.pop().unwrap().into();
+                    let lhs: Value2 = self.stack.pop().unwrap().into();
+                    self.stack.push(lhs.eq(rhs).into());
+                }
                 VMInst::PUSH_INT8 => {
                     cur_frame.pc += 1;
                     read_int8!(cur_frame.bytecode, cur_frame.pc, num, f64);
@@ -232,6 +250,20 @@ impl<'a> VM2<'a> {
                 VMInst::PUSH_UNDEFINED => {
                     cur_frame.pc += 1;
                     self.stack.push(Value2::undefined().into());
+                }
+                VMInst::JMP_IF_FALSE => {
+                    cur_frame.pc += 1;
+                    read_int32!(cur_frame.bytecode, cur_frame.pc, dst, i32);
+                    let cond_boxed = self.stack.pop().unwrap();
+                    let cond: Value2 = cond_boxed.into();
+                    if !cond.to_boolean() {
+                        cur_frame.pc = (cur_frame.pc as isize + dst as isize) as usize;
+                    }
+                }
+                VMInst::JMP => {
+                    cur_frame.pc += 1;
+                    read_int32!(cur_frame.bytecode, cur_frame.pc, dst, i32);
+                    cur_frame.pc = (cur_frame.pc as isize + dst as isize) as usize;
                 }
                 VMInst::END => break,
                 e => unimplemented!("code: {}", e),

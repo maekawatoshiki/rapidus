@@ -104,6 +104,7 @@ impl<'a> CodeGenerator<'a> {
             NodeBase::Call(ref callee, ref args) => {
                 self.visit_call(&*callee, args, iseq, use_value)?
             }
+            NodeBase::Return(ref val) => self.visit_return(val, iseq)?,
             NodeBase::Object(ref properties) => self.visit_object_literal(properties, iseq)?,
             NodeBase::Identifier(ref name) => {
                 if use_value {
@@ -425,6 +426,18 @@ impl<'a> CodeGenerator<'a> {
         if !use_value {
             self.bytecode_generator.append_pop(iseq);
         }
+
+        Ok(())
+    }
+
+    fn visit_return(&mut self, val: &Option<Box<Node>>, iseq: &mut ByteCode) -> CodeGenResult {
+        if let Some(val) = val {
+            self.visit(val, iseq, true)?
+        } else {
+            self.bytecode_generator.append_push_undefined(iseq);
+        }
+
+        self.bytecode_generator.append_return(iseq);
 
         Ok(())
     }

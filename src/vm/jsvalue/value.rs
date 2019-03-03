@@ -190,6 +190,15 @@ impl Value2 {
         }
     }
 
+    pub fn to_boolean(&self) -> bool {
+        match self {
+            Value2::Bool(0) => false,
+            Value2::Bool(1) => true,
+            // TODO
+            _ => false,
+        }
+    }
+
     pub fn set_constructor(&self, val: Value2) {
         self.get_object_info().property.insert(
             "constructor".to_string(),
@@ -224,11 +233,32 @@ impl Value2 {
 }
 
 impl Value2 {
-    // TODO:
-    // https://www.ecma-international.org/ecma-262/6.0/#sec-addition-operator-plus-runtime-semantics-evaluation
+    // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-addition-operator-plus-runtime-semantics-evaluation
     pub fn add(self, val: Value2) -> Self {
         match (self, val) {
             (Value2::Number(x), Value2::Number(y)) => Value2::Number(x + y),
+            _ => Value2::undefined(),
+        }
+    }
+
+    // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-subtraction-operator-minus-runtime-semantics-evaluation
+    pub fn sub(self, val: Value2) -> Self {
+        match (self, val) {
+            (Value2::Number(x), Value2::Number(y)) => Value2::Number(x - y),
+            _ => Value2::undefined(),
+        }
+    }
+
+    pub fn mul(self, val: Value2) -> Self {
+        match (self, val) {
+            (Value2::Number(x), Value2::Number(y)) => Value2::Number(x * y),
+            _ => Value2::undefined(),
+        }
+    }
+
+    pub fn eq(self, val: Value2) -> Self {
+        match (self, val) {
+            (Value2::Number(x), Value2::Number(y)) => Value2::Bool(if x == y { 1 } else { 0 }),
             _ => Value2::undefined(),
         }
     }
