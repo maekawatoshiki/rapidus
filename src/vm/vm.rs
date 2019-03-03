@@ -158,7 +158,23 @@ impl<'a> VM2<'a> {
                     for _ in 0..argc {
                         args.push(self.stack.pop().unwrap().into());
                     }
-                    self.call_function(callee, args, &mut cur_frame)?;
+                    self.call_function(callee, args, None, &mut cur_frame)?;
+                }
+                VMInst::CALL_PROP => {
+                    cur_frame.pc += 1;
+                    read_int32!(cur_frame.bytecode, cur_frame.pc, argc, usize);
+                    let parent: Value2 = self.stack.pop().unwrap().into();
+                    let prop: Value2 = self.stack.pop().unwrap().into();
+                    let mut args: Vec<Value2> = vec![];
+                    for _ in 0..argc {
+                        args.push(self.stack.pop().unwrap().into());
+                    }
+                    self.call_function(
+                        parent.get_property(prop),
+                        args,
+                        Some(parent),
+                        &mut cur_frame,
+                    )?;
                 }
                 VMInst::RETURN => {
                     cur_frame.pc += 1;
@@ -227,13 +243,14 @@ impl<'a> VM2<'a> {
         &mut self,
         callee: Value2,
         args: Vec<Value2>,
+        this: Option<Value2>,
         cur_frame: &mut frame::Frame,
     ) -> VMResult {
         let info = callee.as_function();
         match info.kind {
             FunctionObjectKind::Builtin(func) => func(self, &args, cur_frame),
             FunctionObjectKind::User(user_func) => {
-                self.call_user_function(user_func, args, cur_frame)
+                self.call_user_function(user_func, args, this, cur_frame)
             }
         }
     }
@@ -242,6 +259,7 @@ impl<'a> VM2<'a> {
         &mut self,
         user_func: UserFunctionInfo,
         args: Vec<Value2>,
+        this: Option<Value2>,
         cur_frame: &mut frame::Frame,
     ) -> VMResult {
         // bytecode_gen::show2(
@@ -258,13 +276,20 @@ impl<'a> VM2<'a> {
         let var_env = self.memory_allocator().alloc(frame::LexicalEnvironment {
             record: frame::EnvironmentRecord::Declarative({
                 let mut record = FxHashMap::default();
+
                 for name in user_func.var_names {
                     record.insert(name, Value2::undefined());
                 }
+
                 // TODO: rest parameter
                 for (FunctionParameter { name, .. }, arg) in user_func.params.iter().zip(args) {
                     record.insert(name.clone(), arg);
                 }
+
+                if let Some(this) = this {
+                    record.insert("this".to_string(), this);
+                }
+
                 record
             }),
             outer: Some(cur_frame.execution_context.lexical_environment),

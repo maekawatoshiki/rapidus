@@ -236,12 +236,12 @@ impl<'a> CodeGenerator<'a> {
             }
         }
 
-        let mut is_initialized = false;
+        // let mut is_initialized = false;
 
         if let &Some(ref init) = init {
             self.visit(&*init, iseq, true)?;
             self.bytecode_generator.append_set_value(name, iseq);
-            is_initialized = true;
+            // is_initialized = true;
         }
 
         match kind {
@@ -348,9 +348,21 @@ impl<'a> CodeGenerator<'a> {
             self.visit(arg, iseq, true)?
         }
 
-        self.visit(callee, iseq, true)?;
-
-        self.bytecode_generator.append_call(args.len() as u32, iseq);
+        match callee.base {
+            NodeBase::Member(ref parent, ref property_name) => {
+                self.bytecode_generator.append_push_const(
+                    Value2::string(self.memory_allocator, property_name.clone()),
+                    iseq,
+                );
+                self.visit(&*parent, iseq, true)?;
+                self.bytecode_generator
+                    .append_call_prop(args.len() as u32, iseq);
+            }
+            _ => {
+                self.visit(callee, iseq, true)?;
+                self.bytecode_generator.append_call(args.len() as u32, iseq);
+            }
+        }
 
         if !use_value {
             self.bytecode_generator.append_pop(iseq);

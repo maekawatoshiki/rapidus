@@ -4,6 +4,7 @@ use bytecode_gen::ByteCode;
 use gc;
 use rustc_hash::FxHashMap;
 use vm::error::RuntimeError;
+use vm::jsvalue::object::{ObjectInfo, ObjectKind2, Property2};
 use vm::jsvalue::prototype::ObjectPrototypes;
 use vm::jsvalue::value::Value2;
 use vm::vm::VMResult;
@@ -101,11 +102,20 @@ impl LexicalEnvironment {
     ) -> Self {
         use builtin::builtin_log;
         use builtins;
+
+        let log = Value2::builtin_function(
+            memory_allocator,
+            object_prototypes,
+            "log".to_string(),
+            builtin_log,
+        );
         LexicalEnvironment {
-            // TODO: 'log' for the time being
             record: EnvironmentRecord::Global(make_global_env!(
-                log: Value2::builtin_function(memory_allocator, object_prototypes, "log".to_string(), builtin_log),
-                Object: builtins::object::object(memory_allocator,object_prototypes)
+                console:
+                    make_normal_object!(memory_allocator,
+                        log => true, false, true: log
+                    ),
+                Object: builtins::object::object(memory_allocator, object_prototypes)
             )),
             outer: None,
         }

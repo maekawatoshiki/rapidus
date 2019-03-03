@@ -187,6 +187,11 @@ impl<'a> ByteCodeGenerator<'a> {
         self.append_int32(argc as i32, iseq);
     }
 
+    pub fn append_call_prop(&self, argc: u32, iseq: &mut ByteCode) {
+        iseq.push(VMInst::CALL_PROP);
+        self.append_int32(argc as i32, iseq);
+    }
+
     pub fn append_jmp(&self, dst: i32, iseq: &mut ByteCode) {
         iseq.push(VMInst::JMP);
         self.append_int32(dst, iseq);
@@ -752,6 +757,10 @@ pub fn show_inst2(code: &ByteCode, i: usize, const_table: &constant::ConstantTab
                 let int32 = read_int32(code, i + 1);
                 format!("Call {}", int32)
             }
+            VMInst::CALL_PROP => {
+                let int32 = read_int32(code, i + 1);
+                format!("CallProp {}", int32)
+            }
             VMInst::RETURN => format!("Return"),
             VMInst::DOUBLE => format!("Double"),
             VMInst::POP => format!("Pop"),
@@ -1010,6 +1019,7 @@ pub mod VMInst {
     pub const JMP_UNWIND: u8 = 0x3e;
     pub const PUSH_ENV: u8 = 0x3f;
     pub const POP_ENV: u8 = 0x40;
+    pub const CALL_PROP: u8 = 0x41;
 
     pub fn get_inst_size(inst: u8) -> Option<usize> {
         match inst {
@@ -1017,7 +1027,7 @@ pub mod VMInst {
             | POP_ENV => Some(1),
             CONSTRUCT | CREATE_OBJECT | PUSH_CONST | PUSH_INT32 | CREATE_ARRAY | JMP_IF_FALSE
             | RETURN_TRY | DECL_VAR | LOOP_START | JMP | SET_VALUE | GET_VALUE | CALL
-            | PUSH_ENV | DECL_LET | DECL_CONST => Some(5),
+            | CALL_PROP | PUSH_ENV | DECL_LET | DECL_CONST => Some(5),
             PUSH_INT8 => Some(2),
             PUSH_FALSE | END | PUSH_TRUE | PUSH_THIS | ADD | SUB | MUL | DIV | REM | LT
             | PUSH_ARGUMENTS | NEG | POSI | GT | LE | GE | EQ | NE | GET_MEMBER | RETURN | SNE
