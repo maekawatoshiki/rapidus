@@ -229,11 +229,8 @@ impl<'a> CodeGenerator<'a> {
         body: &Node,
     ) -> CodeGenResult {
         let func = self.visit_function(Some(name.clone()), params, body)?;
-        self.function_stack
-            .last_mut()
-            .unwrap()
-            .func_decls
-            .push(func);
+        self.current_function().var_names.push(name.clone());
+        self.current_function().func_decls.push(func);
         Ok(())
     }
 

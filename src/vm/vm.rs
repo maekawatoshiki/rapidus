@@ -96,7 +96,7 @@ impl<'a> VM2<'a> {
         for val in global_info.func_decls {
             let mut val = val.copy_object(memory_allocator!(self));
             let name = val.as_function().name.clone().unwrap();
-            val.set_function_outer_environment(global_env_ref);
+            val.set_function_outer_environment(lex_env);
             unsafe { &mut *lex_env }.set_value(name, val)?;
         }
 
