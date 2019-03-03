@@ -23,3 +23,11 @@ console.log(counter1())
 console.log(counter2())
 console.log(counter2())
 console.log(counter2())
+
+function f() {
+  function g() {
+    console.log(obj)
+  }
+  g()
+}
+f()

@@ -96,7 +96,13 @@ fn main() {
         &object_prototypes,
     );
     let mut iseq = vec![];
-    let global_info = vm.code_generator.compile(&node, &mut iseq, false).unwrap();
+    let global_info = match vm.code_generator.compile(&node, &mut iseq, false) {
+        Ok(ok) => ok,
+        Err(vm::codegen::Error { msg, token_pos, .. }) => {
+            parser.show_error_at(token_pos, msg.as_str());
+            return;
+        }
+    };
 
     println!("New CodeGenerator generated:");
     bytecode_gen::show2(&iseq, vm.code_generator.bytecode_generator.constant_table);

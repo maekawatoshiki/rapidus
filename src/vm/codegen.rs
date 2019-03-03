@@ -1,8 +1,6 @@
 use bytecode_gen::{ByteCode, ByteCodeGenerator};
 use gc::MemoryAllocator;
-use node::{
-    BinOp, FormalParameter, FormalParameters, Node, NodeBase, PropertyDefinition, UnaryOp, VarKind,
-};
+use node::{BinOp, FormalParameter, FormalParameters, Node, NodeBase, PropertyDefinition, VarKind};
 use vm::constant::ConstantTable;
 use vm::jsvalue::value::Value2;
 use vm::jsvalue::{prototype, value};
@@ -11,9 +9,9 @@ pub type CodeGenResult = Result<(), Error>;
 
 #[derive(Clone, Debug)]
 pub struct Error {
-    msg: String,
-    token_pos: usize,
-    kind: ErrorKind,
+    pub msg: String,
+    pub token_pos: usize,
+    pub kind: ErrorKind,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -93,7 +91,7 @@ impl<'a> CodeGenerator<'a> {
                 self.visit_function_expr(name, params, &*body, iseq, use_value)?
             }
             NodeBase::VarDecl(ref name, ref init, ref kind) => {
-                self.visit_var_decl(name, init, kind, iseq)?
+                self.visit_var_decl(node, name, init, kind, iseq)?
             }
             NodeBase::Member(ref parent, ref property) => {
                 self.visit_member(&*parent, property, iseq, use_value)?
@@ -300,18 +298,27 @@ impl<'a> CodeGenerator<'a> {
 
     pub fn visit_var_decl(
         &mut self,
+        node: &Node,
         name: &String,
         init: &Option<Box<Node>>,
         kind: &VarKind,
         iseq: &mut ByteCode,
     ) -> CodeGenResult {
-        fn let_decl(codegen: &mut CodeGenerator, name: String) {
+        fn let_decl(codegen: &mut CodeGenerator, node: &Node, name: String) -> CodeGenResult {
             let cur_func = codegen.function_stack.last_mut().unwrap();
             let cur_level = cur_func.level.last_mut().unwrap();
-            match cur_level {
-                Level::Function => cur_func.lex_names.push(name),
-                Level::Block { ref mut names } => names.push(name),
+            let names = match cur_level {
+                Level::Function => &mut cur_func.lex_names,
+                Level::Block { ref mut names } => names,
+            };
+            if names.iter().find(|declared| *declared == &name).is_some() {
+                return Err(Error::new_general_error(
+                    format!("Identifier '{}' has already been declared", name),
+                    node.pos,
+                ));
             }
+            names.push(name);
+            Ok(())
         }
 
         // let mut is_initialized = false;
@@ -330,7 +337,7 @@ impl<'a> CodeGenerator<'a> {
                     .var_names
                     .push(name.clone());
             }
-            VarKind::Let => let_decl(self, name.clone()),
+            VarKind::Let => let_decl(self, node, name.clone())?,
             _ => unimplemented!(),
         }
 

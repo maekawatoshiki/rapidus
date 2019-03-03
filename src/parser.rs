@@ -43,8 +43,8 @@ impl Parser {
     pub fn show_error_at(&self, pos: usize, msg: &str) {
         let (source_at_err_point, _pos, line) = self.lexer.get_code_around_err_point(pos);
         eprintln!(
-            "{}(line {}): {}\n{}",
-            Colour::Red.bold().paint("parse error"),
+            "{}: line {}: {}\n{}",
+            Colour::Red.bold().paint("SyntaxError"),
             line,
             msg,
             source_at_err_point,
