@@ -5,6 +5,7 @@ use super::{
     constant,
     error::*,
     frame,
+    jsvalue::function::DestinationKind,
     jsvalue::prototype::ObjectPrototypes,
     jsvalue::value::*,
     task::{Task, TaskManager, TimerKind},
@@ -105,7 +106,8 @@ impl<'a> VM2<'a> {
             lexical_environment: lex_env,
             saved_lexical_environment: vec![],
         };
-        let frame = frame::Frame::new(exec_ctx, iseq);
+
+        let frame = frame::Frame::new(exec_ctx, iseq, global_info.exception_table);
 
         self.run(frame)?;
 
@@ -132,8 +134,54 @@ macro_rules! read_int32 {
 
 impl<'a> VM2<'a> {
     pub fn run(&mut self, mut cur_frame: frame::Frame) -> VMResult {
+        #[derive(Debug, Clone)]
+        enum SubroutineKind {
+            Ordinary(usize),
+            Throw,
+            Return,
+        }
+
+        let mut subroutine_stack: Vec<SubroutineKind> = vec![];
+
+        macro_rules! exception {
+            () => {{
+                let mut exception_found = false;
+
+                'frame_search: loop {
+                    for exception in &cur_frame.exception_table {
+                        let in_range =
+                            exception.start <= cur_frame.pc && cur_frame.pc < exception.end;
+                        if !in_range {
+                            continue;
+                        }
+                        // TODO
+                        match exception.dst_kind {
+                            DestinationKind::Catch => cur_frame.pc = exception.end,
+                            DestinationKind::Finally => cur_frame.pc = exception.end,
+                        }
+                        exception_found = true;
+                        break 'frame_search;
+                    }
+
+                    if self.saved_frame.len() == 0 {
+                        break;
+                    }
+
+                    if !exception_found {
+                        self.unwind_frame_saving_stack_top(&mut cur_frame);
+                    }
+                }
+
+                if !exception_found {
+                    let val: Value2 = self.stack.pop().unwrap().into();
+                    return Err(RuntimeError::Exception2(val));
+                }
+            }};
+        }
+
         loop {
             match cur_frame.bytecode[cur_frame.pc] {
+                // TODO: Macro for bin ops?
                 VMInst::ADD => {
                     cur_frame.pc += 1;
                     let rhs: Value2 = self.stack.pop().unwrap().into();
@@ -230,14 +278,6 @@ impl<'a> VM2<'a> {
                     read_int32!(cur_frame.bytecode, cur_frame.pc, len, usize);
                     self.create_object(len)?;
                 }
-                VMInst::RETURN => {
-                    cur_frame.pc += 1;
-                    let ret_val = self.stack.pop().unwrap();
-                    let frame = self.saved_frame.pop().unwrap();
-                    unsafe { self.stack.set_len(frame.saved_stack_len) };
-                    cur_frame = frame;
-                    self.stack.push(ret_val);
-                }
                 VMInst::PUSH_ENV => {
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, id, usize);
@@ -279,12 +319,53 @@ impl<'a> VM2<'a> {
                     read_int32!(cur_frame.bytecode, cur_frame.pc, dst, i32);
                     cur_frame.pc = (cur_frame.pc as isize + dst as isize) as usize;
                 }
+                VMInst::JMP_SUB => {
+                    cur_frame.pc += 1;
+                    read_int32!(cur_frame.bytecode, cur_frame.pc, dst, i32);
+                    subroutine_stack.push(SubroutineKind::Ordinary(cur_frame.pc));
+                    cur_frame.pc = (cur_frame.pc as isize + dst as isize) as usize;
+                }
+                VMInst::RETURN_SUB => {
+                    cur_frame.pc += 1;
+                    match subroutine_stack.pop().unwrap() {
+                        SubroutineKind::Ordinary(pos) => cur_frame.pc = pos,
+                        SubroutineKind::Throw => exception!(),
+                        SubroutineKind::Return => {
+                            let ret_val = self.stack.pop().unwrap();
+                            self.unwind_frame_saving_stack_top(&mut cur_frame);
+                            self.stack.push(ret_val);
+                        }
+                    }
+                }
+                VMInst::THROW => {
+                    cur_frame.pc += 1;
+                    subroutine_stack.push(SubroutineKind::Throw);
+                    exception!();
+                }
+                VMInst::RETURN => {
+                    cur_frame.pc += 1;
+                    self.unwind_frame_saving_stack_top(&mut cur_frame);
+                }
                 VMInst::END => break,
                 e => unimplemented!("code: {}", e),
             }
         }
 
         Ok(())
+    }
+
+    pub fn unwind_frame_saving_stack_top(&mut self, cur_frame: &mut frame::Frame) {
+        let ret_val = self.stack.pop().unwrap();
+        let frame = self.saved_frame.pop().unwrap();
+        unsafe { self.stack.set_len(frame.saved_stack_len) };
+        *cur_frame = frame;
+        self.stack.push(ret_val);
+    }
+
+    pub fn unwind_frame(&mut self, cur_frame: &mut frame::Frame) {
+        let frame = self.saved_frame.pop().unwrap();
+        unsafe { self.stack.set_len(frame.saved_stack_len) };
+        *cur_frame = frame;
     }
 
     fn push_env(&mut self, lex_names: Vec<String>, cur_frame: &mut frame::Frame) -> VMResult {
@@ -414,7 +495,7 @@ impl<'a> VM2<'a> {
             saved_lexical_environment: vec![],
         };
 
-        let frame = frame::Frame::new(exec_ctx, user_func.code);
+        let frame = frame::Frame::new(exec_ctx, user_func.code, user_func.exception_table);
 
         *cur_frame = frame;
 

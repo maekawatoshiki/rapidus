@@ -112,6 +112,7 @@ impl<'a> CodeGenerator<'a> {
             NodeBase::Call(ref callee, ref args) => {
                 self.visit_call(&*callee, args, iseq, use_value)?
             }
+            NodeBase::Throw(ref val) => self.visit_throw(val, iseq)?,
             NodeBase::Return(ref val) => self.visit_return(val, iseq)?,
             NodeBase::Object(ref properties) => self.visit_object_literal(properties, iseq)?,
             NodeBase::Identifier(ref name) => {
@@ -132,6 +133,7 @@ impl<'a> CodeGenerator<'a> {
                 }
             }
             NodeBase::Number(n) => self.bytecode_generator.append_push_number(n, iseq),
+            NodeBase::Nope => {}
             ref e => unimplemented!("{:?}", e),
         }
 
@@ -235,24 +237,87 @@ impl<'a> CodeGenerator<'a> {
         finally: &Node,
         iseq: &mut ByteCode,
     ) -> Result<(), Error> {
-        let has_finally = finally.base == NodeBase::Nope;
+        // let has_finally = finally.base != NodeBase::Nope;
 
-        if has_finally {
-            self.current_function().level.push(Level::Finally);
-        }
+        // if has_finally {
+        self.current_function().level.push(Level::Finally);
+        // }
 
-        {
-            let try_start = iseq.len() as usize;
-            self.current_function().level.push(Level::TryOrCatch);
-            self.visit(try, iseq, false)?;
-            self.current_function().level.pop();
-            let try_end = iseq.len() as usize;
-            self.current_function().exception_table.push(Exception {
-                start: try_start,
-                end: try_end,
-                dst_kind: DestinationKind::Catch,
-            });
-        }
+        // Try block
+        let try_start = iseq.len() as usize;
+        self.current_function().level.push(Level::TryOrCatch);
+        self.visit(try, iseq, false)?;
+        assert_eq!(
+            self.current_function().level.pop().unwrap(),
+            Level::TryOrCatch
+        );
+        let finally_jmp_instr_pos1 = iseq.len() as usize;
+        // if has_finally {
+        self.bytecode_generator.append_jmp_sub(0, iseq);
+        // }
+        let leave_jmp_instr_pos1 = iseq.len() as usize;
+        self.bytecode_generator.append_jmp_sub(0, iseq);
+        let try_end = iseq.len() as usize;
+        self.current_function().exception_table.push(Exception {
+            start: try_start,
+            end: try_end,
+            dst_kind: DestinationKind::Catch,
+        });
+
+        // Catch block
+        let param_name = match param.base {
+            NodeBase::Identifier(ref name) => name,
+            _ => unreachable!(),
+        };
+        let catch_start = iseq.len() as usize;
+        self.current_function().level.push(Level::TryOrCatch);
+        self.current_function().level.push(Level::Block {
+            names: vec![param_name.clone()],
+        });
+        self.bytecode_generator.append_set_value(param_name, iseq);
+        self.visit(catch, iseq, false)?;
+        self.current_function().level.pop(); // Block
+        assert_eq!(
+            self.current_function().level.pop().unwrap(),
+            Level::TryOrCatch
+        );
+        let finally_jmp_instr_pos2 = iseq.len() as usize;
+        // if has_finally {
+        self.bytecode_generator.append_jmp_sub(0, iseq);
+        // }
+        let leave_jmp_instr_pos2 = iseq.len() as usize;
+        self.bytecode_generator.append_jmp_sub(0, iseq);
+        let catch_end = iseq.len() as usize;
+        self.current_function().exception_table.push(Exception {
+            start: catch_start,
+            end: catch_end,
+            dst_kind: DestinationKind::Finally,
+        });
+
+        // if has_finally {
+        let finally_start = iseq.len() as usize;
+        self.bytecode_generator.replace_int32(
+            (finally_start - finally_jmp_instr_pos1) as i32 - 5,
+            &mut iseq[finally_jmp_instr_pos1 + 1..finally_jmp_instr_pos1 + 5],
+        );
+        self.bytecode_generator.replace_int32(
+            (finally_start - finally_jmp_instr_pos2) as i32 - 5,
+            &mut iseq[finally_jmp_instr_pos2 + 1..finally_jmp_instr_pos2 + 5],
+        );
+        self.visit(finally, iseq, false)?;
+        assert_eq!(self.current_function().level.pop().unwrap(), Level::Finally);
+        self.bytecode_generator.append_return_sub(iseq);
+        // }
+
+        let finally_end = iseq.len() as usize;
+        self.bytecode_generator.replace_int32(
+            (finally_end - leave_jmp_instr_pos1) as i32 - 5,
+            &mut iseq[leave_jmp_instr_pos1 + 1..leave_jmp_instr_pos1 + 5],
+        );
+        self.bytecode_generator.replace_int32(
+            (finally_end - leave_jmp_instr_pos2) as i32 - 5,
+            &mut iseq[leave_jmp_instr_pos2 + 1..leave_jmp_instr_pos2 + 5],
+        );
 
         Ok(())
     }
@@ -492,6 +557,12 @@ impl<'a> CodeGenerator<'a> {
             self.bytecode_generator.append_pop(iseq);
         }
 
+        Ok(())
+    }
+
+    fn visit_throw(&mut self, val: &Node, iseq: &mut ByteCode) -> CodeGenResult {
+        self.visit(val, iseq, true)?;
+        self.bytecode_generator.append_throw(iseq);
         Ok(())
     }
 

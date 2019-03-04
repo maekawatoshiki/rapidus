@@ -251,6 +251,13 @@ impl Value2 {
         }
     }
 
+    pub fn as_number(&self) -> f64 {
+        match self {
+            Value2::Number(f) => *f,
+            _ => panic!(),
+        }
+    }
+
     pub fn get_object_info(&self) -> &mut ObjectInfo {
         match self {
             Value2::Object(obj) => unsafe { &mut **obj },

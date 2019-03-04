@@ -1,3 +1,27 @@
+function tcf() {
+  try {
+    try {
+      console.log("try");
+      throw 2
+    } catch (e) {
+      console.log("catch", e);
+      throw 3;
+    } finally {
+      console.log("finally")
+    }
+  } catch (e) {
+    console.log(e)
+    throw 4
+  }
+  console.log("leave try-catch-finally")
+}
+
+try {
+  console.log(tcf())
+} catch (e) {
+  console.log("catch", e)
+}
+
 var obj = {
   x: 1, y: 2, sum: function () { console.log(this.x + this.y) }
 };

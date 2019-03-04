@@ -4,6 +4,7 @@ use bytecode_gen::ByteCode;
 use gc;
 use rustc_hash::FxHashMap;
 use vm::error::RuntimeError;
+use vm::jsvalue::function::Exception;
 use vm::jsvalue::object::{ObjectInfo, ObjectKind2, Property2};
 use vm::jsvalue::prototype::ObjectPrototypes;
 use vm::jsvalue::value::Value2;
@@ -17,6 +18,7 @@ pub struct Frame {
     pub pc: usize,
     pub saved_stack_len: usize,
     pub bytecode: ByteCode,
+    pub exception_table: Vec<Exception>,
 }
 
 #[derive(Debug, Clone)]
@@ -41,12 +43,17 @@ pub enum EnvironmentRecord {
 }
 
 impl Frame {
-    pub fn new(execution_context: ExecutionContext, bytecode: ByteCode) -> Self {
+    pub fn new(
+        execution_context: ExecutionContext,
+        bytecode: ByteCode,
+        exception_table: Vec<Exception>,
+    ) -> Self {
         Frame {
             execution_context,
             pc: 0,
             saved_stack_len: 0,
             bytecode,
+            exception_table,
         }
     }
 

@@ -1034,7 +1034,8 @@ impl Parser {
         let try = self.read_block_statement()?;
         let is_catch = self
             .lexer
-            .next_if_skip_lineterminator(Kind::Keyword(Keyword::Catch))?;
+            .next_if_skip_lineterminator(Kind::Keyword(Keyword::Catch))
+            .unwrap_or(false);
         let pos_catch = self.lexer.get_current_pos();
         let (catch, param) = if is_catch {
             skip_symbol_or_error!(self.lexer, Symbol::OpeningParen);
@@ -1058,7 +1059,10 @@ impl Parser {
                 Node::new(NodeBase::Nope, pos_catch),
             )
         };
-        let is_finally = self.lexer.next_if(Kind::Keyword(Keyword::Finally));
+        let is_finally = self
+            .lexer
+            .next_if_skip_lineterminator(Kind::Keyword(Keyword::Finally))
+            .unwrap_or(false);
         let pos_finally = self.lexer.get_current_pos();
         let finally = if is_finally {
             skip_symbol_or_error!(self.lexer, Symbol::OpeningBrace);

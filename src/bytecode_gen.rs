@@ -202,6 +202,15 @@ impl<'a> ByteCodeGenerator<'a> {
         self.append_int32(dst, iseq);
     }
 
+    pub fn append_return_sub(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::RETURN_SUB);
+    }
+
+    pub fn append_jmp_sub(&self, dst: i32, iseq: &mut ByteCode) {
+        iseq.push(VMInst::JMP_SUB);
+        self.append_int32(dst, iseq);
+    }
+
     pub fn append_jmp_unwind(
         &self,
         dst: i32,
@@ -814,6 +823,11 @@ pub fn show_inst2(code: &ByteCode, i: usize, const_table: &constant::ConstantTab
             VMInst::POP_SCOPE => format!("PopScope"),
             VMInst::NOT => format!("BitwiseNot"),
             VMInst::SET_OUTER_ENV => format!("SetOuterEnv"),
+            VMInst::JMP_SUB => {
+                let int32 = read_int32(code, i + 1);
+                format!("JmpSub {:04x}", i as i32 + int32 + 5)
+            }
+            VMInst::RETURN_SUB => format!("ReturnSub"),
             _ => unreachable!("sorry. need to implement more opcodes"),
         }
     );
@@ -952,6 +966,11 @@ pub fn show_inst(code: &ByteCode, i: usize, const_table: &ConstantTable) {
             VMInst::PUSH_SCOPE => format!("PushScope"),
             VMInst::POP_SCOPE => format!("PopScope"),
             VMInst::NOT => format!("BitwiseNot"),
+            VMInst::JMP_SUB => {
+                let int32 = read_int32(code, i + 1);
+                format!("JmpSub {:04x}", i as i32 + int32 + 5)
+            }
+            VMInst::RETURN_SUB => format!("ReturnSub"),
             _ => unreachable!("sorry. need to implement more opcodes"),
         }
     );
@@ -1026,13 +1045,15 @@ pub mod VMInst {
     pub const POP_ENV: u8 = 0x40;
     pub const CALL_METHOD: u8 = 0x41;
     pub const SET_OUTER_ENV: u8 = 0x42;
+    pub const JMP_SUB: u8 = 0x43;
+    pub const RETURN_SUB: u8 = 0x44;
 
     pub fn get_inst_size(inst: u8) -> Option<usize> {
         match inst {
             CREATE_CONTEXT | THROW | LEAVE_TRY | CATCH | FINALLY | POP_SCOPE | PUSH_SCOPE
-            | SET_OUTER_ENV | POP_ENV => Some(1),
+            | RETURN_SUB | SET_OUTER_ENV | POP_ENV => Some(1),
             CONSTRUCT | CREATE_OBJECT | PUSH_CONST | PUSH_INT32 | CREATE_ARRAY | JMP_IF_FALSE
-            | RETURN_TRY | DECL_VAR | LOOP_START | JMP | SET_VALUE | GET_VALUE | CALL
+            | RETURN_TRY | DECL_VAR | LOOP_START | JMP | SET_VALUE | GET_VALUE | CALL | JMP_SUB
             | CALL_METHOD | PUSH_ENV | DECL_LET | DECL_CONST => Some(5),
             PUSH_INT8 => Some(2),
             PUSH_FALSE | END | PUSH_TRUE | PUSH_THIS | ADD | SUB | MUL | DIV | REM | LT
