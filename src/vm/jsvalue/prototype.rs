@@ -27,6 +27,7 @@ impl ObjectPrototypes {
                     func_decls: vec![],
                     code: vec![],
                     outer: None,
+                    exception_table: vec![],
                 }),
             }),
             property: make_property_map!(__proto__: object_prototype),

@@ -143,12 +143,14 @@ impl Value2 {
     pub fn function(
         memory_allocator: &mut gc::MemoryAllocator,
         object_prototypes: &ObjectPrototypes,
+        // TODO: Too many arguments, I think.
         name: Option<String>,
         params: Vec<FunctionParameter>,
         var_names: Vec<String>,
         lex_names: Vec<String>,
         func_decls: Vec<Value2>,
         code: ByteCode,
+        exception_table: Vec<Exception>,
     ) -> Self {
         let name_prop = Value2::string(memory_allocator, name.clone().unwrap_or("".to_string()));
         let prototype = make_normal_object!(memory_allocator);
@@ -168,7 +170,8 @@ impl Value2 {
                     lex_names,
                     func_decls,
                     code,
-                    outer:None
+                    exception_table,
+                    outer: None
                 }),
             }),
         }))

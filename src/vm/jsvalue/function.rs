@@ -23,6 +23,7 @@ pub struct UserFunctionInfo {
     pub lex_names: Vec<String>,
     pub func_decls: Vec<Value2>,
     pub code: ByteCode,
+    pub exception_table: Vec<Exception>,
     pub outer: Option<LexicalEnvironmentRef>,
 }
 
@@ -32,10 +33,27 @@ pub struct FunctionParameter {
     pub is_rest_param: bool,
 }
 
+#[derive(Clone, Debug)]
+pub struct Exception {
+    /// Throws may happen in bytecode's range of [start, end)
+    pub start: usize,
+    pub end: usize,
+    /// Kind of throw's destination
+    pub dst_kind: DestinationKind,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum DestinationKind {
+    Catch,
+    Finally,
+}
+
 impl FunctionObjectInfo {
     pub fn set_outer_environment(&mut self, outer_env: LexicalEnvironmentRef) {
         match self.kind {
-            FunctionObjectKind::User(UserFunctionInfo { ref mut outer, .. }) => *outer = Some(outer_env),
+            FunctionObjectKind::User(UserFunctionInfo { ref mut outer, .. }) => {
+                *outer = Some(outer_env)
+            }
             _ => {}
         }
     }

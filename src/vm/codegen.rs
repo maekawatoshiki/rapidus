@@ -2,6 +2,7 @@ use bytecode_gen::{ByteCode, ByteCodeGenerator};
 use gc::MemoryAllocator;
 use node::{BinOp, FormalParameter, FormalParameters, Node, NodeBase, PropertyDefinition, VarKind};
 use vm::constant::ConstantTable;
+use vm::jsvalue::function::{DestinationKind, Exception};
 use vm::jsvalue::value::Value2;
 use vm::jsvalue::{prototype, value};
 
@@ -36,12 +37,15 @@ pub struct FunctionInfo {
     pub lex_names: Vec<String>,
     pub func_decls: Vec<Value2>,
     pub level: Vec<Level>,
+    pub exception_table: Vec<Exception>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Level {
     Function,
     Block { names: Vec<String> },
+    TryOrCatch,
+    Finally,
 }
 
 impl<'a> CodeGenerator<'a> {
@@ -83,6 +87,9 @@ impl<'a> CodeGenerator<'a> {
             }
             NodeBase::If(ref cond, ref then, ref else_) => {
                 self.visit_if(&*cond, &*then, &*else_, iseq)?
+            }
+            NodeBase::Try(ref try, ref catch, ref param, ref finally) => {
+                self.visit_try(&*try, &*catch, &*param, &*finally, iseq)?
             }
             NodeBase::FunctionDecl(ref name, ref params, ref body) => {
                 self.visit_function_decl(name, params, &*body)?
@@ -220,6 +227,36 @@ impl<'a> CodeGenerator<'a> {
         Ok(())
     }
 
+    pub fn visit_try(
+        &mut self,
+        try: &Node,
+        catch: &Node,
+        param: &Node,
+        finally: &Node,
+        iseq: &mut ByteCode,
+    ) -> Result<(), Error> {
+        let has_finally = finally.base == NodeBase::Nope;
+
+        if has_finally {
+            self.current_function().level.push(Level::Finally);
+        }
+
+        {
+            let try_start = iseq.len() as usize;
+            self.current_function().level.push(Level::TryOrCatch);
+            self.visit(try, iseq, false)?;
+            self.current_function().level.pop();
+            let try_end = iseq.len() as usize;
+            self.current_function().exception_table.push(Exception {
+                start: try_start,
+                end: try_end,
+                dst_kind: DestinationKind::Catch,
+            });
+        }
+
+        Ok(())
+    }
+
     fn visit_function_decl(
         &mut self,
         name: &String,
@@ -293,6 +330,7 @@ impl<'a> CodeGenerator<'a> {
             function_info.lex_names,
             function_info.func_decls,
             func_iseq,
+            function_info.exception_table,
         ))
     }
 
@@ -310,6 +348,7 @@ impl<'a> CodeGenerator<'a> {
             let names = match cur_level {
                 Level::Function => &mut cur_func.lex_names,
                 Level::Block { ref mut names } => names,
+                _ => unreachable!(),
             };
             if names.iter().find(|declared| *declared == &name).is_some() {
                 return Err(Error::new_general_error(
@@ -547,7 +586,24 @@ impl FunctionInfo {
             func_decls: vec![],
             param_names: vec![],
             level: vec![Level::Function],
+            exception_table: vec![],
         }
+    }
+
+    pub fn in_try_or_catch(&self) -> bool {
+        self.level
+            .iter()
+            .rev()
+            .find(|level| *level == &Level::Finally)
+            .is_some()
+    }
+
+    pub fn in_finally(&self) -> bool {
+        self.level
+            .iter()
+            .rev()
+            .find(|level| *level == &Level::Finally)
+            .is_some()
     }
 }
 
