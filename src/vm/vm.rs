@@ -157,7 +157,10 @@ impl<'a> VM2<'a> {
                         // TODO
                         match exception.dst_kind {
                             DestinationKind::Catch => cur_frame.pc = exception.end,
-                            DestinationKind::Finally => cur_frame.pc = exception.end,
+                            DestinationKind::Finally => {
+                                subroutine_stack.push(SubroutineKind::Throw);
+                                cur_frame.pc = exception.end
+                            }
                         }
                         exception_found = true;
                         break 'frame_search;
@@ -339,7 +342,6 @@ impl<'a> VM2<'a> {
                 }
                 VMInst::THROW => {
                     cur_frame.pc += 1;
-                    subroutine_stack.push(SubroutineKind::Throw);
                     exception!();
                 }
                 VMInst::RETURN => {

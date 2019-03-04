@@ -237,6 +237,7 @@ impl<'a> CodeGenerator<'a> {
         finally: &Node,
         iseq: &mut ByteCode,
     ) -> Result<(), Error> {
+        let has_catch = catch.base != NodeBase::Nope;
         // let has_finally = finally.base != NodeBase::Nope;
 
         // if has_finally {
@@ -261,63 +262,78 @@ impl<'a> CodeGenerator<'a> {
         self.current_function().exception_table.push(Exception {
             start: try_start,
             end: try_end,
-            dst_kind: DestinationKind::Catch,
+            dst_kind: if has_catch {
+                DestinationKind::Catch
+            } else {
+                DestinationKind::Finally
+            },
         });
 
         // Catch block
         let param_name = match param.base {
-            NodeBase::Identifier(ref name) => name,
-            _ => unreachable!(),
+            NodeBase::Identifier(ref name) => name.clone(),
+            _ => "".to_string(),
         };
         let catch_start = iseq.len() as usize;
-        self.current_function().level.push(Level::TryOrCatch);
-        self.current_function().level.push(Level::Block {
-            names: vec![param_name.clone()],
-        });
-        self.bytecode_generator.append_set_value(param_name, iseq);
-        self.visit(catch, iseq, false)?;
-        self.current_function().level.pop(); // Block
-        assert_eq!(
-            self.current_function().level.pop().unwrap(),
-            Level::TryOrCatch
-        );
+        if has_catch {
+            self.current_function().level.push(Level::TryOrCatch);
+            self.current_function().level.push(Level::Block {
+                names: vec![param_name.clone()],
+            });
+        }
+        if has_catch {
+            self.bytecode_generator.append_set_value(&param_name, iseq);
+        }
+        if has_catch {
+            self.visit(catch, iseq, false)?;
+            self.current_function().level.pop(); // Block
+            assert_eq!(
+                self.current_function().level.pop().unwrap(),
+                Level::TryOrCatch
+            );
+        }
         let finally_jmp_instr_pos2 = iseq.len() as usize;
-        // if has_finally {
-        self.bytecode_generator.append_jmp_sub(0, iseq);
-        // }
+        if has_catch {
+            self.bytecode_generator.append_jmp_sub(0, iseq);
+        }
         let leave_jmp_instr_pos2 = iseq.len() as usize;
-        self.bytecode_generator.append_jmp_sub(0, iseq);
-        let catch_end = iseq.len() as usize;
-        self.current_function().exception_table.push(Exception {
-            start: catch_start,
-            end: catch_end,
-            dst_kind: DestinationKind::Finally,
-        });
+        if has_catch {
+            self.bytecode_generator.append_jmp_sub(0, iseq);
+            let catch_end = iseq.len() as usize;
+            self.current_function().exception_table.push(Exception {
+                start: catch_start,
+                end: catch_end,
+                dst_kind: DestinationKind::Finally,
+            });
+        }
 
-        // if has_finally {
+        // Finally block
         let finally_start = iseq.len() as usize;
         self.bytecode_generator.replace_int32(
             (finally_start - finally_jmp_instr_pos1) as i32 - 5,
             &mut iseq[finally_jmp_instr_pos1 + 1..finally_jmp_instr_pos1 + 5],
         );
-        self.bytecode_generator.replace_int32(
-            (finally_start - finally_jmp_instr_pos2) as i32 - 5,
-            &mut iseq[finally_jmp_instr_pos2 + 1..finally_jmp_instr_pos2 + 5],
-        );
+        if has_catch {
+            self.bytecode_generator.replace_int32(
+                (finally_start - finally_jmp_instr_pos2) as i32 - 5,
+                &mut iseq[finally_jmp_instr_pos2 + 1..finally_jmp_instr_pos2 + 5],
+            );
+        }
         self.visit(finally, iseq, false)?;
         assert_eq!(self.current_function().level.pop().unwrap(), Level::Finally);
         self.bytecode_generator.append_return_sub(iseq);
-        // }
 
         let finally_end = iseq.len() as usize;
         self.bytecode_generator.replace_int32(
             (finally_end - leave_jmp_instr_pos1) as i32 - 5,
             &mut iseq[leave_jmp_instr_pos1 + 1..leave_jmp_instr_pos1 + 5],
         );
-        self.bytecode_generator.replace_int32(
-            (finally_end - leave_jmp_instr_pos2) as i32 - 5,
-            &mut iseq[leave_jmp_instr_pos2 + 1..leave_jmp_instr_pos2 + 5],
-        );
+        if has_catch {
+            self.bytecode_generator.replace_int32(
+                (finally_end - leave_jmp_instr_pos2) as i32 - 5,
+                &mut iseq[leave_jmp_instr_pos2 + 1..leave_jmp_instr_pos2 + 5],
+            );
+        }
 
         Ok(())
     }
