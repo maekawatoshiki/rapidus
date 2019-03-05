@@ -328,6 +328,10 @@ impl<'a> VM2<'a> {
                     subroutine_stack.push(SubroutineKind::Ordinary(cur_frame.pc));
                     cur_frame.pc = (cur_frame.pc as isize + dst as isize) as usize;
                 }
+                // VMInst::RETURN_TRY => {
+                //     cur_frame.pc += 1;
+                //     exception!();
+                // }
                 VMInst::RETURN_SUB => {
                     cur_frame.pc += 1;
                     match subroutine_stack.pop().unwrap() {

@@ -44,13 +44,6 @@ impl ConstantTable {
     }
 
     pub fn add_lex_env_info(&mut self, names: Vec<String>) -> usize {
-        for (i, constant) in self.table.iter().enumerate() {
-            match constant {
-                Constant::LexicalEnvironmentInfo { names: names_ } if &names == names_ => return i,
-                _ => {}
-            }
-        }
-
         let id = self.table.len();
         self.table.push(Constant::LexicalEnvironmentInfo { names });
         id

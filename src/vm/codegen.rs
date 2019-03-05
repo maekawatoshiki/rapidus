@@ -238,14 +238,10 @@ impl<'a> CodeGenerator<'a> {
         iseq: &mut ByteCode,
     ) -> Result<(), Error> {
         let has_catch = catch.base != NodeBase::Nope;
-        // let has_finally = finally.base != NodeBase::Nope;
-
-        // if has_finally {
-        self.current_function().level.push(Level::Finally);
-        // }
 
         // Try block
         let try_start = iseq.len() as usize;
+
         self.current_function().level.push(Level::TryOrCatch);
         self.visit(try, iseq, false)?;
         assert_eq!(
@@ -253,9 +249,7 @@ impl<'a> CodeGenerator<'a> {
             Level::TryOrCatch
         );
         let finally_jmp_instr_pos1 = iseq.len() as usize;
-        // if has_finally {
         self.bytecode_generator.append_jmp_sub(0, iseq);
-        // }
         let leave_jmp_instr_pos1 = iseq.len() as usize;
         self.bytecode_generator.append_jmp_sub(0, iseq);
         let try_end = iseq.len() as usize;
@@ -277,20 +271,32 @@ impl<'a> CodeGenerator<'a> {
         let catch_start = iseq.len() as usize;
         if has_catch {
             self.current_function().level.push(Level::TryOrCatch);
+            let id = self
+                .bytecode_generator
+                .constant_table
+                .add_lex_env_info(vec![]);
+            self.bytecode_generator.append_push_env(id as u32, iseq);
             self.current_function().level.push(Level::Block {
                 names: vec![param_name.clone()],
             });
-        }
-        if has_catch {
             self.bytecode_generator.append_set_value(&param_name, iseq);
-        }
-        if has_catch {
             self.visit(catch, iseq, false)?;
-            self.current_function().level.pop(); // Block
+            let names = if let Level::Block { names } = self.current_function().level.pop().unwrap()
+            {
+                names
+            } else {
+                panic!()
+            };
+            self.bytecode_generator.append_pop_env(iseq);
             assert_eq!(
                 self.current_function().level.pop().unwrap(),
                 Level::TryOrCatch
             );
+            *self
+                .bytecode_generator
+                .constant_table
+                .get_mut(id)
+                .as_lex_env_info_mut() = names;
         }
         let finally_jmp_instr_pos2 = iseq.len() as usize;
         if has_catch {
@@ -309,26 +315,28 @@ impl<'a> CodeGenerator<'a> {
 
         // Finally block
         let finally_start = iseq.len() as usize;
-        self.bytecode_generator.replace_int32(
-            (finally_start - finally_jmp_instr_pos1) as i32 - 5,
-            &mut iseq[finally_jmp_instr_pos1 + 1..finally_jmp_instr_pos1 + 5],
-        );
-        if has_catch {
-            self.bytecode_generator.replace_int32(
-                (finally_start - finally_jmp_instr_pos2) as i32 - 5,
-                &mut iseq[finally_jmp_instr_pos2 + 1..finally_jmp_instr_pos2 + 5],
-            );
-        }
+
+        self.current_function().level.push(Level::Finally);
         self.visit(finally, iseq, false)?;
         assert_eq!(self.current_function().level.pop().unwrap(), Level::Finally);
         self.bytecode_generator.append_return_sub(iseq);
 
         let finally_end = iseq.len() as usize;
+
+        self.bytecode_generator.replace_int32(
+            (finally_start - finally_jmp_instr_pos1) as i32 - 5,
+            &mut iseq[finally_jmp_instr_pos1 + 1..finally_jmp_instr_pos1 + 5],
+        );
         self.bytecode_generator.replace_int32(
             (finally_end - leave_jmp_instr_pos1) as i32 - 5,
             &mut iseq[leave_jmp_instr_pos1 + 1..leave_jmp_instr_pos1 + 5],
         );
+
         if has_catch {
+            self.bytecode_generator.replace_int32(
+                (finally_start - finally_jmp_instr_pos2) as i32 - 5,
+                &mut iseq[finally_jmp_instr_pos2 + 1..finally_jmp_instr_pos2 + 5],
+            );
             self.bytecode_generator.replace_int32(
                 (finally_end - leave_jmp_instr_pos2) as i32 - 5,
                 &mut iseq[leave_jmp_instr_pos2 + 1..leave_jmp_instr_pos2 + 5],
@@ -577,6 +585,12 @@ impl<'a> CodeGenerator<'a> {
     }
 
     fn visit_throw(&mut self, val: &Node, iseq: &mut ByteCode) -> CodeGenResult {
+        if self.current_function().in_try_or_catch() {
+            self.unwind_try_or_catch(iseq);
+        } else if self.current_function().in_finally() {
+            self.unwind_finally(iseq);
+        }
+
         self.visit(val, iseq, true)?;
         self.bytecode_generator.append_throw(iseq);
         Ok(())
@@ -589,7 +603,11 @@ impl<'a> CodeGenerator<'a> {
             self.bytecode_generator.append_push_undefined(iseq);
         }
 
+        // if self.current_function().in_try_or_catch() {
+        //     self.bytecode_generator.append_return_try(iseq);
+        // } else {
         self.bytecode_generator.append_return(iseq);
+        // }
 
         Ok(())
     }
@@ -640,6 +658,28 @@ impl<'a> CodeGenerator<'a> {
     fn current_function(&mut self) -> &mut FunctionInfo {
         self.function_stack.last_mut().unwrap()
     }
+
+    fn unwind_try_or_catch(&mut self, iseq: &mut ByteCode) {
+        for level in self.current_function().level.clone().iter().rev() {
+            println!("a {:?}", level);
+            match level {
+                &Level::TryOrCatch => break,
+                &Level::Block { .. } => self.bytecode_generator.append_pop_env(iseq),
+                _ => {}
+            }
+        }
+    }
+
+    fn unwind_finally(&mut self, iseq: &mut ByteCode) {
+        for level in self.current_function().level.clone().iter().rev() {
+            println!("b {:?}", level);
+            match level {
+                &Level::Finally => break,
+                &Level::Block { .. } => self.bytecode_generator.append_pop_env(iseq),
+                _ => {}
+            }
+        }
+    }
 }
 
 // Methods for Error handling
@@ -681,7 +721,7 @@ impl FunctionInfo {
         self.level
             .iter()
             .rev()
-            .find(|level| *level == &Level::Finally)
+            .find(|level| *level == &Level::TryOrCatch)
             .is_some()
     }
 
