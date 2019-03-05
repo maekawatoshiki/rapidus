@@ -44,7 +44,7 @@ pub struct FunctionInfo {
 pub enum Level {
     Function,
     Block { names: Vec<String> },
-    TryOrCatch,
+    TryOrCatch { return_instr_pos: Vec<usize> },
     Finally,
 }
 
@@ -237,17 +237,18 @@ impl<'a> CodeGenerator<'a> {
         finally: &Node,
         iseq: &mut ByteCode,
     ) -> Result<(), Error> {
+        // TODO: Dirty code
+
         let has_catch = catch.base != NodeBase::Nope;
 
         // Try block
         let try_start = iseq.len() as usize;
 
-        self.current_function().level.push(Level::TryOrCatch);
+        self.current_function().level.push(Level::TryOrCatch {
+            return_instr_pos: vec![],
+        });
         self.visit(try, iseq, false)?;
-        assert_eq!(
-            self.current_function().level.pop().unwrap(),
-            Level::TryOrCatch
-        );
+        let try_ = self.current_function().level.pop().unwrap();
         let finally_jmp_instr_pos1 = iseq.len() as usize;
         self.bytecode_generator.append_jmp_sub(0, iseq);
         let leave_jmp_instr_pos1 = iseq.len() as usize;
@@ -269,8 +270,11 @@ impl<'a> CodeGenerator<'a> {
             _ => "".to_string(),
         };
         let catch_start = iseq.len() as usize;
+        let mut catch_ = Level::Function;
         if has_catch {
-            self.current_function().level.push(Level::TryOrCatch);
+            self.current_function().level.push(Level::TryOrCatch {
+                return_instr_pos: vec![],
+            });
             let id = self
                 .bytecode_generator
                 .constant_table
@@ -288,16 +292,14 @@ impl<'a> CodeGenerator<'a> {
                 panic!()
             };
             self.bytecode_generator.append_pop_env(iseq);
-            assert_eq!(
-                self.current_function().level.pop().unwrap(),
-                Level::TryOrCatch
-            );
+            catch_ = self.current_function().level.pop().unwrap();
             *self
                 .bytecode_generator
                 .constant_table
                 .get_mut(id)
                 .as_lex_env_info_mut() = names;
         }
+
         let finally_jmp_instr_pos2 = iseq.len() as usize;
         if has_catch {
             self.bytecode_generator.append_jmp_sub(0, iseq);
@@ -315,6 +317,8 @@ impl<'a> CodeGenerator<'a> {
 
         // Finally block
         let finally_start = iseq.len() as usize;
+        try_.set_return_to_finally(finally_start, &mut self.bytecode_generator, iseq);
+        catch_.set_return_to_finally(finally_start, &mut self.bytecode_generator, iseq);
 
         self.current_function().level.push(Level::Finally);
         self.visit(finally, iseq, false)?;
@@ -603,11 +607,17 @@ impl<'a> CodeGenerator<'a> {
             self.bytecode_generator.append_push_undefined(iseq);
         }
 
-        // if self.current_function().in_try_or_catch() {
-        //     self.bytecode_generator.append_return_try(iseq);
-        // } else {
-        self.bytecode_generator.append_return(iseq);
-        // }
+        if self.current_function().in_try_or_catch() {
+            if let Level::TryOrCatch {
+                ref mut return_instr_pos,
+            } = self.current_function().get_last_try_or_catch()
+            {
+                return_instr_pos.push(iseq.len() as usize);
+            }
+            self.bytecode_generator.append_return_try(iseq);
+        } else {
+            self.bytecode_generator.append_return(iseq);
+        }
 
         Ok(())
     }
@@ -661,9 +671,8 @@ impl<'a> CodeGenerator<'a> {
 
     fn unwind_try_or_catch(&mut self, iseq: &mut ByteCode) {
         for level in self.current_function().level.clone().iter().rev() {
-            println!("a {:?}", level);
             match level {
-                &Level::TryOrCatch => break,
+                &Level::TryOrCatch { .. } => break,
                 &Level::Block { .. } => self.bytecode_generator.append_pop_env(iseq),
                 _ => {}
             }
@@ -672,7 +681,6 @@ impl<'a> CodeGenerator<'a> {
 
     fn unwind_finally(&mut self, iseq: &mut ByteCode) {
         for level in self.current_function().level.clone().iter().rev() {
-            println!("b {:?}", level);
             match level {
                 &Level::Finally => break,
                 &Level::Block { .. } => self.bytecode_generator.append_pop_env(iseq),
@@ -721,7 +729,10 @@ impl FunctionInfo {
         self.level
             .iter()
             .rev()
-            .find(|level| *level == &Level::TryOrCatch)
+            .find(|level| match level {
+                &Level::TryOrCatch { .. } => true,
+                _ => false,
+            })
             .is_some()
     }
 
@@ -731,6 +742,17 @@ impl FunctionInfo {
             .rev()
             .find(|level| *level == &Level::Finally)
             .is_some()
+    }
+
+    pub fn get_last_try_or_catch(&mut self) -> &mut Level {
+        self.level
+            .iter_mut()
+            .rev()
+            .find(|level| match level {
+                &Level::TryOrCatch { .. } => true,
+                _ => false,
+            })
+            .unwrap()
     }
 }
 
@@ -743,5 +765,24 @@ impl Level {
 
     pub fn new_block_level() -> Self {
         Level::Block { names: vec![] }
+    }
+
+    pub fn set_return_to_finally(
+        self,
+        dst: usize,
+        bytecode_generator: &mut ByteCodeGenerator,
+        iseq: &mut ByteCode,
+    ) {
+        match self {
+            Level::TryOrCatch { return_instr_pos } => {
+                for instr_pos in return_instr_pos {
+                    bytecode_generator.replace_int32(
+                        (dst - instr_pos) as i32 - 5,
+                        &mut iseq[instr_pos as usize + 1..instr_pos as usize + 5],
+                    );
+                }
+            }
+            _ => {}
+        }
     }
 }

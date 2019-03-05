@@ -146,8 +146,9 @@ impl<'a> VM2<'a> {
         macro_rules! exception {
             () => {{
                 let mut exception_found = false;
+                let mut outer_break = false;
 
-                'frame_search: loop {
+                loop {
                     for exception in &cur_frame.exception_table {
                         let in_range =
                             exception.start <= cur_frame.pc && cur_frame.pc < exception.end;
@@ -163,7 +164,12 @@ impl<'a> VM2<'a> {
                             }
                         }
                         exception_found = true;
-                        break 'frame_search;
+                        outer_break = true;
+                        break;
+                    }
+
+                    if outer_break {
+                        break;
                     }
 
                     if self.saved_frame.len() == 0 {
@@ -328,19 +334,19 @@ impl<'a> VM2<'a> {
                     subroutine_stack.push(SubroutineKind::Ordinary(cur_frame.pc));
                     cur_frame.pc = (cur_frame.pc as isize + dst as isize) as usize;
                 }
-                // VMInst::RETURN_TRY => {
-                //     cur_frame.pc += 1;
-                //     exception!();
-                // }
+                VMInst::RETURN_TRY => {
+                    cur_frame.pc += 1;
+                    read_int32!(cur_frame.bytecode, cur_frame.pc, dst, i32);
+                    cur_frame.pc = (cur_frame.pc as isize + dst as isize) as usize;
+                    subroutine_stack.push(SubroutineKind::Return);
+                }
                 VMInst::RETURN_SUB => {
                     cur_frame.pc += 1;
                     match subroutine_stack.pop().unwrap() {
                         SubroutineKind::Ordinary(pos) => cur_frame.pc = pos,
                         SubroutineKind::Throw => exception!(),
                         SubroutineKind::Return => {
-                            let ret_val = self.stack.pop().unwrap();
                             self.unwind_frame_saving_stack_top(&mut cur_frame);
-                            self.stack.push(ret_val);
                         }
                     }
                 }
