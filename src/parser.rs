@@ -2286,7 +2286,7 @@ fn try_catch1() {
             NodeBase::StatementList(vec![Node::new(
                 NodeBase::Try(
                     Box::new(Node::new(NodeBase::Block(vec![]), 4)),
-                    Box::new(Node::new(NodeBase::Block(vec![]), 15)),
+                    Box::new(Node::new(NodeBase::StatementList(vec![]), 15)),
                     Box::new(Node::new(NodeBase::Identifier("e".to_string()), 13)),
                     Box::new(Node::new(NodeBase::Block(vec![]), 25))
                 ),
@@ -2310,7 +2310,7 @@ fn try_catch2() {
             NodeBase::StatementList(vec![Node::new(
                 NodeBase::Try(
                     Box::new(Node::new(NodeBase::Block(vec![]), 4)),
-                    Box::new(Node::new(NodeBase::Block(vec![]), 15)),
+                    Box::new(Node::new(NodeBase::StatementList(vec![]), 15)),
                     Box::new(Node::new(NodeBase::Identifier("e".to_string()), 13)),
                     Box::new(Node::new(NodeBase::Nope, 17))
                 ),
