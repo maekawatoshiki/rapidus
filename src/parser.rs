@@ -1052,7 +1052,7 @@ impl Parser {
             };
             skip_symbol_or_error!(self.lexer, Symbol::ClosingParen);
             skip_symbol_or_error!(self.lexer, Symbol::OpeningBrace);
-            (self.read_block_statement()?, catch_param)
+            (self.read_block()?, catch_param)
         } else {
             (
                 Node::new(NodeBase::Nope, pos_catch),

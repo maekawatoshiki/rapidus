@@ -188,6 +188,20 @@ impl<'a> VM2<'a> {
             }};
         }
 
+        macro_rules! etry {
+            ($val:expr) => {{
+                match $val {
+                    Ok(ok) => ok,
+                    Err(err) => {
+                        let val = err.to_value2(memory_allocator!(self));
+                        self.stack.push(val.into());
+                        exception!();
+                        continue
+                    }
+                }
+            }};
+        }
+
         loop {
             match cur_frame.bytecode[cur_frame.pc] {
                 // TODO: Macro for bin ops?
@@ -242,9 +256,9 @@ impl<'a> VM2<'a> {
                 VMInst::GET_VALUE => {
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, name_id, usize);
-                    let val = cur_frame
+                    let val = etry!(cur_frame
                         .lex_env()
-                        .get_value(constant_table!(self).get(name_id).as_string())?;
+                        .get_value(constant_table!(self).get(name_id).as_string()));
                     self.stack.push(val.into());
                 }
                 VMInst::CALL => {

@@ -1,4 +1,5 @@
 use ansi_term::Colour;
+use gc::MemoryAllocator;
 use vm::jsvalue::value::Value2;
 use vm::value::Value;
 
@@ -14,7 +15,7 @@ pub enum RuntimeError {
 }
 
 impl RuntimeError {
-    /// convert RuntimeError -> Value.
+    /// convert RuntimeError -> Value
     pub fn to_value(&self) -> Value {
         match self {
             RuntimeError::Exception(ref v) => v.clone(),
@@ -24,6 +25,23 @@ impl RuntimeError {
             RuntimeError::Reference(ref s) => Value::string(s.clone()),
             RuntimeError::Unimplemented => Value::string("Unimplemented".to_string()),
             RuntimeError::Unknown => Value::string("Unknown".to_string()),
+        }
+    }
+
+    /// convert RuntimeError -> Value2
+    pub fn to_value2(self, memory_allocator: &mut MemoryAllocator) -> Value2 {
+        match self {
+            RuntimeError::Exception2(v) => v,
+            RuntimeError::Type(s) => Value2::string(memory_allocator, s),
+            RuntimeError::General(s) => Value2::string(memory_allocator, s),
+            RuntimeError::Reference(s) => {
+                Value2::string(memory_allocator, format!("Reference error: {}", s))
+            }
+            RuntimeError::Unimplemented => {
+                Value2::string(memory_allocator, "Unimplemented".to_string())
+            }
+            RuntimeError::Unknown => Value2::string(memory_allocator, "Unknown".to_string()),
+            _ => panic!(),
         }
     }
 

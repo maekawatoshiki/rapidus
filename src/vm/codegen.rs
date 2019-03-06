@@ -1,4 +1,4 @@
-use bytecode_gen::{ByteCode, ByteCodeGenerator};
+use bytecode_gen::{ByteCode, ByteCodeGenerator, VMInst};
 use gc::MemoryAllocator;
 use node::{BinOp, FormalParameter, FormalParameters, Node, NodeBase, PropertyDefinition, VarKind};
 use vm::constant::ConstantTable;
@@ -44,7 +44,7 @@ pub struct FunctionInfo {
 pub enum Level {
     Function,
     Block { names: Vec<String> },
-    TryOrCatch { return_instr_pos: Vec<usize> },
+    TryOrCatch { finally_jmp_instr_pos: Vec<usize> },
     Finally,
 }
 
@@ -237,88 +237,98 @@ impl<'a> CodeGenerator<'a> {
         finally: &Node,
         iseq: &mut ByteCode,
     ) -> Result<(), Error> {
-        // TODO: Dirty code
+        // TODO: Refine code
 
         let has_catch = catch.base != NodeBase::Nope;
 
         // Try block
-        let try_start = iseq.len() as usize;
+        let (try_, try_to_finally, leave_try) = {
+            let try_start = iseq.len() as usize;
 
-        self.current_function().level.push(Level::TryOrCatch {
-            return_instr_pos: vec![],
-        });
-        self.visit(try, iseq, false)?;
-        let try_ = self.current_function().level.pop().unwrap();
-        let finally_jmp_instr_pos1 = iseq.len() as usize;
-        self.bytecode_generator.append_jmp_sub(0, iseq);
-        let leave_jmp_instr_pos1 = iseq.len() as usize;
-        self.bytecode_generator.append_jmp_sub(0, iseq);
-        let try_end = iseq.len() as usize;
-        self.current_function().exception_table.push(Exception {
-            start: try_start,
-            end: try_end,
-            dst_kind: if has_catch {
-                DestinationKind::Catch
-            } else {
-                DestinationKind::Finally
-            },
-        });
+            self.current_function()
+                .level
+                .push(Level::new_try_or_catch_level());
+
+            self.visit(try, iseq, false)?;
+
+            let try_ = self.current_function().level.pop().unwrap();
+
+            let try_to_finally = iseq.len() as usize;
+            self.bytecode_generator.append_jmp_sub(0, iseq);
+
+            let leave_try = iseq.len() as usize;
+            self.bytecode_generator.append_jmp_sub(0, iseq);
+
+            let try_end = iseq.len() as usize;
+            self.current_function().exception_table.push(Exception {
+                start: try_start,
+                end: try_end,
+                dst_kind: if has_catch {
+                    DestinationKind::Catch
+                } else {
+                    DestinationKind::Finally
+                },
+            });
+
+            (try_, try_to_finally, leave_try)
+        };
 
         // Catch block
-        let param_name = match param.base {
-            NodeBase::Identifier(ref name) => name.clone(),
-            _ => "".to_string(),
-        };
-        let catch_start = iseq.len() as usize;
-        let mut catch_ = Level::Function;
-        if has_catch {
-            self.current_function().level.push(Level::TryOrCatch {
-                return_instr_pos: vec![],
-            });
-            let id = self
+        let (catch_, catch_to_finally, leave_catch) = if has_catch {
+            let catch_start = iseq.len() as usize;
+            let param_name = match param.base {
+                NodeBase::Identifier(ref name) => name.clone(),
+                _ => unimplemented!(),
+            };
+
+            self.current_function()
+                .level
+                .push(Level::new_try_or_catch_level());
+            let env_id = self
                 .bytecode_generator
                 .constant_table
                 .add_lex_env_info(vec![]);
-            self.bytecode_generator.append_push_env(id as u32, iseq);
+            self.bytecode_generator.append_push_env(env_id as u32, iseq);
             self.current_function().level.push(Level::Block {
                 names: vec![param_name.clone()],
             });
             self.bytecode_generator.append_set_value(&param_name, iseq);
+
             self.visit(catch, iseq, false)?;
-            let names = if let Level::Block { names } = self.current_function().level.pop().unwrap()
-            {
-                names
-            } else {
-                panic!()
-            };
+
             self.bytecode_generator.append_pop_env(iseq);
-            catch_ = self.current_function().level.pop().unwrap();
+
+            let names = self.current_function().level.pop().unwrap().as_block();
+            let catch_ = self.current_function().level.pop().unwrap();
             *self
                 .bytecode_generator
                 .constant_table
-                .get_mut(id)
+                .get_mut(env_id)
                 .as_lex_env_info_mut() = names;
-        }
 
-        let finally_jmp_instr_pos2 = iseq.len() as usize;
-        if has_catch {
+            let catch_to_finally = iseq.len() as usize;
             self.bytecode_generator.append_jmp_sub(0, iseq);
-        }
-        let leave_jmp_instr_pos2 = iseq.len() as usize;
-        if has_catch {
+
+            let leave_catch = iseq.len() as usize;
             self.bytecode_generator.append_jmp_sub(0, iseq);
+
             let catch_end = iseq.len() as usize;
             self.current_function().exception_table.push(Exception {
                 start: catch_start,
                 end: catch_end,
                 dst_kind: DestinationKind::Finally,
             });
-        }
+
+            (catch_, catch_to_finally, leave_catch)
+        } else {
+            (Level::new_try_or_catch_level(), 0, 0)
+        };
 
         // Finally block
         let finally_start = iseq.len() as usize;
-        try_.set_return_to_finally(finally_start, &mut self.bytecode_generator, iseq);
-        catch_.set_return_to_finally(finally_start, &mut self.bytecode_generator, iseq);
+
+        try_.set_jmp_to_finally(finally_start, &mut self.bytecode_generator, iseq);
+        catch_.set_jmp_to_finally(finally_start, &mut self.bytecode_generator, iseq);
 
         self.current_function().level.push(Level::Finally);
         self.visit(finally, iseq, false)?;
@@ -328,22 +338,22 @@ impl<'a> CodeGenerator<'a> {
         let finally_end = iseq.len() as usize;
 
         self.bytecode_generator.replace_int32(
-            (finally_start - finally_jmp_instr_pos1) as i32 - 5,
-            &mut iseq[finally_jmp_instr_pos1 + 1..finally_jmp_instr_pos1 + 5],
+            (finally_start - try_to_finally) as i32 - 5,
+            &mut iseq[try_to_finally + 1..try_to_finally + 5],
         );
         self.bytecode_generator.replace_int32(
-            (finally_end - leave_jmp_instr_pos1) as i32 - 5,
-            &mut iseq[leave_jmp_instr_pos1 + 1..leave_jmp_instr_pos1 + 5],
+            (finally_end - leave_try) as i32 - 5,
+            &mut iseq[leave_try + 1..leave_try + 5],
         );
 
         if has_catch {
             self.bytecode_generator.replace_int32(
-                (finally_start - finally_jmp_instr_pos2) as i32 - 5,
-                &mut iseq[finally_jmp_instr_pos2 + 1..finally_jmp_instr_pos2 + 5],
+                (finally_start - catch_to_finally) as i32 - 5,
+                &mut iseq[catch_to_finally + 1..catch_to_finally + 5],
             );
             self.bytecode_generator.replace_int32(
-                (finally_end - leave_jmp_instr_pos2) as i32 - 5,
-                &mut iseq[leave_jmp_instr_pos2 + 1..leave_jmp_instr_pos2 + 5],
+                (finally_end - leave_catch) as i32 - 5,
+                &mut iseq[leave_catch + 1..leave_catch + 5],
             );
         }
 
@@ -608,12 +618,10 @@ impl<'a> CodeGenerator<'a> {
         }
 
         if self.current_function().in_try_or_catch() {
-            if let Level::TryOrCatch {
-                ref mut return_instr_pos,
-            } = self.current_function().get_last_try_or_catch()
-            {
-                return_instr_pos.push(iseq.len() as usize);
-            }
+            self.current_function()
+                .get_last_try_or_catch()
+                .as_try_or_catch_mut()
+                .push(iseq.len() as usize);
             self.bytecode_generator.append_return_try(iseq);
         } else {
             self.bytecode_generator.append_return(iseq);
@@ -767,22 +775,53 @@ impl Level {
         Level::Block { names: vec![] }
     }
 
-    pub fn set_return_to_finally(
+    pub fn new_try_or_catch_level() -> Self {
+        Level::TryOrCatch {
+            finally_jmp_instr_pos: vec![],
+        }
+    }
+
+    pub fn as_block(self) -> Vec<String> {
+        match self {
+            Level::Block { names } => names,
+            _ => panic!(),
+        }
+    }
+
+    pub fn as_try_or_catch(self) -> Vec<usize> {
+        match self {
+            Level::TryOrCatch {
+                finally_jmp_instr_pos,
+            } => finally_jmp_instr_pos,
+            _ => panic!(),
+        }
+    }
+
+    pub fn as_try_or_catch_mut(&mut self) -> &mut Vec<usize> {
+        match self {
+            Level::TryOrCatch {
+                ref mut finally_jmp_instr_pos,
+            } => finally_jmp_instr_pos,
+            _ => panic!(),
+        }
+    }
+
+    pub fn set_jmp_to_finally(
         self,
         dst: usize,
         bytecode_generator: &mut ByteCodeGenerator,
         iseq: &mut ByteCode,
     ) {
-        match self {
-            Level::TryOrCatch { return_instr_pos } => {
-                for instr_pos in return_instr_pos {
-                    bytecode_generator.replace_int32(
-                        (dst - instr_pos) as i32 - 5,
-                        &mut iseq[instr_pos as usize + 1..instr_pos as usize + 5],
-                    );
-                }
-            }
-            _ => {}
+        let finally_jmp_instr_pos = self.as_try_or_catch();
+        for instr_pos in finally_jmp_instr_pos {
+            assert!(match iseq[instr_pos] {
+                VMInst::RETURN | VMInst::JMP => true,
+                _ => false,
+            });
+            bytecode_generator.replace_int32(
+                (dst - instr_pos) as i32 - 5,
+                &mut iseq[instr_pos as usize + 1..instr_pos as usize + 5],
+            );
         }
     }
 }
