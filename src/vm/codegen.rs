@@ -599,13 +599,14 @@ impl<'a> CodeGenerator<'a> {
     }
 
     fn visit_throw(&mut self, val: &Node, iseq: &mut ByteCode) -> CodeGenResult {
+        self.visit(val, iseq, true)?;
+
         if self.current_function().in_try_or_catch() {
             self.unwind_try_or_catch(iseq);
         } else if self.current_function().in_finally() {
             self.unwind_finally(iseq);
         }
 
-        self.visit(val, iseq, true)?;
         self.bytecode_generator.append_throw(iseq);
         Ok(())
     }
