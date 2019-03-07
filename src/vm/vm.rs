@@ -196,7 +196,7 @@ impl<'a> VM2<'a> {
                         let val = err.to_value2(memory_allocator!(self));
                         self.stack.push(val.into());
                         exception!();
-                        continue
+                        continue;
                     }
                 }
             }};
@@ -229,6 +229,12 @@ impl<'a> VM2<'a> {
                     let lhs: Value2 = self.stack.pop().unwrap().into();
                     self.stack.push(lhs.eq(rhs).into());
                 }
+                VMInst::LT => {
+                    cur_frame.pc += 1;
+                    let rhs: Value2 = self.stack.pop().unwrap().into();
+                    let lhs: Value2 = self.stack.pop().unwrap().into();
+                    self.stack.push(lhs.lt(rhs).into());
+                }
                 VMInst::PUSH_INT8 => {
                     cur_frame.pc += 1;
                     read_int8!(cur_frame.bytecode, cur_frame.pc, num, f64);
@@ -250,8 +256,8 @@ impl<'a> VM2<'a> {
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, name_id, usize);
                     let val = self.stack.pop().unwrap();
-                    let name = constant_table!(self).get(name_id).as_string();
-                    cur_frame.lex_env().set_value(name.clone(), val.into())?
+                    let name = constant_table!(self).get(name_id).as_string().clone();
+                    etry!(cur_frame.lex_env().set_value(name, val.into()));
                 }
                 VMInst::GET_VALUE => {
                     cur_frame.pc += 1;

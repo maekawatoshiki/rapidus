@@ -3,7 +3,7 @@ use rapidus::bytecode_gen;
 use rapidus::gc;
 use rapidus::parser;
 use rapidus::vm_codegen;
-use rapidus::{vm, vm::frame, vm::value::Value, vm::vm::VM2};
+use rapidus::{vm, vm::frame, vm::jsvalue::value::Value2, vm::value::Value, vm::vm::VM2};
 
 extern crate libc;
 
@@ -109,7 +109,10 @@ fn main() {
 
     println!("Result:");
     vm.run_global(global_info, iseq).unwrap();
-    println!("stack: {:?}", vm.stack);
+    for (i, val_boxed) in vm.stack.iter().enumerate() {
+        let val: Value2 = (*val_boxed).into();
+        println!("stack[{}]: {:?}", i, val);
+    }
     // let mut vm = vm::VM::new();
     // vm.global_objects.extend(vm_codegen.global_varmap);
     // vm.run(iseq);

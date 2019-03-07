@@ -246,15 +246,15 @@ impl<'a> ByteCodeGenerator<'a> {
     }
 
     pub fn append_get_value(&mut self, name: &String, iseq: &mut ByteCode) {
-        let id = self.constant_table.add_string(name.clone());
+        let id = self.constant_table.add_string(name.clone()) as i32;
         iseq.push(VMInst::GET_VALUE);
-        self.append_int32(id as i32, iseq);
+        self.append_int32(id, iseq);
     }
 
     pub fn append_set_value(&mut self, name: &String, iseq: &mut ByteCode) {
-        let id = self.constant_table.add_string(name.clone());
+        let id = self.constant_table.add_string(name.clone()) as i32;
         iseq.push(VMInst::SET_VALUE);
-        self.append_int32(id as i32, iseq);
+        self.append_int32(id, iseq);
     }
 
     // pub fn append_decl_var(&mut self, name: &String, iseq: &mut ByteCode) {
@@ -683,7 +683,7 @@ pub fn show2(code: &ByteCode, const_table: &constant::ConstantTable) {
     while i < code.len() {
         show_inst2(code, i, const_table);
         println!();
-        i = i + if let Some(size) = VMInst::get_inst_size(code[i]) {
+        i += if let Some(size) = VMInst::get_inst_size(code[i]) {
             size
         } else {
             unreachable!("inst_size not defined.");

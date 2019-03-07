@@ -296,4 +296,11 @@ impl Value2 {
             _ => Value2::undefined(),
         }
     }
+
+    pub fn lt(self, val: Value2) -> Self {
+        match (self, val) {
+            (Value2::Number(x), Value2::Number(y)) => Value2::Bool(if x < y { 1 } else { 0 }),
+            _ => Value2::undefined(),
+        }
+    }
 }

@@ -88,6 +88,7 @@ impl<'a> CodeGenerator<'a> {
             NodeBase::If(ref cond, ref then, ref else_) => {
                 self.visit_if(&*cond, &*then, &*else_, iseq)?
             }
+            NodeBase::While(ref cond, ref body) => self.visit_while(&*cond, &*body, iseq)?,
             NodeBase::Try(ref try, ref catch, ref param, ref finally) => {
                 self.visit_try(&*try, &*catch, &*param, &*finally, iseq)?
             }
@@ -229,6 +230,44 @@ impl<'a> CodeGenerator<'a> {
         Ok(())
     }
 
+    pub fn visit_while(&mut self, cond: &Node, body: &Node, iseq: &mut ByteCode) -> CodeGenResult {
+        // name:
+        //   while(...) {} // <- this while is named 'name'
+        // let name = self.state.loop_names.pop();
+
+        let start = iseq.len() as isize;
+
+        // self.bytecode_generator.append_loop_start(iseq);
+
+        self.visit(cond, iseq, true)?;
+
+        let cond_pos = iseq.len() as isize;
+        self.bytecode_generator.append_jmp_if_false(0, iseq);
+
+        self.visit(body, iseq, false)?;
+
+        let loop_pos = iseq.len() as isize;
+        self.bytecode_generator
+            .append_jmp((start - loop_pos) as i32 - 5, iseq);
+
+        // self.bytecode_generator.replace_int32(
+        //     (iseq.len() as i32 - start as i32) - 5,
+        //     &mut iseq[start as usize + 1..start as usize + 5],
+        // );
+
+        // let break_pos = iseq.len() as isize;
+        // self.replace_continue_dsts(&name, start, iseq);
+        // self.replace_break_dsts(&name, break_pos, iseq);
+
+        let end = iseq.len() as isize;
+        self.bytecode_generator.replace_int32(
+            (end - cond_pos) as i32 - 5,
+            &mut iseq[cond_pos as usize + 1..cond_pos as usize + 5],
+        );
+
+        Ok(())
+    }
+
     pub fn visit_try(
         &mut self,
         try: &Node,
@@ -236,7 +275,7 @@ impl<'a> CodeGenerator<'a> {
         param: &Node,
         finally: &Node,
         iseq: &mut ByteCode,
-    ) -> Result<(), Error> {
+    ) -> CodeGenResult {
         // TODO: Refine code
 
         let has_catch = catch.base != NodeBase::Nope;
