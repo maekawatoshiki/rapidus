@@ -61,3 +61,15 @@ while (a < 20) {
   console.log(a);
   a *= 2;
 }
+
+function Vector(x, y) {
+  return {
+    x, 
+    y, 
+    norm2: function() { return this.x * this.x + 
+                               this.y * this.y }
+  }
+}
+
+let v = new Vector(1, 2)
+console.log(v.norm2())

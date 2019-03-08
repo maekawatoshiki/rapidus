@@ -115,6 +115,7 @@ impl<'a> CodeGenerator<'a> {
             }
             NodeBase::Throw(ref val) => self.visit_throw(val, iseq)?,
             NodeBase::Return(ref val) => self.visit_return(val, iseq)?,
+            NodeBase::New(ref expr) => self.visit_new(&*expr, iseq, use_value)?,
             NodeBase::Object(ref properties) => self.visit_object_literal(properties, iseq)?,
             NodeBase::Identifier(ref name) => {
                 if use_value {
@@ -665,6 +666,37 @@ impl<'a> CodeGenerator<'a> {
             self.bytecode_generator.append_return_try(iseq);
         } else {
             self.bytecode_generator.append_return(iseq);
+        }
+
+        Ok(())
+    }
+
+    fn visit_new(&mut self, expr: &Node, iseq: &mut ByteCode, use_value: bool) -> CodeGenResult {
+        let (callee, args) = match expr.base {
+            NodeBase::Call(ref callee, ref args) => (&*callee, args),
+            _ => unimplemented!(),
+        };
+
+        for arg in args.iter().rev() {
+            self.visit(arg, iseq, true)?
+        }
+
+        match callee.base {
+            NodeBase::Member(ref parent, ref property_name) => {
+                self.visit(parent, iseq, true)?;
+                let property = Value2::string(self.memory_allocator, property_name.clone());
+                self.bytecode_generator.append_push_const(property, iseq);
+                self.bytecode_generator.append_get_member(iseq);
+            }
+            _ => {
+                self.visit(callee, iseq, true)?;
+            }
+        }
+
+        self.bytecode_generator.append_construct(args.len(), iseq);
+
+        if !use_value {
+            self.bytecode_generator.append_pop(iseq);
         }
 
         Ok(())

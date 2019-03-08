@@ -267,6 +267,16 @@ impl<'a> VM2<'a> {
                         .get_value(constant_table!(self).get(name_id).as_string()));
                     self.stack.push(val.into());
                 }
+                VMInst::CONSTRUCT => {
+                    cur_frame.pc += 1;
+                    read_int32!(cur_frame.bytecode, cur_frame.pc, argc, usize);
+                    let callee: Value2 = self.stack.pop().unwrap().into();
+                    let mut args: Vec<Value2> = vec![];
+                    for _ in 0..argc {
+                        args.push(self.stack.pop().unwrap().into());
+                    }
+                    self.call_constructor(callee, args, &mut cur_frame)?;
+                }
                 VMInst::CALL => {
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, argc, usize);
@@ -275,7 +285,7 @@ impl<'a> VM2<'a> {
                     for _ in 0..argc {
                         args.push(self.stack.pop().unwrap().into());
                     }
-                    self.call_function(callee, args, None, &mut cur_frame)?;
+                    self.call_function(callee, args, None, &mut cur_frame, false)?;
                 }
                 VMInst::CALL_METHOD => {
                     cur_frame.pc += 1;
@@ -291,6 +301,7 @@ impl<'a> VM2<'a> {
                         args,
                         Some(parent),
                         &mut cur_frame,
+                        false,
                     )?;
                 }
                 VMInst::SET_OUTER_ENV => {
@@ -387,11 +398,16 @@ impl<'a> VM2<'a> {
     }
 
     pub fn unwind_frame_saving_stack_top(&mut self, cur_frame: &mut frame::Frame) {
-        let ret_val = self.stack.pop().unwrap();
+        let ret_val_boxed = self.stack.pop().unwrap();
+        let ret_val: Value2 = ret_val_boxed.into();
         let frame = self.saved_frame.pop().unwrap();
         unsafe { self.stack.set_len(frame.saved_stack_len) };
+        if cur_frame.constructor_call && !ret_val.is_object() {
+            self.stack.push(cur_frame.this.unwrap().into());
+        } else {
+            self.stack.push(ret_val_boxed);
+        }
         *cur_frame = frame;
-        self.stack.push(ret_val);
     }
 
     pub fn unwind_frame(&mut self, cur_frame: &mut frame::Frame) {
@@ -447,18 +463,61 @@ impl<'a> VM2<'a> {
         Ok(())
     }
 
+    fn call_constructor(
+        &mut self,
+        callee: Value2,
+        args: Vec<Value2>,
+        cur_frame: &mut frame::Frame,
+    ) -> VMResult {
+        let properties = match callee
+            .get_property_by_str_key("prototype")
+            .get_object_properties()
+        {
+            Some(properties) => properties.clone(),
+            None => return Err(RuntimeError::Type("not a constructor".to_string())),
+        };
+
+        let this = Value2::object(
+            memory_allocator!(self),
+            object_prototypes!(self),
+            properties
+                .into_iter()
+                .map(|(key, _)| {
+                    (
+                        key,
+                        Property2 {
+                            val: Value2::undefined(),
+                            writable: true,
+                            enumerable: true,
+                            configurable: true,
+                        },
+                    )
+                })
+                .collect(),
+        );
+
+        let info = callee.as_function();
+        match info.kind {
+            FunctionObjectKind::Builtin(func) => func(self, &args, cur_frame),
+            FunctionObjectKind::User(ref user_func) => {
+                self.call_user_function(user_func.clone(), args, Some(this), cur_frame, true)
+            }
+        }
+    }
+
     fn call_function(
         &mut self,
         callee: Value2,
         args: Vec<Value2>,
         this: Option<Value2>,
         cur_frame: &mut frame::Frame,
+        constructor_call: bool,
     ) -> VMResult {
         let info = callee.as_function();
         match info.kind {
             FunctionObjectKind::Builtin(func) => func(self, &args, cur_frame),
             FunctionObjectKind::User(ref user_func) => {
-                self.call_user_function(user_func.clone(), args, this, cur_frame)
+                self.call_user_function(user_func.clone(), args, this, cur_frame, constructor_call)
             }
         }
     }
@@ -469,12 +528,8 @@ impl<'a> VM2<'a> {
         args: Vec<Value2>,
         this: Option<Value2>,
         cur_frame: &mut frame::Frame,
+        constructor_call: bool,
     ) -> VMResult {
-        // bytecode_gen::show2(
-        //     &user_func.code,
-        //     self.code_generator.bytecode_generator.constant_table,
-        // );
-
         self.saved_frame.push({
             let mut cur_frame = cur_frame.clone();
             cur_frame.saved_stack_len = self.stack.len();
@@ -527,7 +582,13 @@ impl<'a> VM2<'a> {
             saved_lexical_environment: vec![],
         };
 
-        let frame = frame::Frame::new(exec_ctx, user_func.code, user_func.exception_table);
+        let frame = frame::Frame::new_ext(
+            exec_ctx,
+            user_func.code,
+            user_func.exception_table,
+            this,
+            constructor_call,
+        );
 
         *cur_frame = frame;
 

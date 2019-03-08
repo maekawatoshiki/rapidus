@@ -26,7 +26,7 @@ impl<'a> ByteCodeGenerator<'a> {
         iseq.push(VMInst::CREATE_CONTEXT);
     }
 
-    pub fn append_constract(&self, argc: usize, iseq: &mut ByteCode) {
+    pub fn append_construct(&self, argc: usize, iseq: &mut ByteCode) {
         iseq.push(VMInst::CONSTRUCT);
         self.append_int32(argc as i32, iseq);
     }

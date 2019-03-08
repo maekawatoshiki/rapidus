@@ -19,6 +19,8 @@ pub struct Frame {
     pub saved_stack_len: usize,
     pub bytecode: ByteCode,
     pub exception_table: Vec<Exception>,
+    pub this: Option<Value2>,
+    pub constructor_call: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -54,6 +56,26 @@ impl Frame {
             saved_stack_len: 0,
             bytecode,
             exception_table,
+            this: None,
+            constructor_call: false,
+        }
+    }
+
+    pub fn new_ext(
+        execution_context: ExecutionContext,
+        bytecode: ByteCode,
+        exception_table: Vec<Exception>,
+        this: Option<Value2>,
+        constructor_call: bool,
+    ) -> Self {
+        Frame {
+            execution_context,
+            pc: 0,
+            saved_stack_len: 0,
+            bytecode,
+            exception_table,
+            this,
+            constructor_call,
         }
     }
 

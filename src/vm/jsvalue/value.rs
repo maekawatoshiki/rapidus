@@ -179,6 +179,27 @@ impl Value2 {
 }
 
 impl Value2 {
+    pub fn is_object(&self) -> bool {
+        match self {
+            Value2::Object(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn get_object_properties(&self) -> Option<&FxHashMap<String, Property2>> {
+        match self {
+            Value2::Object(obj_info) => Some(&unsafe { &**obj_info }.property),
+            _ => None,
+        }
+    }
+
+    pub fn get_property_by_str_key(&self, key: &str) -> Value2 {
+        match self {
+            Value2::Object(obj_info) => unsafe { &**obj_info }.get_property(key),
+            _ => Value2::undefined(),
+        }
+    }
+
     pub fn get_property(&self, key: Value2) -> Value2 {
         match self {
             Value2::Object(obj_info) => {
