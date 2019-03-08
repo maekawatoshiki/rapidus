@@ -71,5 +71,14 @@ function Vector(x, y) {
   }
 }
 
+function Vector2(x, y) {
+  this.x = x
+  this.y = y
+  this.norm2 = function() { return this.x * this.x + 
+                                   this.y * this.y }
+}
+
 let v = new Vector(1, 2)
+console.log(v.norm2())
+v = new Vector2(1, 2)
 console.log(v.norm2())

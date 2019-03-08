@@ -195,17 +195,22 @@ impl Value2 {
 
     pub fn get_property_by_str_key(&self, key: &str) -> Value2 {
         match self {
-            Value2::Object(obj_info) => unsafe { &**obj_info }.get_property(key),
+            Value2::Object(obj_info) => unsafe { &**obj_info }.get_property_by_str_key(key),
             _ => Value2::undefined(),
         }
     }
 
     pub fn get_property(&self, key: Value2) -> Value2 {
         match self {
-            Value2::Object(obj_info) => {
-                unsafe { &**obj_info }.get_property(key.to_string().as_str())
-            }
+            Value2::Object(obj_info) => unsafe { &**obj_info }.get_property(key),
             _ => Value2::undefined(),
+        }
+    }
+
+    pub fn set_property(&self, key: Value2, val: Value2) {
+        match self {
+            Value2::Object(obj_info) => unsafe { &mut **obj_info }.set_property(key, val),
+            _ => {}
         }
     }
 

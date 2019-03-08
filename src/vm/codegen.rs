@@ -739,6 +739,12 @@ impl<'a> CodeGenerator<'a> {
             NodeBase::Identifier(ref name) => {
                 self.bytecode_generator.append_set_value(name, iseq);
             }
+            NodeBase::Member(ref parent, ref property) => {
+                self.visit(&*parent, iseq, true)?;
+                let property = Value2::string(self.memory_allocator, property.clone());
+                self.bytecode_generator.append_push_const(property, iseq);
+                self.bytecode_generator.append_set_member(iseq);
+            }
             _ => unimplemented!(),
         }
 

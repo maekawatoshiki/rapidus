@@ -22,8 +22,8 @@ pub struct Property2 {
 }
 
 impl ObjectInfo {
-    pub fn get_property(&self, key: &str) -> Value2 {
-        match self.property.get(key) {
+    pub fn get_property(&self, key: Value2) -> Value2 {
+        match self.property.get(key.to_string().as_str()) {
             Some(prop) => prop.val,
             None => match self.property.get("__proto__") {
                 Some(Property2 {
@@ -33,5 +33,31 @@ impl ObjectInfo {
                 _ => Value2::undefined(),
             },
         }
+    }
+
+    pub fn get_property_by_str_key(&self, key: &str) -> Value2 {
+        match self.property.get(key) {
+            Some(prop) => prop.val,
+            None => match self.property.get("__proto__") {
+                Some(Property2 {
+                    val: Value2::Object(obj_info),
+                    ..
+                }) => unsafe { &**obj_info }.get_property_by_str_key(key),
+                _ => Value2::undefined(),
+            },
+        }
+    }
+
+    pub fn set_property(&mut self, key: Value2, val: Value2) {
+        let property = self
+            .property
+            .entry(key.to_string())
+            .or_insert_with(|| Property2 {
+                val: Value2::undefined(),
+                writable: true,
+                enumerable: true,
+                configurable: true,
+            });
+        property.val = val;
     }
 }

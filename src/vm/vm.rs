@@ -252,6 +252,13 @@ impl<'a> VM2<'a> {
                     let parent: Value2 = self.stack.pop().unwrap().into();
                     self.stack.push(parent.get_property(property).into());
                 }
+                VMInst::SET_MEMBER => {
+                    cur_frame.pc += 1;
+                    let property: Value2 = self.stack.pop().unwrap().into();
+                    let parent: Value2 = self.stack.pop().unwrap().into();
+                    let val: Value2 = self.stack.pop().unwrap().into();
+                    parent.set_property(property, val);
+                }
                 VMInst::SET_VALUE => {
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, name_id, usize);
