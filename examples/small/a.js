@@ -82,3 +82,9 @@ let v = new Vector(1, 2)
 console.log(v.norm2())
 v = new Vector2(1, 2)
 console.log(v.norm2())
+
+xxx = 1;
+console.log("xxx =", xxx)
+console.log("this.xxx =", this.xxx);
+
+

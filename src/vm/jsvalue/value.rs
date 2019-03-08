@@ -186,6 +186,13 @@ impl Value2 {
         }
     }
 
+    pub fn has_own_property(&self, key: &str) -> bool {
+        match self {
+            Value2::Object(obj_info) => unsafe { &**obj_info }.has_own_property(key),
+            _ => false,
+        }
+    }
+
     pub fn get_object_properties(&self) -> Option<&FxHashMap<String, Property2>> {
         match self {
             Value2::Object(obj_info) => Some(&unsafe { &**obj_info }.property),
@@ -204,6 +211,15 @@ impl Value2 {
         match self {
             Value2::Object(obj_info) => unsafe { &**obj_info }.get_property(key),
             _ => Value2::undefined(),
+        }
+    }
+
+    pub fn set_property_by_string_key(&self, key: String, val: Value2) {
+        match self {
+            Value2::Object(obj_info) => {
+                unsafe { &mut **obj_info }.set_property_by_string_key(key, val)
+            }
+            _ => {}
         }
     }
 

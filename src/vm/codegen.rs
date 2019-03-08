@@ -130,8 +130,7 @@ impl<'a> CodeGenerator<'a> {
             }
             NodeBase::This => {
                 if use_value {
-                    self.bytecode_generator
-                        .append_get_value(&"this".to_string(), iseq)
+                    self.bytecode_generator.append_push_this(iseq);
                 }
             }
             NodeBase::Number(n) => self.bytecode_generator.append_push_number(n, iseq),

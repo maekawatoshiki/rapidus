@@ -40,28 +40,12 @@ pub struct LexicalEnvironment {
 pub enum EnvironmentRecord {
     Declarative(FxHashMap<String, Value2>),
     Object(Value2),
-    Global(FxHashMap<String, Value2>),
+    Global(Value2),
     // TODO: Function...
 }
 
 impl Frame {
     pub fn new(
-        execution_context: ExecutionContext,
-        bytecode: ByteCode,
-        exception_table: Vec<Exception>,
-    ) -> Self {
-        Frame {
-            execution_context,
-            pc: 0,
-            saved_stack_len: 0,
-            bytecode,
-            exception_table,
-            this: None,
-            constructor_call: false,
-        }
-    }
-
-    pub fn new_ext(
         execution_context: ExecutionContext,
         bytecode: ByteCode,
         exception_table: Vec<Exception>,
@@ -118,13 +102,6 @@ impl LexicalEnvironment {
         }
     }
 
-    pub fn new_global() -> Self {
-        LexicalEnvironment {
-            record: EnvironmentRecord::Global(FxHashMap::default()),
-            outer: None,
-        }
-    }
-
     pub fn new_global_initialized(
         memory_allocator: &mut gc::MemoryAllocator,
         object_prototypes: &ObjectPrototypes,
@@ -138,13 +115,15 @@ impl LexicalEnvironment {
             "log".to_string(),
             builtin_log,
         );
+        let console = make_normal_object!(memory_allocator,
+            log => true, false, true: log
+        );
+        let object_constructor = builtins::object::object(memory_allocator, object_prototypes);
         LexicalEnvironment {
-            record: EnvironmentRecord::Global(make_global_env!(
-                console:
-                    make_normal_object!(memory_allocator,
-                        log => true, false, true: log
-                    ),
-                Object: builtins::object::object(memory_allocator, object_prototypes)
+            record: EnvironmentRecord::Global(make_normal_object!(
+                memory_allocator,
+                console => true, false, true: console,
+                Object  => true, false, true: object_constructor
             )),
             outer: None,
         }
@@ -152,19 +131,29 @@ impl LexicalEnvironment {
 
     pub fn get_value(&self, name: &String) -> Result<Value2, RuntimeError> {
         match self.record {
-            EnvironmentRecord::Declarative(ref record) | EnvironmentRecord::Global(ref record) => {
-                match record.get(name) {
-                    Some(binding) if binding == &Value2::uninitialized() => {
-                        return Err(RuntimeError::Reference(format!(
-                            "'{}' is not defined",
-                            name
-                        )));
-                    }
-                    Some(binding) => return Ok(*binding),
-                    None => {}
+            EnvironmentRecord::Declarative(ref record) => match record.get(name) {
+                Some(binding) if binding == &Value2::uninitialized() => {
+                    return Err(RuntimeError::Reference(format!(
+                        "'{}' is not defined",
+                        name
+                    )));
                 }
+                Some(binding) => return Ok(*binding),
+                None => {}
+            },
+            EnvironmentRecord::Global(obj) | EnvironmentRecord::Object(obj)
+                if obj.has_own_property(name.as_str()) =>
+            {
+                let val = obj.get_property_by_str_key(name.as_str());
+                if val == Value2::uninitialized() {
+                    return Err(RuntimeError::Reference(format!(
+                        "'{}' is not defined",
+                        name
+                    )));
+                }
+                return Ok(val);
             }
-            EnvironmentRecord::Object(_) => unimplemented!(),
+            _ => {}
         };
 
         if let Some(outer) = self.get_outer() {
@@ -186,11 +175,10 @@ impl LexicalEnvironment {
                 }
                 None => {}
             },
-            EnvironmentRecord::Global(ref mut record) => {
-                record.insert(name, val);
+            EnvironmentRecord::Global(obj) | EnvironmentRecord::Object(obj) => {
+                obj.set_property_by_string_key(name, val);
                 return Ok(());
             }
-            EnvironmentRecord::Object(_) => unimplemented!(),
         };
 
         if let Some(outer) = self.get_outer() {
@@ -205,5 +193,12 @@ impl LexicalEnvironment {
 
     pub fn get_outer(&self) -> Option<&mut LexicalEnvironment> {
         self.outer.and_then(|outer| Some(unsafe { &mut *outer }))
+    }
+
+    pub fn get_global_object(&self) -> Value2 {
+        match self.record {
+            EnvironmentRecord::Global(obj) => obj,
+            _ => panic!(),
+        }
     }
 }

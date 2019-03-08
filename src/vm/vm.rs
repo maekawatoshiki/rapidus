@@ -107,7 +107,13 @@ impl<'a> VM2<'a> {
             saved_lexical_environment: vec![],
         };
 
-        let frame = frame::Frame::new(exec_ctx, iseq, global_info.exception_table);
+        let frame = frame::Frame::new(
+            exec_ctx,
+            iseq,
+            global_info.exception_table,
+            Some(unsafe { &*global_env_ref }.get_global_object()),
+            false,
+        );
 
         self.run(frame)?;
 
@@ -245,6 +251,10 @@ impl<'a> VM2<'a> {
                     read_int32!(cur_frame.bytecode, cur_frame.pc, id, usize);
                     let val = *constant_table!(self).get(id).as_value();
                     self.stack.push(val.into());
+                }
+                VMInst::PUSH_THIS => {
+                    cur_frame.pc += 1;
+                    self.stack.push(cur_frame.this.unwrap().into());
                 }
                 VMInst::GET_MEMBER => {
                     cur_frame.pc += 1;
@@ -556,10 +566,6 @@ impl<'a> VM2<'a> {
                     record.insert(name.clone(), arg);
                 }
 
-                if let Some(this) = this {
-                    record.insert("this".to_string(), this);
-                }
-
                 record
             }),
             outer: user_func.outer,
@@ -589,7 +595,7 @@ impl<'a> VM2<'a> {
             saved_lexical_environment: vec![],
         };
 
-        let frame = frame::Frame::new_ext(
+        let frame = frame::Frame::new(
             exec_ctx,
             user_func.code,
             user_func.exception_table,

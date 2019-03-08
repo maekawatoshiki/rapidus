@@ -22,6 +22,10 @@ pub struct Property2 {
 }
 
 impl ObjectInfo {
+    pub fn has_own_property(&self, key: &str) -> bool {
+        self.property.contains_key(key)
+    }
+
     pub fn get_property(&self, key: Value2) -> Value2 {
         match self.property.get(key.to_string().as_str()) {
             Some(prop) => prop.val,
@@ -46,6 +50,16 @@ impl ObjectInfo {
                 _ => Value2::undefined(),
             },
         }
+    }
+
+    pub fn set_property_by_string_key(&mut self, key: String, val: Value2) {
+        let property = self.property.entry(key).or_insert_with(|| Property2 {
+            val: Value2::undefined(),
+            writable: true,
+            enumerable: true,
+            configurable: true,
+        });
+        property.val = val;
     }
 
     pub fn set_property(&mut self, key: Value2, val: Value2) {
