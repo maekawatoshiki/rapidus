@@ -87,4 +87,4 @@ xxx = 1;
 console.log("xxx =", xxx)
 console.log("this.xxx =", this.xxx);
 
-
+console.log((function(){return this.xxx})());

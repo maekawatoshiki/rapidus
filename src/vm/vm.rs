@@ -111,7 +111,7 @@ impl<'a> VM2<'a> {
             exec_ctx,
             iseq,
             global_info.exception_table,
-            Some(unsafe { &*global_env_ref }.get_global_object()),
+            unsafe { &*global_env_ref }.get_global_object(),
             false,
         );
 
@@ -254,7 +254,7 @@ impl<'a> VM2<'a> {
                 }
                 VMInst::PUSH_THIS => {
                     cur_frame.pc += 1;
-                    self.stack.push(cur_frame.this.unwrap().into());
+                    self.stack.push(cur_frame.this.into());
                 }
                 VMInst::GET_MEMBER => {
                     cur_frame.pc += 1;
@@ -302,7 +302,7 @@ impl<'a> VM2<'a> {
                     for _ in 0..argc {
                         args.push(self.stack.pop().unwrap().into());
                     }
-                    self.call_function(callee, args, None, &mut cur_frame, false)?;
+                    self.call_function(callee, args, cur_frame.this, &mut cur_frame, false)?;
                 }
                 VMInst::CALL_METHOD => {
                     cur_frame.pc += 1;
@@ -316,7 +316,7 @@ impl<'a> VM2<'a> {
                     self.call_function(
                         parent.get_property(method),
                         args,
-                        Some(parent),
+                        parent,
                         &mut cur_frame,
                         false,
                     )?;
@@ -420,7 +420,7 @@ impl<'a> VM2<'a> {
         let frame = self.saved_frame.pop().unwrap();
         unsafe { self.stack.set_len(frame.saved_stack_len) };
         if cur_frame.constructor_call && !ret_val.is_object() {
-            self.stack.push(cur_frame.this.unwrap().into());
+            self.stack.push(cur_frame.this.into());
         } else {
             self.stack.push(ret_val_boxed);
         }
@@ -517,7 +517,7 @@ impl<'a> VM2<'a> {
         match info.kind {
             FunctionObjectKind::Builtin(func) => func(self, &args, cur_frame),
             FunctionObjectKind::User(ref user_func) => {
-                self.call_user_function(user_func.clone(), args, Some(this), cur_frame, true)
+                self.call_user_function(user_func.clone(), args, this, cur_frame, true)
             }
         }
     }
@@ -526,7 +526,7 @@ impl<'a> VM2<'a> {
         &mut self,
         callee: Value2,
         args: Vec<Value2>,
-        this: Option<Value2>,
+        this: Value2,
         cur_frame: &mut frame::Frame,
         constructor_call: bool,
     ) -> VMResult {
@@ -543,7 +543,7 @@ impl<'a> VM2<'a> {
         &mut self,
         user_func: UserFunctionInfo,
         args: Vec<Value2>,
-        this: Option<Value2>,
+        this: Value2,
         cur_frame: &mut frame::Frame,
         constructor_call: bool,
     ) -> VMResult {

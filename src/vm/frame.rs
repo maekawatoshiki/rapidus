@@ -19,7 +19,7 @@ pub struct Frame {
     pub saved_stack_len: usize,
     pub bytecode: ByteCode,
     pub exception_table: Vec<Exception>,
-    pub this: Option<Value2>,
+    pub this: Value2,
     pub constructor_call: bool,
 }
 
@@ -49,7 +49,7 @@ impl Frame {
         execution_context: ExecutionContext,
         bytecode: ByteCode,
         exception_table: Vec<Exception>,
-        this: Option<Value2>,
+        this: Value2,
         constructor_call: bool,
     ) -> Self {
         Frame {
