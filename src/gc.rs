@@ -20,11 +20,14 @@ use vm::{
 };
 
 pub type RawPointer = *mut u8;
+pub type MarkMap = FxHashMap<*mut GcTarget, MarkState>;
+pub type MarkSet = FxHashSet<*mut GcTarget>;
 
 #[derive(Debug)]
 pub struct MemoryAllocator {
-    allocated_memory: FxHashSet<RawPointer>,
+    allocated_memory: MarkMap,
     allocated_size: usize,
+    roots: MarkSet,
     state: GCState,
 }
 
@@ -32,9 +35,10 @@ pub struct MemoryAllocator {
 pub enum GCState {
     Initial,
     Marking,
+    ReadyToSweep,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum MarkState {
     White,
     Gray,
@@ -44,17 +48,18 @@ pub enum MarkState {
 impl MemoryAllocator {
     pub fn new() -> Self {
         MemoryAllocator {
-            allocated_memory: FxHashSet::default(),
+            allocated_memory: MarkMap::default(),
             allocated_size: 0,
+            roots: MarkSet::default(),
             state: GCState::Initial,
         }
     }
 
-    pub fn alloc<T>(&mut self, data: T) -> *mut T {
+    pub fn alloc<T: GcTarget + 'static>(&mut self, data: T) -> *mut T {
         let data_size = mem::size_of_val(&data);
         let ptr = Box::into_raw(Box::new(data));
         self.allocated_size += data_size;
-        self.allocated_memory.insert(ptr as RawPointer);
+        self.allocated_memory.insert(ptr, MarkState::White);
         ptr
     }
 }
@@ -67,140 +72,228 @@ impl MemoryAllocator {
         stack: &Vec<BoxedValue>,
         cur_frame: &frame::Frame,
     ) {
-        let mut markmap = MarkMap::default();
+        let mut markset = MarkSet::default();
 
-        match self.state {
+        self.state = match self.state {
             GCState::Initial => {
-                cur_frame.execution_context.initial_trace(&mut markmap);
+                cur_frame
+                    .execution_context
+                    .initial_trace(&mut self.allocated_memory, &mut markset);
 
-                object_prototypes.object.initial_trace(&mut markmap);
-                object_prototypes.function.initial_trace(&mut markmap);
+                object_prototypes
+                    .object
+                    .initial_trace(&mut self.allocated_memory, &mut markset);
+                object_prototypes
+                    .function
+                    .initial_trace(&mut self.allocated_memory, &mut markset);
 
-                constant_table.initial_trace(&mut markmap);
+                constant_table.initial_trace(&mut self.allocated_memory, &mut markset);
 
                 for val_boxed in stack {
                     let val: Value2 = (*val_boxed).into();
-                    val.initial_trace(&mut markmap);
+                    val.initial_trace(&mut self.allocated_memory, &mut markset);
+                }
+
+                println!("initial mark: {:?}", markset);
+
+                self.roots = markset;
+
+                GCState::Marking
+            }
+            GCState::Marking => {
+                for root in &self.roots {
+                    self.allocated_memory.insert(*root, MarkState::Black);
+                    unsafe { &**root }.trace(&mut self.allocated_memory, &mut markset);
+                }
+
+                println!("marking: {:?}", markset);
+
+                self.roots = markset;
+
+                if self.roots.len() == 0 {
+                    println!("all marked: {:?}", self.allocated_memory);
+                    GCState::ReadyToSweep
+                } else {
+                    GCState::Marking
                 }
             }
-            GCState::Marking => {}
+            GCState::ReadyToSweep => {
+                GCState::Initial
+            }
         }
-
-        // println!("marked: {:?}", markmap);
     }
 }
 
-pub type MarkMap = FxHashMap<RawPointer, MarkState>;
-
 pub trait GcTarget {
-    fn initial_trace(&self, &mut MarkMap);
-    fn trace(&self, &mut MarkMap);
+    fn initial_trace(&self, &mut MarkMap, &mut MarkSet);
+    fn trace(&self, &mut MarkMap, &mut MarkSet);
     fn free(&self) -> usize;
 }
 
+macro_rules! mark {
+    ($allocated_memory:expr, $markmap:expr, $val:expr) => {{
+        $allocated_memory.insert($val, MarkState::Gray);
+        $markmap.insert($val);
+    }};
+}
+
+macro_rules! mark_if_white {
+    ($allocated_memory:expr, $markmap:expr, $val:expr) => {{
+        if let Some(mark) = $allocated_memory.get(&($val as *mut GcTarget)) {
+            if mark != &MarkState::White {
+                return;
+            }
+        }
+        $allocated_memory.insert($val as *mut GcTarget, MarkState::Gray);
+        $markmap.insert($val);
+    }};
+}
+
 impl GcTarget for frame::ExecutionContext {
-    fn initial_trace(&self, markmap: &mut MarkMap) {
-        self.lexical_environment.initial_trace(markmap);
+    fn initial_trace(&self, allocated_memory: &mut MarkMap, markset: &mut MarkSet) {
+        mark!(allocated_memory, markset, self.lexical_environment);
         for env in &self.saved_lexical_environment {
-            env.initial_trace(markmap);
+            mark!(allocated_memory, markset, *env);
         }
     }
-    fn trace(&self, markmap: &mut MarkMap) {}
+
+    fn trace(&self, allocated_memory: &mut MarkMap, markset: &mut MarkSet) {
+        mark_if_white!(allocated_memory, markset, self.lexical_environment);
+        for env in &self.saved_lexical_environment {
+            mark_if_white!(allocated_memory, markset, *env);
+        }
+    }
+
     fn free(&self) -> usize {
         0
     }
 }
 
-impl GcTarget for frame::LexicalEnvironmentRef {
-    fn initial_trace(&self, markmap: &mut MarkMap) {
-        fn trace_record(record: &frame::EnvironmentRecord, markmap: &mut MarkMap) {
+impl GcTarget for frame::LexicalEnvironment {
+    fn initial_trace(&self, allocated_memory: &mut MarkMap, markset: &mut MarkSet) {
+        fn trace_record(
+            allocated_memory: &mut MarkMap,
+            record: &frame::EnvironmentRecord,
+            markset: &mut MarkSet,
+        ) {
             match record {
                 frame::EnvironmentRecord::Declarative(record) => {
                     for (_, val) in record {
-                        val.initial_trace(markmap);
+                        val.initial_trace(allocated_memory, markset);
                     }
                 }
                 frame::EnvironmentRecord::Object(obj) | frame::EnvironmentRecord::Global(obj) => {
-                    obj.initial_trace(markmap)
+                    obj.initial_trace(allocated_memory, markset)
                 }
             }
         }
 
-        if markmap.contains_key(&(*self as *mut u8)) {
-            return;
-        }
+        trace_record(allocated_memory, &self.record, markset);
 
-        markmap.insert(*self as *mut u8, MarkState::Gray);
-
-        let env = unsafe { &**self };
-        trace_record(&env.record, markmap);
-
-        if let Some(outer) = env.outer {
-            markmap.insert(outer as *mut u8, MarkState::Gray);
-            outer.initial_trace(markmap)
+        if let Some(outer) = self.outer {
+            mark!(allocated_memory, markset, outer as *mut GcTarget);
+            // unsafe { &*outer }.initial_trace(markmap)
         }
     }
 
-    fn trace(&self, markmap: &mut MarkMap) {}
+    fn trace(&self, allocated_memory: &mut MarkMap, markset: &mut MarkSet) {
+        fn trace_record(
+            allocated_memory: &mut MarkMap,
+            record: &frame::EnvironmentRecord,
+            markset: &mut MarkSet,
+        ) {
+            match record {
+                frame::EnvironmentRecord::Declarative(record) => {
+                    for (_, val) in record {
+                        val.initial_trace(allocated_memory, markset);
+                    }
+                }
+                frame::EnvironmentRecord::Object(obj) | frame::EnvironmentRecord::Global(obj) => {
+                    obj.initial_trace(allocated_memory, markset)
+                }
+            }
+        }
+
+        trace_record(allocated_memory, &self.record, markset);
+
+        if let Some(outer) = self.outer {
+            mark_if_white!(allocated_memory, markset, outer);
+        }
+    }
+
+    fn free(&self) -> usize {
+        0
+    }
+}
+
+impl GcTarget for ::std::ffi::CString {
+    fn initial_trace(&self, allocated_memory: &mut MarkMap, markset: &mut MarkSet) {}
+    fn trace(&self, allocated_memory: &mut MarkMap, markset: &mut MarkSet) {}
     fn free(&self) -> usize {
         0
     }
 }
 
 impl GcTarget for Value2 {
-    fn initial_trace(&self, markmap: &mut MarkMap) {
+    fn initial_trace(&self, allocated_memory: &mut MarkMap, markset: &mut MarkSet) {
         match self {
-            Value2::Object(obj) => obj.initial_trace(markmap),
+            Value2::Object(obj) => {
+                mark!(allocated_memory, markset, *obj as *mut GcTarget);
+                // unsafe { &**obj }.initial_trace(markmap)
+            }
             Value2::String(s) => {
-                markmap.insert(*s as *mut u8, MarkState::Gray);
+                mark!(allocated_memory, markset, *s as *mut GcTarget);
             }
             _ => {}
         }
     }
 
-    fn trace(&self, markmap: &mut MarkMap) {}
+    fn trace(&self, allocated_memory: &mut MarkMap, markset: &mut MarkSet) {
+        match self {
+            Value2::Object(obj) => mark_if_white!(allocated_memory, markset, *obj),
+            Value2::String(s) => mark_if_white!(allocated_memory, markset, *s),
+            _ => {}
+        }
+    }
+
     fn free(&self) -> usize {
         0
     }
 }
 
-impl GcTarget for *mut object::ObjectInfo {
-    fn initial_trace(&self, markmap: &mut MarkMap) {
-        if markmap.contains_key(&(*self as *mut u8)) {
-            return;
-        }
-
-        markmap.insert(*self as *mut u8, MarkState::Gray);
-
-        let obj_info = unsafe { &**self };
-        obj_info.kind.initial_trace(markmap);
+impl GcTarget for object::ObjectInfo {
+    fn initial_trace(&self, allocated_memory: &mut MarkMap, markset: &mut MarkSet) {
+        self.kind.initial_trace(allocated_memory, markset);
     }
 
-    fn trace(&self, markmap: &mut MarkMap) {}
+    fn trace(&self, allocated_memory: &mut MarkMap, markset: &mut MarkSet) {
+        self.kind.initial_trace(allocated_memory, markset);
+    }
     fn free(&self) -> usize {
         0
     }
 }
 
 impl GcTarget for object::ObjectKind2 {
-    fn initial_trace(&self, markmap: &mut MarkMap) {
+    fn initial_trace(&self, allocated_memory: &mut MarkMap, markset: &mut MarkSet) {
         fn trace_user_function_info(
+            allocated_memory: &mut MarkMap,
+            markset: &mut MarkSet,
             user_func_info: &function::UserFunctionInfo,
-            markmap: &mut MarkMap,
         ) {
             for func_decl in &user_func_info.func_decls {
-                func_decl.initial_trace(markmap);
+                func_decl.initial_trace(allocated_memory, markset);
             }
 
             if let Some(outer) = user_func_info.outer {
-                outer.initial_trace(markmap);
+                mark!(allocated_memory, markset, outer);
             }
         }
 
         match self {
             object::ObjectKind2::Function(func_info) => match func_info.kind {
                 function::FunctionObjectKind::User(ref user_func_info) => {
-                    trace_user_function_info(user_func_info, markmap)
+                    trace_user_function_info(allocated_memory, markset, user_func_info)
                 }
                 function::FunctionObjectKind::Builtin(_) => {}
             },
@@ -208,22 +301,51 @@ impl GcTarget for object::ObjectKind2 {
         }
     }
 
-    fn trace(&self, markmap: &mut MarkMap) {}
+    fn trace(&self, allocated_memory: &mut MarkMap, markset: &mut MarkSet) {
+        fn trace_user_function_info(
+            allocated_memory: &mut MarkMap,
+            markset: &mut MarkSet,
+            user_func_info: &function::UserFunctionInfo,
+        ) {
+            for func_decl in &user_func_info.func_decls {
+                func_decl.initial_trace(allocated_memory, markset);
+            }
+
+            if let Some(outer) = user_func_info.outer {
+                mark_if_white!(allocated_memory, markset, outer);
+            }
+        }
+
+        match self {
+            object::ObjectKind2::Function(func_info) => match func_info.kind {
+                function::FunctionObjectKind::User(ref user_func_info) => {
+                    trace_user_function_info(allocated_memory, markset, user_func_info)
+                }
+                function::FunctionObjectKind::Builtin(_) => {}
+            },
+            object::ObjectKind2::Ordinary => {}
+        }
+    }
+
     fn free(&self) -> usize {
         0
     }
 }
 
 impl GcTarget for constant::ConstantTable {
-    fn initial_trace(&self, markmap: &mut MarkMap) {
+    fn initial_trace(&self, allocated_memory: &mut MarkMap, markset: &mut MarkSet) {
         for const_ in &self.table {
             match const_ {
-                constant::Constant::Value(val) => val.initial_trace(markmap),
+                constant::Constant::Value(val) => val.initial_trace(allocated_memory, markset),
                 _ => {}
             }
         }
     }
-    fn trace(&self, markmap: &mut MarkMap) {}
+
+    fn trace(&self, allocated_memory: &mut MarkMap, markset: &mut MarkSet) {
+        panic!()
+    }
+
     fn free(&self) -> usize {
         0
     }
