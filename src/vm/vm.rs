@@ -274,7 +274,7 @@ impl<'a> VM2<'a> {
                     read_int32!(cur_frame.bytecode, cur_frame.pc, name_id, usize);
                     let val = self.stack.pop().unwrap();
                     let name = constant_table!(self).get(name_id).as_string().clone();
-                    etry!(cur_frame.lex_env().set_value(name, val.into()));
+                    etry!(cur_frame.lex_env_mut().set_value(name, val.into()));
                 }
                 VMInst::GET_VALUE => {
                     cur_frame.pc += 1;

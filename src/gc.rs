@@ -11,7 +11,7 @@ use stopwatch::Stopwatch;
 use vm::{
     callobj::CallObject,
     constant, frame,
-    jsvalue::value::Value2,
+    jsvalue::{function, object, value::Value2},
     value::{ArrayValue, ObjectKind, Property, Value},
     vm::{VM, VM2},
 };
@@ -57,13 +57,12 @@ impl MemoryAllocator {
 }
 
 impl MemoryAllocator {
-    pub fn mark<'a>(&mut self, vm: &mut VM2<'a>) {
+    pub fn mark<'a>(&mut self, vm: &VM2<'a>, cur_frame: &frame::Frame) {
         let mut markmap = MarkMap::default();
 
         match self.state {
             GCState::Initial => {
-                let global_env = unsafe { &*vm.global_environment };
-                global_env.trace(&mut markmap);
+                cur_frame.execution_context.trace(&mut markmap);
 
                 vm.code_generator
                     .object_prototypes
@@ -97,8 +96,49 @@ pub trait GcTarget {
     fn free(&self) -> usize;
 }
 
-impl GcTarget for frame::LexicalEnvironment {
-    fn initial_trace(&self, markmap: &mut MarkMap) {}
+impl GcTarget for frame::ExecutionContext {
+    fn initial_trace(&self, markmap: &mut MarkMap) {
+        self.lexical_environment.initial_trace(markmap);
+        for env in &self.saved_lexical_environment {
+            env.initial_trace(markmap);
+        }
+    }
+    fn trace(&self, markmap: &mut MarkMap) {}
+    fn free(&self) -> usize {
+        0
+    }
+}
+
+impl GcTarget for frame::LexicalEnvironmentRef {
+    fn initial_trace(&self, markmap: &mut MarkMap) {
+        fn trace_record(record: &frame::EnvironmentRecord, markmap: &mut MarkMap) {
+            match record {
+                frame::EnvironmentRecord::Declarative(record) => {
+                    for (_, val) in record {
+                        val.initial_trace(markmap);
+                    }
+                }
+                frame::EnvironmentRecord::Object(obj) | frame::EnvironmentRecord::Global(obj) => {
+                    obj.initial_trace(markmap)
+                }
+            }
+        }
+
+        if markmap.contains_key(&(*self as *mut u8)) {
+            return;
+        }
+
+        markmap.insert(*self as *mut u8, MarkState::Gray);
+
+        let env = unsafe { &**self };
+        trace_record(&env.record, markmap);
+
+        if let Some(outer) = env.outer {
+            markmap.insert(outer as *mut u8, MarkState::Gray);
+            outer.initial_trace(markmap)
+        }
+    }
+
     fn trace(&self, markmap: &mut MarkMap) {}
     fn free(&self) -> usize {
         0
@@ -106,7 +146,63 @@ impl GcTarget for frame::LexicalEnvironment {
 }
 
 impl GcTarget for Value2 {
-    fn initial_trace(&self, markmap: &mut MarkMap) {}
+    fn initial_trace(&self, markmap: &mut MarkMap) {
+        match self {
+            Value2::Object(obj) => obj.initial_trace(markmap),
+            _ => {}
+        }
+    }
+
+    fn trace(&self, markmap: &mut MarkMap) {}
+    fn free(&self) -> usize {
+        0
+    }
+}
+
+impl GcTarget for *mut object::ObjectInfo {
+    fn initial_trace(&self, markmap: &mut MarkMap) {
+        if markmap.contains_key(&(*self as *mut u8)) {
+            return;
+        }
+
+        markmap.insert(*self as *mut u8, MarkState::Gray);
+
+        let obj_info = unsafe { &**self };
+        obj_info.kind.initial_trace(markmap);
+    }
+
+    fn trace(&self, markmap: &mut MarkMap) {}
+    fn free(&self) -> usize {
+        0
+    }
+}
+
+impl GcTarget for object::ObjectKind2 {
+    fn initial_trace(&self, markmap: &mut MarkMap) {
+        fn trace_user_function_info(
+            user_func_info: &function::UserFunctionInfo,
+            markmap: &mut MarkMap,
+        ) {
+            for func_decl in &user_func_info.func_decls {
+                func_decl.initial_trace(markmap);
+            }
+
+            if let Some(outer) = user_func_info.outer {
+                outer.initial_trace(markmap);
+            }
+        }
+
+        match self {
+            object::ObjectKind2::Function(func_info) => match func_info.kind {
+                function::FunctionObjectKind::User(ref user_func_info) => {
+                    trace_user_function_info(user_func_info, markmap)
+                }
+                function::FunctionObjectKind::Builtin(_) => {}
+            },
+            object::ObjectKind2::Ordinary => {}
+        }
+    }
+
     fn trace(&self, markmap: &mut MarkMap) {}
     fn free(&self) -> usize {
         0

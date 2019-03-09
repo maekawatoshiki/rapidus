@@ -63,7 +63,11 @@ impl Frame {
         }
     }
 
-    pub fn lex_env(&mut self) -> &mut LexicalEnvironment {
+    pub fn lex_env(&self) -> &LexicalEnvironment {
+        unsafe { &*self.execution_context.lexical_environment }
+    }
+
+    pub fn lex_env_mut(&mut self) -> &mut LexicalEnvironment {
         unsafe { &mut *self.execution_context.lexical_environment }
     }
 }
