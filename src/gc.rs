@@ -10,8 +10,10 @@ use std::sync::atomic::{self, AtomicUsize};
 use stopwatch::Stopwatch;
 use vm::{
     callobj::CallObject,
+    constant, frame,
+    jsvalue::value::Value2,
     value::{ArrayValue, ObjectKind, Property, Value},
-    vm::VM,
+    vm::{VM, VM2},
 };
 
 pub type RawPointer = *mut u8;
@@ -20,6 +22,20 @@ pub type RawPointer = *mut u8;
 pub struct MemoryAllocator {
     allocated_memory: FxHashSet<RawPointer>,
     allocated_size: usize,
+    state: GCState,
+}
+
+#[derive(Debug)]
+pub enum GCState {
+    Initial,
+    Marking,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum MarkState {
+    White,
+    Gray,
+    Black,
 }
 
 impl MemoryAllocator {
@@ -27,6 +43,7 @@ impl MemoryAllocator {
         MemoryAllocator {
             allocated_memory: FxHashSet::default(),
             allocated_size: 0,
+            state: GCState::Initial,
         }
     }
 
@@ -36,6 +53,71 @@ impl MemoryAllocator {
         self.allocated_size += data_size;
         self.allocated_memory.insert(ptr as RawPointer);
         ptr
+    }
+}
+
+impl MemoryAllocator {
+    pub fn mark<'a>(&mut self, vm: &mut VM2<'a>) {
+        let mut markmap = MarkMap::default();
+
+        match self.state {
+            GCState::Initial => {
+                let global_env = unsafe { &*vm.global_environment };
+                global_env.trace(&mut markmap);
+
+                vm.code_generator
+                    .object_prototypes
+                    .object
+                    .trace(&mut markmap);
+                vm.code_generator
+                    .object_prototypes
+                    .function
+                    .trace(&mut markmap);
+
+                vm.code_generator
+                    .bytecode_generator
+                    .constant_table
+                    .trace(&mut markmap);
+
+                for val_boxed in &vm.stack {
+                    let val: Value2 = (*val_boxed).into();
+                    val.trace(&mut markmap);
+                }
+            }
+            GCState::Marking => {}
+        }
+    }
+}
+
+pub type MarkMap = FxHashMap<RawPointer, MarkState>;
+
+pub trait GcTarget {
+    fn initial_trace(&self, &mut MarkMap);
+    fn trace(&self, &mut MarkMap);
+    fn free(&self) -> usize;
+}
+
+impl GcTarget for frame::LexicalEnvironment {
+    fn initial_trace(&self, markmap: &mut MarkMap) {}
+    fn trace(&self, markmap: &mut MarkMap) {}
+    fn free(&self) -> usize {
+        0
+    }
+}
+
+impl GcTarget for Value2 {
+    fn initial_trace(&self, markmap: &mut MarkMap) {}
+    fn trace(&self, markmap: &mut MarkMap) {}
+    fn free(&self) -> usize {
+        0
+    }
+}
+
+impl GcTarget for constant::ConstantTable {
+    fn initial_trace(&self, markmap: &mut MarkMap) {}
+    fn trace(&self, markmap: &mut MarkMap) {}
+    fn free(&self) -> usize {
+        0
     }
 }
 
