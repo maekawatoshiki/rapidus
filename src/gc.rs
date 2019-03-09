@@ -11,9 +11,12 @@ use stopwatch::Stopwatch;
 use vm::{
     callobj::CallObject,
     constant, frame,
-    jsvalue::{function, object, value::Value2},
+    jsvalue::{
+        function, object, prototype,
+        value::{BoxedValue, Value2},
+    },
     value::{ArrayValue, ObjectKind, Property, Value},
-    vm::{VM, VM2},
+    vm::VM,
 };
 
 pub type RawPointer = *mut u8;
@@ -57,34 +60,33 @@ impl MemoryAllocator {
 }
 
 impl MemoryAllocator {
-    pub fn mark<'a>(&mut self, vm: &VM2<'a>, cur_frame: &frame::Frame) {
+    pub fn mark(
+        &mut self,
+        object_prototypes: &prototype::ObjectPrototypes,
+        constant_table: &constant::ConstantTable,
+        stack: &Vec<BoxedValue>,
+        cur_frame: &frame::Frame,
+    ) {
         let mut markmap = MarkMap::default();
 
         match self.state {
             GCState::Initial => {
-                cur_frame.execution_context.trace(&mut markmap);
+                cur_frame.execution_context.initial_trace(&mut markmap);
 
-                vm.code_generator
-                    .object_prototypes
-                    .object
-                    .trace(&mut markmap);
-                vm.code_generator
-                    .object_prototypes
-                    .function
-                    .trace(&mut markmap);
+                object_prototypes.object.initial_trace(&mut markmap);
+                object_prototypes.function.initial_trace(&mut markmap);
 
-                vm.code_generator
-                    .bytecode_generator
-                    .constant_table
-                    .trace(&mut markmap);
+                constant_table.initial_trace(&mut markmap);
 
-                for val_boxed in &vm.stack {
+                for val_boxed in stack {
                     let val: Value2 = (*val_boxed).into();
-                    val.trace(&mut markmap);
+                    val.initial_trace(&mut markmap);
                 }
             }
             GCState::Marking => {}
         }
+
+        // println!("marked: {:?}", markmap);
     }
 }
 
@@ -149,6 +151,9 @@ impl GcTarget for Value2 {
     fn initial_trace(&self, markmap: &mut MarkMap) {
         match self {
             Value2::Object(obj) => obj.initial_trace(markmap),
+            Value2::String(s) => {
+                markmap.insert(*s as *mut u8, MarkState::Gray);
+            }
             _ => {}
         }
     }
@@ -210,7 +215,14 @@ impl GcTarget for object::ObjectKind2 {
 }
 
 impl GcTarget for constant::ConstantTable {
-    fn initial_trace(&self, markmap: &mut MarkMap) {}
+    fn initial_trace(&self, markmap: &mut MarkMap) {
+        for const_ in &self.table {
+            match const_ {
+                constant::Constant::Value(val) => val.initial_trace(markmap),
+                _ => {}
+            }
+        }
+    }
     fn trace(&self, markmap: &mut MarkMap) {}
     fn free(&self) -> usize {
         0

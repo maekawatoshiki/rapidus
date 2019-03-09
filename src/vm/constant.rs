@@ -9,7 +9,7 @@ pub enum Constant {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ConstantTable {
-    table: Vec<Constant>,
+    pub table: Vec<Constant>,
 }
 
 impl ConstantTable {

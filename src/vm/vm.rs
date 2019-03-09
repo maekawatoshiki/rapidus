@@ -334,6 +334,12 @@ impl<'a> VM2<'a> {
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, len, usize);
                     self.create_object(len)?;
+                    memory_allocator!(self).mark(
+                        object_prototypes!(self),
+                        constant_table!(self),
+                        &self.stack,
+                        &cur_frame,
+                    );
                 }
                 VMInst::PUSH_ENV => {
                     cur_frame.pc += 1;
@@ -477,6 +483,7 @@ impl<'a> VM2<'a> {
             properties,
         );
         self.stack.push(obj.into());
+
         Ok(())
     }
 
