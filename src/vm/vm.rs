@@ -335,10 +335,12 @@ impl<'a> VM2<'a> {
                     read_int32!(cur_frame.bytecode, cur_frame.pc, len, usize);
                     self.create_object(len)?;
                     memory_allocator!(self).mark(
+                        self.global_environment,
                         object_prototypes!(self),
                         constant_table!(self),
                         &self.stack,
                         &cur_frame,
+                        &self.saved_frame,
                     );
                 }
                 VMInst::PUSH_ENV => {
