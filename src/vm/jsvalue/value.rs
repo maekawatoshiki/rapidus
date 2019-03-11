@@ -207,7 +207,23 @@ impl Value2 {
         }
     }
 
-    pub fn get_property(&self, key: Value2) -> Value2 {
+    pub fn get_property(&self, allocator: &mut gc::MemoryAllocator, key: Value2) -> Value2 {
+        let mut string_get_property = |s: &str, key: Value2| -> Value2 {
+            match key {
+                Value2::Number(idx) if is_integer(idx) => {
+                    Value2::string(allocator, s.chars().nth(idx as usize).unwrap().to_string())
+                }
+                _ => Value2::undefined(), // TODO
+            }
+        };
+
+        match self {
+            Value2::String(s) => {
+                return string_get_property(unsafe { &**s }.to_str().unwrap(), key)
+            }
+            _ => {}
+        }
+
         match self {
             Value2::Object(obj_info) => unsafe { &**obj_info }.get_property(key),
             _ => Value2::undefined(),
@@ -345,4 +361,11 @@ impl Value2 {
             _ => Value2::undefined(),
         }
     }
+}
+
+// Utils
+
+#[inline]
+pub fn is_integer(n: f64) -> bool {
+    n - n.floor() == 0.0
 }

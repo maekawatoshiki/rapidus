@@ -23,7 +23,7 @@ try {
 }
 
 var obj = {
-  x: 1, y: 2, sum: function () { console.log(this.x + this.y) }
+  x: 1, y: 2, sum: function () { console.log("x + y =", this.x + this.y) }
 };
 obj.sum()
 
@@ -77,9 +77,7 @@ function Vector2(x, y) {
   this.norm2 = function() { return this.x * this.x + 
                                    this.y * this.y }
 }
-
-let v = new Vector(1, 2)
-console.log(v.norm2())
+// // let v = new Vector(1, 2) // // console.log(v.norm2())
 v = new Vector2(1, 2)
 console.log(v.norm2())
 
@@ -88,3 +86,6 @@ console.log("xxx =", xxx)
 console.log("this.xxx =", this.xxx);
 
 console.log((function(){return this.xxx})());
+
+let expr = "3+2"
+console.log(expr[1])

@@ -260,7 +260,11 @@ impl<'a> VM2<'a> {
                     cur_frame.pc += 1;
                     let property: Value2 = self.stack.pop().unwrap().into();
                     let parent: Value2 = self.stack.pop().unwrap().into();
-                    self.stack.push(parent.get_property(property).into());
+                    self.stack.push(
+                        parent
+                            .get_property(memory_allocator!(self), property)
+                            .into(),
+                    );
                 }
                 VMInst::SET_MEMBER => {
                     cur_frame.pc += 1;
@@ -313,13 +317,8 @@ impl<'a> VM2<'a> {
                     for _ in 0..argc {
                         args.push(self.stack.pop().unwrap().into());
                     }
-                    self.call_function(
-                        parent.get_property(method),
-                        args,
-                        parent,
-                        &mut cur_frame,
-                        false,
-                    )?;
+                    let callee = parent.get_property(memory_allocator!(self), method);
+                    self.call_function(callee, args, parent, &mut cur_frame, false)?;
                 }
                 VMInst::SET_OUTER_ENV => {
                     cur_frame.pc += 1;

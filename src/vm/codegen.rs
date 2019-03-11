@@ -104,6 +104,9 @@ impl<'a> CodeGenerator<'a> {
             NodeBase::Member(ref parent, ref property) => {
                 self.visit_member(&*parent, property, iseq, use_value)?
             }
+            NodeBase::Index(ref parent, ref index) => {
+                self.visit_index(&*parent, &*index, iseq, use_value)?
+            }
             NodeBase::BinaryOp(ref lhs, ref rhs, ref op) => {
                 self.visit_binary_op(&*lhs, &*rhs, op, iseq, use_value)?
             }
@@ -544,7 +547,25 @@ impl<'a> CodeGenerator<'a> {
         Ok(())
     }
 
-    pub fn visit_binary_op(
+    fn visit_index(
+        &mut self,
+        parent: &Node,
+        index: &Node,
+        iseq: &mut ByteCode,
+        use_value: bool,
+    ) -> CodeGenResult {
+        if !use_value {
+            return Ok(());
+        }
+
+        self.visit(parent, iseq, true)?;
+        self.visit(index, iseq, true)?;
+        self.bytecode_generator.append_get_member(iseq);
+
+        Ok(())
+    }
+
+    fn visit_binary_op(
         &mut self,
         lhs: &Node,
         rhs: &Node,
