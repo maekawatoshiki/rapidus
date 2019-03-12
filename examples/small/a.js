@@ -88,4 +88,4 @@ console.log("this.xxx =", this.xxx);
 console.log((function(){return this.xxx})());
 
 let expr = "3+2"
-console.log(expr[1])
+console.log(expr[2] == "2")

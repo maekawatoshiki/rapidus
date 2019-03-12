@@ -91,6 +91,10 @@ impl Value2 {
         Value2::Other(UNINITIALIZED)
     }
 
+    pub fn bool(x: bool) -> Self {
+        Value2::Bool(if x { 1 } else { 0 })
+    }
+
     pub fn string(memory_allocator: &mut gc::MemoryAllocator, body: String) -> Self {
         Value2::String(memory_allocator.alloc(CString::new(body).unwrap()))
     }
@@ -348,10 +352,40 @@ impl Value2 {
         }
     }
 
+    // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-abstract-equality-comparison
     pub fn eq(self, val: Value2) -> Self {
+        if self.is_same_type_as(&val) {
+            return self.strict_eq(val);
+        }
+
+        match (self, val) {
+            (Value2::Other(NULL), Value2::Other(UNDEFINED)) => return Value2::bool(true),
+            (Value2::Other(UNDEFINED), Value2::Other(NULL)) => return Value2::bool(true),
+            _ => {}
+        }
+
         match (self, val) {
             (Value2::Number(x), Value2::Number(y)) => Value2::Bool(if x == y { 1 } else { 0 }),
+            // (Value2::Number(_), obj) | (Value2::String(_), obj) => self.eq(val),
             _ => Value2::undefined(),
+        }
+    }
+
+    // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-strict-equality-comparison
+    pub fn strict_eq(self, val: Value2) -> Self {
+        if !self.is_same_type_as(&val) {
+            return Value2::bool(false);
+        }
+
+        if self == Value2::undefined() || self == Value2::null() {
+            return Value2::bool(true);
+        }
+
+        match self {
+            Value2::Number(_) => Value2::bool(self.into_number() == val.into_number()),
+            Value2::String(_) => Value2::bool(self.into_str() == val.into_str()),
+            Value2::Bool(_) => Value2::bool(self.into_bool() == val.into_bool()),
+            _ => Value2::bool(false),
         }
     }
 
@@ -359,6 +393,47 @@ impl Value2 {
         match (self, val) {
             (Value2::Number(x), Value2::Number(y)) => Value2::Bool(if x < y { 1 } else { 0 }),
             _ => Value2::undefined(),
+        }
+    }
+
+    pub fn is_same_type_as(&self, val: &Value2) -> bool {
+        match (self, val) {
+            (Value2::Other(UNINITIALIZED), Value2::Other(UNINITIALIZED))
+            | (Value2::Other(EMPTY), Value2::Other(EMPTY))
+            | (Value2::Other(NULL), Value2::Other(NULL))
+            | (Value2::Other(UNDEFINED), Value2::Other(UNDEFINED))
+            | (Value2::Number(_), Value2::Number(_))
+            | (Value2::String(_), Value2::String(_))
+            | (Value2::Bool(_), Value2::Bool(_))
+            | (Value2::Object(_), Value2::Object(_)) => true,
+            _ => false,
+        }
+    }
+
+    pub fn into_number(self) -> f64 {
+        match self {
+            Value2::Number(x) => x,
+            _ => panic!(),
+        }
+    }
+
+    pub fn into_str(self) -> &'static str {
+        match self {
+            Value2::String(s) => unsafe { &*s }.to_str().unwrap(),
+            _ => panic!(),
+        }
+    }
+
+    pub fn into_bool(self) -> bool {
+        match self {
+            Value2::Bool(b) => {
+                if b == 1 {
+                    true
+                } else {
+                    false
+                }
+            }
+            _ => panic!(),
         }
     }
 }
