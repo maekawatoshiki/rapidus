@@ -21,6 +21,17 @@ use vm_codegen;
 
 pub type BuiltinFuncTy2 = fn(&mut VM2, &Vec<Value2>, &Frame) -> Result<(), RuntimeError>;
 
+pub fn parse_float(
+    vm: &mut VM2,
+    args: &Vec<Value2>,
+    _cur_frame: &Frame,
+) -> Result<(), RuntimeError> {
+    let string = args.get(0).unwrap_or(&Value2::undefined()).to_string();
+    vm.stack
+        .push(Value2::Number(string.parse::<f64>().unwrap_or(::std::f64::NAN)).into());
+    Ok(())
+}
+
 pub fn builtin_log(
     vm: &mut VM2,
     args: &Vec<Value2>,

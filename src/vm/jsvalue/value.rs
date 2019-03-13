@@ -217,6 +217,9 @@ impl Value2 {
                 Value2::Number(idx) if is_integer(idx) => {
                     Value2::string(allocator, s.chars().nth(idx as usize).unwrap().to_string())
                 }
+                Value2::String(x) if unsafe { &*x }.to_str().unwrap() == "length" => {
+                    Value2::Number(s.chars().fold(0, |x, c| x + c.len_utf16()) as f64)
+                }
                 _ => Value2::undefined(), // TODO
             }
         };
@@ -253,6 +256,7 @@ impl Value2 {
     pub fn to_string(&self) -> String {
         match self {
             Value2::String(s) => unsafe { &**s }.to_str().unwrap().to_string(),
+            Value2::Other(UNDEFINED) => "undefined".to_string(),
             _ => "[unimplemented]".to_string(),
         }
     }

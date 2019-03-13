@@ -342,6 +342,11 @@ impl<'a> VM2<'a> {
                         &self.saved_frame,
                     );
                 }
+                VMInst::DOUBLE => {
+                    cur_frame.pc += 1;
+                    let val = *self.stack.last().unwrap();
+                    self.stack.push(val);
+                }
                 VMInst::PUSH_ENV => {
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, id, usize);

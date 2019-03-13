@@ -110,7 +110,7 @@ impl LexicalEnvironment {
         memory_allocator: &mut gc::MemoryAllocator,
         object_prototypes: &ObjectPrototypes,
     ) -> Self {
-        use builtin::builtin_log;
+        use builtin::{builtin_log, parse_float};
         use builtins;
 
         let log = Value2::builtin_function(
@@ -119,6 +119,12 @@ impl LexicalEnvironment {
             "log".to_string(),
             builtin_log,
         );
+        let parse_float = Value2::builtin_function(
+            memory_allocator,
+            object_prototypes,
+            "parseFloat".to_string(),
+            parse_float,
+        );
         let console = make_normal_object!(memory_allocator,
             log => true, false, true: log
         );
@@ -126,8 +132,9 @@ impl LexicalEnvironment {
         LexicalEnvironment {
             record: EnvironmentRecord::Global(make_normal_object!(
                 memory_allocator,
-                console => true, false, true: console,
-                Object  => true, false, true: object_constructor
+                parseFloat => true, false, true: parse_float,
+                console    => true, false, true: console,
+                Object     => true, false, true: object_constructor
             )),
             outer: None,
         }

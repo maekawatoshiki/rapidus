@@ -577,6 +577,30 @@ impl<'a> CodeGenerator<'a> {
             return Ok(());
         }
 
+        match op {
+            &BinOp::LAnd => {
+                self.visit(lhs, iseq, true)?;
+
+                self.bytecode_generator.append_double(iseq);
+
+                let lhs_cond_pos = iseq.len() as isize;
+                self.bytecode_generator.append_jmp_if_false(0, iseq);
+
+                self.bytecode_generator.append_pop(iseq);
+
+                self.visit(rhs, iseq, true)?;
+
+                let pos = iseq.len() as isize;
+                self.bytecode_generator.replace_int32(
+                    (pos - lhs_cond_pos) as i32 - 5,
+                    &mut iseq[lhs_cond_pos as usize + 1..lhs_cond_pos as usize + 5],
+                );
+
+                return Ok(());
+            }
+            _ => {}
+        }
+
         self.visit(lhs, iseq, true)?;
         self.visit(rhs, iseq, true)?;
 

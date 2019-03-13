@@ -87,5 +87,49 @@ console.log("this.xxx =", this.xxx);
 
 console.log((function(){return this.xxx})());
 
-let expr = "3+2"
-console.log(expr[2] == "2")
+let expr = "3*2+5"
+let pos = 0
+
+calc()
+
+function calc() {
+  function eval_node(node) {
+    let op = node.op;
+    if (op == "num") return parseFloat(node.num);
+    else {
+      let left  = eval_node(node.left);
+      let right = eval_node(node.right);
+      if      (op == "+") return left + right;
+      else if (op == "*") return left * right;
+    }
+  }
+  let node = expr_add_sub();
+  console.log("expr:", expr);
+  console.log("node:", node);
+  console.log("answer:", eval_node(node))
+}
+
+function expr_add_sub() {
+  let left = expr_mul_div();
+  while (pos < expr.length && expr[pos] == "+") {
+    let op = expr[pos]; pos += 1;
+    let right = expr_mul_div();
+    left = {op, left, right};
+  }
+  return left;
+}
+
+function expr_mul_div() {
+  let left = expr_number();
+  while (pos < expr.length && expr[pos] == "*") {
+    let op = expr[pos]; pos += 1;
+    let right = expr_number();
+    left = {op, left, right};
+  }
+  return left;
+}
+
+function expr_number() {
+  let n = expr[pos]; pos += 1;
+  return {op: "num", num: n};
+}
