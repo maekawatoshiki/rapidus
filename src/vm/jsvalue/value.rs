@@ -144,6 +144,29 @@ impl Value2 {
         }))
     }
 
+    pub fn builtin_function_with_prototype(
+        memory_allocator: &mut gc::MemoryAllocator,
+        function_prototype: Value2,
+        name: String,
+        func: BuiltinFuncTy2,
+    ) -> Self {
+        let name_prop = Value2::string(memory_allocator, name.clone());
+        let prototype = make_normal_object!(memory_allocator);
+        Value2::Object(memory_allocator.alloc(ObjectInfo {
+            kind: ObjectKind2::Function(FunctionObjectInfo {
+                id: get_unique_id(),
+                name: Some(name),
+                kind: FunctionObjectKind::Builtin(func),
+            }),
+            property: make_property_map!(
+                __proto__ => false, false, false: function_prototype,
+                prototype => true , true , true : prototype,
+                length    => false, false, true : Value2::Number(0.0),
+                name      => false, false, true : name_prop
+            ),
+        }))
+    }
+
     pub fn function(
         memory_allocator: &mut gc::MemoryAllocator,
         object_prototypes: &ObjectPrototypes,
@@ -211,7 +234,12 @@ impl Value2 {
         }
     }
 
-    pub fn get_property(&self, allocator: &mut gc::MemoryAllocator, key: Value2) -> Value2 {
+    pub fn get_property(
+        &self,
+        allocator: &mut gc::MemoryAllocator,
+        object_prototypes: &ObjectPrototypes,
+        key: Value2,
+    ) -> Value2 {
         let mut string_get_property = |s: &str, key: Value2| -> Value2 {
             match key {
                 Value2::Number(idx) if is_integer(idx) => {
@@ -220,7 +248,7 @@ impl Value2 {
                 Value2::String(x) if unsafe { &*x }.to_str().unwrap() == "length" => {
                     Value2::Number(s.chars().fold(0, |x, c| x + c.len_utf16()) as f64)
                 }
-                _ => Value2::undefined(), // TODO
+                key => object_prototypes.string.get_object_info().get_property(key),
             }
         };
 
@@ -317,16 +345,36 @@ impl Value2 {
         }
     }
 
-    pub fn as_number(&self) -> f64 {
+    pub fn get_object_info(&self) -> &mut ObjectInfo {
         match self {
-            Value2::Number(f) => *f,
+            Value2::Object(obj) => unsafe { &mut **obj },
             _ => panic!(),
         }
     }
 
-    pub fn get_object_info(&self) -> &mut ObjectInfo {
+    pub fn into_number(self) -> f64 {
         match self {
-            Value2::Object(obj) => unsafe { &mut **obj },
+            Value2::Number(x) => x,
+            _ => panic!(),
+        }
+    }
+
+    pub fn into_str(self) -> &'static str {
+        match self {
+            Value2::String(s) => unsafe { &*s }.to_str().unwrap(),
+            _ => panic!(),
+        }
+    }
+
+    pub fn into_bool(self) -> bool {
+        match self {
+            Value2::Bool(b) => {
+                if b == 1 {
+                    true
+                } else {
+                    false
+                }
+            }
             _ => panic!(),
         }
     }
@@ -411,33 +459,6 @@ impl Value2 {
             | (Value2::Bool(_), Value2::Bool(_))
             | (Value2::Object(_), Value2::Object(_)) => true,
             _ => false,
-        }
-    }
-
-    pub fn into_number(self) -> f64 {
-        match self {
-            Value2::Number(x) => x,
-            _ => panic!(),
-        }
-    }
-
-    pub fn into_str(self) -> &'static str {
-        match self {
-            Value2::String(s) => unsafe { &*s }.to_str().unwrap(),
-            _ => panic!(),
-        }
-    }
-
-    pub fn into_bool(self) -> bool {
-        match self {
-            Value2::Bool(b) => {
-                if b == 1 {
-                    true
-                } else {
-                    false
-                }
-            }
-            _ => panic!(),
         }
     }
 }

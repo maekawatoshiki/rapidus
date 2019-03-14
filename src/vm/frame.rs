@@ -63,6 +63,18 @@ impl Frame {
         }
     }
 
+    pub fn new_empty_with_this(this: Value2, constructor_call: bool) -> Self {
+        Frame {
+            execution_context: ExecutionContext::new_empty(),
+            pc: 0,
+            saved_stack_len: 0,
+            bytecode: vec![],
+            exception_table: vec![],
+            this,
+            constructor_call,
+        }
+    }
+
     pub fn lex_env(&self) -> &LexicalEnvironment {
         unsafe { &*self.execution_context.lexical_environment }
     }
@@ -77,6 +89,14 @@ impl ExecutionContext {
         ExecutionContext {
             variable_environment: env,
             lexical_environment: env,
+            saved_lexical_environment: vec![],
+        }
+    }
+
+    pub fn new_empty() -> Self {
+        ExecutionContext {
+            variable_environment: ::std::ptr::null_mut(),
+            lexical_environment: ::std::ptr::null_mut(),
             saved_lexical_environment: vec![],
         }
     }

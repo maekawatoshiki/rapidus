@@ -1,4 +1,5 @@
 #![macro_use]
+use super::super::super::builtin;
 use super::super::super::id::get_unique_id;
 use super::value::*;
 use gc::MemoryAllocator;
@@ -7,6 +8,7 @@ use gc::MemoryAllocator;
 pub struct ObjectPrototypes {
     pub object: Value2,
     pub function: Value2,
+    pub string: Value2,
 }
 
 impl ObjectPrototypes {
@@ -33,9 +35,22 @@ impl ObjectPrototypes {
             property: make_property_map!(__proto__: object_prototype),
         }));
 
+        let index_of = Value2::builtin_function_with_prototype(
+            memory_allocator,
+            function_prototype,
+            "indexOf".to_string(),
+            builtin::string_prototype_index_of,
+        );
+
+        let string_prototype = Value2::Object(memory_allocator.alloc(ObjectInfo {
+            kind: ObjectKind2::Ordinary,
+            property: make_property_map!(__proto__: object_prototype, indexOf: index_of),
+        }));
+
         ObjectPrototypes {
             object: object_prototype,
             function: function_prototype,
+            string: string_prototype,
         }
     }
 }

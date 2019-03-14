@@ -246,11 +246,6 @@ impl<'a> VM2<'a> {
                     read_int8!(cur_frame.bytecode, cur_frame.pc, num, f64);
                     self.stack.push(Value2::Number(num).into());
                 }
-                VMInst::PUSH_INT32 => {
-                    cur_frame.pc += 1;
-                    read_int32!(cur_frame.bytecode, cur_frame.pc, num, i32);
-                    self.stack.push(Value2::Number(num as f64).into());
-                }
                 VMInst::PUSH_CONST => {
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, id, usize);
@@ -267,7 +262,11 @@ impl<'a> VM2<'a> {
                     let parent: Value2 = self.stack.pop().unwrap().into();
                     self.stack.push(
                         parent
-                            .get_property(memory_allocator!(self), property)
+                            .get_property(
+                                memory_allocator!(self),
+                                object_prototypes!(self),
+                                property,
+                            )
                             .into(),
                     );
                 }
@@ -322,7 +321,11 @@ impl<'a> VM2<'a> {
                     for _ in 0..argc {
                         args.push(self.stack.pop().unwrap().into());
                     }
-                    let callee = parent.get_property(memory_allocator!(self), method);
+                    let callee = parent.get_property(
+                        memory_allocator!(self),
+                        object_prototypes!(self),
+                        method,
+                    );
                     self.call_function(callee, args, parent, &mut cur_frame, false)?;
                 }
                 VMInst::SET_OUTER_ENV => {
@@ -533,7 +536,9 @@ impl<'a> VM2<'a> {
 
         let info = callee.as_function();
         match info.kind {
-            FunctionObjectKind::Builtin(func) => func(self, &args, cur_frame),
+            FunctionObjectKind::Builtin(func) => {
+                func(self, &args, &frame::Frame::new_empty_with_this(this, true))
+            }
             FunctionObjectKind::User(ref user_func) => {
                 self.call_user_function(user_func.clone(), args, this, cur_frame, true)
             }
@@ -550,7 +555,9 @@ impl<'a> VM2<'a> {
     ) -> VMResult {
         let info = callee.as_function();
         match info.kind {
-            FunctionObjectKind::Builtin(func) => func(self, &args, cur_frame),
+            FunctionObjectKind::Builtin(func) => {
+                func(self, &args, &frame::Frame::new_empty_with_this(this, false))
+            }
             FunctionObjectKind::User(ref user_func) => {
                 self.call_user_function(user_func.clone(), args, this, cur_frame, constructor_call)
             }

@@ -21,6 +21,21 @@ use vm_codegen;
 
 pub type BuiltinFuncTy2 = fn(&mut VM2, &Vec<Value2>, &Frame) -> Result<(), RuntimeError>;
 
+pub fn string_prototype_index_of(
+    vm: &mut VM2,
+    args: &Vec<Value2>,
+    cur_frame: &Frame,
+) -> Result<(), RuntimeError> {
+    let string = cur_frame.this.into_str();
+    let search_string = args.get(0).unwrap_or(&Value2::undefined()).to_string();
+    let position = args.get(1).unwrap_or(&Value2::Number(0.0)).into_number() as usize;
+    let found_pos = string[position..]
+        .find(search_string.as_str())
+        .map_or(-1.0, |p| p as f64);
+    vm.stack.push(Value2::Number(found_pos).into());
+    Ok(())
+}
+
 pub fn parse_float(
     vm: &mut VM2,
     args: &Vec<Value2>,
