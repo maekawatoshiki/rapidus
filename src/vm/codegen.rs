@@ -577,15 +577,21 @@ impl<'a> CodeGenerator<'a> {
         iseq: &mut ByteCode,
         use_value: bool,
     ) -> CodeGenResult {
-        if !use_value {
-            return Ok(());
-        }
-
         self.visit(expr, iseq, true)?;
 
         match op {
             &UnaryOp::Minus => self.bytecode_generator.append_neg(iseq),
+            &UnaryOp::PoInc => {
+                self.bytecode_generator.append_double(iseq);
+                self.bytecode_generator.append_push_int8(1, iseq);
+                self.bytecode_generator.append_add(iseq);
+                self.assign_stack_top_to(expr, iseq)?;
+            }
             _ => unimplemented!(),
+        }
+
+        if !use_value {
+            self.bytecode_generator.append_pop(iseq);
         }
 
         Ok(())

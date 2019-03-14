@@ -112,7 +112,7 @@ function calc() {
 function expr_add_sub() {
   let left = expr_mul_div();
   while (pos < expr.length && expr[pos] == "+") {
-    let op = expr[pos]; pos += 1;
+    let op = expr[pos++];
     let right = expr_mul_div();
     left = {op, left, right};
   }
@@ -122,7 +122,7 @@ function expr_add_sub() {
 function expr_mul_div() {
   let left = expr_number();
   while (pos < expr.length && expr[pos] == "*") {
-    let op = expr[pos]; pos += 1;
+    let op = expr[pos++];
     let right = expr_number();
     left = {op, left, right};
   }
@@ -133,7 +133,7 @@ function expr_number() {
   let num = ""; 
   while (pos < expr.length && 
          "0123456789".indexOf(expr[pos]) != -1) {
-    let c = expr[pos]; pos += 1;
+    let c = expr[pos++];
     num += c; 
   }
   return {op: "num", num};
