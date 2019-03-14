@@ -109,7 +109,9 @@ impl Parser {
         } else {
             self.lexer.get_current_pos()
         };
+
         let mut items = vec![];
+
         loop {
             match self
                 .lexer

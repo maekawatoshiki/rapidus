@@ -91,6 +91,9 @@ impl<'a> CodeGenerator<'a> {
                 self.visit_if(&*cond, &*then, &*else_, iseq)?
             }
             NodeBase::While(ref cond, ref body) => self.visit_while(&*cond, &*body, iseq)?,
+            NodeBase::For(ref init, ref cond, ref step, ref body) => {
+                self.visit_for(&*init, &*cond, &*step, &*body, iseq)?
+            }
             NodeBase::Try(ref try, ref catch, ref param, ref finally) => {
                 self.visit_try(&*try, &*catch, &*param, &*finally, iseq)?
             }
@@ -266,6 +269,42 @@ impl<'a> CodeGenerator<'a> {
         // let break_pos = iseq.len() as isize;
         // self.replace_continue_dsts(&name, start, iseq);
         // self.replace_break_dsts(&name, break_pos, iseq);
+
+        let end = iseq.len() as isize;
+        self.bytecode_generator.replace_int32(
+            (end - cond_pos) as i32 - 5,
+            &mut iseq[cond_pos as usize + 1..cond_pos as usize + 5],
+        );
+
+        Ok(())
+    }
+
+    pub fn visit_for(
+        &mut self,
+        init: &Node,
+        cond: &Node,
+        step: &Node,
+        body: &Node,
+        iseq: &mut ByteCode,
+    ) -> CodeGenResult {
+        self.visit(init, iseq, false)?;
+
+        let start = iseq.len() as isize;
+
+        self.visit(cond, iseq, true)?;
+
+        let cond_pos = iseq.len() as isize;
+        self.bytecode_generator.append_jmp_if_false(0, iseq);
+
+        self.visit(body, iseq, false)?;
+
+        // TODO: continue destination here
+
+        self.visit(step, iseq, false)?;
+
+        let loop_pos = iseq.len() as isize;
+        self.bytecode_generator
+            .append_jmp((start - loop_pos) as i32 - 5, iseq);
 
         let end = iseq.len() as isize;
         self.bytecode_generator.replace_int32(
