@@ -1128,36 +1128,52 @@ impl Parser {
             _ => unreachable!(),
         }
     }
+
     /// https://tc39.github.io/ecma262/#prod-LexicalDeclaration
     fn read_lexical_declaration(&mut self, is_const: bool) -> Result<Node, Error> {
         let pos = self.lexer.get_current_pos();
-        let name = match self.lexer.next_skip_lineterminator()?.kind {
-            Kind::Identifier(name) => name,
-            _ => {
-                return Err(Error::UnexpectedToken(
-                    self.lexer.get_prev_pos(),
-                    "Expect identifier.".to_string(),
-                ));
-            }
-        };
-
         let var_kind = if is_const {
             VarKind::Const
         } else {
             VarKind::Let
         };
 
-        if self
-            .lexer
-            .next_if_skip_lineterminator(Kind::Symbol(Symbol::Assign))?
-        {
-            let init = Some(Box::new(self.read_initializer()?));
+        let mut list = vec![];
 
-            let decl = NodeBase::VarDecl(name, init, var_kind);
-            Ok(Node::new(decl, pos))
-        } else {
-            Ok(Node::new(NodeBase::VarDecl(name, None, var_kind), pos))
+        loop {
+            let pos = self.lexer.get_current_pos();
+            let name = match self.lexer.next_skip_lineterminator()?.kind {
+                Kind::Identifier(name) => name,
+                _ => {
+                    return Err(Error::UnexpectedToken(
+                        self.lexer.get_prev_pos(),
+                        "Expect identifier.".to_string(),
+                    ));
+                }
+            };
+
+            if self
+                .lexer
+                .next_if_skip_lineterminator(Kind::Symbol(Symbol::Assign))?
+            {
+                let init = Some(Box::new(self.read_initializer()?));
+                let decl = NodeBase::VarDecl(name, init, var_kind);
+                list.push(Node::new(decl, pos))
+            } else {
+                list.push(Node::new(NodeBase::VarDecl(name, None, var_kind), pos))
+            }
+
+            let comma_found = self
+                .lexer
+                .next_if_skip_lineterminator(Kind::Symbol(Symbol::Comma))
+                == Ok(true);
+
+            if !comma_found {
+                break;
+            }
         }
+
+        Ok(Node::new(NodeBase::StatementList(list), pos))
     }
 
     /// https://tc39.github.io/ecma262/#prod-FunctionDeclaration

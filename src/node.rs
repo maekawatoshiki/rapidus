@@ -32,7 +32,7 @@ pub struct Node {
     pub pos: usize,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Copy)]
 pub enum VarKind {
     Var,
     Const,
