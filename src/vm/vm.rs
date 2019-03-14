@@ -246,6 +246,11 @@ impl<'a> VM2<'a> {
                     read_int8!(cur_frame.bytecode, cur_frame.pc, num, f64);
                     self.stack.push(Value2::Number(num).into());
                 }
+                VMInst::PUSH_INT32 => {
+                    cur_frame.pc += 1;
+                    read_int32!(cur_frame.bytecode, cur_frame.pc, num, i32);
+                    self.stack.push(Value2::Number(num as f64).into());
+                }
                 VMInst::PUSH_CONST => {
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, id, usize);
