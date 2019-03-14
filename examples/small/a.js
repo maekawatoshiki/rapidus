@@ -87,7 +87,7 @@ console.log("this.xxx =", this.xxx);
 
 console.log((function(){return this.xxx})());
 
-let expr = "3*2+5"
+let expr = "3*2+54"
 let pos = 0
 
 calc()
@@ -130,6 +130,11 @@ function expr_mul_div() {
 }
 
 function expr_number() {
-  let n = expr[pos]; pos += 1;
-  return {op: "num", num: n};
+  let num = ""; 
+  while (pos < expr.length && 
+         "0123456789".indexOf(expr[pos]) != -1) {
+    let c = expr[pos]; pos += 1;
+    num += c; 
+  }
+  return {op: "num", num};
 }

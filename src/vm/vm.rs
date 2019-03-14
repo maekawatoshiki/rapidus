@@ -215,7 +215,8 @@ impl<'a> VM2<'a> {
                     cur_frame.pc += 1;
                     let rhs: Value2 = self.stack.pop().unwrap().into();
                     let lhs: Value2 = self.stack.pop().unwrap().into();
-                    self.stack.push(lhs.add(rhs).into());
+                    self.stack
+                        .push(lhs.add(memory_allocator!(self), rhs).into());
                 }
                 VMInst::SUB => {
                     cur_frame.pc += 1;
@@ -235,11 +236,22 @@ impl<'a> VM2<'a> {
                     let lhs: Value2 = self.stack.pop().unwrap().into();
                     self.stack.push(lhs.eq(rhs).into());
                 }
+                VMInst::NE => {
+                    cur_frame.pc += 1;
+                    let rhs: Value2 = self.stack.pop().unwrap().into();
+                    let lhs: Value2 = self.stack.pop().unwrap().into();
+                    self.stack.push(lhs.ne(rhs).into());
+                }
                 VMInst::LT => {
                     cur_frame.pc += 1;
                     let rhs: Value2 = self.stack.pop().unwrap().into();
                     let lhs: Value2 = self.stack.pop().unwrap().into();
                     self.stack.push(lhs.lt(rhs).into());
+                }
+                VMInst::NEG => {
+                    cur_frame.pc += 1;
+                    let val: Value2 = self.stack.pop().unwrap().into();
+                    self.stack.push(val.minus().into());
                 }
                 VMInst::PUSH_INT8 => {
                     cur_frame.pc += 1;

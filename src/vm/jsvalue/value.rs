@@ -382,9 +382,15 @@ impl Value2 {
 
 impl Value2 {
     // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-addition-operator-plus-runtime-semantics-evaluation
-    pub fn add(self, val: Value2) -> Self {
+    pub fn add(self, memory_allocator: &mut gc::MemoryAllocator, val: Value2) -> Self {
         match (self, val) {
             (Value2::Number(x), Value2::Number(y)) => Value2::Number(x + y),
+            (Value2::String(x), Value2::String(y)) => {
+                let x = unsafe { &*x }.to_str().unwrap();
+                let y = unsafe { &*y }.to_str().unwrap();
+                let cat = format!("{}{}", x, y);
+                Value2::string(memory_allocator, cat)
+            }
             _ => Value2::undefined(),
         }
     }
@@ -441,9 +447,21 @@ impl Value2 {
         }
     }
 
+    pub fn ne(self, val: Value2) -> Self {
+        Value2::bool(!self.eq(val).into_bool())
+    }
+
     pub fn lt(self, val: Value2) -> Self {
         match (self, val) {
             (Value2::Number(x), Value2::Number(y)) => Value2::Bool(if x < y { 1 } else { 0 }),
+            _ => Value2::undefined(),
+        }
+    }
+
+    // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-unary-minus-operator-runtime-semantics-evaluation
+    pub fn minus(self) -> Self {
+        match self {
+            Value2::Number(n) => Value2::Number(-n),
             _ => Value2::undefined(),
         }
     }

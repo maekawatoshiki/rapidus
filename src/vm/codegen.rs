@@ -1,6 +1,8 @@
 use bytecode_gen::{ByteCode, ByteCodeGenerator, VMInst};
 use gc::MemoryAllocator;
-use node::{BinOp, FormalParameter, FormalParameters, Node, NodeBase, PropertyDefinition, VarKind};
+use node::{
+    BinOp, FormalParameter, FormalParameters, Node, NodeBase, PropertyDefinition, UnaryOp, VarKind,
+};
 use vm::constant::ConstantTable;
 use vm::jsvalue::function::{DestinationKind, Exception};
 use vm::jsvalue::value::Value2;
@@ -106,6 +108,9 @@ impl<'a> CodeGenerator<'a> {
             }
             NodeBase::Index(ref parent, ref index) => {
                 self.visit_index(&*parent, &*index, iseq, use_value)?
+            }
+            NodeBase::UnaryOp(ref expr, ref op) => {
+                self.visit_unary_op(&*expr, op, iseq, use_value)?
             }
             NodeBase::BinaryOp(ref lhs, ref rhs, ref op) => {
                 self.visit_binary_op(&*lhs, &*rhs, op, iseq, use_value)?
@@ -561,6 +566,27 @@ impl<'a> CodeGenerator<'a> {
         self.visit(parent, iseq, true)?;
         self.visit(index, iseq, true)?;
         self.bytecode_generator.append_get_member(iseq);
+
+        Ok(())
+    }
+
+    fn visit_unary_op(
+        &mut self,
+        expr: &Node,
+        op: &UnaryOp,
+        iseq: &mut ByteCode,
+        use_value: bool,
+    ) -> CodeGenResult {
+        if !use_value {
+            return Ok(());
+        }
+
+        self.visit(expr, iseq, true)?;
+
+        match op {
+            &UnaryOp::Minus => self.bytecode_generator.append_neg(iseq),
+            _ => unimplemented!(),
+        }
 
         Ok(())
     }
