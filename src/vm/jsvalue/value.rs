@@ -410,6 +410,20 @@ impl Value2 {
         }
     }
 
+    pub fn div(self, val: Value2) -> Self {
+        match (self, val) {
+            (Value2::Number(x), Value2::Number(y)) => Value2::Number(x / y),
+            _ => Value2::undefined(),
+        }
+    }
+
+    pub fn rem(self, val: Value2) -> Self {
+        match (self, val) {
+            (Value2::Number(x), Value2::Number(y)) => Value2::Number((x as i64 % y as i64) as f64),
+            _ => Value2::undefined(),
+        }
+    }
+
     // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-abstract-equality-comparison
     pub fn eq(self, val: Value2) -> Self {
         if self.is_same_type_as(&val) {
@@ -451,9 +465,17 @@ impl Value2 {
         Value2::bool(!self.eq(val).into_bool())
     }
 
+    // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-abstract-relational-comparison
     pub fn lt(self, val: Value2) -> Self {
         match (self, val) {
             (Value2::Number(x), Value2::Number(y)) => Value2::Bool(if x < y { 1 } else { 0 }),
+            _ => Value2::undefined(),
+        }
+    }
+
+    pub fn le(self, val: Value2) -> Self {
+        match (self, val) {
+            (Value2::Number(x), Value2::Number(y)) => Value2::Bool(if x <= y { 1 } else { 0 }),
             _ => Value2::undefined(),
         }
     }

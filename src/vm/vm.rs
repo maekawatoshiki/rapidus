@@ -230,6 +230,18 @@ impl<'a> VM2<'a> {
                     let lhs: Value2 = self.stack.pop().unwrap().into();
                     self.stack.push(lhs.mul(rhs).into());
                 }
+                VMInst::DIV => {
+                    cur_frame.pc += 1;
+                    let rhs: Value2 = self.stack.pop().unwrap().into();
+                    let lhs: Value2 = self.stack.pop().unwrap().into();
+                    self.stack.push(lhs.div(rhs).into());
+                }
+                VMInst::REM => {
+                    cur_frame.pc += 1;
+                    let rhs: Value2 = self.stack.pop().unwrap().into();
+                    let lhs: Value2 = self.stack.pop().unwrap().into();
+                    self.stack.push(lhs.rem(rhs).into());
+                }
                 VMInst::EQ => {
                     cur_frame.pc += 1;
                     let rhs: Value2 = self.stack.pop().unwrap().into();
@@ -248,6 +260,12 @@ impl<'a> VM2<'a> {
                     let lhs: Value2 = self.stack.pop().unwrap().into();
                     self.stack.push(lhs.lt(rhs).into());
                 }
+                VMInst::LE => {
+                    cur_frame.pc += 1;
+                    let rhs: Value2 = self.stack.pop().unwrap().into();
+                    let lhs: Value2 = self.stack.pop().unwrap().into();
+                    self.stack.push(lhs.le(rhs).into());
+                }
                 VMInst::NEG => {
                     cur_frame.pc += 1;
                     let val: Value2 = self.stack.pop().unwrap().into();
@@ -257,6 +275,11 @@ impl<'a> VM2<'a> {
                     cur_frame.pc += 1;
                     read_int8!(cur_frame.bytecode, cur_frame.pc, num, f64);
                     self.stack.push(Value2::Number(num).into());
+                }
+                VMInst::PUSH_INT32 => {
+                    cur_frame.pc += 1;
+                    read_int32!(cur_frame.bytecode, cur_frame.pc, num, i32);
+                    self.stack.push(Value2::Number(num as f64).into());
                 }
                 VMInst::PUSH_CONST => {
                     cur_frame.pc += 1;
@@ -437,6 +460,15 @@ impl<'a> VM2<'a> {
                 VMInst::RETURN => {
                     cur_frame.pc += 1;
                     self.unwind_frame_saving_stack_top(&mut cur_frame);
+                    // TODO: GC schedule
+                    memory_allocator!(self).mark(
+                        self.global_environment,
+                        object_prototypes!(self),
+                        constant_table!(self),
+                        &self.stack,
+                        &cur_frame,
+                        &self.saved_frame,
+                    );
                 }
                 VMInst::END => break,
                 e => unimplemented!("code: {}", e),
