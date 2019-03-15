@@ -48,6 +48,7 @@ pub enum Level {
     Block { names: Vec<String> },
     TryOrCatch { finally_jmp_instr_pos: Vec<usize> },
     Finally,
+    Loop { break_jmp_instr_pos: Vec<usize> },
 }
 
 impl<'a> CodeGenerator<'a> {
@@ -94,6 +95,7 @@ impl<'a> CodeGenerator<'a> {
             NodeBase::For(ref init, ref cond, ref step, ref body) => {
                 self.visit_for(&*init, &*cond, &*step, &*body, iseq)?
             }
+            NodeBase::Break(ref name) => self.visit_break(name, iseq)?,
             NodeBase::Try(ref try, ref catch, ref param, ref finally) => {
                 self.visit_try(&*try, &*catch, &*param, &*finally, iseq)?
             }
@@ -254,6 +256,9 @@ impl<'a> CodeGenerator<'a> {
         // name:
         //   while(...) {} // <- this while is named 'name'
         // let name = self.state.loop_names.pop();
+        self.current_function().level.push(Level::Loop {
+            break_jmp_instr_pos: vec![],
+        });
 
         let start = iseq.len() as isize;
 
@@ -285,6 +290,14 @@ impl<'a> CodeGenerator<'a> {
             &mut iseq[cond_pos as usize + 1..cond_pos as usize + 5],
         );
 
+        let break_jmp_instr_pos = self.current_function().level.pop().unwrap().as_loop();
+        for instr_pos in break_jmp_instr_pos {
+            self.bytecode_generator.replace_int32(
+                (end - instr_pos as isize) as i32 - 5,
+                &mut iseq[instr_pos as usize + 1..instr_pos as usize + 5],
+            );
+        }
+
         Ok(())
     }
 
@@ -296,6 +309,10 @@ impl<'a> CodeGenerator<'a> {
         body: &Node,
         iseq: &mut ByteCode,
     ) -> CodeGenResult {
+        self.current_function().level.push(Level::Loop {
+            break_jmp_instr_pos: vec![],
+        });
+
         self.visit(init, iseq, false)?;
 
         let start = iseq.len() as isize;
@@ -320,6 +337,26 @@ impl<'a> CodeGenerator<'a> {
             (end - cond_pos) as i32 - 5,
             &mut iseq[cond_pos as usize + 1..cond_pos as usize + 5],
         );
+
+        let break_jmp_instr_pos = self.current_function().level.pop().unwrap().as_loop();
+        for instr_pos in break_jmp_instr_pos {
+            self.bytecode_generator.replace_int32(
+                (end - instr_pos as isize) as i32 - 5,
+                &mut iseq[instr_pos as usize + 1..instr_pos as usize + 5],
+            );
+        }
+
+        Ok(())
+    }
+
+    pub fn visit_break(&mut self, _name: &Option<String>, iseq: &mut ByteCode) -> CodeGenResult {
+        let break_instr_pos = iseq.len();
+        self.bytecode_generator.append_jmp(0, iseq);
+
+        self.current_function()
+            .get_last_loop()
+            .as_loop_mut()
+            .push(break_instr_pos);
 
         Ok(())
     }
@@ -541,21 +578,25 @@ impl<'a> CodeGenerator<'a> {
         iseq: &mut ByteCode,
     ) -> CodeGenResult {
         fn let_decl(codegen: &mut CodeGenerator, node: &Node, name: String) -> CodeGenResult {
-            let cur_func = codegen.function_stack.last_mut().unwrap();
-            let cur_level = cur_func.level.last_mut().unwrap();
-            let names = match cur_level {
-                Level::Function => &mut cur_func.lex_names,
-                Level::Block { ref mut names } => names,
-                _ => unreachable!(),
-            };
-            if names.iter().find(|declared| *declared == &name).is_some() {
-                return Err(Error::new_general_error(
-                    format!("Identifier '{}' has already been declared", name),
-                    node.pos,
-                ));
+            fn check_duplicate(
+                names: &mut Vec<String>,
+                name: String,
+                node: &Node,
+            ) -> CodeGenResult {
+                if names.iter().find(|declared| *declared == &name).is_some() {
+                    return Err(Error::new_general_error(
+                        format!("Identifier '{}' has already been declared", name),
+                        node.pos,
+                    ));
+                }
+                names.push(name);
+                Ok(())
             }
-            names.push(name);
-            Ok(())
+            let cur_func = codegen.current_function();
+            if let Some(ref mut block) = cur_func.get_last_block() {
+                return check_duplicate(block.as_block_mut(), name, node);
+            }
+            check_duplicate(&mut cur_func.lex_names, name, node)
         }
 
         // let mut is_initialized = false;
@@ -568,11 +609,7 @@ impl<'a> CodeGenerator<'a> {
 
         match kind {
             VarKind::Var => {
-                self.function_stack
-                    .last_mut()
-                    .unwrap()
-                    .var_names
-                    .push(name.clone());
+                self.current_function().var_names.push(name.clone());
             }
             VarKind::Let => let_decl(self, node, name.clone())?,
             _ => unimplemented!(),
@@ -964,6 +1001,24 @@ impl FunctionInfo {
             })
             .unwrap()
     }
+
+    pub fn get_last_loop(&mut self) -> &mut Level {
+        self.level
+            .iter_mut()
+            .rev()
+            .find(|level| match level {
+                &Level::Loop { .. } => true,
+                _ => false,
+            })
+            .unwrap()
+    }
+
+    pub fn get_last_block(&mut self) -> Option<&mut Level> {
+        self.level.iter_mut().rev().find(|level| match level {
+            &Level::Block { .. } => true,
+            _ => false,
+        })
+    }
 }
 
 // Level
@@ -986,6 +1041,31 @@ impl Level {
     pub fn as_block(self) -> Vec<String> {
         match self {
             Level::Block { names } => names,
+            _ => panic!(),
+        }
+    }
+
+    pub fn as_block_mut(&mut self) -> &mut Vec<String> {
+        match self {
+            Level::Block { ref mut names } => names,
+            _ => panic!(),
+        }
+    }
+
+    pub fn as_loop(self) -> Vec<usize> {
+        match self {
+            Level::Loop {
+                break_jmp_instr_pos,
+            } => break_jmp_instr_pos,
+            _ => panic!(),
+        }
+    }
+
+    pub fn as_loop_mut(&mut self) -> &mut Vec<usize> {
+        match self {
+            Level::Loop {
+                ref mut break_jmp_instr_pos,
+            } => break_jmp_instr_pos,
             _ => panic!(),
         }
     }
