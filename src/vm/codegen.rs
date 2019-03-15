@@ -144,7 +144,16 @@ impl<'a> CodeGenerator<'a> {
                     self.bytecode_generator.append_push_this(iseq);
                 }
             }
-            NodeBase::Number(n) => self.bytecode_generator.append_push_number(n, iseq),
+            NodeBase::Number(n) => {
+                if use_value {
+                    self.bytecode_generator.append_push_number(n, iseq)
+                }
+            }
+            NodeBase::Boolean(b) => {
+                if use_value {
+                    self.bytecode_generator.append_push_bool(b, iseq)
+                }
+            }
             NodeBase::Nope => {}
             ref e => unimplemented!("{:?}", e),
         }

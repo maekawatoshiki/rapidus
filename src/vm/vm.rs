@@ -291,6 +291,14 @@ impl<'a> VM2<'a> {
                     cur_frame.pc += 1;
                     self.stack.push(cur_frame.this.into());
                 }
+                VMInst::PUSH_FALSE => {
+                    cur_frame.pc += 1;
+                    self.stack.push(Value2::Bool(0).into());
+                }
+                VMInst::PUSH_TRUE => {
+                    cur_frame.pc += 1;
+                    self.stack.push(Value2::Bool(1).into());
+                }
                 VMInst::GET_MEMBER => {
                     cur_frame.pc += 1;
                     let property: Value2 = self.stack.pop().unwrap().into();
