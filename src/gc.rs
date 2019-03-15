@@ -24,7 +24,7 @@ pub type MarkMap = FxHashMap<GcTargetKey, MarkState>;
 pub type MarkSet = FxHashSet<GcTargetKey>;
 
 #[derive(Debug, Clone, Eq, Copy)]
-pub struct GcTargetKey(*mut GcTarget);
+pub struct GcTargetKey(pub *mut GcTarget);
 
 impl PartialEq for GcTargetKey {
     fn eq(&self, other: &GcTargetKey) -> bool {
@@ -121,6 +121,7 @@ impl MemoryAllocator {
 
                 object_prototypes.object.initial_trace(&mut markset);
                 object_prototypes.function.initial_trace(&mut markset);
+                object_prototypes.string.initial_trace(&mut markset);
 
                 constant_table.initial_trace(&mut markset);
 
@@ -180,6 +181,14 @@ impl MemoryAllocator {
                 GCState::Initial
             }
         }
+    }
+
+    pub fn gray(&mut self, object: GcTargetKey) {
+        unsafe { &*object.0 }.initial_trace(&mut self.roots);
+    }
+
+    pub fn gray2(&mut self, object: Value2) {
+        object.initial_trace(&mut self.roots);
     }
 
     // pub fn write_barrier(&mut self, parent: *mut GcTarget, child: *mut GcTarget) {

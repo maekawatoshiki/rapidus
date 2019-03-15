@@ -350,6 +350,8 @@ impl<'a> CodeGenerator<'a> {
     }
 
     pub fn visit_break(&mut self, _name: &Option<String>, iseq: &mut ByteCode) -> CodeGenResult {
+        self.unwind_loop(iseq);
+
         let break_instr_pos = iseq.len();
         self.bytecode_generator.append_jmp(0, iseq);
 
@@ -933,6 +935,20 @@ impl<'a> CodeGenerator<'a> {
                 &Level::Block { .. } => self.bytecode_generator.append_pop_env(iseq),
                 _ => {}
             }
+        }
+    }
+
+    fn unwind_loop(&mut self, iseq: &mut ByteCode) {
+        let mut count = 0;
+        for level in self.current_function().level.iter().rev() {
+            match level {
+                &Level::Loop { .. } => break,
+                &Level::Block { .. } => count += 1,
+                _ => {}
+            }
+        }
+        for _ in 0..count {
+            self.bytecode_generator.append_pop_env(iseq);
         }
     }
 }
