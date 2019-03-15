@@ -108,7 +108,10 @@ fn main() {
     bytecode_gen::show2(&iseq, vm.code_generator.bytecode_generator.constant_table);
 
     println!("Result:");
-    vm.run_global(global_info, iseq).unwrap();
+    if let Err(e) = vm.run_global(global_info, iseq) {
+        e.show_error_message();
+    }
+
     for (i, val_boxed) in vm.stack.iter().enumerate() {
         let val: Value2 = (*val_boxed).into();
         println!("stack[{}]: {:?}", i, val);
