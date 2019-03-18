@@ -45,7 +45,8 @@ fn main() {
     let file_name = match app_matches.value_of("file") {
         Some(file_name) => file_name,
         None => {
-            repl(app_matches.is_present("trace"));
+            repl_with_new_vm();
+            // repl(app_matches.is_present("trace"));
             return;
         }
     };
@@ -121,6 +122,85 @@ fn main() {
     // vm.run(iseq);
 }
 
+fn repl_with_new_vm() {
+    let mut rl = rustyline::Editor::<()>::new();
+    let mut const_table = vm::constant::ConstantTable::new();
+    let mut mem_allocator = gc::MemoryAllocator::new();
+    let object_prototypes = vm::jsvalue::prototype::ObjectPrototypes::new(&mut mem_allocator);
+    let global_env =
+        frame::LexicalEnvironment::new_global_initialized(&mut mem_allocator, &object_prototypes);
+    let global_env_ref = mem_allocator.alloc(global_env);
+    let mut vm = VM2::new(
+        global_env_ref,
+        &mut const_table,
+        &mut mem_allocator,
+        &object_prototypes,
+    );
+    let mut global_frame: Option<frame::Frame> = None;
+
+    loop {
+        let mut parser;
+
+        let line = if let Ok(line) = rl.readline("> ") {
+            line
+        } else {
+            break;
+        };
+
+        rl.add_history_entry(line.as_ref());
+
+        let mut lines = line + "\n";
+
+        loop {
+            parser = parser::Parser::new(lines.clone());
+            match parser.parse_all() {
+                Ok(node) => {
+                    // compile and execute
+                    let mut iseq = vec![];
+                    let global_info = match vm.code_generator.compile(&node, &mut iseq, true) {
+                        Ok(ok) => ok,
+                        Err(vm::codegen::Error { msg, token_pos, .. }) => {
+                            parser.show_error_at(token_pos, msg.as_str());
+                            break;
+                        }
+                    };
+
+                    match global_frame {
+                        Some(ref mut frame) => {
+                            frame.bytecode = iseq;
+                        }
+                        None => global_frame = Some(vm.create_global_frame(global_info, iseq)),
+                    }
+
+                    if let Err(e) = vm.run(global_frame.clone().unwrap()) {
+                        e.show_error_message();
+                        break;
+                    }
+
+                    if vm.stack.len() != 0 {
+                        let val: Value2 = vm.stack[0].into();
+                        println!("{:?}", val);
+                        vm.stack = vec![];
+                    }
+
+                    break;
+                }
+                Err(parser::Error::UnexpectedEOF(_)) => match rl.readline("... ") {
+                    Ok(line) => {
+                        rl.add_history_entry(line.as_ref());
+                        lines += line.as_str();
+                        lines += "\n";
+                        continue;
+                    }
+                    Err(_) => break,
+                },
+                Err(_) => break,
+            }
+        }
+    }
+}
+
+#[allow(dead_code)]
 fn repl(trace: bool) {
     // TODO: REFINE CODE!!!!
     let mut vm = vm::vm::VM::new();

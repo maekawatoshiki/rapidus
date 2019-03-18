@@ -69,6 +69,59 @@ impl<'a> VM2<'a> {
         }
     }
 
+    pub fn create_global_frame(
+        &mut self,
+        global_info: codegen::FunctionInfo,
+        iseq: ByteCode,
+    ) -> frame::Frame {
+        let global_env_ref = self.global_environment;
+
+        let var_env = memory_allocator!(self).alloc(frame::LexicalEnvironment {
+            record: frame::EnvironmentRecord::Declarative({
+                let mut record = FxHashMap::default();
+                for name in global_info.var_names {
+                    record.insert(name, Value2::undefined());
+                }
+                record
+            }),
+            outer: Some(global_env_ref),
+        });
+
+        let lex_env = memory_allocator!(self).alloc(frame::LexicalEnvironment {
+            record: frame::EnvironmentRecord::Declarative({
+                let mut record = FxHashMap::default();
+                for name in global_info.lex_names {
+                    record.insert(name, Value2::uninitialized());
+                }
+                record
+            }),
+            outer: Some(var_env),
+        });
+
+        for val in global_info.func_decls {
+            let mut val = val.copy_object(memory_allocator!(self));
+            let name = val.as_function().name.clone().unwrap();
+            val.set_function_outer_environment(lex_env);
+            unsafe { &mut *lex_env }.set_value(name, val).unwrap();
+        }
+
+        let exec_ctx = frame::ExecutionContext {
+            variable_environment: var_env,
+            lexical_environment: lex_env,
+            saved_lexical_environment: vec![],
+        };
+
+        let frame = frame::Frame::new(
+            exec_ctx,
+            iseq,
+            global_info.exception_table,
+            unsafe { &*global_env_ref }.get_global_object(),
+            false,
+        );
+
+        frame
+    }
+
     pub fn run_global(&mut self, global_info: codegen::FunctionInfo, iseq: ByteCode) -> VMResult {
         let global_env_ref = self.global_environment;
 
@@ -161,7 +214,6 @@ impl<'a> VM2<'a> {
                         if !in_range {
                             continue;
                         }
-                        // TODO
                         match exception.dst_kind {
                             DestinationKind::Catch => cur_frame.pc = exception.end,
                             DestinationKind::Finally => {
