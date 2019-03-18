@@ -668,10 +668,32 @@ impl<'a> CodeGenerator<'a> {
 
         match op {
             &UnaryOp::Minus => self.bytecode_generator.append_neg(iseq),
+            &UnaryOp::PrInc => {
+                self.bytecode_generator.append_push_int8(1, iseq);
+                self.bytecode_generator.append_add(iseq);
+                if use_value {
+                    self.bytecode_generator.append_double(iseq);
+                }
+                self.assign_stack_top_to(expr, iseq)?;
+            }
+            &UnaryOp::PrDec => {
+                self.bytecode_generator.append_push_int8(1, iseq);
+                self.bytecode_generator.append_sub(iseq);
+                if use_value {
+                    self.bytecode_generator.append_double(iseq);
+                }
+                self.assign_stack_top_to(expr, iseq)?;
+            }
             &UnaryOp::PoInc => {
                 self.bytecode_generator.append_double(iseq);
                 self.bytecode_generator.append_push_int8(1, iseq);
                 self.bytecode_generator.append_add(iseq);
+                self.assign_stack_top_to(expr, iseq)?;
+            }
+            &UnaryOp::PoDec => {
+                self.bytecode_generator.append_double(iseq);
+                self.bytecode_generator.append_push_int8(1, iseq);
+                self.bytecode_generator.append_sub(iseq);
                 self.assign_stack_top_to(expr, iseq)?;
             }
             _ => unimplemented!(),
