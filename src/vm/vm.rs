@@ -564,26 +564,13 @@ impl<'a> VM2<'a> {
             .get_object_properties()
         {
             Some(properties) => properties.clone(),
-            None => return Err(RuntimeError::Type("not a constructor".to_string())),
+            None => return Err(RuntimeError::Type("Not a constructor".to_string())),
         };
 
         let this = Value2::object(
             memory_allocator!(self),
             object_prototypes!(self),
-            properties
-                .into_iter()
-                .map(|(key, _)| {
-                    (
-                        key,
-                        Property2 {
-                            val: Value2::undefined(),
-                            writable: true,
-                            enumerable: true,
-                            configurable: true,
-                        },
-                    )
-                })
-                .collect(),
+            properties,
         );
 
         let info = callee.as_function();
