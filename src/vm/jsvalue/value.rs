@@ -503,6 +503,80 @@ impl Value2 {
     }
 }
 
+impl Value2 {
+    pub fn debug_string(&self, nest: bool) -> String {
+        fn property_string(sorted_key_val: Vec<(&String, &Property2)>) -> String {
+            sorted_key_val
+                .iter()
+                .enumerate()
+                .fold("".to_string(), |acc, (i, tupple)| {
+                    format!(
+                        "{}'{}': {}{}",
+                        acc,
+                        tupple.0,
+                        tupple.1.val.debug_string(true),
+                        if i != sorted_key_val.len() - 1 {
+                            ", "
+                        } else {
+                            " "
+                        }
+                    )
+                })
+        }
+
+        match self {
+            Value2::Other(UNINITIALIZED) => "uninitialized".to_string(),
+            Value2::Other(EMPTY) => "empty".to_string(),
+            Value2::Other(NULL) => "null".to_string(),
+            Value2::Other(UNDEFINED) => "undefined".to_string(),
+            Value2::Other(_) => unreachable!(),
+            Value2::Bool(1) => "true".to_string(),
+            Value2::Bool(0) => "false".to_string(),
+            Value2::Bool(_) => unreachable!(),
+            Value2::Number(n) => {
+                if n.is_nan() {
+                    "NaN".to_string()
+                } else if n.is_infinite() {
+                    "Infinity".to_string()
+                } else {
+                    format!("{}", n)
+                }
+            }
+            Value2::String(s) => {
+                let s = unsafe { &**s };
+                if nest {
+                    format!("'{}'", s.to_str().unwrap())
+                } else {
+                    s.to_str().unwrap().to_string()
+                }
+            }
+            Value2::Object(obj_info) => {
+                let obj_info = unsafe { &**obj_info };
+                match obj_info.kind {
+                    ObjectKind2::Ordinary => {
+                        let mut sorted_key_val =
+                            (&obj_info.property)
+                                .iter()
+                                .collect::<Vec<(&String, &Property2)>>();
+                        sorted_key_val
+                            .sort_by(|(key1, _), (key2, _)| key1.as_str().cmp(key2.as_str()));
+                        sorted_key_val.retain(|(ref key, _)| key != &"__proto__");
+
+                        format!("{{ {} }}", property_string(sorted_key_val))
+                    }
+                    ObjectKind2::Function(ref func_info) => {
+                        if let Some(ref name) = func_info.name {
+                            format!("[Function: {}]", name)
+                        } else {
+                            "[Function]".to_string()
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 // Utils
 
 #[inline]
