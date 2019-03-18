@@ -59,7 +59,6 @@ impl Parser {
             | Error::General(pos, msg)
             | Error::UnexpectedToken(pos, msg) => {
                 self.show_error_at(pos, msg.as_str());
-                return;
             }
             Error::UnexpectedEOF(msg) => {
                 self.show_error_at(self.lexer.pos, format!("unexpected EOF. {}", msg).as_str())
@@ -67,7 +66,6 @@ impl Parser {
             Error::InvalidToken(pos) => self.show_error_at(pos, "Invalid token."),
             Error::UnsupportedFeature(pos) => {
                 self.show_error_at(pos, "Unsupported feature.");
-                return;
             }
         }
     }

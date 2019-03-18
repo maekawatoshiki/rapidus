@@ -194,7 +194,10 @@ fn repl_with_new_vm() {
                     }
                     Err(_) => break,
                 },
-                Err(_) => break,
+                Err(e) => {
+                    parser.handle_error(e);
+                    break;
+                }
             }
         }
     }
