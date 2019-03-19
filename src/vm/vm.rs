@@ -339,6 +339,14 @@ impl<'a> VM2<'a> {
                     let val = *constant_table!(self).get(id).as_value();
                     self.stack.push(val.into());
                 }
+                VMInst::PUSH_NULL => {
+                    cur_frame.pc += 1;
+                    self.stack.push(Value2::null().into());
+                }
+                VMInst::PUSH_UNDEFINED => {
+                    cur_frame.pc += 1;
+                    self.stack.push(Value2::undefined().into());
+                }
                 VMInst::PUSH_THIS => {
                     cur_frame.pc += 1;
                     self.stack.push(cur_frame.this.into());
@@ -473,10 +481,6 @@ impl<'a> VM2<'a> {
                     cur_frame.pc += 1;
                     self.stack.pop();
                 }
-                VMInst::PUSH_UNDEFINED => {
-                    cur_frame.pc += 1;
-                    self.stack.push(Value2::undefined().into());
-                }
                 VMInst::JMP_IF_FALSE => {
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, dst, i32);
@@ -529,6 +533,14 @@ impl<'a> VM2<'a> {
                         &cur_frame,
                         &self.saved_frame,
                     );
+                }
+                VMInst::TYPEOF => {
+                    cur_frame.pc += 1;
+                    let val: Value2 = self.stack.pop().unwrap().into();
+                    let type_str = val.type_of();
+                    let type_str_val =
+                        Value2::string(memory_allocator!(self), type_str.to_string());
+                    self.stack.push(type_str_val.into());
                 }
                 VMInst::END => break,
                 e => unimplemented!("code: {}", e),

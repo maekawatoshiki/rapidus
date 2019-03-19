@@ -135,15 +135,25 @@ impl<'a> CodeGenerator<'a> {
                     self.bytecode_generator.append_get_value(name, iseq)
                 }
             }
-            NodeBase::String(ref s) => {
+            NodeBase::Undefined => {
                 if use_value {
-                    self.bytecode_generator
-                        .append_push_const(Value2::string(self.memory_allocator, s.clone()), iseq)
+                    self.bytecode_generator.append_push_undefined(iseq);
+                }
+            }
+            NodeBase::Null => {
+                if use_value {
+                    self.bytecode_generator.append_push_null(iseq);
                 }
             }
             NodeBase::This => {
                 if use_value {
                     self.bytecode_generator.append_push_this(iseq);
+                }
+            }
+            NodeBase::String(ref s) => {
+                if use_value {
+                    self.bytecode_generator
+                        .append_push_const(Value2::string(self.memory_allocator, s.clone()), iseq)
                 }
             }
             NodeBase::Number(n) => {
@@ -667,6 +677,7 @@ impl<'a> CodeGenerator<'a> {
         self.visit(expr, iseq, true)?;
 
         match op {
+            &UnaryOp::Typeof => self.bytecode_generator.append_typeof(iseq),
             &UnaryOp::Minus => self.bytecode_generator.append_neg(iseq),
             &UnaryOp::PrInc => {
                 self.bytecode_generator.append_push_int8(1, iseq);

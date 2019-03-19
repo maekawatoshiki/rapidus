@@ -10,6 +10,7 @@ function James() { this.name = "James" }
 James.prototype = new Browns();
 
 var greens = new Browns();
+console.log(greens);
 greens.show();
 
 var james = new James();

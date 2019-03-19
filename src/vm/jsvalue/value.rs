@@ -501,6 +501,25 @@ impl Value2 {
             _ => false,
         }
     }
+
+    // TODO: Correct implementation: https://www.ecma-international.org/ecma-262/6.0/#sec-typeof-operator-runtime-semantics-evaluation
+    pub fn type_of(&self) -> &str {
+        match self {
+            Value2::Other(UNDEFINED) => "undefined",
+            Value2::Other(NULL) => "object",
+            Value2::Bool(_) => "boolean",
+            Value2::Number(_) => "number",
+            Value2::String(_) => "string",
+            Value2::Object(info) => {
+                let info = unsafe { &**info };
+                match info.kind {
+                    ObjectKind2::Function(_) => "function",
+                    ObjectKind2::Ordinary => "object",
+                }
+            }
+            _ => panic!(),
+        }
+    }
 }
 
 impl Value2 {

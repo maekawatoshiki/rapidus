@@ -81,6 +81,10 @@ impl<'a> ByteCodeGenerator<'a> {
         self.append_int32(id as i32, iseq);
     }
 
+    pub fn append_push_null(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::PUSH_NULL);
+    }
+
     pub fn append_push_this(&self, iseq: &mut ByteCode) {
         iseq.push(VMInst::PUSH_THIS);
     }
@@ -318,6 +322,10 @@ impl<'a> ByteCodeGenerator<'a> {
 
     pub fn append_set_outer_env(&mut self, iseq: &mut ByteCode) {
         iseq.push(VMInst::SET_OUTER_ENV);
+    }
+
+    pub fn append_typeof(&mut self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::TYPEOF);
     }
 
     // Utils
@@ -726,6 +734,7 @@ pub fn show_inst2(code: &ByteCode, i: usize, const_table: &constant::ConstantTab
                 // TODO: Implement 'format' for 'value'
                 format!("PushConst {:?}", value)
             }
+            VMInst::PUSH_NULL => format!("PushNull"),
             VMInst::PUSH_THIS => format!("PushThis"),
             VMInst::PUSH_ARGUMENTS => format!("PushArguments"),
             VMInst::PUSH_UNDEFINED => format!("PushUndefined"),
@@ -828,6 +837,7 @@ pub fn show_inst2(code: &ByteCode, i: usize, const_table: &constant::ConstantTab
                 format!("JmpSub {:04x}", i as i32 + int32 + 5)
             }
             VMInst::RETURN_SUB => format!("ReturnSub"),
+            VMInst::TYPEOF => format!("Typeof"),
             _ => unreachable!("sorry. need to implement more opcodes"),
         }
     );
@@ -1047,11 +1057,13 @@ pub mod VMInst {
     pub const SET_OUTER_ENV: u8 = 0x42;
     pub const JMP_SUB: u8 = 0x43;
     pub const RETURN_SUB: u8 = 0x44;
+    pub const TYPEOF: u8 = 0x45;
+    pub const PUSH_NULL: u8 = 0x46;
 
     pub fn get_inst_size(inst: u8) -> Option<usize> {
         match inst {
             CREATE_CONTEXT | THROW | LEAVE_TRY | CATCH | FINALLY | POP_SCOPE | PUSH_SCOPE
-            | RETURN_SUB | SET_OUTER_ENV | POP_ENV => Some(1),
+            | RETURN_SUB | SET_OUTER_ENV | POP_ENV | TYPEOF | PUSH_NULL => Some(1),
             CONSTRUCT | CREATE_OBJECT | PUSH_CONST | PUSH_INT32 | CREATE_ARRAY | JMP_IF_FALSE
             | RETURN_TRY | DECL_VAR | LOOP_START | JMP | SET_VALUE | GET_VALUE | CALL | JMP_SUB
             | CALL_METHOD | PUSH_ENV | DECL_LET | DECL_CONST => Some(5),

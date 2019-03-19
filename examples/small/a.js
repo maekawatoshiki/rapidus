@@ -145,3 +145,10 @@ for (let a = 0; a < 10; a++) {
   if (a == 5) break;
 }
 console.log(a)
+
+console.log(typeof undefined)
+console.log(typeof null)
+console.log(typeof 1.2)
+console.log(typeof false)
+console.log(typeof "hello")
+console.log(typeof fact)
