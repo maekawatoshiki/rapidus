@@ -281,10 +281,20 @@ impl Value2 {
         }
     }
 
+    // https://www.ecma-international.org/ecma-262/6.0/#sec-tostring
     pub fn to_string(&self) -> String {
         match self {
             Value2::String(s) => unsafe { &**s }.to_str().unwrap().to_string(),
             Value2::Other(UNDEFINED) => "undefined".to_string(),
+            Value2::Number(n) =>  {
+                if n.is_nan() { 
+                    "NaN".to_string()
+                } else if n.is_infinite() {
+                    "Infinity".to_string()
+                } else {
+                    format!("{}", n)
+                }
+            }
             _ => "[unimplemented]".to_string(),
         }
     }

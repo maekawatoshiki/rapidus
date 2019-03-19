@@ -941,6 +941,11 @@ impl<'a> CodeGenerator<'a> {
                 self.bytecode_generator.append_push_const(property, iseq);
                 self.bytecode_generator.append_set_member(iseq);
             }
+            NodeBase::Index(ref parent, ref index) => {
+                self.visit(&*parent, iseq, true)?;
+                self.visit(&*index, iseq, true)?;
+                self.bytecode_generator.append_set_member(iseq);
+            }
             _ => unimplemented!(),
         }
 
