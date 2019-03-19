@@ -323,6 +323,11 @@ impl<'a> VM2<'a> {
                     let val: Value2 = self.stack.pop().unwrap().into();
                     self.stack.push(val.minus().into());
                 }
+                VMInst::POSI => {
+                    cur_frame.pc += 1;
+                    let val: Value2 = self.stack.pop().unwrap().into();
+                    self.stack.push(val.positive().into());
+                }
                 VMInst::PUSH_INT8 => {
                     cur_frame.pc += 1;
                     read_int8!(cur_frame.bytecode, cur_frame.pc, num, f64);

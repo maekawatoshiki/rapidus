@@ -179,7 +179,7 @@ fn repl_with_new_vm() {
 
                     if vm.stack.len() != 0 {
                         let val: Value2 = vm.stack[0].into();
-                        println!("{}", val.debug_string(false));
+                        println!("{}", val.debug_string(true));
                         vm.stack = vec![];
                     }
 

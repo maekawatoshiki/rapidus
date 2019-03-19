@@ -281,33 +281,6 @@ impl Value2 {
         }
     }
 
-    // https://www.ecma-international.org/ecma-262/6.0/#sec-tostring
-    pub fn to_string(&self) -> String {
-        match self {
-            Value2::String(s) => unsafe { &**s }.to_str().unwrap().to_string(),
-            Value2::Other(UNDEFINED) => "undefined".to_string(),
-            Value2::Number(n) =>  {
-                if n.is_nan() { 
-                    "NaN".to_string()
-                } else if n.is_infinite() {
-                    "Infinity".to_string()
-                } else {
-                    format!("{}", n)
-                }
-            }
-            _ => "[unimplemented]".to_string(),
-        }
-    }
-
-    pub fn to_boolean(&self) -> bool {
-        match self {
-            Value2::Bool(0) => false,
-            Value2::Bool(1) => true,
-            // TODO
-            _ => false,
-        }
-    }
-
     pub fn set_constructor(&self, val: Value2) {
         self.get_object_info().property.insert(
             "constructor".to_string(),
@@ -386,6 +359,56 @@ impl Value2 {
                 }
             }
             _ => panic!(),
+        }
+    }
+}
+
+impl Value2 {
+    // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-tonumber
+    pub fn to_number(&self) -> f64 {
+        match self {
+            Value2::Other(UNDEFINED) => ::std::f64::NAN,
+            Value2::Other(NULL) => 0.0,
+            Value2::Bool(0) => 0.0,
+            Value2::Bool(1) => 1.0,
+            Value2::Number(n) => *n,
+            Value2::String(s) => {
+                let s = unsafe { &**s }.to_str().unwrap();
+                if s == "Infinity" || s == "-Infinity" {
+                    ::std::f64::INFINITY
+                } else {
+                    s.parse::<f64>().unwrap_or(::std::f64::NAN)
+                }
+            }
+            // TODO
+            _ => 0.0,
+        }
+    }
+
+    // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-tostring
+    pub fn to_string(&self) -> String {
+        match self {
+            Value2::String(s) => unsafe { &**s }.to_str().unwrap().to_string(),
+            Value2::Other(UNDEFINED) => "undefined".to_string(),
+            Value2::Number(n) => {
+                if n.is_nan() {
+                    "NaN".to_string()
+                } else if n.is_infinite() {
+                    "Infinity".to_string()
+                } else {
+                    format!("{}", n)
+                }
+            }
+            _ => "[unimplemented]".to_string(),
+        }
+    }
+
+    pub fn to_boolean(&self) -> bool {
+        match self {
+            Value2::Bool(0) => false,
+            Value2::Bool(1) => true,
+            // TODO
+            _ => false,
         }
     }
 }
@@ -496,6 +519,11 @@ impl Value2 {
             Value2::Number(n) => Value2::Number(-n),
             _ => Value2::undefined(),
         }
+    }
+
+    // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-unary-plus-operator-runtime-semantics-evaluation
+    pub fn positive(self) -> Self {
+        Value2::Number(self.to_number())
     }
 
     pub fn is_same_type_as(&self, val: &Value2) -> bool {

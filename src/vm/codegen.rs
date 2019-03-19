@@ -678,6 +678,7 @@ impl<'a> CodeGenerator<'a> {
 
         match op {
             &UnaryOp::Typeof => self.bytecode_generator.append_typeof(iseq),
+            &UnaryOp::Plus => self.bytecode_generator.append_posi(iseq),
             &UnaryOp::Minus => self.bytecode_generator.append_neg(iseq),
             &UnaryOp::PrInc => {
                 self.bytecode_generator.append_push_int8(1, iseq);
