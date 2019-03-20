@@ -20,7 +20,7 @@ pub fn object_constructor(
     vm: &mut vm::VM2,
     args: &Vec<jsvalue::value::Value2>,
     _cur_frame: &frame::Frame,
-) -> Result<(), RuntimeError> {
+) -> vm::VMResult {
     if args.len() == 0 {
         let empty_obj = jsvalue::value::Value2::object(
             vm.memory_allocator(),

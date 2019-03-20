@@ -21,6 +21,7 @@ pub struct Frame {
     pub exception_table: Vec<Exception>,
     pub this: Value2,
     pub constructor_call: bool,
+    pub escape: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -60,6 +61,7 @@ impl Frame {
             exception_table,
             this,
             constructor_call,
+            escape: false,
         }
     }
 
@@ -72,6 +74,7 @@ impl Frame {
             exception_table: vec![],
             this,
             constructor_call,
+            escape: false,
         }
     }
 
@@ -81,6 +84,12 @@ impl Frame {
 
     pub fn lex_env_mut(&mut self) -> &mut LexicalEnvironment {
         unsafe { &mut *self.execution_context.lexical_environment }
+    }
+
+    pub fn escape(self) -> Self {
+        let mut frame = self;
+        frame.escape = true;
+        frame
     }
 }
 

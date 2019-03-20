@@ -46,7 +46,7 @@ impl Hash for GcTargetKey {
 pub struct MemoryAllocator {
     allocated_memory: MarkMap,
     allocated_size: usize,
-    roots: MarkSet,
+    pub roots: MarkSet,
     state: GCState,
     white: MarkState,
 }

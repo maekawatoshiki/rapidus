@@ -172,6 +172,92 @@ impl<'a> VM2<'a> {
 
         Ok(())
     }
+
+    pub fn call_function(
+        &mut self,
+        callee: Value2,
+        args: Vec<Value2>,
+        this: Value2,
+        cur_frame: &frame::Frame,
+    ) -> VMResult {
+        let info = callee.as_function();
+        match info.kind {
+            FunctionObjectKind::Builtin(func) => {
+                func(self, &args, &frame::Frame::new_empty_with_this(this, false))
+            }
+            FunctionObjectKind::User(ref user_func) => {
+                self.call_user_function(user_func, args, this, cur_frame, false)
+            }
+        }
+    }
+
+    fn call_user_function(
+        &mut self,
+        user_func: &UserFunctionInfo,
+        args: Vec<Value2>,
+        this: Value2,
+        cur_frame: &frame::Frame,
+        constructor_call: bool,
+    ) -> VMResult {
+        self.saved_frame.push({
+            let mut cur_frame = cur_frame.clone();
+            cur_frame.saved_stack_len = self.stack.len();
+            cur_frame
+        });
+
+        let var_env = memory_allocator!(self).alloc(frame::LexicalEnvironment {
+            record: frame::EnvironmentRecord::Declarative({
+                let mut record = FxHashMap::default();
+
+                for name in &user_func.var_names {
+                    record.insert(name.clone(), Value2::undefined());
+                }
+
+                // TODO: rest parameter
+                for (FunctionParameter { name, .. }, arg) in user_func.params.iter().zip(args) {
+                    record.insert(name.clone(), arg);
+                }
+
+                record
+            }),
+            outer: user_func.outer,
+        });
+
+        let lex_env = memory_allocator!(self).alloc(frame::LexicalEnvironment {
+            record: frame::EnvironmentRecord::Declarative({
+                let mut record = FxHashMap::default();
+                for name in &user_func.lex_names {
+                    record.insert(name.clone(), Value2::uninitialized());
+                }
+                record
+            }),
+            outer: Some(var_env),
+        });
+
+        for func in &user_func.func_decls {
+            let mut func = func.copy_object(memory_allocator!(self));
+            let name = func.as_function().name.clone().unwrap();
+            func.set_function_outer_environment(lex_env);
+            unsafe { &mut *lex_env }.set_value(name, func)?;
+        }
+
+        let exec_ctx = frame::ExecutionContext {
+            variable_environment: var_env,
+            lexical_environment: lex_env,
+            saved_lexical_environment: vec![],
+        };
+
+        let frame = frame::Frame::new(
+            exec_ctx,
+            user_func.code.clone(),
+            user_func.exception_table.clone(),
+            this,
+            constructor_call,
+        )
+        .escape();
+
+        self.run(frame)
+    }
 }
 
 macro_rules! read_int8 {
@@ -408,9 +494,19 @@ impl<'a> VM2<'a> {
                     for _ in 0..argc {
                         args.push(self.stack.pop().unwrap().into());
                     }
-                    self.call_constructor(callee, args, &mut cur_frame)?;
+                    self.enter_constructor(callee, args, &mut cur_frame)?;
                 }
                 VMInst::CALL => {
+                    // TODO: GC schedule
+                    memory_allocator!(self).mark(
+                        self.global_environment,
+                        object_prototypes!(self),
+                        constant_table!(self),
+                        &self.stack,
+                        &cur_frame,
+                        &self.saved_frame,
+                    );
+
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, argc, usize);
                     let callee: Value2 = self.stack.pop().unwrap().into();
@@ -418,9 +514,19 @@ impl<'a> VM2<'a> {
                     for _ in 0..argc {
                         args.push(self.stack.pop().unwrap().into());
                     }
-                    self.call_function(callee, args, cur_frame.this, &mut cur_frame, false)?;
+                    self.enter_function(callee, args, cur_frame.this, &mut cur_frame, false)?;
                 }
                 VMInst::CALL_METHOD => {
+                    // TODO: GC schedule
+                    memory_allocator!(self).mark(
+                        self.global_environment,
+                        object_prototypes!(self),
+                        constant_table!(self),
+                        &self.stack,
+                        &cur_frame,
+                        &self.saved_frame,
+                    );
+
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, argc, usize);
                     let parent: Value2 = self.stack.pop().unwrap().into();
@@ -434,7 +540,7 @@ impl<'a> VM2<'a> {
                         object_prototypes!(self),
                         method,
                     );
-                    self.call_function(callee, args, parent, &mut cur_frame, false)?;
+                    self.enter_function(callee, args, parent, &mut cur_frame, false)?;
                 }
                 VMInst::SET_OUTER_ENV => {
                     cur_frame.pc += 1;
@@ -528,16 +634,11 @@ impl<'a> VM2<'a> {
                 }
                 VMInst::RETURN => {
                     cur_frame.pc += 1;
+                    let escape = cur_frame.escape;
                     self.unwind_frame_saving_stack_top(&mut cur_frame);
-                    // TODO: GC schedule
-                    memory_allocator!(self).mark(
-                        self.global_environment,
-                        object_prototypes!(self),
-                        constant_table!(self),
-                        &self.stack,
-                        &cur_frame,
-                        &self.saved_frame,
-                    );
+                    if escape {
+                        break;
+                    }
                 }
                 VMInst::TYPEOF => {
                     cur_frame.pc += 1;
@@ -622,7 +723,7 @@ impl<'a> VM2<'a> {
         Ok(())
     }
 
-    fn call_constructor(
+    fn enter_constructor(
         &mut self,
         callee: Value2,
         args: Vec<Value2>,
@@ -648,12 +749,12 @@ impl<'a> VM2<'a> {
                 func(self, &args, &frame::Frame::new_empty_with_this(this, true))
             }
             FunctionObjectKind::User(ref user_func) => {
-                self.call_user_function(user_func.clone(), args, this, cur_frame, true)
+                self.enter_user_function(user_func.clone(), args, this, cur_frame, true)
             }
         }
     }
 
-    fn call_function(
+    fn enter_function(
         &mut self,
         callee: Value2,
         args: Vec<Value2>,
@@ -667,12 +768,12 @@ impl<'a> VM2<'a> {
                 func(self, &args, &frame::Frame::new_empty_with_this(this, false))
             }
             FunctionObjectKind::User(ref user_func) => {
-                self.call_user_function(user_func.clone(), args, this, cur_frame, constructor_call)
+                self.enter_user_function(user_func.clone(), args, this, cur_frame, constructor_call)
             }
         }
     }
 
-    fn call_user_function(
+    fn enter_user_function(
         &mut self,
         user_func: UserFunctionInfo,
         args: Vec<Value2>,

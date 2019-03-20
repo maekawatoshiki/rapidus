@@ -1,5 +1,6 @@
 #![macro_use]
 use super::super::super::builtin;
+use super::super::super::builtins::function;
 use super::super::super::id::get_unique_id;
 use super::value::*;
 use gc::MemoryAllocator;
@@ -34,6 +35,19 @@ impl ObjectPrototypes {
             }),
             property: make_property_map!(__proto__: object_prototype),
         }));
+
+        let function_prototype_call = Value2::builtin_function_with_prototype(
+            memory_allocator,
+            function_prototype,
+            "call".to_string(),
+            function::function_prototype_call,
+        );
+
+        {
+            let info = function_prototype.get_object_info();
+            info.property =
+                make_property_map!(__proto__: object_prototype, call: function_prototype_call)
+        }
 
         let index_of = Value2::builtin_function_with_prototype(
             memory_allocator,

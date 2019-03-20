@@ -2,9 +2,29 @@ use builtins::object;
 use vm::{
     callobj::CallObject,
     error::RuntimeError,
+    frame,
+    jsvalue::value::Value2,
     value::*,
+    vm,
     vm::{call_function, VM},
 };
+
+pub fn function_prototype_call(
+    vm: &mut vm::VM2,
+    args: &Vec<Value2>,
+    cur_frame: &frame::Frame,
+) -> vm::VMResult {
+    let this_arg = *args.get(0).unwrap_or(&Value2::undefined());
+    let func = cur_frame.this;
+    vm.call_function(
+        func,
+        args.get(1..).unwrap_or(&[]).to_vec(),
+        this_arg,
+        cur_frame,
+    )
+}
+
+/////////////////////////////////////////////////////////////////
 
 thread_local! {
     pub static FUNCTION_PROTOTYPE: Value = {

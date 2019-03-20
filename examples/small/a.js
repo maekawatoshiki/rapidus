@@ -152,3 +152,9 @@ console.log(typeof 1.2)
 console.log(typeof false)
 console.log(typeof "hello")
 console.log(typeof fact)
+
+function A(x, y) { this.x = x; this.y = y }
+function B() { A.call(this, 1, 2) }
+let b = new B()
+console.log(b.x, b.y)
+console.log(this.x, this.y)
