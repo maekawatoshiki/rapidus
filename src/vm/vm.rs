@@ -497,16 +497,6 @@ impl<'a> VM2<'a> {
                     self.enter_constructor(callee, args, &mut cur_frame)?;
                 }
                 VMInst::CALL => {
-                    // TODO: GC schedule
-                    memory_allocator!(self).mark(
-                        self.global_environment,
-                        object_prototypes!(self),
-                        constant_table!(self),
-                        &self.stack,
-                        &cur_frame,
-                        &self.saved_frame,
-                    );
-
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, argc, usize);
                     let callee: Value2 = self.stack.pop().unwrap().into();
@@ -517,16 +507,6 @@ impl<'a> VM2<'a> {
                     self.enter_function(callee, args, cur_frame.this, &mut cur_frame, false)?;
                 }
                 VMInst::CALL_METHOD => {
-                    // TODO: GC schedule
-                    memory_allocator!(self).mark(
-                        self.global_environment,
-                        object_prototypes!(self),
-                        constant_table!(self),
-                        &self.stack,
-                        &cur_frame,
-                        &self.saved_frame,
-                    );
-
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, argc, usize);
                     let parent: Value2 = self.stack.pop().unwrap().into();
@@ -636,6 +616,15 @@ impl<'a> VM2<'a> {
                     cur_frame.pc += 1;
                     let escape = cur_frame.escape;
                     self.unwind_frame_saving_stack_top(&mut cur_frame);
+                    // TODO: GC schedule
+                    memory_allocator!(self).mark(
+                        self.global_environment,
+                        object_prototypes!(self),
+                        constant_table!(self),
+                        &self.stack,
+                        &cur_frame,
+                        &self.saved_frame,
+                    );
                     if escape {
                         break;
                     }

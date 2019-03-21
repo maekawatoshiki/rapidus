@@ -144,6 +144,8 @@ impl MemoryAllocator {
                 GCState::Marking
             }
             GCState::Marking => {
+                // println!("start marking: {:?}", markset);
+
                 for root in self.roots.clone() {
                     self.allocated_memory.insert(root, MarkState::Black);
                     unsafe { &*root.0 }.trace(self, &mut markset);
@@ -211,15 +213,19 @@ pub trait GcTarget {
 
 macro_rules! mark {
     ($markmap:expr, $val:expr) => {{
-        $markmap.insert(GcTargetKey($val));
+        if $val as *mut u8 != 0 as *mut u8 {
+            $markmap.insert(GcTargetKey($val));
+        }
     }};
 }
 
 macro_rules! mark_if_white {
     ($allocator:expr, $markset:expr, $val:expr) => {{
-        let mark = $allocator.allocated_memory.get(&GcTargetKey($val)).unwrap();
-        if mark == &$allocator.white.flip_white() {
-            $markset.insert(GcTargetKey($val));
+        if $val as *mut u8 != 0 as *mut u8 {
+            let mark = $allocator.allocated_memory.get(&GcTargetKey($val)).unwrap();
+            if mark == &$allocator.white.flip_white() {
+                $markset.insert(GcTargetKey($val));
+            }
         }
     }};
 }
