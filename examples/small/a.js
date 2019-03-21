@@ -158,3 +158,11 @@ function B() { A.call(this, 1, 2) }
 let b = new B()
 console.log(b.x, b.y)
 console.log(this.x, this.y)
+
+function f(x, y) {
+  console.log(x, y)
+}
+
+f()
+f(1)
+f(1,2)

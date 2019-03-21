@@ -214,8 +214,8 @@ impl<'a> VM2<'a> {
                 }
 
                 // TODO: rest parameter
-                for (FunctionParameter { name, .. }, arg) in user_func.params.iter().zip(args) {
-                    record.insert(name.clone(), arg);
+                for (i, FunctionParameter { name, .. }) in user_func.params.iter().enumerate() {
+                    record.insert(name.clone(), *args.get(i).unwrap_or(&Value2::undefined()));
                 }
 
                 record
@@ -785,8 +785,8 @@ impl<'a> VM2<'a> {
                 }
 
                 // TODO: rest parameter
-                for (FunctionParameter { name, .. }, arg) in user_func.params.iter().zip(args) {
-                    record.insert(name.clone(), arg);
+                for (i, FunctionParameter { name, .. }) in user_func.params.iter().enumerate() {
+                    record.insert(name.clone(), *args.get(i).unwrap_or(&Value2::undefined()));
                 }
 
                 record
