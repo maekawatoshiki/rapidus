@@ -20,7 +20,7 @@ make_nanbox! {
         Number(f64),
         Bool(u8), // 0 | 1 = false | true
         String(*mut CString), // TODO: Using CString is good for JIT. However, we need better one instead.
-        Object(*mut ObjectInfo), // Object(FxHashMap<String, Value>),
+        Object(*mut ObjectInfo), 
         Other(u32) // UNINITIALIZED | EMPTY | NULL | UNDEFINED
     }
 }

@@ -19,35 +19,37 @@ impl ObjectPrototypes {
             property: make_property_map!(__proto__: Value2::null()),
         }));
 
-        let function_prototype = Value2::Object(memory_allocator.alloc(ObjectInfo {
-            kind: ObjectKind2::Function(FunctionObjectInfo {
-                id: get_unique_id(),
-                name: None,
-                kind: FunctionObjectKind::User(UserFunctionInfo {
-                    params: vec![],
-                    var_names: vec![],
-                    lex_names: vec![],
-                    func_decls: vec![],
-                    code: vec![],
-                    outer: None,
-                    exception_table: vec![],
+        let function_prototype = {
+            let function_prototype = Value2::Object(memory_allocator.alloc(ObjectInfo {
+                kind: ObjectKind2::Function(FunctionObjectInfo {
+                    id: get_unique_id(),
+                    name: None,
+                    kind: FunctionObjectKind::User(UserFunctionInfo {
+                        params: vec![],
+                        var_names: vec![],
+                        lex_names: vec![],
+                        func_decls: vec![],
+                        code: vec![],
+                        outer: None,
+                        exception_table: vec![],
+                    }),
                 }),
-            }),
-            property: make_property_map!(__proto__: object_prototype),
-        }));
+                property: make_property_map!(__proto__: object_prototype),
+            }));
 
-        let function_prototype_call = Value2::builtin_function_with_prototype(
-            memory_allocator,
-            function_prototype,
-            "call".to_string(),
-            function::function_prototype_call,
-        );
+            let function_prototype_call = Value2::builtin_function_with_prototype(
+                memory_allocator,
+                function_prototype,
+                "call".to_string(),
+                function::function_prototype_call,
+            );
 
-        {
             let info = function_prototype.get_object_info();
             info.property =
-                make_property_map!(__proto__: object_prototype, call: function_prototype_call)
-        }
+                make_property_map!(__proto__: object_prototype, call: function_prototype_call);
+
+            function_prototype
+        };
 
         let index_of = Value2::builtin_function_with_prototype(
             memory_allocator,
