@@ -20,7 +20,7 @@ make_nanbox! {
         Number(f64),
         Bool(u8), // 0 | 1 = false | true
         String(*mut CString), // TODO: Using CString is good for JIT. However, we need better one instead.
-        Object(*mut ObjectInfo), 
+        Object(*mut ObjectInfo),
         Other(u32) // UNINITIALIZED | EMPTY | NULL | UNDEFINED
     }
 }
@@ -470,7 +470,11 @@ impl Value2 {
         }
 
         match (self, val) {
-            (Value2::Number(x), Value2::Number(y)) => Value2::Bool(if x == y { 1 } else { 0 }),
+            (Value2::Number(x), Value2::String(_)) => Value2::bool(x == val.to_number()),
+            (Value2::String(_), Value2::Number(y)) => Value2::bool(self.to_number() == y),
+            (Value2::Bool(_), Value2::Number(y)) => Value2::bool(self.to_number() == y),
+            (Value2::Number(x), Value2::Bool(_)) => Value2::bool(x == val.to_number()),
+            // (Value2::Number(x), Value2::Number(y)) => Value2::Bool(if x == y { 1 } else { 0 }),
             // (Value2::Number(_), obj) | (Value2::String(_), obj) => self.eq(val),
             _ => Value2::undefined(),
         }
