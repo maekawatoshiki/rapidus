@@ -502,6 +502,10 @@ impl Value2 {
         Value2::bool(!self.eq(val).into_bool())
     }
 
+    pub fn strict_ne(self, val: Value2) -> Self {
+        Value2::bool(!self.strict_eq(val).into_bool())
+    }
+
     // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-abstract-relational-comparison
     pub fn lt(self, val: Value2) -> Self {
         match (self, val) {

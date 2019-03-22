@@ -386,11 +386,23 @@ impl<'a> VM2<'a> {
                     let lhs: Value2 = self.stack.pop().unwrap().into();
                     self.stack.push(lhs.eq(rhs).into());
                 }
+                VMInst::SEQ => {
+                    cur_frame.pc += 1;
+                    let rhs: Value2 = self.stack.pop().unwrap().into();
+                    let lhs: Value2 = self.stack.pop().unwrap().into();
+                    self.stack.push(lhs.strict_eq(rhs).into());
+                }
                 VMInst::NE => {
                     cur_frame.pc += 1;
                     let rhs: Value2 = self.stack.pop().unwrap().into();
                     let lhs: Value2 = self.stack.pop().unwrap().into();
                     self.stack.push(lhs.ne(rhs).into());
+                }
+                VMInst::SNE => {
+                    cur_frame.pc += 1;
+                    let rhs: Value2 = self.stack.pop().unwrap().into();
+                    let lhs: Value2 = self.stack.pop().unwrap().into();
+                    self.stack.push(lhs.strict_ne(rhs).into());
                 }
                 VMInst::LT => {
                     cur_frame.pc += 1;
