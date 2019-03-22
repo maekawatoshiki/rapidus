@@ -167,5 +167,10 @@ f()
 f(1)
 f(1,2)
 
-let ary = [1,2,,4,5]
+let ary = [1, , , 2]
+console.log(ary)
+ary.x = 123
+console.log(ary)
+console.log(ary.length)
+ary.length = 100
 console.log(ary)

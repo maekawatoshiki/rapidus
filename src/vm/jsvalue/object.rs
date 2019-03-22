@@ -28,6 +28,17 @@ impl ObjectInfo {
     }
 
     pub fn get_property(&self, key: Value2) -> Value2 {
+        match self.kind {
+            ObjectKind2::Array(ref info) => match key {
+                Value2::Number(idx) if is_integer(idx) => return info.elems[idx as usize].val,
+                Value2::String(x) if unsafe { &*x }.to_str().unwrap() == "length" => {
+                    return Value2::Number(info.elems.len() as f64)
+                }
+                _ => {}
+            },
+            _ => {}
+        }
+
         match self.property.get(key.to_string().as_str()) {
             Some(prop) => prop.val,
             None => match self.property.get("__proto__") {
@@ -64,6 +75,31 @@ impl ObjectInfo {
     }
 
     pub fn set_property(&mut self, key: Value2, val: Value2) {
+        match self.kind {
+            ObjectKind2::Array(ref mut info) => match key {
+                Value2::Number(idx) if is_integer(idx) && idx >= 0.0 => {
+                    info.elems[idx as usize].val = val;
+                    return;
+                }
+                Value2::String(x) if unsafe { &*x }.to_str().unwrap() == "length" => match val {
+                    Value2::Number(n) if is_integer(n) && n >= 0.0 => {
+                        while info.elems.len() < n as usize {
+                            info.elems.push(Property2 {
+                                val: Value2::empty(),
+                                writable: true,
+                                enumerable: true,
+                                configurable: true,
+                            });
+                        }
+                        return;
+                    }
+                    _ => {}
+                },
+                _ => {}
+            },
+            _ => {}
+        }
+
         let property = self
             .property
             .entry(key.to_string())
