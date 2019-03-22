@@ -1,4 +1,5 @@
 use super::super::frame::LexicalEnvironmentRef;
+pub use super::array::*;
 pub use super::function::*;
 pub use super::object::*;
 pub use super::prototype::*;
@@ -560,6 +561,7 @@ impl Value2 {
                 let info = unsafe { &**info };
                 match info.kind {
                     ObjectKind2::Function(_) => "function",
+                    ObjectKind2::Array(_) => "object",
                     ObjectKind2::Ordinary => "object",
                 }
             }
@@ -636,6 +638,7 @@ impl Value2 {
                             "[Function]".to_string()
                         }
                     }
+                    ObjectKind2::Array(ref ary_info) => unimplemented!(),
                 }
             }
         }

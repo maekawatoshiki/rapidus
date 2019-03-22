@@ -381,6 +381,11 @@ impl GcTarget for object::ObjectKind2 {
                 }
                 function::FunctionObjectKind::Builtin(_) => {}
             },
+            object::ObjectKind2::Array(ary_info) => {
+                for elem in &ary_info.elems {
+                    elem.val.initial_trace(markset)
+                }
+            }
             object::ObjectKind2::Ordinary => {}
         }
     }
@@ -407,6 +412,11 @@ impl GcTarget for object::ObjectKind2 {
                 }
                 function::FunctionObjectKind::Builtin(_) => {}
             },
+            object::ObjectKind2::Array(ary_info) => {
+                for elem in &ary_info.elems {
+                    elem.val.initial_trace(markset)
+                }
+            }
             object::ObjectKind2::Ordinary => {}
         }
     }

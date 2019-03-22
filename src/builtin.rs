@@ -176,6 +176,7 @@ pub fn debug_print2(val: &Value2, nest: bool) {
                             .as_ptr() as RawStringPtr,
                         );
                     }
+                    ObjectKind2::Array(ref ary_info) => unimplemented!(),
                 }
             } // Value::Object(map, ObjectKind::Array(ref values)) => {
               //     libc::printf("[ \0".as_ptr() as RawStringPtr);
