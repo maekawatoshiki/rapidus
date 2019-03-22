@@ -1,4 +1,5 @@
 use gc;
+use rustc_hash::FxHashMap;
 use vm::{error::RuntimeError, value::*, vm::VM};
 use vm::{frame, jsvalue, vm};
 
@@ -12,7 +13,9 @@ pub fn object(
         "Object".to_string(),
         object_constructor,
     );
-    object_prototypes.object.set_constructor(obj);
+    obj.set_property_by_string_key("prototype".to_string(), object_prototypes.object);
+    obj.get_property_by_str_key("prototype")
+        .set_constructor(obj);
     obj
 }
 

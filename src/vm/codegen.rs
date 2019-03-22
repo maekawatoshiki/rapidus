@@ -130,6 +130,7 @@ impl<'a> CodeGenerator<'a> {
             NodeBase::Return(ref val) => self.visit_return(val, iseq)?,
             NodeBase::New(ref expr) => self.visit_new(&*expr, iseq, use_value)?,
             NodeBase::Object(ref properties) => self.visit_object_literal(properties, iseq)?,
+            NodeBase::Array(ref elems) => self.visit_array_literal(elems, iseq)?,
             NodeBase::Identifier(ref name) => {
                 if use_value {
                     self.bytecode_generator.append_get_value(name, iseq)
@@ -166,7 +167,11 @@ impl<'a> CodeGenerator<'a> {
                     self.bytecode_generator.append_push_bool(b, iseq)
                 }
             }
-            NodeBase::Nope => {}
+            NodeBase::Nope => {
+                // if use_value {
+                //     self.bytecode_generator.append_pus
+                // }
+            }
             ref e => unimplemented!("{:?}", e),
         }
 
@@ -925,6 +930,17 @@ impl<'a> CodeGenerator<'a> {
 
         self.bytecode_generator
             .append_create_object(properties.len() as usize, iseq);
+
+        Ok(())
+    }
+
+    fn visit_array_literal(&mut self, elems: &Vec<Node>, iseq: &mut ByteCode) -> CodeGenResult {
+        for elem in elems {
+            self.visit(elem, iseq, true)?;
+        }
+
+        self.bytecode_generator
+            .append_create_array(elems.len() as usize, iseq);
 
         Ok(())
     }

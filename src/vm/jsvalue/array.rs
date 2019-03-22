@@ -7,9 +7,3 @@ use super::value::*;
 pub struct ArrayObjectInfo {
     pub elems: Vec<Property2>,
 }
-
-impl ArrayObjectInfo {
-    pub fn new(elems: Vec<Property2>) -> Self {
-        ArrayObjectInfo { elems }
-    }
-}

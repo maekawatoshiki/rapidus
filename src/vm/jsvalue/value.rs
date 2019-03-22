@@ -129,7 +129,6 @@ impl Value2 {
         func: BuiltinFuncTy2,
     ) -> Self {
         let name_prop = Value2::string(memory_allocator, name.clone());
-        let prototype = make_normal_object!(memory_allocator);
         Value2::Object(memory_allocator.alloc(ObjectInfo {
             kind: ObjectKind2::Function(FunctionObjectInfo {
                 id: get_unique_id(),
@@ -138,21 +137,19 @@ impl Value2 {
             }),
             property: make_property_map!(
                 __proto__ => false, false, false: object_prototypes.function,
-                prototype => true , true , true : prototype,
                 length    => false, false, true : Value2::Number(0.0),
                 name      => false, false, true : name_prop
             ),
         }))
     }
 
-    pub fn builtin_function_with_prototype(
+    pub fn builtin_function_with_proto(
         memory_allocator: &mut gc::MemoryAllocator,
-        function_prototype: Value2,
+        proto: Value2,
         name: String,
         func: BuiltinFuncTy2,
     ) -> Self {
         let name_prop = Value2::string(memory_allocator, name.clone());
-        let prototype = make_normal_object!(memory_allocator);
         Value2::Object(memory_allocator.alloc(ObjectInfo {
             kind: ObjectKind2::Function(FunctionObjectInfo {
                 id: get_unique_id(),
@@ -160,8 +157,7 @@ impl Value2 {
                 kind: FunctionObjectKind::Builtin(func),
             }),
             property: make_property_map!(
-                __proto__ => false, false, false: function_prototype,
-                prototype => true , true , true : prototype,
+                __proto__ => false, false, false: proto,
                 length    => false, false, true : Value2::Number(0.0),
                 name      => false, false, true : name_prop
             ),
@@ -182,7 +178,7 @@ impl Value2 {
     ) -> Self {
         let name_prop = Value2::string(memory_allocator, name.clone().unwrap_or("".to_string()));
         let prototype = make_normal_object!(memory_allocator);
-        Value2::Object(memory_allocator.alloc(ObjectInfo {
+        let f = Value2::Object(memory_allocator.alloc(ObjectInfo {
             property: make_property_map!(
                 __proto__ => false, false, false: object_prototypes.function,
                 length    => false, false, true : Value2::Number(params.len() as f64), /* TODO: rest param */
@@ -202,6 +198,22 @@ impl Value2 {
                     outer: None
                 }),
             }),
+        }));
+        f.get_property_by_str_key("prototype").set_constructor(f);
+        f
+    }
+
+    pub fn array(
+        memory_allocator: &mut gc::MemoryAllocator,
+        object_prototypes: &ObjectPrototypes,
+        elems: Vec<Property2>,
+    ) -> Self {
+        Value2::Object(memory_allocator.alloc(ObjectInfo {
+            property: make_property_map!(
+                // __proto__ => false, false, false: object_prototypes.function,
+                // length    => false, false, true : Value2::Number(params.len() as f6
+            ),
+            kind: ObjectKind2::Array(ArrayObjectInfo { elems }),
         }))
     }
 }

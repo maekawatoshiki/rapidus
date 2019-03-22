@@ -556,6 +556,19 @@ impl<'a> VM2<'a> {
                         &self.saved_frame,
                     );
                 }
+                VMInst::CREATE_ARRAY => {
+                    cur_frame.pc += 1;
+                    read_int32!(cur_frame.bytecode, cur_frame.pc, len, usize);
+                    self.create_array(len)?;
+                    memory_allocator!(self).mark(
+                        self.global_environment,
+                        object_prototypes!(self),
+                        constant_table!(self),
+                        &self.stack,
+                        &cur_frame,
+                        &self.saved_frame,
+                    );
+                }
                 VMInst::DOUBLE => {
                     cur_frame.pc += 1;
                     let val = *self.stack.last().unwrap();
@@ -720,6 +733,24 @@ impl<'a> VM2<'a> {
             properties,
         );
         self.stack.push(obj.into());
+
+        Ok(())
+    }
+
+    fn create_array(&mut self, len: usize) -> VMResult {
+        let mut elems = vec![];
+        for _ in 0..len {
+            let val: Value2 = self.stack.pop().unwrap().into();
+            elems.push(Property2 {
+                val,
+                writable: true,
+                enumerable: true,
+                configurable: true,
+            });
+        }
+
+        let ary = Value2::array(memory_allocator!(self), object_prototypes!(self), elems);
+        self.stack.push(ary.into());
 
         Ok(())
     }

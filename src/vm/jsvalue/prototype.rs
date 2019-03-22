@@ -37,7 +37,7 @@ impl ObjectPrototypes {
                 property: make_property_map!(__proto__: object_prototype),
             }));
 
-            let function_prototype_call = Value2::builtin_function_with_prototype(
+            let function_prototype_call = Value2::builtin_function_with_proto(
                 memory_allocator,
                 function_prototype,
                 "call".to_string(),
@@ -51,7 +51,7 @@ impl ObjectPrototypes {
             function_prototype
         };
 
-        let index_of = Value2::builtin_function_with_prototype(
+        let index_of = Value2::builtin_function_with_proto(
             memory_allocator,
             function_prototype,
             "indexOf".to_string(),
