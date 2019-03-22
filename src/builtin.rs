@@ -176,62 +176,64 @@ pub fn debug_print2(val: &Value2, nest: bool) {
                             .as_ptr() as RawStringPtr,
                         );
                     }
-                    ObjectKind2::Array(ref ary_info) => unimplemented!(),
-                }
-            } // Value::Object(map, ObjectKind::Array(ref values)) => {
-              //     libc::printf("[ \0".as_ptr() as RawStringPtr);
-              //     let arr = &*(values);
-              //     let elems = &arr.elems;
-              //     let is_last_idx = |idx: usize| -> bool { idx == arr.length - 1 };
-              //     let mut i = 0;
-              //     let mut sorted_key_val = (&*map).iter().collect::<Vec<(&String, &Property)>>();
-              //     sorted_key_val.sort_by(|(key1, _), (key2, _)| key1.as_str().cmp(key2.as_str()));
-              //     sorted_key_val.retain(|(ref key, _)| key != &"__proto__");
-              //
-              //     while i < arr.length {
-              //         let mut empty_elems = 0;
-              //         while i < arr.length && Value::Empty == elems[i].val {
-              //             empty_elems += 1;
-              //             i += 1;
-              //         }
-              //
-              //         if empty_elems > 0 {
-              //             libc::printf(
-              //                 "<%u empty item%s>%s\0".as_ptr() as RawStringPtr,
-              //                 empty_elems,
-              //                 if empty_elems >= 2 { "s\0" } else { "\0" }.as_ptr() as RawStringPtr,
-              //                 if is_last_idx(i - 1) && sorted_key_val.len() == 0 {
-              //                     " \0"
-              //                 } else {
-              //                     ", \0"
-              //                 }
-              //                 .as_ptr() as RawStringPtr,
-              //             );
-              //
-              //             if is_last_idx(i - 1) {
-              //                 break;
-              //             }
-              //         }
-              //
-              //         debug_print(&elems[i].val, true);
-              //         libc::printf(
-              //             if is_last_idx(i) && sorted_key_val.len() == 0 {
-              //                 " \0"
-              //             } else {
-              //                 ", \0"
-              //             }
-              //             .as_ptr() as RawStringPtr,
-              //         );
-              //
-              //         i += 1;
-              //     }
-              //
-              //     show_obj(sorted_key_val);
-              //
-              //     libc::printf("]\0".as_ptr() as RawStringPtr);
-              // }
+                    ObjectKind2::Array(ref ary_info) => {
+                        libc::printf("[ \0".as_ptr() as RawStringPtr);
+                        let mut sorted_key_val =
+                            (&obj_info.property)
+                                .iter()
+                                .collect::<Vec<(&String, &Property2)>>();
+                        sorted_key_val
+                            .sort_by(|(key1, _), (key2, _)| key1.as_str().cmp(key2.as_str()));
+                        sorted_key_val.retain(|(ref key, _)| key != &"__proto__");
 
-              // Value::Object(_, ObjectKind::Date(box time_val)) => {
+                        let length = ary_info.elems.len();
+                        let is_last_idx = |idx: usize| -> bool { idx == length - 1 };
+                        let mut i = 0;
+                        while i < length {
+                            let mut empty_elems = 0;
+                            while i < length && Value2::empty() == ary_info.elems[i].val {
+                                empty_elems += 1;
+                                i += 1;
+                            }
+
+                            if empty_elems > 0 {
+                                libc::printf(
+                                    "<%u empty item%s>%s\0".as_ptr() as RawStringPtr,
+                                    empty_elems,
+                                    if empty_elems >= 2 { "s\0" } else { "\0" }.as_ptr()
+                                        as RawStringPtr,
+                                    if is_last_idx(i - 1) && sorted_key_val.len() == 0 {
+                                        " \0"
+                                    } else {
+                                        ", \0"
+                                    }
+                                    .as_ptr() as RawStringPtr,
+                                );
+
+                                if is_last_idx(i - 1) {
+                                    break;
+                                }
+                            }
+
+                            debug_print2(&ary_info.elems[i].val, true);
+                            libc::printf(
+                                if is_last_idx(i) && sorted_key_val.len() == 0 {
+                                    " \0"
+                                } else {
+                                    ", \0"
+                                }
+                                .as_ptr() as RawStringPtr,
+                            );
+
+                            i += 1;
+                        }
+
+                        show_obj(sorted_key_val);
+
+                        libc::printf("]\0".as_ptr() as RawStringPtr);
+                    }
+                }
+            } // Value::Object(_, ObjectKind::Date(box time_val)) => {
               //     // TODO: Date needs toString() ?
               //     libc::printf(
               //         "%s\0".as_ptr() as RawStringPtr,

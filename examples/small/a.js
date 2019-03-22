@@ -166,3 +166,6 @@ function f(x, y) {
 f()
 f(1)
 f(1,2)
+
+let ary = [1,2,,4,5]
+console.log(ary)

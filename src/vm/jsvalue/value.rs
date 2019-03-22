@@ -92,6 +92,10 @@ impl Value2 {
         Value2::Other(UNINITIALIZED)
     }
 
+    pub const fn empty() -> Self {
+        Value2::Other(EMPTY)
+    }
+
     #[inline]
     pub fn bool(x: bool) -> Self {
         Value2::Bool(if x { 1 } else { 0 })
@@ -659,7 +663,61 @@ impl Value2 {
                             "[Function]".to_string()
                         }
                     }
-                    ObjectKind2::Array(ref ary_info) => unimplemented!(),
+                    ObjectKind2::Array(ref ary_info) => {
+                        let mut string = "[ ".to_string();
+
+                        let mut sorted_key_val =
+                            (&obj_info.property)
+                                .iter()
+                                .collect::<Vec<(&String, &Property2)>>();
+                        sorted_key_val
+                            .sort_by(|(key1, _), (key2, _)| key1.as_str().cmp(key2.as_str()));
+                        sorted_key_val.retain(|(ref key, _)| key != &"__proto__");
+
+                        let length = ary_info.elems.len();
+                        let is_last_idx = |idx: usize| -> bool { idx == length - 1 };
+                        let mut i = 0;
+                        while i < length {
+                            let mut empty_elems = 0;
+                            while i < length && Value2::empty() == ary_info.elems[i].val {
+                                empty_elems += 1;
+                                i += 1;
+                            }
+
+                            if empty_elems > 0 {
+                                string = format!(
+                                    "{}<{} empty item{}>{}",
+                                    string,
+                                    empty_elems,
+                                    if empty_elems >= 2 { "s" } else { "" },
+                                    if is_last_idx(i - 1) && sorted_key_val.len() == 0 {
+                                        " "
+                                    } else {
+                                        ", "
+                                    }
+                                );
+
+                                if is_last_idx(i - 1) {
+                                    break;
+                                }
+                            }
+
+                            string = format!(
+                                "{}{}{}",
+                                string,
+                                ary_info.elems[i].val.debug_string(true),
+                                if is_last_idx(i) && sorted_key_val.len() == 0 {
+                                    " "
+                                } else {
+                                    ", "
+                                }
+                            );
+
+                            i += 1;
+                        }
+
+                        format!("{}{}]", string, property_string(sorted_key_val))
+                    }
                 }
             }
         }

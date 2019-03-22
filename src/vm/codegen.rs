@@ -168,9 +168,10 @@ impl<'a> CodeGenerator<'a> {
                 }
             }
             NodeBase::Nope => {
-                // if use_value {
-                //     self.bytecode_generator.append_pus
-                // }
+                if use_value {
+                    self.bytecode_generator
+                        .append_push_const(Value2::empty(), iseq)
+                }
             }
             ref e => unimplemented!("{:?}", e),
         }
@@ -935,7 +936,7 @@ impl<'a> CodeGenerator<'a> {
     }
 
     fn visit_array_literal(&mut self, elems: &Vec<Node>, iseq: &mut ByteCode) -> CodeGenResult {
-        for elem in elems {
+        for elem in elems.iter().rev() {
             self.visit(elem, iseq, true)?;
         }
 
