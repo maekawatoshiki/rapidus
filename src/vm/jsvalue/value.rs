@@ -92,6 +92,7 @@ impl Value2 {
         Value2::Other(UNINITIALIZED)
     }
 
+    #[inline]
     pub fn bool(x: bool) -> Self {
         Value2::Bool(if x { 1 } else { 0 })
     }
@@ -489,12 +490,19 @@ impl Value2 {
             (Value2::Number(x), Value2::Bool(_)) => Value2::bool(x == val.to_number()),
             // (Value2::Number(x), Value2::Number(y)) => Value2::Bool(if x == y { 1 } else { 0 }),
             // (Value2::Number(_), obj) | (Value2::String(_), obj) => self.eq(val),
-            _ => Value2::undefined(),
+            _ => Value2::bool(false),
         }
     }
 
     // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-strict-equality-comparison
     pub fn strict_eq(self, val: Value2) -> Self {
+        fn get_obj_ptr(val: Value2) -> u64 {
+            match val {
+                Value2::Object(obj) => obj as u64,
+                _ => panic!(),
+            }
+        }
+
         if !self.is_same_type_as(&val) {
             return Value2::bool(false);
         }
@@ -507,6 +515,7 @@ impl Value2 {
             Value2::Number(_) => Value2::bool(self.into_number() == val.into_number()),
             Value2::String(_) => Value2::bool(self.into_str() == val.into_str()),
             Value2::Bool(_) => Value2::bool(self.into_bool() == val.into_bool()),
+            Value2::Object(_) => Value2::bool(get_obj_ptr(self) == get_obj_ptr(val)),
             _ => Value2::bool(false),
         }
     }
