@@ -169,6 +169,13 @@ impl Token {
     pub fn is_the_symbol(&self, symbol: Symbol) -> bool {
         self.kind == Kind::Symbol(symbol)
     }
+
+    pub fn is_identifier(&self) -> bool {
+        match self.kind {
+            Kind::Identifier(_) => true,
+            _ => false,
+        }
+    }
 }
 
 impl Symbol {

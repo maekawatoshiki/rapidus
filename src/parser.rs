@@ -1,6 +1,7 @@
 pub use lexer;
 use node::{
-    BinOp, FormalParameter, FormalParameters, Node, NodeBase, PropertyDefinition, UnaryOp, VarKind,
+    BinOp, FormalParameter, FormalParameters, MethodDefinitionKind, Node, NodeBase,
+    PropertyDefinition, UnaryOp, VarKind,
 };
 use token::{get_string_for_symbol, Keyword, Kind, Symbol, Token};
 
@@ -938,13 +939,16 @@ impl Parser {
             {
                 break;
             }
+
             elements.push(self.read_property_definition()?);
+
             if self
                 .lexer
                 .next_if_skip_lineterminator(Kind::Symbol(Symbol::ClosingBrace))?
             {
                 break;
             }
+
             if !self
                 .lexer
                 .next_if_skip_lineterminator(Kind::Symbol(Symbol::Comma))?
@@ -971,6 +975,7 @@ impl Parser {
         }
 
         let tok = self.lexer.next_skip_lineterminator()?;
+
         if self
             .lexer
             .next_if_skip_lineterminator(Kind::Symbol(Symbol::Colon))?
@@ -980,6 +985,20 @@ impl Parser {
         }
 
         if let Kind::Identifier(name) = tok.kind {
+            if name == "get" || name == "set" {
+                let may_identifier = self.lexer.peek_skip_lineterminator();
+                if may_identifier.is_ok() && may_identifier.unwrap().is_identifier() {
+                    return Ok(PropertyDefinition::MethodDefinition(
+                        if name == "get" {
+                            MethodDefinitionKind::Get
+                        } else {
+                            MethodDefinitionKind::Set
+                        },
+                        self.read_function_expression()?,
+                    ));
+                }
+            }
+
             return Ok(PropertyDefinition::IdentifierReference(name));
         }
 

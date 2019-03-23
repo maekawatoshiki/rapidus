@@ -1,7 +1,8 @@
 use bytecode_gen::{ByteCode, ByteCodeGenerator, VMInst};
 use gc::MemoryAllocator;
 use node::{
-    BinOp, FormalParameter, FormalParameters, Node, NodeBase, PropertyDefinition, UnaryOp, VarKind,
+    BinOp, FormalParameter, FormalParameters, MethodDefinitionKind, Node, NodeBase,
+    PropertyDefinition, UnaryOp, VarKind,
 };
 use vm::constant::ConstantTable;
 use vm::jsvalue::function::{DestinationKind, Exception};
@@ -930,6 +931,18 @@ impl<'a> CodeGenerator<'a> {
                         iseq,
                     );
                 }
+                PropertyDefinition::MethodDefinition(kind, node) => match kind {
+                    MethodDefinitionKind::Ordinary => {}
+                    MethodDefinitionKind::Set => {}
+                    MethodDefinitionKind::Get => {
+                        // TODO
+                        self.visit(&node, iseq, true)?;
+                        // self.bytecode_generator.append_push_const(
+                        //     Value2::string(self.memory_allocator, name.clone()),
+                        //     iseq,
+                        // );
+                    }
+                },
             }
         }
 

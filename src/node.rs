@@ -24,6 +24,14 @@ impl FormalParameter {
 pub enum PropertyDefinition {
     IdentifierReference(String),
     Property(String, Node),
+    MethodDefinition(MethodDefinitionKind, Node),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum MethodDefinitionKind {
+    Get,
+    Set,
+    Ordinary,
 }
 
 #[derive(Clone, Debug, PartialEq)]
