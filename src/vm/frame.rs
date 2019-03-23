@@ -3,6 +3,7 @@
 use bytecode_gen::ByteCode;
 use gc;
 use rustc_hash::FxHashMap;
+use vm::codegen::FunctionInfo;
 use vm::error::RuntimeError;
 use vm::jsvalue::function::Exception;
 use vm::jsvalue::object::{ObjectInfo, ObjectKind2, Property2};
@@ -91,6 +92,46 @@ impl Frame {
         frame.escape = true;
         frame
     }
+
+    pub fn append_function(&mut self, memory_allocator: &mut gc::MemoryAllocator, f: Value2) {
+        let mut val = f.copy_object(memory_allocator);
+        let name = val.as_function().name.clone().unwrap();
+        val.set_function_outer_environment(self.execution_context.lexical_environment);
+        self.lex_env_mut().set_own_value(name, val).unwrap();
+        use gc::GcTarget;
+        self.execution_context
+            .initial_trace(&mut memory_allocator.roots);
+    }
+
+    pub fn append_variable_to_var_env(&mut self, name: String) {
+        let var_env = unsafe { &mut *self.execution_context.variable_environment };
+        var_env.set_own_value(name, Value2::undefined()).unwrap(); // TODO: unwrap()
+    }
+
+    pub fn append_variable_to_lex_env(&mut self, name: String) {
+        let lex_env = unsafe { &mut *self.execution_context.lexical_environment };
+        lex_env
+            .set_own_value(name, Value2::uninitialized())
+            .unwrap(); // TODO: unwrap()
+    }
+
+    pub fn append_from_function_info(
+        &mut self,
+        memory_allocator: &mut gc::MemoryAllocator,
+        info: &FunctionInfo,
+    ) {
+        for f in &info.func_decls {
+            self.append_function(memory_allocator, *f);
+        }
+
+        for name in &info.var_names {
+            self.append_variable_to_var_env(name.clone())
+        }
+
+        for name in &info.lex_names {
+            self.append_variable_to_lex_env(name.clone())
+        }
+    }
 }
 
 impl ExecutionContext {
@@ -158,7 +199,8 @@ impl LexicalEnvironment {
             log => true, false, true: log
         );
         let object_constructor = builtins::object::object(memory_allocator, object_prototypes);
-        let function_constructor = builtins::function::function(memory_allocator, object_prototypes);
+        let function_constructor =
+            builtins::function::function(memory_allocator, object_prototypes);
         LexicalEnvironment {
             record: EnvironmentRecord::Global(make_normal_object!(
                 memory_allocator,
@@ -231,6 +273,18 @@ impl LexicalEnvironment {
                 name
             )))
         }
+    }
+
+    pub fn set_own_value(&mut self, name: String, val: Value2) -> VMResult {
+        match self.record {
+            EnvironmentRecord::Declarative(ref mut record) => {
+                record.insert(name, val);
+            }
+            EnvironmentRecord::Global(obj) | EnvironmentRecord::Object(obj) => {
+                obj.set_property_by_string_key(name, val);
+            }
+        };
+        return Ok(());
     }
 
     pub fn get_outer(&self) -> Option<&mut LexicalEnvironment> {

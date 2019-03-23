@@ -168,6 +168,10 @@ fn repl_with_new_vm() {
                     match global_frame {
                         Some(ref mut frame) => {
                             frame.bytecode = iseq;
+                            frame.append_from_function_info(
+                                vm.code_generator.memory_allocator,
+                                &global_info,
+                            )
                         }
                         None => global_frame = Some(vm.create_global_frame(global_info, iseq)),
                     }

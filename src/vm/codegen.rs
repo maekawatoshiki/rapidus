@@ -73,7 +73,11 @@ impl<'a> CodeGenerator<'a> {
     ) -> Result<FunctionInfo, Error> {
         self.visit(node, iseq, use_value)?;
         self.bytecode_generator.append_end(iseq);
-        Ok(self.function_stack[0].clone() /* = global */)
+
+        let global_info = self.function_stack[0].clone();
+        self.function_stack[0] = FunctionInfo::new(None);
+
+        Ok(global_info)
     }
 }
 
