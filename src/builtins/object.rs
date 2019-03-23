@@ -54,6 +54,8 @@ pub fn object_constructor(
     Ok(())
 }
 
+/////////////////////////////////////////////////////////////////////////////
+
 thread_local!(
     pub static OBJECT_PROTOTYPE: Value =
         // can not use Value::object_from_npp() here.

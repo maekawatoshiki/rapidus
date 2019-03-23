@@ -10,6 +10,7 @@ pub struct ObjectPrototypes {
     pub object: Value2,
     pub function: Value2,
     pub string: Value2,
+    pub array: Value2,
 }
 
 impl ObjectPrototypes {
@@ -63,10 +64,19 @@ impl ObjectPrototypes {
             property: make_property_map!(__proto__: object_prototype, indexOf: index_of),
         }));
 
+        let array_prototype = Value2::Object(memory_allocator.alloc(ObjectInfo {
+            property: make_property_map!(
+                __proto__ => false, false, false: object_prototype,
+                length    => false, false, true : Value2::Number(0.0)
+            ),
+            kind: ObjectKind2::Array(ArrayObjectInfo { elems: vec![] }),
+        }));
+
         ObjectPrototypes {
             object: object_prototype,
             function: function_prototype,
             string: string_prototype,
+            array: array_prototype,
         }
     }
 }

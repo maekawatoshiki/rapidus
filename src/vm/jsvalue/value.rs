@@ -215,8 +215,7 @@ impl Value2 {
     ) -> Self {
         Value2::Object(memory_allocator.alloc(ObjectInfo {
             property: make_property_map!(
-                // __proto__ => false, false, false: object_prototypes.function,
-                // length    => false, false, true : Value2::Number(params.len() as f6
+                __proto__ => false, false, false: object_prototypes.array
             ),
             kind: ObjectKind2::Array(ArrayObjectInfo { elems }),
         }))

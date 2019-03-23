@@ -1,6 +1,35 @@
 use builtins::object::*;
 use gc;
-use vm::{error::RuntimeError, value::*, vm::VM};
+use vm::{
+    error::RuntimeError,
+    frame::Frame,
+    jsvalue::{prototype::ObjectPrototypes, value::Value2},
+    value::*,
+    vm::{VMResult, VM, VM2},
+};
+
+pub fn array(
+    memory_allocator: &mut gc::MemoryAllocator,
+    object_prototypes: &ObjectPrototypes,
+) -> Value2 {
+    let ary = Value2::builtin_function(
+        memory_allocator,
+        object_prototypes,
+        "Array".to_string(),
+        array_constructor,
+    );
+    ary.set_property_by_string_key("prototype".to_string(), object_prototypes.array);
+    ary.get_property_by_str_key("prototype")
+        .set_constructor(ary);
+    ary
+}
+
+pub fn array_constructor(vm: &mut VM2, _args: &Vec<Value2>, _cur_frame: &Frame) -> VMResult {
+    vm.stack.push(Value2::undefined().into());
+    Ok(())
+}
+
+//////////////////////////////////////////////////
 
 thread_local!(
     pub static ARRAY_PROTOTYPE: Value = {

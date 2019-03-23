@@ -201,13 +201,16 @@ impl LexicalEnvironment {
         let object_constructor = builtins::object::object(memory_allocator, object_prototypes);
         let function_constructor =
             builtins::function::function(memory_allocator, object_prototypes);
+        let array_constructor =
+            builtins::array::array(memory_allocator, object_prototypes);
         LexicalEnvironment {
             record: EnvironmentRecord::Global(make_normal_object!(
                 memory_allocator,
                 parseFloat => true, false, true: parse_float,
                 console    => true, false, true: console,
                 Object     => true, false, true: object_constructor,
-                Function   => true, false, true: function_constructor
+                Function   => true, false, true: function_constructor,
+                Array      => true, false, true: array_constructor
             )),
             outer: None,
         }
