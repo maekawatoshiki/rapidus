@@ -1,3 +1,4 @@
+use super::super::error;
 use super::super::frame::LexicalEnvironmentRef;
 pub use super::array::*;
 pub use super::function::*;
@@ -271,7 +272,7 @@ impl Value2 {
                 ),
                 Value2::String(x) if unsafe { &*x }.to_str().unwrap() == "length" => {
                     Property2::new_data_simple(Value2::Number(
-                        s.chars().fold(0, |x, c| x + c.len_utf16()) as f64
+                        s.chars().fold(0, |x, c| x + c.len_utf16()) as f64,
                     ))
                 }
                 key => object_prototypes.string.get_object_info().get_property(key),
@@ -300,10 +301,10 @@ impl Value2 {
         }
     }
 
-    pub fn set_property(&self, key: Value2, val: Value2) {
+    pub fn set_property(&self, key: Value2, val: Value2) -> Option<Value2> {
         match self {
             Value2::Object(obj_info) => unsafe { &mut **obj_info }.set_property(key, val),
-            _ => {}
+            _ => None,
         }
     }
 

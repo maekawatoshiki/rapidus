@@ -98,24 +98,19 @@ impl ObjectInfo {
         property.as_data_mut().val = val;
     }
 
-    pub fn set_property(&mut self, key: Value2, val: Value2) {
+    pub fn set_property(&mut self, key: Value2, val_: Value2) -> Option<Value2> {
         match self.kind {
             ObjectKind2::Array(ref mut info) => match key {
                 Value2::Number(idx) if is_integer(idx) && idx >= 0.0 => {
-                    info.elems[idx as usize].as_data_mut().val = val;
-                    return;
+                    info.elems[idx as usize].as_data_mut().val = val_;
+                    return None;
                 }
-                Value2::String(x) if unsafe { &*x }.to_str().unwrap() == "length" => match val {
+                Value2::String(x) if unsafe { &*x }.to_str().unwrap() == "length" => match val_ {
                     Value2::Number(n) if is_integer(n) && n >= 0.0 => {
                         while info.elems.len() < n as usize {
-                            info.elems.push(Property2::Data(DataProperty {
-                                val: Value2::empty(),
-                                writable: true,
-                                enumerable: true,
-                                configurable: true,
-                            }));
+                            info.elems.push(Property2::new_data_simple(Value2::empty()))
                         }
-                        return;
+                        return None;
                     }
                     _ => {}
                 },
@@ -124,15 +119,23 @@ impl ObjectInfo {
             _ => {}
         }
 
-        let property = self.property.entry(key.to_string()).or_insert_with(|| {
-            Property2::Data(DataProperty {
-                val: Value2::undefined(),
-                writable: true,
-                enumerable: true,
-                configurable: true,
-            })
-        });
-        property.as_data_mut().val = val;
+        let property = self
+            .property
+            .entry(key.to_string())
+            .or_insert_with(|| Property2::new_data_simple(Value2::undefined()));
+
+        match property {
+            Property2::Data(DataProperty { ref mut val, .. }) => {
+                *val = val_;
+                None
+            }
+            Property2::Accessor(AccessorProperty { set, .. }) => {
+                if set.is_undefined() {
+                    return None;
+                }
+                Some(*set)
+            }
+        }
     }
 }
 

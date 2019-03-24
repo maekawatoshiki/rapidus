@@ -466,14 +466,14 @@ impl<'a> VM2<'a> {
                     cur_frame.pc += 1;
                     let property: Value2 = self.stack.pop().unwrap().into();
                     let parent: Value2 = self.stack.pop().unwrap().into();
-                    self.get_property_to_stack_top(parent, property, &cur_frame)?
+                    self.get_property_to_stack_top(parent, property, &mut cur_frame)?
                 }
                 VMInst::SET_MEMBER => {
                     cur_frame.pc += 1;
                     let property: Value2 = self.stack.pop().unwrap().into();
                     let parent: Value2 = self.stack.pop().unwrap().into();
                     let val: Value2 = self.stack.pop().unwrap().into();
-                    parent.set_property(property, val);
+                    self.set_property(parent, property, val, &cur_frame)?
                 }
                 VMInst::SET_VALUE => {
                     cur_frame.pc += 1;
@@ -910,7 +910,7 @@ impl<'a> VM2<'a> {
         &mut self,
         parent: Value2,
         key: Value2,
-        cur_frame: &frame::Frame,
+        cur_frame: &mut frame::Frame,
     ) -> VMResult {
         let val = parent.get_property(memory_allocator!(self), object_prototypes!(self), key);
         match val {
@@ -924,12 +924,23 @@ impl<'a> VM2<'a> {
                     return Ok(());
                 }
 
-                self.call_function(get, vec![], parent, cur_frame)
+                self.enter_function(get, vec![], parent, cur_frame, false)
             }
         }
     }
 
-    pub fn set_property(&mut self, parent: Value2, key: Value2, val: Value2) -> VMResult {
+    pub fn set_property(
+        &mut self,
+        parent: Value2,
+        key: Value2,
+        val: Value2,
+        cur_frame: &frame::Frame,
+    ) -> VMResult {
+        let maybe_setter = parent.set_property(key, val);
+        if let Some(setter) = maybe_setter {
+            self.call_function(setter, vec![val], parent, cur_frame)?;
+            self.stack.pop().unwrap(); // Pop undefined (setter's return value)
+        }
         Ok(())
     }
 }
