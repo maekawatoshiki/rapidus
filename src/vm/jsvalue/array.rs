@@ -9,6 +9,29 @@ pub struct ArrayObjectInfo {
 }
 
 impl ArrayObjectInfo {
+    pub fn get_element(&self, idx: usize) -> Property2 {
+        if idx >= self.elems.len() {
+            return Property2::new_data_simple(Value2::undefined());
+        }
+
+        if let Property2::Data(DataProperty {
+            val,
+            writable,
+            enumerable,
+            configurable,
+        }) = self.elems[idx]
+        {
+            return Property2::Data(DataProperty {
+                val: val.to_undefined_if_empty(),
+                writable,
+                enumerable,
+                configurable,
+            });
+        }
+
+        self.elems[idx]
+    }
+
     pub fn set_element(&mut self, idx: usize, val_: Value2) -> Option<Value2> {
         // Extend
         if idx >= self.elems.len() {

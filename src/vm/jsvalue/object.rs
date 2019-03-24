@@ -52,15 +52,21 @@ impl ObjectInfo {
 
     pub fn get_property(&self, key: Value2) -> Result<Property2, error::RuntimeError> {
         match self.kind {
-            ObjectKind2::Array(ref info) => match key {
-                Value2::Number(idx) if is_integer(idx) => return Ok(info.elems[idx as usize]),
-                Value2::String(x) if unsafe { &*x }.to_str().unwrap() == "length" => {
+            ObjectKind2::Array(ref info) => {
+                if let Some(idx) = key.is_array_index() {
+                    return Ok(info.get_element(idx));
+                }
+
+                if let Some(idx) = key.is_canonical_numeric_index_string() {
+                    return Ok(info.get_element(idx));
+                }
+
+                if key.is_string() && key.into_str() == "length" {
                     return Ok(Property2::new_data_simple(Value2::Number(
                         info.elems.len() as f64
-                    )))
+                    )));
                 }
-                _ => {}
-            },
+            }
             _ => {}
         }
 

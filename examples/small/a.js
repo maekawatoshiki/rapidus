@@ -192,3 +192,9 @@ temperature.current = 25
 temperature.current = 15
 temperature.current = 34
 console.log( temperature.average )
+
+ary = []
+ary[3] = 123
+console.log(ary)
+ary.length=1
+console.log(ary[30])
