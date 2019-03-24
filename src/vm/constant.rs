@@ -1,10 +1,25 @@
+use rustc_hash::FxHashMap;
 use vm::jsvalue::value::Value2;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Constant {
     String(String),
     Value(Value2),
-    LexicalEnvironmentInfo { names: Vec<String> },
+    LexicalEnvironmentInfo {
+        names: Vec<String>,
+    },
+    ObjectLiteralInfo {
+        len: usize,
+        special_properties: SpecialProperties,
+    },
+}
+
+pub type SpecialProperties = FxHashMap<usize, SpecialPropertyKind>;
+
+#[derive(Clone, Debug, PartialEq, Copy)]
+pub enum SpecialPropertyKind {
+    Getter,
+    Setter,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -40,6 +55,29 @@ impl ConstantTable {
 
         let id = self.table.len();
         self.table.push(Constant::Value(value));
+        id
+    }
+
+    pub fn add_object_literal_info(
+        &mut self,
+        len: usize,
+        special_properties: SpecialProperties,
+    ) -> usize {
+        for (i, constant) in self.table.iter().enumerate() {
+            match constant {
+                Constant::ObjectLiteralInfo {
+                    len: len_,
+                    special_properties: special_properties_,
+                } if &special_properties == special_properties_ && &len == len_ => return i,
+                _ => {}
+            }
+        }
+
+        let id = self.table.len();
+        self.table.push(Constant::ObjectLiteralInfo {
+            len,
+            special_properties,
+        });
         id
     }
 
@@ -83,6 +121,16 @@ impl Constant {
     pub fn as_lex_env_info_mut(&mut self) -> &mut Vec<String> {
         match self {
             Constant::LexicalEnvironmentInfo { names } => names,
+            _ => panic!(),
+        }
+    }
+
+    pub fn as_object_literal_info(&self) -> (usize, SpecialProperties) {
+        match self {
+            Constant::ObjectLiteralInfo {
+                len,
+                special_properties,
+            } => (*len, special_properties.clone()),
             _ => panic!(),
         }
     }

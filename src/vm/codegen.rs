@@ -4,7 +4,7 @@ use node::{
     BinOp, FormalParameter, FormalParameters, MethodDefinitionKind, Node, NodeBase,
     PropertyDefinition, UnaryOp, VarKind,
 };
-use vm::constant::ConstantTable;
+use vm::constant::{ConstantTable, SpecialProperties, SpecialPropertyKind};
 use vm::jsvalue::function::{DestinationKind, Exception};
 use vm::jsvalue::value::Value2;
 use vm::jsvalue::{prototype, value};
@@ -915,7 +915,10 @@ impl<'a> CodeGenerator<'a> {
         properties: &Vec<PropertyDefinition>,
         iseq: &mut ByteCode,
     ) -> CodeGenResult {
-        for property in properties {
+        let mut special_properties = SpecialProperties::default();
+        let len = properties.len();
+
+        for (i, property) in properties.iter().enumerate() {
             match property {
                 PropertyDefinition::IdentifierReference(name) => {
                     self.bytecode_generator.append_get_value(name, iseq);
@@ -931,22 +934,31 @@ impl<'a> CodeGenerator<'a> {
                         iseq,
                     );
                 }
-                PropertyDefinition::MethodDefinition(kind, name, node) => match kind {
-                    MethodDefinitionKind::Ordinary => {}
-                    MethodDefinitionKind::Set => {}
-                    MethodDefinitionKind::Get => {
-                        self.visit(&node, iseq, true)?;
-                        self.bytecode_generator.append_push_const(
-                            Value2::string(self.memory_allocator, name.clone()),
-                            iseq,
-                        );
-                    }
-                },
+                PropertyDefinition::MethodDefinition(kind, name, node) => {
+                    match kind {
+                        MethodDefinitionKind::Ordinary => {}
+                        MethodDefinitionKind::Set => {
+                            special_properties.insert(len - i - 1, SpecialPropertyKind::Setter);
+                        }
+                        MethodDefinitionKind::Get => {
+                            special_properties.insert(len - i - 1, SpecialPropertyKind::Getter);
+                        }
+                    };
+                    self.visit(&node, iseq, true)?;
+                    self.bytecode_generator.append_push_const(
+                        Value2::string(self.memory_allocator, name.clone()),
+                        iseq,
+                    );
+                }
             }
         }
 
-        self.bytecode_generator
-            .append_create_object(properties.len() as usize, iseq);
+        let id = self
+            .bytecode_generator
+            .constant_table
+            .add_object_literal_info(len, special_properties);
+
+        self.bytecode_generator.append_create_object(id, iseq);
 
         Ok(())
     }

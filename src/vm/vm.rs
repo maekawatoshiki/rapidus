@@ -545,8 +545,10 @@ impl<'a> VM2<'a> {
                 }
                 VMInst::CREATE_OBJECT => {
                     cur_frame.pc += 1;
-                    read_int32!(cur_frame.bytecode, cur_frame.pc, len, usize);
-                    self.create_object(len)?;
+                    read_int32!(cur_frame.bytecode, cur_frame.pc, id, usize);
+                    let (len, special_properties) =
+                        constant_table!(self).get(id).as_object_literal_info();
+                    self.create_object(len, special_properties)?;
                     memory_allocator!(self).mark(
                         self.global_environment,
                         object_prototypes!(self),
@@ -709,9 +711,14 @@ impl<'a> VM2<'a> {
         Ok(())
     }
 
-    fn create_object(&mut self, len: usize) -> VMResult {
+    fn create_object(
+        &mut self,
+        len: usize,
+        special_properties: constant::SpecialProperties,
+    ) -> VMResult {
         let mut properties = FxHashMap::default();
-        for _ in 0..len {
+
+        for i in 0..len {
             let prop: Value2 = self.stack.pop().unwrap().into();
             let name = prop.to_string();
             let val: Value2 = self.stack.pop().unwrap().into();
@@ -725,6 +732,10 @@ impl<'a> VM2<'a> {
                     configurable: true,
                 }),
             );
+
+            if let Some(kind) = special_properties.get(&i) {
+                println!("kind: {:?} <- {}", kind, val.debug_string(false));
+            }
         }
 
         let obj = Value2::object(
