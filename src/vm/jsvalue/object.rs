@@ -1,3 +1,4 @@
+use super::super::error;
 use super::value::*;
 pub use rustc_hash::FxHashMap;
 
@@ -49,12 +50,14 @@ impl ObjectInfo {
         self.property.contains_key(key)
     }
 
-    pub fn get_property(&self, key: Value2) -> Property2 {
+    pub fn get_property(&self, key: Value2) -> Result<Property2, error::RuntimeError> {
         match self.kind {
             ObjectKind2::Array(ref info) => match key {
-                Value2::Number(idx) if is_integer(idx) => return info.elems[idx as usize],
+                Value2::Number(idx) if is_integer(idx) => return Ok(info.elems[idx as usize]),
                 Value2::String(x) if unsafe { &*x }.to_str().unwrap() == "length" => {
-                    return Property2::new_data_simple(Value2::Number(info.elems.len() as f64))
+                    return Ok(Property2::new_data_simple(Value2::Number(
+                        info.elems.len() as f64
+                    )))
                 }
                 _ => {}
             },
@@ -62,13 +65,13 @@ impl ObjectInfo {
         }
 
         match self.property.get(key.to_string().as_str()) {
-            Some(prop) => *prop,
+            Some(prop) => Ok(*prop),
             None => match self.property.get("__proto__") {
                 Some(Property2::Data(DataProperty {
                     val: Value2::Object(obj_info),
                     ..
                 })) => unsafe { &**obj_info }.get_property(key),
-                _ => Property2::new_data_simple(Value2::undefined()),
+                _ => Ok(Property2::new_data_simple(Value2::undefined())),
             },
         }
     }
@@ -98,19 +101,23 @@ impl ObjectInfo {
         property.as_data_mut().val = val;
     }
 
-    pub fn set_property(&mut self, key: Value2, val_: Value2) -> Option<Value2> {
+    pub fn set_property(
+        &mut self,
+        key: Value2,
+        val_: Value2,
+    ) -> Result<Option<Value2>, error::RuntimeError> {
         match self.kind {
             ObjectKind2::Array(ref mut info) => match key {
                 Value2::Number(idx) if is_integer(idx) && idx >= 0.0 => {
                     info.elems[idx as usize].as_data_mut().val = val_;
-                    return None;
+                    return Ok(None);
                 }
                 Value2::String(x) if unsafe { &*x }.to_str().unwrap() == "length" => match val_ {
                     Value2::Number(n) if is_integer(n) && n >= 0.0 => {
                         while info.elems.len() < n as usize {
                             info.elems.push(Property2::new_data_simple(Value2::empty()))
                         }
-                        return None;
+                        return Ok(None);
                     }
                     _ => {}
                 },
@@ -127,13 +134,14 @@ impl ObjectInfo {
         match property {
             Property2::Data(DataProperty { ref mut val, .. }) => {
                 *val = val_;
-                None
+                Ok(None)
             }
             Property2::Accessor(AccessorProperty { set, .. }) => {
                 if set.is_undefined() {
-                    return None;
+                    Ok(None)
+                } else {
+                    Ok(Some(*set))
                 }
-                Some(*set)
             }
         }
     }

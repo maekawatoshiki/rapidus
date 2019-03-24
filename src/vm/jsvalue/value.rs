@@ -264,20 +264,21 @@ impl Value2 {
         allocator: &mut gc::MemoryAllocator,
         object_prototypes: &ObjectPrototypes,
         key: Value2,
-    ) -> Property2 {
-        let mut string_get_property = |s: &str, key: Value2| -> Property2 {
-            match key {
-                Value2::Number(idx) if is_integer(idx) => Property2::new_data_simple(
-                    Value2::string(allocator, s.chars().nth(idx as usize).unwrap().to_string()),
-                ),
-                Value2::String(x) if unsafe { &*x }.to_str().unwrap() == "length" => {
-                    Property2::new_data_simple(Value2::Number(
-                        s.chars().fold(0, |x, c| x + c.len_utf16()) as f64,
-                    ))
+    ) -> Result<Property2, error::RuntimeError> {
+        let mut string_get_property =
+            |s: &str, key: Value2| -> Result<Property2, error::RuntimeError> {
+                match key {
+                    Value2::Number(idx) if is_integer(idx) => Ok(Property2::new_data_simple(
+                        Value2::string(allocator, s.chars().nth(idx as usize).unwrap().to_string()),
+                    )),
+                    Value2::String(x) if unsafe { &*x }.to_str().unwrap() == "length" => {
+                        Ok(Property2::new_data_simple(Value2::Number(
+                            s.chars().fold(0, |x, c| x + c.len_utf16()) as f64,
+                        )))
+                    }
+                    key => object_prototypes.string.get_object_info().get_property(key),
                 }
-                key => object_prototypes.string.get_object_info().get_property(key),
-            }
-        };
+            };
 
         match self {
             Value2::String(s) => {
@@ -288,7 +289,7 @@ impl Value2 {
 
         match self {
             Value2::Object(obj_info) => unsafe { &**obj_info }.get_property(key),
-            _ => Property2::new_data_simple(Value2::undefined()),
+            _ => Ok(Property2::new_data_simple(Value2::undefined())),
         }
     }
 
@@ -301,10 +302,14 @@ impl Value2 {
         }
     }
 
-    pub fn set_property(&self, key: Value2, val: Value2) -> Option<Value2> {
+    pub fn set_property(
+        &self,
+        key: Value2,
+        val: Value2,
+    ) -> Result<Option<Value2>, error::RuntimeError> {
         match self {
             Value2::Object(obj_info) => unsafe { &mut **obj_info }.set_property(key, val),
-            _ => None,
+            _ => Ok(None),
         }
     }
 
@@ -387,6 +392,13 @@ impl Value2 {
             }
             _ => panic!(),
         }
+    }
+
+    pub fn to_undefined_if_empty(self) -> Value2 {
+        if self == Value2::empty() {
+            return Value2::undefined();
+        }
+        self
     }
 }
 
@@ -615,7 +627,23 @@ impl Value2 {
                         "{}'{}': {}{}",
                         acc,
                         tupple.0,
-                        tupple.1.as_data().val.debug_string(true),
+                        match tupple.1 {
+                            Property2::Data(DataProperty { val, .. }) => val.debug_string(true),
+                            Property2::Accessor(AccessorProperty { get, set, .. }) => {
+                                let s_get = if get.is_undefined() { "" } else { "Getter" };
+                                let s_set = if set.is_undefined() { "" } else { "Setter" };
+                                format!(
+                                    "[{}{}{}]",
+                                    s_get,
+                                    if !get.is_undefined() && !set.is_undefined() {
+                                        "/"
+                                    } else {
+                                        ""
+                                    },
+                                    s_set
+                                )
+                            }
+                        },
                         if i != sorted_key_val.len() - 1 {
                             ", "
                         } else {

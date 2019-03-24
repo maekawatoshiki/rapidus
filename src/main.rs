@@ -168,6 +168,7 @@ fn repl_with_new_vm() {
                     match global_frame {
                         Some(ref mut frame) => {
                             frame.bytecode = iseq;
+                            frame.exception_table = global_info.exception_table.clone();
                             frame.append_from_function_info(
                                 vm.code_generator.memory_allocator,
                                 &global_info,

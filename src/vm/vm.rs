@@ -332,6 +332,15 @@ impl<'a> VM2<'a> {
             }};
         }
 
+        macro_rules! type_error {
+            ($msg:expr) => {{
+                let val = RuntimeError::Type($msg.to_string()).to_value2(memory_allocator!(self));
+                self.stack.push(val.into());
+                exception!();
+                continue;
+            }};
+        }
+
         macro_rules! etry {
             ($val:expr) => {{
                 match $val {
@@ -466,14 +475,14 @@ impl<'a> VM2<'a> {
                     cur_frame.pc += 1;
                     let property: Value2 = self.stack.pop().unwrap().into();
                     let parent: Value2 = self.stack.pop().unwrap().into();
-                    self.get_property_to_stack_top(parent, property, &mut cur_frame)?
+                    etry!(self.get_property_to_stack_top(parent, property, &mut cur_frame))
                 }
                 VMInst::SET_MEMBER => {
                     cur_frame.pc += 1;
                     let property: Value2 = self.stack.pop().unwrap().into();
                     let parent: Value2 = self.stack.pop().unwrap().into();
                     let val: Value2 = self.stack.pop().unwrap().into();
-                    self.set_property(parent, property, val, &cur_frame)?
+                    etry!(self.set_property(parent, property, val, &cur_frame))
                 }
                 VMInst::SET_VALUE => {
                     cur_frame.pc += 1;
@@ -519,10 +528,14 @@ impl<'a> VM2<'a> {
                     for _ in 0..argc {
                         args.push(self.stack.pop().unwrap().into());
                     }
-                    let callee = parent
-                        .get_property(memory_allocator!(self), object_prototypes!(self), method)
-                        .as_data()
-                        .val;
+                    let callee = match etry!(parent.get_property(
+                        memory_allocator!(self),
+                        object_prototypes!(self),
+                        method
+                    )) {
+                        Property2::Data(DataProperty { val, .. }) => val,
+                        _ => type_error!("Not a function"),
+                    };
                     self.enter_function(callee, args, parent, &mut cur_frame, false)?;
                 }
                 VMInst::SET_OUTER_ENV => {
@@ -912,10 +925,10 @@ impl<'a> VM2<'a> {
         key: Value2,
         cur_frame: &mut frame::Frame,
     ) -> VMResult {
-        let val = parent.get_property(memory_allocator!(self), object_prototypes!(self), key);
+        let val = parent.get_property(memory_allocator!(self), object_prototypes!(self), key)?;
         match val {
             Property2::Data(DataProperty { val, .. }) => {
-                self.stack.push(val.into());
+                self.stack.push(val.to_undefined_if_empty().into());
                 Ok(())
             }
             Property2::Accessor(AccessorProperty { get, .. }) => {
@@ -923,7 +936,6 @@ impl<'a> VM2<'a> {
                     self.stack.push(Value2::undefined().into());
                     return Ok(());
                 }
-
                 self.enter_function(get, vec![], parent, cur_frame, false)
             }
         }
@@ -936,7 +948,7 @@ impl<'a> VM2<'a> {
         val: Value2,
         cur_frame: &frame::Frame,
     ) -> VMResult {
-        let maybe_setter = parent.set_property(key, val);
+        let maybe_setter = parent.set_property(key, val)?;
         if let Some(setter) = maybe_setter {
             self.call_function(setter, vec![val], parent, cur_frame)?;
             self.stack.pop().unwrap(); // Pop undefined (setter's return value)
