@@ -247,6 +247,46 @@ impl Value2 {
             _ => false,
         }
     }
+
+    pub fn is_string(&self) -> bool {
+        match self {
+            Value2::String(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_number(&self) -> bool {
+        match self {
+            Value2::Number(_) => true,
+            _ => false,
+        }
+    }
+
+    // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-canonicalnumericindexstring
+    pub fn is_canonical_numeric_index_string(&self) -> Option<usize> {
+        if !self.is_string() {
+            return None;
+        }
+        let s = self.into_str();
+        let num = self.to_number();
+        if s == Value2::Number(num).to_string() && is_integer(num) && num >= 0.0 {
+            Some(num as usize)
+        } else {
+            None
+        }
+    }
+
+    pub fn is_array_index(&self) -> Option<usize> {
+        if !self.is_number() {
+            return None;
+        }
+        let num = self.into_number();
+        if is_integer(num) && 0.0 <= num && num < 4294967295.0 {
+            Some(num as usize)
+        } else {
+            None
+        }
+    }
 }
 
 impl Value2 {

@@ -107,22 +107,22 @@ impl ObjectInfo {
         val_: Value2,
     ) -> Result<Option<Value2>, error::RuntimeError> {
         match self.kind {
-            ObjectKind2::Array(ref mut info) => match key {
-                Value2::Number(idx) if is_integer(idx) && idx >= 0.0 => {
-                    info.elems[idx as usize].as_data_mut().val = val_;
-                    return Ok(None);
+            ObjectKind2::Array(ref mut info) => {
+                if let Some(idx) = key.is_array_index() {
+                    return Ok(info.set_element(idx, val_));
                 }
-                Value2::String(x) if unsafe { &*x }.to_str().unwrap() == "length" => match val_ {
-                    Value2::Number(n) if is_integer(n) && n >= 0.0 => {
-                        while info.elems.len() < n as usize {
-                            info.elems.push(Property2::new_data_simple(Value2::empty()))
-                        }
+
+                if let Some(idx) = key.is_canonical_numeric_index_string() {
+                    return Ok(info.set_element(idx, val_));
+                }
+
+                if key.is_string() && key.into_str() == "length" {
+                    if let Some(new_length) = val_.is_array_index() {
+                        info.set_length(new_length);
                         return Ok(None);
                     }
-                    _ => {}
-                },
-                _ => {}
-            },
+                }
+            }
             _ => {}
         }
 
