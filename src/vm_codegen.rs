@@ -1082,7 +1082,7 @@ impl VMCodeGen {
                     self.bytecode_gen
                         .gen_push_const(Value::string(name.clone()), iseq);
                 }
-                PropertyDefinition::MethodDefinition(_, _) => panic!(),
+                _ => panic!(),
             }
         }
 

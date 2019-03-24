@@ -988,13 +988,20 @@ impl Parser {
             if name == "get" || name == "set" {
                 let may_identifier = self.lexer.peek_skip_lineterminator();
                 if may_identifier.is_ok() && may_identifier.unwrap().is_identifier() {
+                    let f = self.read_function_expression()?;
+                    let func_name = if let NodeBase::FunctionExpr(ref name, _, _) = f.base {
+                        name.clone().unwrap()
+                    } else {
+                        panic!()
+                    };
                     return Ok(PropertyDefinition::MethodDefinition(
                         if name == "get" {
                             MethodDefinitionKind::Get
                         } else {
                             MethodDefinitionKind::Set
                         },
-                        self.read_function_expression()?,
+                        func_name,
+                        f,
                     ));
                 }
             }

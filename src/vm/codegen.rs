@@ -931,16 +931,15 @@ impl<'a> CodeGenerator<'a> {
                         iseq,
                     );
                 }
-                PropertyDefinition::MethodDefinition(kind, node) => match kind {
+                PropertyDefinition::MethodDefinition(kind, name, node) => match kind {
                     MethodDefinitionKind::Ordinary => {}
                     MethodDefinitionKind::Set => {}
                     MethodDefinitionKind::Get => {
-                        // TODO
                         self.visit(&node, iseq, true)?;
-                        // self.bytecode_generator.append_push_const(
-                        //     Value2::string(self.memory_allocator, name.clone()),
-                        //     iseq,
-                        // );
+                        self.bytecode_generator.append_push_const(
+                            Value2::string(self.memory_allocator, name.clone()),
+                            iseq,
+                        );
                     }
                 },
             }
