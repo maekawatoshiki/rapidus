@@ -238,6 +238,18 @@ impl Value2 {
         }
     }
 
+    pub fn is_function_object(&self) -> bool {
+        match self {
+            Value2::Object(info) => match unsafe { &**info }.kind {
+                ObjectKind2::Function(_) => true,
+                _ => false,
+            },
+            _ => false,
+        }
+    }
+}
+
+impl Value2 {
     pub fn has_own_property(&self, key: &str) -> bool {
         match self {
             Value2::Object(obj_info) => unsafe { &**obj_info }.has_own_property(key),

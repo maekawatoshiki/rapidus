@@ -517,7 +517,7 @@ impl<'a> VM2<'a> {
                     for _ in 0..argc {
                         args.push(self.stack.pop().unwrap().into());
                     }
-                    self.enter_function(callee, args, cur_frame.this, &mut cur_frame, false)?;
+                    etry!(self.enter_function(callee, args, cur_frame.this, &mut cur_frame, false))
                 }
                 VMInst::CALL_METHOD => {
                     cur_frame.pc += 1;
@@ -536,7 +536,7 @@ impl<'a> VM2<'a> {
                         Property2::Data(DataProperty { val, .. }) => val,
                         _ => type_error!("Not a function"),
                     };
-                    self.enter_function(callee, args, parent, &mut cur_frame, false)?;
+                    etry!(self.enter_function(callee, args, parent, &mut cur_frame, false))
                 }
                 VMInst::SET_OUTER_ENV => {
                     cur_frame.pc += 1;
@@ -803,7 +803,12 @@ impl<'a> VM2<'a> {
             properties,
         );
 
+        if !callee.is_function_object() {
+            return Err(RuntimeError::Type("Not a function".to_string()));
+        }
+
         let info = callee.as_function();
+
         match info.kind {
             FunctionObjectKind::Builtin(func) => {
                 func(self, &args, &frame::Frame::new_empty_with_this(this, true))
@@ -822,6 +827,10 @@ impl<'a> VM2<'a> {
         cur_frame: &mut frame::Frame,
         constructor_call: bool,
     ) -> VMResult {
+        if !callee.is_function_object() {
+            return Err(RuntimeError::Type("Not a function".to_string()));
+        }
+
         let info = callee.as_function();
         match info.kind {
             FunctionObjectKind::Builtin(func) => {

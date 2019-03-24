@@ -174,3 +174,21 @@ console.log(ary)
 console.log(ary.length)
 ary.length = 100
 console.log(ary)
+
+let temperature = {
+  total: 0, count: 0,
+  set current(t) {
+    this.total += t;
+    this.count++;
+  },
+  get average() {
+    return this.total / this.count;
+  },
+};
+
+console.log(temperature)
+temperature.current = 19
+temperature.current = 25
+temperature.current = 15
+temperature.current = 34
+console.log( temperature.average )
