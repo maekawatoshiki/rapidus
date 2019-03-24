@@ -343,29 +343,41 @@ impl GcTarget for object::ObjectInfo {
     fn initial_trace(&self, markset: &mut MarkSet) {
         self.kind.initial_trace(markset);
         for (_, property) in &self.property {
-            match property {
-                object::Property2::Data(object::DataProperty { val, .. }) => {
-                    val.initial_trace(markset)
-                }
-                object::Property2::Accessor(object::AccessorProperty { .. }) => unimplemented!(),
-            }
+            property.initial_trace(markset)
         }
     }
 
     fn trace(&self, allocator: &mut MemoryAllocator, markset: &mut MarkSet) {
         self.kind.trace(allocator, markset);
         for (_, property) in &self.property {
-            match property {
-                object::Property2::Data(object::DataProperty { val, .. }) => {
-                    val.trace(allocator, markset)
-                }
-                object::Property2::Accessor(object::AccessorProperty { .. }) => unimplemented!(),
-            }
+            property.trace(allocator, markset)
         }
     }
 
     fn free(&self) -> usize {
         mem::size_of::<object::ObjectInfo>()
+    }
+}
+
+impl GcTarget for object::Property2 {
+    fn initial_trace(&self, markset: &mut MarkSet) {
+        match self {
+            object::Property2::Data(object::DataProperty { val, .. }) => val.initial_trace(markset),
+            object::Property2::Accessor(object::AccessorProperty { .. }) => unimplemented!(),
+        }
+    }
+
+    fn trace(&self, allocator: &mut MemoryAllocator, markset: &mut MarkSet) {
+        match self {
+            object::Property2::Data(object::DataProperty { val, .. }) => {
+                val.trace(allocator, markset)
+            }
+            object::Property2::Accessor(object::AccessorProperty { .. }) => unimplemented!(),
+        }
+    }
+
+    fn free(&self) -> usize {
+        mem::size_of::<object::Property2>()
     }
 }
 
@@ -393,14 +405,7 @@ impl GcTarget for object::ObjectKind2 {
             },
             object::ObjectKind2::Array(ary_info) => {
                 for elem in &ary_info.elems {
-                    match elem {
-                        object::Property2::Data(object::DataProperty { val, .. }) => {
-                            val.initial_trace(markset)
-                        }
-                        object::Property2::Accessor(object::AccessorProperty { .. }) => {
-                            unimplemented!()
-                        }
-                    }
+                    elem.initial_trace(markset)
                 }
             }
             object::ObjectKind2::Ordinary => {}
@@ -431,14 +436,7 @@ impl GcTarget for object::ObjectKind2 {
             },
             object::ObjectKind2::Array(ary_info) => {
                 for elem in &ary_info.elems {
-                    match elem {
-                        object::Property2::Data(object::DataProperty { val, .. }) => {
-                            val.trace(allocator, markset)
-                        }
-                        object::Property2::Accessor(object::AccessorProperty { .. }) => {
-                            unimplemented!()
-                        }
-                    }
+                    elem.trace(allocator, markset)
                 }
             }
             object::ObjectKind2::Ordinary => {}
