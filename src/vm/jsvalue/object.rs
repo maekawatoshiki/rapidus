@@ -14,10 +14,32 @@ pub enum ObjectKind2 {
     Ordinary,
 }
 
+// #[derive(Clone, PartialEq, Debug, Copy)]
+// pub struct Property2 {
+//     pub val: Value2,
+//     pub writable: bool,
+//     pub enumerable: bool,
+//     pub configurable: bool,
+// }
+
 #[derive(Clone, PartialEq, Debug, Copy)]
-pub struct Property2 {
+pub enum Property2 {
+    Data(DataProperty),
+    Accessor(AccessorProperty),
+}
+
+#[derive(Clone, PartialEq, Debug, Copy)]
+pub struct DataProperty {
     pub val: Value2,
     pub writable: bool,
+    pub enumerable: bool,
+    pub configurable: bool,
+}
+
+#[derive(Clone, PartialEq, Debug, Copy)]
+pub struct AccessorProperty {
+    pub get: Value2,
+    pub set: Value2,
     pub enumerable: bool,
     pub configurable: bool,
 }
@@ -30,7 +52,9 @@ impl ObjectInfo {
     pub fn get_property(&self, key: Value2) -> Value2 {
         match self.kind {
             ObjectKind2::Array(ref info) => match key {
-                Value2::Number(idx) if is_integer(idx) => return info.elems[idx as usize].val,
+                Value2::Number(idx) if is_integer(idx) => {
+                    return info.elems[idx as usize].as_data().val
+                }
                 Value2::String(x) if unsafe { &*x }.to_str().unwrap() == "length" => {
                     return Value2::Number(info.elems.len() as f64)
                 }
@@ -40,12 +64,12 @@ impl ObjectInfo {
         }
 
         match self.property.get(key.to_string().as_str()) {
-            Some(prop) => prop.val,
+            Some(prop) => prop.as_data().val,
             None => match self.property.get("__proto__") {
-                Some(Property2 {
+                Some(Property2::Data(DataProperty {
                     val: Value2::Object(obj_info),
                     ..
-                }) => unsafe { &**obj_info }.get_property(key),
+                })) => unsafe { &**obj_info }.get_property(key),
                 _ => Value2::undefined(),
             },
         }
@@ -53,43 +77,45 @@ impl ObjectInfo {
 
     pub fn get_property_by_str_key(&self, key: &str) -> Value2 {
         match self.property.get(key) {
-            Some(prop) => prop.val,
+            Some(prop) => prop.as_data().val,
             None => match self.property.get("__proto__") {
-                Some(Property2 {
+                Some(Property2::Data(DataProperty {
                     val: Value2::Object(obj_info),
                     ..
-                }) => unsafe { &**obj_info }.get_property_by_str_key(key),
+                })) => unsafe { &**obj_info }.get_property_by_str_key(key),
                 _ => Value2::undefined(),
             },
         }
     }
 
     pub fn set_property_by_string_key(&mut self, key: String, val: Value2) {
-        let property = self.property.entry(key).or_insert_with(|| Property2 {
-            val: Value2::undefined(),
-            writable: true,
-            enumerable: true,
-            configurable: true,
+        let property = self.property.entry(key).or_insert_with(|| {
+            Property2::Data(DataProperty {
+                val: Value2::undefined(),
+                writable: true,
+                enumerable: true,
+                configurable: true,
+            })
         });
-        property.val = val;
+        property.as_data_mut().val = val;
     }
 
     pub fn set_property(&mut self, key: Value2, val: Value2) {
         match self.kind {
             ObjectKind2::Array(ref mut info) => match key {
                 Value2::Number(idx) if is_integer(idx) && idx >= 0.0 => {
-                    info.elems[idx as usize].val = val;
+                    info.elems[idx as usize].as_data_mut().val = val;
                     return;
                 }
                 Value2::String(x) if unsafe { &*x }.to_str().unwrap() == "length" => match val {
                     Value2::Number(n) if is_integer(n) && n >= 0.0 => {
                         while info.elems.len() < n as usize {
-                            info.elems.push(Property2 {
+                            info.elems.push(Property2::Data(DataProperty {
                                 val: Value2::empty(),
                                 writable: true,
                                 enumerable: true,
                                 configurable: true,
-                            });
+                            }));
                         }
                         return;
                     }
@@ -100,15 +126,44 @@ impl ObjectInfo {
             _ => {}
         }
 
-        let property = self
-            .property
-            .entry(key.to_string())
-            .or_insert_with(|| Property2 {
+        let property = self.property.entry(key.to_string()).or_insert_with(|| {
+            Property2::Data(DataProperty {
                 val: Value2::undefined(),
                 writable: true,
                 enumerable: true,
                 configurable: true,
-            });
-        property.val = val;
+            })
+        });
+        property.as_data_mut().val = val;
+    }
+}
+
+impl Property2 {
+    pub fn as_data(self) -> DataProperty {
+        match self {
+            Property2::Data(data) => data,
+            _ => panic!(),
+        }
+    }
+
+    pub fn as_accessor(self) -> AccessorProperty {
+        match self {
+            Property2::Accessor(accessor) => accessor,
+            _ => panic!(),
+        }
+    }
+
+    pub fn as_data_mut(&mut self) -> &mut DataProperty {
+        match self {
+            Property2::Data(ref mut data) => data,
+            _ => panic!(),
+        }
+    }
+
+    pub fn as_accessor_mut(&mut self) -> &mut AccessorProperty {
+        match self {
+            Property2::Accessor(ref mut accessor) => accessor,
+            _ => panic!(),
+        }
     }
 }

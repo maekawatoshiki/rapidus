@@ -717,13 +717,13 @@ impl<'a> VM2<'a> {
             let val: Value2 = self.stack.pop().unwrap().into();
             properties.insert(
                 name,
-                Property2 {
+                Property2::Data(DataProperty {
                     val,
                     // TODO
                     writable: true,
                     enumerable: true,
                     configurable: true,
-                },
+                }),
             );
         }
 
@@ -741,12 +741,12 @@ impl<'a> VM2<'a> {
         let mut elems = vec![];
         for _ in 0..len {
             let val: Value2 = self.stack.pop().unwrap().into();
-            elems.push(Property2 {
+            elems.push(Property2::Data(DataProperty {
                 val,
                 writable: true,
                 enumerable: true,
                 configurable: true,
-            });
+            }));
         }
 
         let ary = Value2::array(memory_allocator!(self), object_prototypes!(self), elems);

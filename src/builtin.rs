@@ -78,7 +78,7 @@ pub fn debug_print2(val: &Value2, nest: bool) {
                     CString::new(tupple.0.as_str()).unwrap().into_raw(),
                 );
                 libc::printf(": \0".as_ptr() as RawStringPtr);
-                debug_print2(&tupple.1.val, true);
+                debug_print2(&tupple.1.as_data().val, true);
                 libc::printf(if i != sorted_key_val.len() - 1 {
                     ", \0".as_ptr() as RawStringPtr
                 } else {
@@ -191,7 +191,7 @@ pub fn debug_print2(val: &Value2, nest: bool) {
                         let mut i = 0;
                         while i < length {
                             let mut empty_elems = 0;
-                            while i < length && Value2::empty() == ary_info.elems[i].val {
+                            while i < length && Value2::empty() == ary_info.elems[i].as_data().val {
                                 empty_elems += 1;
                                 i += 1;
                             }
@@ -215,7 +215,7 @@ pub fn debug_print2(val: &Value2, nest: bool) {
                                 }
                             }
 
-                            debug_print2(&ary_info.elems[i].val, true);
+                            debug_print2(&ary_info.elems[i].as_data().val, true);
                             libc::printf(
                                 if is_last_idx(i) && sorted_key_val.len() == 0 {
                                     " \0"

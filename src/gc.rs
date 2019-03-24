@@ -343,14 +343,24 @@ impl GcTarget for object::ObjectInfo {
     fn initial_trace(&self, markset: &mut MarkSet) {
         self.kind.initial_trace(markset);
         for (_, property) in &self.property {
-            property.val.initial_trace(markset);
+            match property {
+                object::Property2::Data(object::DataProperty { val, .. }) => {
+                    val.initial_trace(markset)
+                }
+                object::Property2::Accessor(object::AccessorProperty { .. }) => unimplemented!(),
+            }
         }
     }
 
     fn trace(&self, allocator: &mut MemoryAllocator, markset: &mut MarkSet) {
         self.kind.trace(allocator, markset);
         for (_, property) in &self.property {
-            property.val.trace(allocator, markset);
+            match property {
+                object::Property2::Data(object::DataProperty { val, .. }) => {
+                    val.trace(allocator, markset)
+                }
+                object::Property2::Accessor(object::AccessorProperty { .. }) => unimplemented!(),
+            }
         }
     }
 
@@ -383,7 +393,14 @@ impl GcTarget for object::ObjectKind2 {
             },
             object::ObjectKind2::Array(ary_info) => {
                 for elem in &ary_info.elems {
-                    elem.val.initial_trace(markset)
+                    match elem {
+                        object::Property2::Data(object::DataProperty { val, .. }) => {
+                            val.initial_trace(markset)
+                        }
+                        object::Property2::Accessor(object::AccessorProperty { .. }) => {
+                            unimplemented!()
+                        }
+                    }
                 }
             }
             object::ObjectKind2::Ordinary => {}
@@ -414,7 +431,14 @@ impl GcTarget for object::ObjectKind2 {
             },
             object::ObjectKind2::Array(ary_info) => {
                 for elem in &ary_info.elems {
-                    elem.val.initial_trace(markset)
+                    match elem {
+                        object::Property2::Data(object::DataProperty { val, .. }) => {
+                            val.trace(allocator, markset)
+                        }
+                        object::Property2::Accessor(object::AccessorProperty { .. }) => {
+                            unimplemented!()
+                        }
+                    }
                 }
             }
             object::ObjectKind2::Ordinary => {}

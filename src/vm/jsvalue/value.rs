@@ -37,12 +37,12 @@ macro_rules! make_property_map_sub {
         let mut record = FxHashMap::default();
         $( record.insert(
             (stringify!($property_name)).to_string(),
-            Property2 {
+            Property2::Data(DataProperty {
                 val: $val,
                 writable: $writable,
                 enumerable: $enumerable,
                 configurable: $configurable
-            }
+            })
             );
         )*
         record
@@ -115,12 +115,12 @@ impl Value2 {
             property: {
                 properties.insert(
                     "__proto__".to_string(),
-                    Property2 {
+                    Property2::Data(DataProperty {
                         val: object_prototypes.object,
                         writable: false,
                         enumerable: false,
                         configurable: false,
-                    },
+                    }),
                 );
                 properties
             },
@@ -301,12 +301,12 @@ impl Value2 {
     pub fn set_constructor(&self, val: Value2) {
         self.get_object_info().property.insert(
             "constructor".to_string(),
-            Property2 {
+            Property2::Data(DataProperty {
                 val,
                 writable: true,
                 enumerable: false,
                 configurable: true,
-            },
+            }),
         );
     }
 
@@ -605,7 +605,7 @@ impl Value2 {
                         "{}'{}': {}{}",
                         acc,
                         tupple.0,
-                        tupple.1.val.debug_string(true),
+                        tupple.1.as_data().val.debug_string(true),
                         if i != sorted_key_val.len() - 1 {
                             ", "
                         } else {
@@ -678,7 +678,7 @@ impl Value2 {
                         let mut i = 0;
                         while i < length {
                             let mut empty_elems = 0;
-                            while i < length && Value2::empty() == ary_info.elems[i].val {
+                            while i < length && Value2::empty() == ary_info.elems[i].as_data().val {
                                 empty_elems += 1;
                                 i += 1;
                             }
@@ -704,7 +704,7 @@ impl Value2 {
                             string = format!(
                                 "{}{}{}",
                                 string,
-                                ary_info.elems[i].val.debug_string(true),
+                                ary_info.elems[i].as_data().val.debug_string(true),
                                 if is_last_idx(i) && sorted_key_val.len() == 0 {
                                     " "
                                 } else {

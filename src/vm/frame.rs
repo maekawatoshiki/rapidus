@@ -6,7 +6,7 @@ use rustc_hash::FxHashMap;
 use vm::codegen::FunctionInfo;
 use vm::error::RuntimeError;
 use vm::jsvalue::function::Exception;
-use vm::jsvalue::object::{ObjectInfo, ObjectKind2, Property2};
+use vm::jsvalue::object::{DataProperty, ObjectInfo, ObjectKind2, Property2};
 use vm::jsvalue::prototype::ObjectPrototypes;
 use vm::jsvalue::value::Value2;
 use vm::vm::VMResult;
@@ -201,8 +201,7 @@ impl LexicalEnvironment {
         let object_constructor = builtins::object::object(memory_allocator, object_prototypes);
         let function_constructor =
             builtins::function::function(memory_allocator, object_prototypes);
-        let array_constructor =
-            builtins::array::array(memory_allocator, object_prototypes);
+        let array_constructor = builtins::array::array(memory_allocator, object_prototypes);
         LexicalEnvironment {
             record: EnvironmentRecord::Global(make_normal_object!(
                 memory_allocator,
