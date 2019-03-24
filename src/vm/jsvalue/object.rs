@@ -49,14 +49,12 @@ impl ObjectInfo {
         self.property.contains_key(key)
     }
 
-    pub fn get_property(&self, key: Value2) -> Value2 {
+    pub fn get_property(&self, key: Value2) -> Property2 {
         match self.kind {
             ObjectKind2::Array(ref info) => match key {
-                Value2::Number(idx) if is_integer(idx) => {
-                    return info.elems[idx as usize].as_data().val
-                }
+                Value2::Number(idx) if is_integer(idx) => return info.elems[idx as usize],
                 Value2::String(x) if unsafe { &*x }.to_str().unwrap() == "length" => {
-                    return Value2::Number(info.elems.len() as f64)
+                    return Property2::new_data_simple(Value2::Number(info.elems.len() as f64))
                 }
                 _ => {}
             },
@@ -64,13 +62,13 @@ impl ObjectInfo {
         }
 
         match self.property.get(key.to_string().as_str()) {
-            Some(prop) => prop.as_data().val,
+            Some(prop) => *prop,
             None => match self.property.get("__proto__") {
                 Some(Property2::Data(DataProperty {
                     val: Value2::Object(obj_info),
                     ..
                 })) => unsafe { &**obj_info }.get_property(key),
-                _ => Value2::undefined(),
+                _ => Property2::new_data_simple(Value2::undefined()),
             },
         }
     }
@@ -139,6 +137,19 @@ impl ObjectInfo {
 }
 
 impl Property2 {
+    pub fn new_data(data: DataProperty) -> Self {
+        Property2::Data(data)
+    }
+
+    pub fn new_data_simple(val: Value2) -> Self {
+        Property2::Data(DataProperty {
+            val,
+            writable: true,
+            enumerable: true,
+            configurable: true,
+        })
+    }
+
     pub fn as_data(self) -> DataProperty {
         match self {
             Property2::Data(data) => data,

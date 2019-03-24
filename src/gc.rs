@@ -363,7 +363,10 @@ impl GcTarget for object::Property2 {
     fn initial_trace(&self, markset: &mut MarkSet) {
         match self {
             object::Property2::Data(object::DataProperty { val, .. }) => val.initial_trace(markset),
-            object::Property2::Accessor(object::AccessorProperty { .. }) => unimplemented!(),
+            object::Property2::Accessor(object::AccessorProperty { get, set, .. }) => {
+                get.initial_trace(markset);
+                set.initial_trace(markset);
+            }
         }
     }
 
@@ -372,7 +375,10 @@ impl GcTarget for object::Property2 {
             object::Property2::Data(object::DataProperty { val, .. }) => {
                 val.trace(allocator, markset)
             }
-            object::Property2::Accessor(object::AccessorProperty { .. }) => unimplemented!(),
+            object::Property2::Accessor(object::AccessorProperty { get, set, .. }) => {
+                get.trace(allocator, markset);
+                set.trace(allocator, markset);
+            }
         }
     }
 

@@ -223,6 +223,13 @@ impl Value2 {
 }
 
 impl Value2 {
+    pub fn is_undefined(&self) -> bool {
+        match self {
+            Value2::Other(UNDEFINED) => true,
+            _ => false,
+        }
+    }
+
     pub fn is_object(&self) -> bool {
         match self {
             Value2::Object(_) => true,
@@ -256,14 +263,16 @@ impl Value2 {
         allocator: &mut gc::MemoryAllocator,
         object_prototypes: &ObjectPrototypes,
         key: Value2,
-    ) -> Value2 {
-        let mut string_get_property = |s: &str, key: Value2| -> Value2 {
+    ) -> Property2 {
+        let mut string_get_property = |s: &str, key: Value2| -> Property2 {
             match key {
-                Value2::Number(idx) if is_integer(idx) => {
-                    Value2::string(allocator, s.chars().nth(idx as usize).unwrap().to_string())
-                }
+                Value2::Number(idx) if is_integer(idx) => Property2::new_data_simple(
+                    Value2::string(allocator, s.chars().nth(idx as usize).unwrap().to_string()),
+                ),
                 Value2::String(x) if unsafe { &*x }.to_str().unwrap() == "length" => {
-                    Value2::Number(s.chars().fold(0, |x, c| x + c.len_utf16()) as f64)
+                    Property2::new_data_simple(Value2::Number(
+                        s.chars().fold(0, |x, c| x + c.len_utf16()) as f64
+                    ))
                 }
                 key => object_prototypes.string.get_object_info().get_property(key),
             }
@@ -278,7 +287,7 @@ impl Value2 {
 
         match self {
             Value2::Object(obj_info) => unsafe { &**obj_info }.get_property(key),
-            _ => Value2::undefined(),
+            _ => Property2::new_data_simple(Value2::undefined()),
         }
     }
 

@@ -78,7 +78,28 @@ pub fn debug_print2(val: &Value2, nest: bool) {
                     CString::new(tupple.0.as_str()).unwrap().into_raw(),
                 );
                 libc::printf(": \0".as_ptr() as RawStringPtr);
-                debug_print2(&tupple.1.as_data().val, true);
+
+                match tupple.1 {
+                    Property2::Data(DataProperty { val, .. }) => {
+                        debug_print2(&val, true);
+                    }
+                    Property2::Accessor(AccessorProperty { get, set, .. }) => {
+                        let s_get = if get.is_undefined() { "\0" } else { "Getter\0" };
+                        let s_set = if set.is_undefined() { "\0" } else { "Setter\0" };
+                        libc::printf(
+                            "[%s%s%s]\0".as_ptr() as RawStringPtr,
+                            s_get.as_ptr() as RawStringPtr,
+                            if !get.is_undefined() && !set.is_undefined() {
+                                "/\0"
+                            } else {
+                                "\0"
+                            }
+                            .as_ptr() as RawStringPtr,
+                            s_set.as_ptr() as RawStringPtr,
+                        );
+                    }
+                }
+
                 libc::printf(if i != sorted_key_val.len() - 1 {
                     ", \0".as_ptr() as RawStringPtr
                 } else {

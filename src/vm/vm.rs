@@ -466,15 +466,7 @@ impl<'a> VM2<'a> {
                     cur_frame.pc += 1;
                     let property: Value2 = self.stack.pop().unwrap().into();
                     let parent: Value2 = self.stack.pop().unwrap().into();
-                    self.stack.push(
-                        parent
-                            .get_property(
-                                memory_allocator!(self),
-                                object_prototypes!(self),
-                                property,
-                            )
-                            .into(),
-                    );
+                    self.get_property_to_stack_top(parent, property, &cur_frame)?
                 }
                 VMInst::SET_MEMBER => {
                     cur_frame.pc += 1;
@@ -527,11 +519,10 @@ impl<'a> VM2<'a> {
                     for _ in 0..argc {
                         args.push(self.stack.pop().unwrap().into());
                     }
-                    let callee = parent.get_property(
-                        memory_allocator!(self),
-                        object_prototypes!(self),
-                        method,
-                    );
+                    let callee = parent
+                        .get_property(memory_allocator!(self), object_prototypes!(self), method)
+                        .as_data()
+                        .val;
                     self.enter_function(callee, args, parent, &mut cur_frame, false)?;
                 }
                 VMInst::SET_OUTER_ENV => {
@@ -722,19 +713,32 @@ impl<'a> VM2<'a> {
             let prop: Value2 = self.stack.pop().unwrap().into();
             let name = prop.to_string();
             let val: Value2 = self.stack.pop().unwrap().into();
-            properties.insert(
-                name,
-                Property2::Data(DataProperty {
-                    val,
-                    // TODO
-                    writable: true,
-                    enumerable: true,
-                    configurable: true,
-                }),
-            );
-
             if let Some(kind) = special_properties.get(&i) {
-                println!("kind: {:?} <- {}", kind, val.debug_string(false));
+                let AccessorProperty { get, set, .. } = properties
+                    .entry(name)
+                    .or_insert(Property2::Accessor(AccessorProperty {
+                        get: Value2::undefined(),
+                        set: Value2::undefined(),
+                        // TODO
+                        enumerable: true,
+                        configurable: true,
+                    }))
+                    .as_accessor_mut();
+                match kind {
+                    constant::SpecialPropertyKind::Getter => *get = val,
+                    constant::SpecialPropertyKind::Setter => *set = val,
+                }
+            } else {
+                properties.insert(
+                    name,
+                    Property2::Data(DataProperty {
+                        val,
+                        // TODO
+                        writable: true,
+                        enumerable: true,
+                        configurable: true,
+                    }),
+                );
             }
         }
 
@@ -898,6 +902,35 @@ impl<'a> VM2<'a> {
     #[inline]
     pub fn object_prototypes(&self) -> &ObjectPrototypes {
         self.code_generator.object_prototypes
+    }
+}
+
+impl<'a> VM2<'a> {
+    pub fn get_property_to_stack_top(
+        &mut self,
+        parent: Value2,
+        key: Value2,
+        cur_frame: &frame::Frame,
+    ) -> VMResult {
+        let val = parent.get_property(memory_allocator!(self), object_prototypes!(self), key);
+        match val {
+            Property2::Data(DataProperty { val, .. }) => {
+                self.stack.push(val.into());
+                Ok(())
+            }
+            Property2::Accessor(AccessorProperty { get, .. }) => {
+                if get.is_undefined() {
+                    self.stack.push(Value2::undefined().into());
+                    return Ok(());
+                }
+
+                self.call_function(get, vec![], parent, cur_frame)
+            }
+        }
+    }
+
+    pub fn set_property(&mut self, parent: Value2, key: Value2, val: Value2) -> VMResult {
+        Ok(())
     }
 }
 
