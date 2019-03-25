@@ -74,11 +74,19 @@ impl ObjectPrototypes {
                 array::array_prototype_push,
             );
 
+            let map = Value2::builtin_function_with_proto(
+                memory_allocator,
+                function_prototype,
+                "map".to_string(),
+                array::array_prototype_map,
+            );
+
             Value2::Object(memory_allocator.alloc(ObjectInfo {
                 property: make_property_map!(
                     __proto__ => false, false, false: object_prototype,
                     length    => false, false, true : Value2::Number(0.0),
-                    push      => true,  false, true : push
+                    push      => true,  false, true : push,
+                    map       => true,  false, true : map
                 ),
                 kind: ObjectKind2::Array(ArrayObjectInfo { elems: vec![] }),
             }))

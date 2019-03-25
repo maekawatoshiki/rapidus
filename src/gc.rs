@@ -47,6 +47,7 @@ pub struct MemoryAllocator {
     allocated_memory: MarkMap,
     allocated_size: usize,
     pub roots: MarkSet,
+    locked: MarkSet,
     state: GCState,
     white: MarkState,
 }
@@ -64,6 +65,7 @@ pub enum MarkState {
     White2,
     Gray,
     Black,
+    NeverReleased,
 }
 
 impl MarkState {
@@ -82,6 +84,7 @@ impl MemoryAllocator {
             allocated_memory: MarkMap::default(),
             allocated_size: 0,
             roots: MarkSet::default(),
+            locked: MarkSet::default(),
             state: GCState::Initial,
             white: MarkState::White,
         }
@@ -122,6 +125,7 @@ impl MemoryAllocator {
                 object_prototypes.object.initial_trace(&mut markset);
                 object_prototypes.function.initial_trace(&mut markset);
                 object_prototypes.string.initial_trace(&mut markset);
+                object_prototypes.array.initial_trace(&mut markset);
 
                 constant_table.initial_trace(&mut markset);
 
@@ -139,7 +143,7 @@ impl MemoryAllocator {
 
                 self.white = self.white.flip_white();
 
-                self.roots = markset;
+                self.roots = &markset | &self.locked;
 
                 GCState::Marking
             }
@@ -167,7 +171,7 @@ impl MemoryAllocator {
 
                 let white = self.white;
                 self.allocated_memory.retain(|obj, mark| {
-                    if mark == &MarkState::Black {
+                    if mark == &MarkState::Black || mark == &MarkState::NeverReleased {
                         *mark = white;
                         return true;
                     }
@@ -191,6 +195,17 @@ impl MemoryAllocator {
 
     pub fn gray2(&mut self, object: Value2) {
         object.initial_trace(&mut self.roots);
+    }
+
+    pub fn lock<T: GcTarget>(&mut self, val: T) {
+        val.initial_trace(&mut self.locked);
+        self.roots = &self.roots | &self.locked;
+    }
+
+    pub fn unlock<T: GcTarget>(&mut self, val: T) {
+        let mut map = MarkSet::default();
+        val.initial_trace(&mut map);
+        self.locked = &self.locked - &map;
     }
 
     // pub fn write_barrier(&mut self, parent: *mut GcTarget, child: *mut GcTarget) {

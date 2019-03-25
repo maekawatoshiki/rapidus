@@ -54,6 +54,15 @@ macro_rules! object_prototypes {
     }};
 }
 
+macro_rules! gc_lock {
+    ($vm:ident, $targets:expr, $($body:tt)*) => { {
+        for arg in $targets { memory_allocator!($vm).lock(*arg) }
+        let ret = { $($body)* };
+        for arg in $targets { memory_allocator!($vm).unlock(*arg) }
+        ret
+    } }
+}
+
 impl<'a> VM2<'a> {
     pub fn new(
         global_environment: frame::LexicalEnvironmentRef,
@@ -181,10 +190,13 @@ impl<'a> VM2<'a> {
         cur_frame: &frame::Frame,
     ) -> VMResult {
         let info = callee.as_function();
+
         match info.kind {
-            FunctionObjectKind::Builtin(func) => {
+            FunctionObjectKind::Builtin(func) => gc_lock!(
+                self,
+                args,
                 func(self, args, &frame::Frame::new_empty_with_this(this, false))
-            }
+            ),
             FunctionObjectKind::User(ref user_func) => {
                 self.call_user_function(user_func, args, this, cur_frame, false)
             }
@@ -257,6 +269,62 @@ impl<'a> VM2<'a> {
         .escape();
 
         self.run(frame)
+    }
+
+    fn get_property_to_stack_top(
+        &mut self,
+        parent: Value2,
+        key: Value2,
+        cur_frame: &mut frame::Frame,
+    ) -> VMResult {
+        let val = parent.get_property(memory_allocator!(self), object_prototypes!(self), key)?;
+        match val {
+            Property2::Data(DataProperty { val, .. }) => {
+                self.stack.push(val.into());
+                Ok(())
+            }
+            Property2::Accessor(AccessorProperty { get, .. }) => {
+                if get.is_undefined() {
+                    self.stack.push(Value2::undefined().into());
+                    return Ok(());
+                }
+                self.enter_function(get, &[], parent, cur_frame, false)
+            }
+        }
+    }
+
+    pub fn get_property(
+        &mut self,
+        parent: Value2,
+        key: Value2,
+        cur_frame: &frame::Frame,
+    ) -> Result<Value2, RuntimeError> {
+        let val = parent.get_property(memory_allocator!(self), object_prototypes!(self), key)?;
+        match val {
+            Property2::Data(DataProperty { val, .. }) => Ok(val),
+            Property2::Accessor(AccessorProperty { get, .. }) => {
+                if get.is_undefined() {
+                    return Ok(Value2::undefined());
+                }
+                self.call_function(get, &[], parent, cur_frame)?;
+                Ok(self.stack.pop().unwrap().into(): Value2)
+            }
+        }
+    }
+
+    pub fn set_property(
+        &mut self,
+        parent: Value2,
+        key: Value2,
+        val: Value2,
+        cur_frame: &frame::Frame,
+    ) -> VMResult {
+        let maybe_setter = parent.set_property(key, val)?;
+        if let Some(setter) = maybe_setter {
+            self.call_function(setter, &[val], parent, cur_frame)?;
+            self.stack.pop().unwrap(); // Pop undefined (setter's return value)
+        }
+        Ok(())
     }
 }
 
@@ -827,10 +895,13 @@ impl<'a> VM2<'a> {
         }
 
         let info = callee.as_function();
+
         match info.kind {
-            FunctionObjectKind::Builtin(func) => {
+            FunctionObjectKind::Builtin(func) => gc_lock!(
+                self,
+                args,
                 func(self, args, &frame::Frame::new_empty_with_this(this, false))
-            }
+            ),
             FunctionObjectKind::User(ref user_func) => {
                 self.enter_user_function(user_func.clone(), args, this, cur_frame, constructor_call)
             }
@@ -919,45 +990,6 @@ impl<'a> VM2<'a> {
     #[inline]
     pub fn object_prototypes(&self) -> &ObjectPrototypes {
         self.code_generator.object_prototypes
-    }
-}
-
-impl<'a> VM2<'a> {
-    pub fn get_property_to_stack_top(
-        &mut self,
-        parent: Value2,
-        key: Value2,
-        cur_frame: &mut frame::Frame,
-    ) -> VMResult {
-        let val = parent.get_property(memory_allocator!(self), object_prototypes!(self), key)?;
-        match val {
-            Property2::Data(DataProperty { val, .. }) => {
-                self.stack.push(val.to_undefined_if_empty().into());
-                Ok(())
-            }
-            Property2::Accessor(AccessorProperty { get, .. }) => {
-                if get.is_undefined() {
-                    self.stack.push(Value2::undefined().into());
-                    return Ok(());
-                }
-                self.enter_function(get, &[], parent, cur_frame, false)
-            }
-        }
-    }
-
-    pub fn set_property(
-        &mut self,
-        parent: Value2,
-        key: Value2,
-        val: Value2,
-        cur_frame: &frame::Frame,
-    ) -> VMResult {
-        let maybe_setter = parent.set_property(key, val)?;
-        if let Some(setter) = maybe_setter {
-            self.call_function(setter, &[val], parent, cur_frame)?;
-            self.stack.pop().unwrap(); // Pop undefined (setter's return value)
-        }
-        Ok(())
     }
 }
 
