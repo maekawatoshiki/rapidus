@@ -248,6 +248,16 @@ impl Value2 {
         }
     }
 
+    pub fn is_array_object(&self) -> bool {
+        match self {
+            Value2::Object(info) => match unsafe { &**info }.kind {
+                ObjectKind2::Array(_) => true,
+                _ => false,
+            },
+            _ => false,
+        }
+    }
+
     pub fn is_string(&self) -> bool {
         match self {
             Value2::String(_) => true,
@@ -405,6 +415,19 @@ impl Value2 {
                 let obj = unsafe { &**obj };
                 match obj.kind {
                     ObjectKind2::Function(ref info) => return info,
+                    _ => panic!(),
+                }
+            }
+            e => panic!("{:?}", e),
+        }
+    }
+
+    pub fn as_array_mut(&self) -> &mut ArrayObjectInfo {
+        match self {
+            Value2::Object(obj) => {
+                let obj = unsafe { &mut **obj };
+                match obj.kind {
+                    ObjectKind2::Array(ref mut info) => return info,
                     _ => panic!(),
                 }
             }

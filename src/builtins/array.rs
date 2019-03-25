@@ -3,7 +3,7 @@ use gc;
 use vm::{
     error::RuntimeError,
     frame::Frame,
-    jsvalue::{prototype::ObjectPrototypes, value::Value2},
+    jsvalue::{object::Property2, prototype::ObjectPrototypes, value::Value2},
     value::*,
     vm::{VMResult, VM, VM2},
 };
@@ -26,6 +26,23 @@ pub fn array(
 
 pub fn array_constructor(vm: &mut VM2, _args: &[Value2], _cur_frame: &Frame) -> VMResult {
     vm.stack.push(Value2::undefined().into());
+    Ok(())
+}
+
+pub fn array_prototype_push(vm: &mut VM2, args: &[Value2], cur_frame: &Frame) -> VMResult {
+    if !cur_frame.this.is_array_object() {
+        return Err(RuntimeError::Unknown);
+    }
+
+    let ary_info = cur_frame.this.as_array_mut();
+
+    for arg in args {
+        ary_info.elems.push(Property2::new_data_simple(*arg));
+    }
+
+    vm.stack
+        .push(Value2::Number(ary_info.get_length() as f64).into());
+
     Ok(())
 }
 

@@ -1,6 +1,6 @@
 #![macro_use]
 use super::super::super::builtin;
-use super::super::super::builtins::function;
+use super::super::super::builtins::{array, function};
 use super::super::super::id::get_unique_id;
 use super::value::*;
 use gc::MemoryAllocator;
@@ -52,25 +52,37 @@ impl ObjectPrototypes {
             function_prototype
         };
 
-        let index_of = Value2::builtin_function_with_proto(
-            memory_allocator,
-            function_prototype,
-            "indexOf".to_string(),
-            builtin::string_prototype_index_of,
-        );
+        let string_prototype = {
+            let index_of = Value2::builtin_function_with_proto(
+                memory_allocator,
+                function_prototype,
+                "indexOf".to_string(),
+                builtin::string_prototype_index_of,
+            );
 
-        let string_prototype = Value2::Object(memory_allocator.alloc(ObjectInfo {
-            kind: ObjectKind2::Ordinary,
-            property: make_property_map!(__proto__: object_prototype, indexOf: index_of),
-        }));
+            Value2::Object(memory_allocator.alloc(ObjectInfo {
+                kind: ObjectKind2::Ordinary,
+                property: make_property_map!(__proto__: object_prototype, indexOf: index_of),
+            }))
+        };
 
-        let array_prototype = Value2::Object(memory_allocator.alloc(ObjectInfo {
-            property: make_property_map!(
-                __proto__ => false, false, false: object_prototype,
-                length    => false, false, true : Value2::Number(0.0)
-            ),
-            kind: ObjectKind2::Array(ArrayObjectInfo { elems: vec![] }),
-        }));
+        let array_prototype = {
+            let push = Value2::builtin_function_with_proto(
+                memory_allocator,
+                function_prototype,
+                "push".to_string(),
+                array::array_prototype_push,
+            );
+
+            Value2::Object(memory_allocator.alloc(ObjectInfo {
+                property: make_property_map!(
+                    __proto__ => false, false, false: object_prototype,
+                    length    => false, false, true : Value2::Number(0.0),
+                    push      => true,  false, true : push
+                ),
+                kind: ObjectKind2::Array(ArrayObjectInfo { elems: vec![] }),
+            }))
+        };
 
         ObjectPrototypes {
             object: object_prototype,

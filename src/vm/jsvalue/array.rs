@@ -68,4 +68,9 @@ impl ArrayObjectInfo {
             return;
         }
     }
+
+    #[inline]
+    pub fn get_length(&self) -> usize {
+        self.elems.len()
+    }
 }
