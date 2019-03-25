@@ -482,11 +482,28 @@ impl<'a> CodeGenerator<'a> {
         // Finally block
         let finally_start = iseq.len() as usize;
 
-        try_.set_jmp_to_finally(finally_start, &mut self.bytecode_generator, iseq);
-        catch_.set_jmp_to_finally(finally_start, &mut self.bytecode_generator, iseq);
+        let has_return_try =
+            try_.set_jmp_to_finally(finally_start, &mut self.bytecode_generator, iseq)
+                || catch_.set_jmp_to_finally(finally_start, &mut self.bytecode_generator, iseq);
 
         self.current_function().level.push(Level::Finally);
         self.visit(finally, iseq, false)?;
+
+        let finally_to_outer_finally_jmp_instr_pos = iseq.len();
+        if has_return_try
+            && self
+                .current_function()
+                .find_last_try_or_catch()
+                .map(|try_or_catch| {
+                    try_or_catch
+                        .as_try_or_catch_mut()
+                        .push(finally_to_outer_finally_jmp_instr_pos)
+                })
+                .is_some()
+        {
+            self.bytecode_generator.append_jmp(0, iseq);
+        }
+
         assert_eq!(self.current_function().level.pop().unwrap(), Level::Finally);
         self.bytecode_generator.append_return_sub(iseq);
 
@@ -1102,6 +1119,13 @@ impl FunctionInfo {
             .unwrap()
     }
 
+    pub fn find_last_try_or_catch(&mut self) -> Option<&mut Level> {
+        self.level.iter_mut().rev().find(|level| match level {
+            &Level::TryOrCatch { .. } => true,
+            _ => false,
+        })
+    }
+
     pub fn get_last_loop(&mut self) -> &mut Level {
         self.level
             .iter_mut()
@@ -1193,11 +1217,13 @@ impl Level {
         dst: usize,
         bytecode_generator: &mut ByteCodeGenerator,
         iseq: &mut ByteCode,
-    ) {
+    ) -> bool {
         let finally_jmp_instr_pos = self.as_try_or_catch();
+        let mut has_return_from_try_or_catch = false;
         for instr_pos in finally_jmp_instr_pos {
+            has_return_from_try_or_catch |= iseq[instr_pos] == VMInst::RETURN_TRY;
             assert!(match iseq[instr_pos] {
-                VMInst::RETURN | VMInst::RETURN_TRY | VMInst::JMP => true,
+                VMInst::RETURN_TRY | VMInst::JMP => true,
                 e => false,
             });
             bytecode_generator.replace_int32(
@@ -1205,5 +1231,6 @@ impl Level {
                 &mut iseq[instr_pos as usize + 1..instr_pos as usize + 5],
             );
         }
+        has_return_from_try_or_catch
     }
 }
