@@ -1197,8 +1197,8 @@ impl Level {
         let finally_jmp_instr_pos = self.as_try_or_catch();
         for instr_pos in finally_jmp_instr_pos {
             assert!(match iseq[instr_pos] {
-                VMInst::RETURN | VMInst::JMP => true,
-                _ => false,
+                VMInst::RETURN | VMInst::RETURN_TRY | VMInst::JMP => true,
+                e => false,
             });
             bytecode_generator.replace_int32(
                 (dst - instr_pos) as i32 - 5,
