@@ -28,7 +28,7 @@ pub fn function(
 
 pub fn function_constructor(
     vm: &mut vm::VM2,
-    _args: &Vec<Value2>,
+    _args: &[Value2],
     _cur_frame: &frame::Frame,
 ) -> vm::VMResult {
     vm.stack.push(Value2::undefined().into());
@@ -37,17 +37,12 @@ pub fn function_constructor(
 
 pub fn function_prototype_call(
     vm: &mut vm::VM2,
-    args: &Vec<Value2>,
+    args: &[Value2],
     cur_frame: &frame::Frame,
 ) -> vm::VMResult {
     let this_arg = *args.get(0).unwrap_or(&Value2::undefined());
     let func = cur_frame.this;
-    vm.call_function(
-        func,
-        args.get(1..).unwrap_or(&[]).to_vec(),
-        this_arg,
-        cur_frame,
-    )
+    vm.call_function(func, args.get(1..).unwrap_or(&[]), this_arg, cur_frame)
 }
 
 /////////////////////////////////////////////////////////////////

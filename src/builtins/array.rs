@@ -24,7 +24,7 @@ pub fn array(
     ary
 }
 
-pub fn array_constructor(vm: &mut VM2, _args: &Vec<Value2>, _cur_frame: &Frame) -> VMResult {
+pub fn array_constructor(vm: &mut VM2, _args: &[Value2], _cur_frame: &Frame) -> VMResult {
     vm.stack.push(Value2::undefined().into());
     Ok(())
 }

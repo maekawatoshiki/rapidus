@@ -1,13 +1,12 @@
 use gc;
 use rustc_hash::FxHashMap;
-use vm::{error::RuntimeError, value::*, vm::VM};
-use vm::{frame, jsvalue, vm};
+use vm::{error::RuntimeError, frame, jsvalue::value::*, value::*, vm, vm::VM};
 
 pub fn object(
     memory_allocator: &mut gc::MemoryAllocator,
-    object_prototypes: &jsvalue::prototype::ObjectPrototypes,
-) -> jsvalue::value::Value2 {
-    let obj = jsvalue::value::Value2::builtin_function(
+    object_prototypes: &ObjectPrototypes,
+) -> Value2 {
+    let obj = Value2::builtin_function(
         memory_allocator,
         object_prototypes,
         "Object".to_string(),
@@ -21,11 +20,11 @@ pub fn object(
 
 pub fn object_constructor(
     vm: &mut vm::VM2,
-    args: &Vec<jsvalue::value::Value2>,
+    args: &[Value2],
     _cur_frame: &frame::Frame,
 ) -> vm::VMResult {
     if args.len() == 0 {
-        let empty_obj = jsvalue::value::Value2::object(
+        let empty_obj = Value2::object(
             vm.memory_allocator(),
             vm.code_generator.object_prototypes,
             FxHashMap::default(),
@@ -35,16 +34,15 @@ pub fn object_constructor(
     }
 
     match &args[0] {
-        jsvalue::value::Value2::Other(jsvalue::value::NULL)
-        | jsvalue::value::Value2::Other(jsvalue::value::UNDEFINED) => {
-            let empty_obj = jsvalue::value::Value2::object(
+        Value2::Other(NULL) | Value2::Other(UNDEFINED) => {
+            let empty_obj = Value2::object(
                 vm.memory_allocator(),
                 vm.code_generator.object_prototypes,
                 FxHashMap::default(),
             );
             vm.stack.push(empty_obj.into());
         }
-        jsvalue::value::Value2::Other(jsvalue::value::EMPTY) => unreachable!(),
+        Value2::Other(EMPTY) => unreachable!(),
         _ => {
             // TODO: Follow the specification
             vm.stack.push(args[0].into());

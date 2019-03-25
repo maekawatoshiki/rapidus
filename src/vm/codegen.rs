@@ -1224,7 +1224,7 @@ impl Level {
             has_return_from_try_or_catch |= iseq[instr_pos] == VMInst::RETURN_TRY;
             assert!(match iseq[instr_pos] {
                 VMInst::RETURN_TRY | VMInst::JMP => true,
-                e => false,
+                _ => false,
             });
             bytecode_generator.replace_int32(
                 (dst - instr_pos) as i32 - 5,

@@ -176,14 +176,14 @@ impl<'a> VM2<'a> {
     pub fn call_function(
         &mut self,
         callee: Value2,
-        args: Vec<Value2>,
+        args: &[Value2],
         this: Value2,
         cur_frame: &frame::Frame,
     ) -> VMResult {
         let info = callee.as_function();
         match info.kind {
             FunctionObjectKind::Builtin(func) => {
-                func(self, &args, &frame::Frame::new_empty_with_this(this, false))
+                func(self, args, &frame::Frame::new_empty_with_this(this, false))
             }
             FunctionObjectKind::User(ref user_func) => {
                 self.call_user_function(user_func, args, this, cur_frame, false)
@@ -194,7 +194,7 @@ impl<'a> VM2<'a> {
     fn call_user_function(
         &mut self,
         user_func: &UserFunctionInfo,
-        args: Vec<Value2>,
+        args: &[Value2],
         this: Value2,
         cur_frame: &frame::Frame,
         constructor_call: bool,
@@ -507,7 +507,7 @@ impl<'a> VM2<'a> {
                     for _ in 0..argc {
                         args.push(self.stack.pop().unwrap().into());
                     }
-                    self.enter_constructor(callee, args, &mut cur_frame)?;
+                    self.enter_constructor(callee, &args, &mut cur_frame)?;
                 }
                 VMInst::CALL => {
                     cur_frame.pc += 1;
@@ -517,7 +517,7 @@ impl<'a> VM2<'a> {
                     for _ in 0..argc {
                         args.push(self.stack.pop().unwrap().into());
                     }
-                    etry!(self.enter_function(callee, args, cur_frame.this, &mut cur_frame, false))
+                    etry!(self.enter_function(callee, &args, cur_frame.this, &mut cur_frame, false))
                 }
                 VMInst::CALL_METHOD => {
                     cur_frame.pc += 1;
@@ -536,7 +536,7 @@ impl<'a> VM2<'a> {
                         Property2::Data(DataProperty { val, .. }) => val,
                         _ => type_error!("Not a function"),
                     };
-                    etry!(self.enter_function(callee, args, parent, &mut cur_frame, false))
+                    etry!(self.enter_function(callee, &args, parent, &mut cur_frame, false))
                 }
                 VMInst::SET_OUTER_ENV => {
                     cur_frame.pc += 1;
@@ -550,9 +550,7 @@ impl<'a> VM2<'a> {
                 VMInst::CREATE_OBJECT => {
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, id, usize);
-                    let (len, special_properties) =
-                        constant_table!(self).get(id).as_object_literal_info();
-                    self.create_object(len, special_properties)?;
+                    self.create_object(id)?;
                     memory_allocator!(self).mark(
                         self.global_environment,
                         object_prototypes!(self),
@@ -583,8 +581,7 @@ impl<'a> VM2<'a> {
                 VMInst::PUSH_ENV => {
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, id, usize);
-                    let names = constant_table!(self).get(id).as_lex_env_info().clone();
-                    self.push_env(names, &mut cur_frame)?;
+                    self.push_env(id, &mut cur_frame)?;
                 }
                 VMInst::POP_ENV => {
                     cur_frame.pc += 1;
@@ -695,10 +692,11 @@ impl<'a> VM2<'a> {
         *cur_frame = frame;
     }
 
-    fn push_env(&mut self, lex_names: Vec<String>, cur_frame: &mut frame::Frame) -> VMResult {
+    fn push_env(&mut self, id: usize, cur_frame: &mut frame::Frame) -> VMResult {
+        let lex_names = constant_table!(self).get(id).as_lex_env_info();
         let mut record = FxHashMap::default();
         for name in lex_names {
-            record.insert(name, Value2::uninitialized());
+            record.insert(name.clone(), Value2::uninitialized());
         }
 
         let lex_env = memory_allocator!(self).alloc(frame::LexicalEnvironment {
@@ -715,11 +713,8 @@ impl<'a> VM2<'a> {
         Ok(())
     }
 
-    fn create_object(
-        &mut self,
-        len: usize,
-        special_properties: constant::SpecialProperties,
-    ) -> VMResult {
+    fn create_object(&mut self, id: usize) -> VMResult {
+        let (len, special_properties) = constant_table!(self).get(id).as_object_literal_info();
         let mut properties = FxHashMap::default();
 
         for i in 0..len {
@@ -786,7 +781,7 @@ impl<'a> VM2<'a> {
     fn enter_constructor(
         &mut self,
         callee: Value2,
-        args: Vec<Value2>,
+        args: &[Value2],
         cur_frame: &mut frame::Frame,
     ) -> VMResult {
         let properties = match callee
@@ -811,7 +806,7 @@ impl<'a> VM2<'a> {
 
         match info.kind {
             FunctionObjectKind::Builtin(func) => {
-                func(self, &args, &frame::Frame::new_empty_with_this(this, true))
+                func(self, args, &frame::Frame::new_empty_with_this(this, true))
             }
             FunctionObjectKind::User(ref user_func) => {
                 self.enter_user_function(user_func.clone(), args, this, cur_frame, true)
@@ -822,7 +817,7 @@ impl<'a> VM2<'a> {
     fn enter_function(
         &mut self,
         callee: Value2,
-        args: Vec<Value2>,
+        args: &[Value2],
         this: Value2,
         cur_frame: &mut frame::Frame,
         constructor_call: bool,
@@ -834,7 +829,7 @@ impl<'a> VM2<'a> {
         let info = callee.as_function();
         match info.kind {
             FunctionObjectKind::Builtin(func) => {
-                func(self, &args, &frame::Frame::new_empty_with_this(this, false))
+                func(self, args, &frame::Frame::new_empty_with_this(this, false))
             }
             FunctionObjectKind::User(ref user_func) => {
                 self.enter_user_function(user_func.clone(), args, this, cur_frame, constructor_call)
@@ -845,7 +840,7 @@ impl<'a> VM2<'a> {
     fn enter_user_function(
         &mut self,
         user_func: UserFunctionInfo,
-        args: Vec<Value2>,
+        args: &[Value2],
         this: Value2,
         cur_frame: &mut frame::Frame,
         constructor_call: bool,
@@ -945,7 +940,7 @@ impl<'a> VM2<'a> {
                     self.stack.push(Value2::undefined().into());
                     return Ok(());
                 }
-                self.enter_function(get, vec![], parent, cur_frame, false)
+                self.enter_function(get, &[], parent, cur_frame, false)
             }
         }
     }
@@ -959,7 +954,7 @@ impl<'a> VM2<'a> {
     ) -> VMResult {
         let maybe_setter = parent.set_property(key, val)?;
         if let Some(setter) = maybe_setter {
-            self.call_function(setter, vec![val], parent, cur_frame)?;
+            self.call_function(setter, &[val], parent, cur_frame)?;
             self.stack.pop().unwrap(); // Pop undefined (setter's return value)
         }
         Ok(())
