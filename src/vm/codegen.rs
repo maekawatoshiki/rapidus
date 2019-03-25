@@ -141,11 +141,11 @@ impl<'a> CodeGenerator<'a> {
                     self.bytecode_generator.append_get_value(name, iseq)
                 }
             }
-            NodeBase::Undefined => {
-                if use_value {
-                    self.bytecode_generator.append_push_undefined(iseq);
-                }
-            }
+            // NodeBase::Undefined => {
+            //     if use_value {
+            //         self.bytecode_generator.append_push_undefined(iseq);
+            //     }
+            // }
             NodeBase::Null => {
                 if use_value {
                     self.bytecode_generator.append_push_null(iseq);

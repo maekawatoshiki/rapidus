@@ -96,15 +96,14 @@ impl ObjectInfo {
     }
 
     pub fn set_property_by_string_key(&mut self, key: String, val: Value2) {
-        let property = self.property.entry(key).or_insert_with(|| {
-            Property2::Data(DataProperty {
-                val: Value2::undefined(),
-                writable: true,
-                enumerable: true,
-                configurable: true,
-            })
-        });
-        property.as_data_mut().val = val;
+        let property = self
+            .property
+            .entry(key)
+            .or_insert_with(|| Property2::new_data_simple(Value2::undefined()));
+        let data = property.as_data_mut();
+        if data.writable {
+            data.val = val;
+        }
     }
 
     pub fn set_property(
@@ -138,8 +137,14 @@ impl ObjectInfo {
             .or_insert_with(|| Property2::new_data_simple(Value2::undefined()));
 
         match property {
-            Property2::Data(DataProperty { ref mut val, .. }) => {
-                *val = val_;
+            Property2::Data(DataProperty {
+                ref mut val,
+                writable,
+                ..
+            }) => {
+                if *writable {
+                    *val = val_;
+                }
                 Ok(None)
             }
             Property2::Accessor(AccessorProperty { set, .. }) => {

@@ -842,7 +842,7 @@ impl Parser {
 
         match tok.kind {
             Kind::Keyword(Keyword::This) => Ok(Node::new(NodeBase::This, tok.pos)),
-            Kind::Keyword(Keyword::Arguments) => Ok(Node::new(NodeBase::Arguments, tok.pos)),
+            // Kind::Keyword(Keyword::Arguments) => Ok(Node::new(NodeBase::Arguments, tok.pos)),
             Kind::Keyword(Keyword::Function) => self.read_function_expression(),
             Kind::Symbol(Symbol::OpeningParen) => {
                 let x = self.read_expression();
@@ -857,9 +857,9 @@ impl Parser {
             Kind::Identifier(ref i) if i == "false" => {
                 Ok(Node::new(NodeBase::Boolean(false), tok.pos))
             }
-            Kind::Identifier(ref i) if i == "undefined" => {
-                Ok(Node::new(NodeBase::Undefined, tok.pos))
-            }
+            // Kind::Identifier(ref i) if i == "undefined" => {
+            //     Ok(Node::new(NodeBase::Undefined, tok.pos))
+            // }
             Kind::Identifier(ref i) if i == "null" => Ok(Node::new(NodeBase::Null, tok.pos)),
             Kind::Identifier(ident) => Ok(Node::new(NodeBase::Identifier(ident), tok.pos)),
             Kind::String(s) => Ok(Node::new(NodeBase::String(s), tok.pos)),

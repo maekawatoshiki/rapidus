@@ -205,6 +205,9 @@ impl LexicalEnvironment {
         LexicalEnvironment {
             record: EnvironmentRecord::Global(make_normal_object!(
                 memory_allocator,
+                undefined  => false,false,false: Value2::undefined(),
+                NaN        => false,false,false: Value2::Number(::std::f64::NAN),
+                Infinity   => false,false,false: Value2::Number(::std::f64::INFINITY),
                 parseFloat => true, false, true: parse_float,
                 console    => true, false, true: console,
                 Object     => true, false, true: object_constructor,
