@@ -1,6 +1,5 @@
 extern crate rapidus;
 use rapidus::bytecode_gen;
-use rapidus::gc;
 use rapidus::parser;
 use rapidus::vm_codegen;
 use rapidus::{vm, vm::frame, vm::jsvalue::value::Value2, vm::value::Value, vm::vm::VM2};
@@ -84,20 +83,9 @@ fn main() {
     };
     println!("{:?}", node);
 
-    let mut const_table = vm::constant::ConstantTable::new();
-    let mut mem_allocator = gc::MemoryAllocator::new();
-    let object_prototypes = vm::jsvalue::prototype::ObjectPrototypes::new(&mut mem_allocator);
-    let global_env =
-        frame::LexicalEnvironment::new_global_initialized(&mut mem_allocator, &object_prototypes);
-    let global_env_ref = mem_allocator.alloc(global_env);
-    let mut vm = VM2::new(
-        global_env_ref,
-        &mut const_table,
-        &mut mem_allocator,
-        &object_prototypes,
-    );
+    let mut vm = VM2::new();
     let mut iseq = vec![];
-    let global_info = match vm.code_generator.compile(&node, &mut iseq, false) {
+    let global_info = match vm.compile(&node, &mut iseq, false) {
         Ok(ok) => ok,
         Err(vm::codegen::Error { msg, token_pos, .. }) => {
             parser.show_error_at(token_pos, msg.as_str());
@@ -106,7 +94,7 @@ fn main() {
     };
 
     println!("New CodeGenerator generated:");
-    bytecode_gen::show2(&iseq, vm.code_generator.bytecode_generator.constant_table);
+    bytecode_gen::show2(&iseq, &vm.constant_table);
 
     println!("Result:");
     if let Err(e) = vm.run_global(global_info, iseq) {
@@ -124,18 +112,7 @@ fn main() {
 
 fn repl_with_new_vm() {
     let mut rl = rustyline::Editor::<()>::new();
-    let mut const_table = vm::constant::ConstantTable::new();
-    let mut mem_allocator = gc::MemoryAllocator::new();
-    let object_prototypes = vm::jsvalue::prototype::ObjectPrototypes::new(&mut mem_allocator);
-    let global_env =
-        frame::LexicalEnvironment::new_global_initialized(&mut mem_allocator, &object_prototypes);
-    let global_env_ref = mem_allocator.alloc(global_env);
-    let mut vm = VM2::new(
-        global_env_ref,
-        &mut const_table,
-        &mut mem_allocator,
-        &object_prototypes,
-    );
+    let mut vm = VM2::new();
     let mut global_frame: Option<frame::Frame> = None;
 
     loop {
@@ -157,7 +134,7 @@ fn repl_with_new_vm() {
                 Ok(node) => {
                     // compile and execute
                     let mut iseq = vec![];
-                    let global_info = match vm.code_generator.compile(&node, &mut iseq, true) {
+                    let global_info = match vm.compile(&node, &mut iseq, true) {
                         Ok(ok) => ok,
                         Err(vm::codegen::Error { msg, token_pos, .. }) => {
                             parser.show_error_at(token_pos, msg.as_str());
@@ -169,10 +146,7 @@ fn repl_with_new_vm() {
                         Some(ref mut frame) => {
                             frame.bytecode = iseq;
                             frame.exception_table = global_info.exception_table.clone();
-                            frame.append_from_function_info(
-                                vm.code_generator.memory_allocator,
-                                &global_info,
-                            )
+                            frame.append_from_function_info(&mut vm.memory_allocator, &global_info)
                         }
                         None => global_frame = Some(vm.create_global_frame(global_info, iseq)),
                     }

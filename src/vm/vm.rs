@@ -1,3 +1,4 @@
+use super::super::node::Node;
 use super::{
     callobj::CallObject,
     codegen,
@@ -30,52 +31,55 @@ use vm_codegen;
 
 pub type VMResult = Result<(), RuntimeError>;
 
-pub struct VM2<'a> {
+pub struct VM2 {
     pub global_environment: frame::LexicalEnvironmentRef,
-    pub code_generator: CodeGenerator<'a>,
+    pub memory_allocator: gc::MemoryAllocator,
+    pub object_prototypes: ObjectPrototypes,
+    pub constant_table: constant::ConstantTable,
     pub stack: Vec<BoxedValue>,
     pub saved_frame: Vec<frame::Frame>,
 }
 
-macro_rules! memory_allocator {
-    ($vm:ident) => {{
-        &mut $vm.code_generator.memory_allocator
-    }};
-}
-
-macro_rules! constant_table {
-    ($vm:ident) => {{
-        &$vm.code_generator.bytecode_generator.constant_table
-    }};
-}
-macro_rules! object_prototypes {
-    ($vm:ident) => {{
-        &$vm.code_generator.object_prototypes
-    }};
-}
-
 macro_rules! gc_lock {
     ($vm:ident, $targets:expr, $($body:tt)*) => { {
-        for arg in $targets { memory_allocator!($vm).lock(*arg) }
+        for arg in $targets { $vm.memory_allocator.lock(*arg) }
         let ret = { $($body)* };
-        for arg in $targets { memory_allocator!($vm).unlock(*arg) }
+        for arg in $targets { $vm.memory_allocator.unlock(*arg) }
         ret
     } }
 }
 
-impl<'a> VM2<'a> {
-    pub fn new(
-        global_environment: frame::LexicalEnvironmentRef,
-        constant_table: &'a mut constant::ConstantTable,
-        memory_allocator: &'a mut gc::MemoryAllocator,
-        object_prototypes: &'a ObjectPrototypes,
-    ) -> Self {
+impl VM2 {
+    pub fn new() -> Self {
+        let mut memory_allocator = gc::MemoryAllocator::new();
+        let object_prototypes = ObjectPrototypes::new(&mut memory_allocator);
+        let global_env = frame::LexicalEnvironment::new_global_initialized(
+            &mut memory_allocator,
+            &object_prototypes,
+        );
+        let global_environment = memory_allocator.alloc(global_env);
         VM2 {
             global_environment,
-            code_generator: CodeGenerator::new(constant_table, memory_allocator, object_prototypes),
+            memory_allocator,
+            object_prototypes,
+            constant_table: constant::ConstantTable::new(),
             stack: vec![],
             saved_frame: vec![],
         }
+    }
+
+    pub fn compile(
+        &mut self,
+        node: &Node,
+        iseq: &mut ByteCode,
+        use_value: bool,
+    ) -> Result<codegen::FunctionInfo, codegen::Error> {
+        let mut code_generator = CodeGenerator::new(
+            &mut self.constant_table,
+            &mut self.memory_allocator,
+            &self.object_prototypes,
+        );
+        code_generator.compile(node, iseq, use_value)
     }
 
     pub fn create_global_frame(
@@ -85,7 +89,7 @@ impl<'a> VM2<'a> {
     ) -> frame::Frame {
         let global_env_ref = self.global_environment;
 
-        let var_env = memory_allocator!(self).alloc(frame::LexicalEnvironment {
+        let var_env = self.memory_allocator.alloc(frame::LexicalEnvironment {
             record: frame::EnvironmentRecord::Declarative({
                 let mut record = FxHashMap::default();
                 for name in global_info.var_names {
@@ -96,7 +100,7 @@ impl<'a> VM2<'a> {
             outer: Some(global_env_ref),
         });
 
-        let lex_env = memory_allocator!(self).alloc(frame::LexicalEnvironment {
+        let lex_env = self.memory_allocator.alloc(frame::LexicalEnvironment {
             record: frame::EnvironmentRecord::Declarative({
                 let mut record = FxHashMap::default();
                 for name in global_info.lex_names {
@@ -108,7 +112,7 @@ impl<'a> VM2<'a> {
         });
 
         for val in global_info.func_decls {
-            let mut val = val.copy_object(memory_allocator!(self));
+            let mut val = val.copy_object(&mut self.memory_allocator);
             let name = val.as_function().name.clone().unwrap();
             val.set_function_outer_environment(lex_env);
             unsafe { &mut *lex_env }.set_value(name, val).unwrap();
@@ -134,7 +138,7 @@ impl<'a> VM2<'a> {
     pub fn run_global(&mut self, global_info: codegen::FunctionInfo, iseq: ByteCode) -> VMResult {
         let global_env_ref = self.global_environment;
 
-        let var_env = memory_allocator!(self).alloc(frame::LexicalEnvironment {
+        let var_env = self.memory_allocator.alloc(frame::LexicalEnvironment {
             record: frame::EnvironmentRecord::Declarative({
                 let mut record = FxHashMap::default();
                 for name in global_info.var_names {
@@ -145,7 +149,7 @@ impl<'a> VM2<'a> {
             outer: Some(global_env_ref),
         });
 
-        let lex_env = memory_allocator!(self).alloc(frame::LexicalEnvironment {
+        let lex_env = self.memory_allocator.alloc(frame::LexicalEnvironment {
             record: frame::EnvironmentRecord::Declarative({
                 let mut record = FxHashMap::default();
                 for name in global_info.lex_names {
@@ -157,7 +161,7 @@ impl<'a> VM2<'a> {
         });
 
         for val in global_info.func_decls {
-            let mut val = val.copy_object(memory_allocator!(self));
+            let mut val = val.copy_object(&mut self.memory_allocator);
             let name = val.as_function().name.clone().unwrap();
             val.set_function_outer_environment(lex_env);
             unsafe { &mut *lex_env }.set_value(name, val)?;
@@ -217,7 +221,7 @@ impl<'a> VM2<'a> {
             cur_frame
         });
 
-        let var_env = memory_allocator!(self).alloc(frame::LexicalEnvironment {
+        let var_env = self.memory_allocator.alloc(frame::LexicalEnvironment {
             record: frame::EnvironmentRecord::Declarative({
                 let mut record = FxHashMap::default();
 
@@ -235,7 +239,7 @@ impl<'a> VM2<'a> {
             outer: user_func.outer,
         });
 
-        let lex_env = memory_allocator!(self).alloc(frame::LexicalEnvironment {
+        let lex_env = self.memory_allocator.alloc(frame::LexicalEnvironment {
             record: frame::EnvironmentRecord::Declarative({
                 let mut record = FxHashMap::default();
                 for name in &user_func.lex_names {
@@ -247,7 +251,7 @@ impl<'a> VM2<'a> {
         });
 
         for func in &user_func.func_decls {
-            let mut func = func.copy_object(memory_allocator!(self));
+            let mut func = func.copy_object(&mut self.memory_allocator);
             let name = func.as_function().name.clone().unwrap();
             func.set_function_outer_environment(lex_env);
             unsafe { &mut *lex_env }.set_value(name, func)?;
@@ -277,7 +281,7 @@ impl<'a> VM2<'a> {
         key: Value2,
         cur_frame: &mut frame::Frame,
     ) -> VMResult {
-        let val = parent.get_property(memory_allocator!(self), object_prototypes!(self), key)?;
+        let val = parent.get_property(&mut self.memory_allocator, &self.object_prototypes, key)?;
         match val {
             Property2::Data(DataProperty { val, .. }) => {
                 self.stack.push(val.into());
@@ -299,7 +303,7 @@ impl<'a> VM2<'a> {
         key: Value2,
         cur_frame: &frame::Frame,
     ) -> Result<Value2, RuntimeError> {
-        let val = parent.get_property(memory_allocator!(self), object_prototypes!(self), key)?;
+        let val = parent.get_property(&mut self.memory_allocator, &self.object_prototypes, key)?;
         match val {
             Property2::Data(DataProperty { val, .. }) => Ok(val),
             Property2::Accessor(AccessorProperty { get, .. }) => {
@@ -345,7 +349,7 @@ macro_rules! read_int32 {
     };
 }
 
-impl<'a> VM2<'a> {
+impl VM2 {
     pub fn run(&mut self, mut cur_frame: frame::Frame) -> VMResult {
         #[derive(Debug, Clone)]
         enum SubroutineKind {
@@ -402,7 +406,8 @@ impl<'a> VM2<'a> {
 
         macro_rules! type_error {
             ($msg:expr) => {{
-                let val = RuntimeError::Type($msg.to_string()).to_value2(memory_allocator!(self));
+                let val =
+                    RuntimeError::Type($msg.to_string()).to_value2(&mut self.memory_allocator);
                 self.stack.push(val.into());
                 exception!();
                 continue;
@@ -414,7 +419,7 @@ impl<'a> VM2<'a> {
                 match $val {
                     Ok(ok) => ok,
                     Err(err) => {
-                        let val = err.to_value2(memory_allocator!(self));
+                        let val = err.to_value2(&mut self.memory_allocator);
                         self.stack.push(val.into());
                         exception!();
                         continue;
@@ -431,7 +436,7 @@ impl<'a> VM2<'a> {
                     let rhs: Value2 = self.stack.pop().unwrap().into();
                     let lhs: Value2 = self.stack.pop().unwrap().into();
                     self.stack
-                        .push(lhs.add(memory_allocator!(self), rhs).into());
+                        .push(lhs.add(&mut self.memory_allocator, rhs).into());
                 }
                 VMInst::SUB => {
                     cur_frame.pc += 1;
@@ -516,7 +521,7 @@ impl<'a> VM2<'a> {
                 VMInst::PUSH_CONST => {
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, id, usize);
-                    let val = *constant_table!(self).get(id).as_value();
+                    let val = *self.constant_table.get(id).as_value();
                     self.stack.push(val.into());
                 }
                 VMInst::PUSH_NULL => {
@@ -556,7 +561,7 @@ impl<'a> VM2<'a> {
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, name_id, usize);
                     let val = self.stack.pop().unwrap();
-                    let name = constant_table!(self).get(name_id).as_string().clone();
+                    let name = self.constant_table.get(name_id).as_string().clone();
                     etry!(cur_frame.lex_env_mut().set_value(name, val.into()));
                 }
                 VMInst::GET_VALUE => {
@@ -564,7 +569,7 @@ impl<'a> VM2<'a> {
                     read_int32!(cur_frame.bytecode, cur_frame.pc, name_id, usize);
                     let val = etry!(cur_frame
                         .lex_env()
-                        .get_value(constant_table!(self).get(name_id).as_string()));
+                        .get_value(self.constant_table.get(name_id).as_string()));
                     self.stack.push(val.into());
                 }
                 VMInst::CONSTRUCT => {
@@ -597,8 +602,8 @@ impl<'a> VM2<'a> {
                         args.push(self.stack.pop().unwrap().into());
                     }
                     let callee = match etry!(parent.get_property(
-                        memory_allocator!(self),
-                        object_prototypes!(self),
+                        &mut self.memory_allocator,
+                        &self.object_prototypes,
                         method
                     )) {
                         Property2::Data(DataProperty { val, .. }) => val,
@@ -609,7 +614,7 @@ impl<'a> VM2<'a> {
                 VMInst::SET_OUTER_ENV => {
                     cur_frame.pc += 1;
                     let func_template: Value2 = self.stack.pop().unwrap().into();
-                    let mut func = func_template.copy_object(memory_allocator!(self));
+                    let mut func = func_template.copy_object(&mut self.memory_allocator);
                     func.set_function_outer_environment(
                         cur_frame.execution_context.lexical_environment,
                     );
@@ -619,10 +624,10 @@ impl<'a> VM2<'a> {
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, id, usize);
                     self.create_object(id)?;
-                    memory_allocator!(self).mark(
+                    self.memory_allocator.mark(
                         self.global_environment,
-                        object_prototypes!(self),
-                        constant_table!(self),
+                        &self.object_prototypes,
+                        &self.constant_table,
                         &self.stack,
                         &cur_frame,
                         &self.saved_frame,
@@ -632,10 +637,10 @@ impl<'a> VM2<'a> {
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, len, usize);
                     self.create_array(len)?;
-                    memory_allocator!(self).mark(
+                    self.memory_allocator.mark(
                         self.global_environment,
-                        object_prototypes!(self),
-                        constant_table!(self),
+                        &self.object_prototypes,
+                        &self.constant_table,
                         &self.stack,
                         &cur_frame,
                         &self.saved_frame,
@@ -713,10 +718,10 @@ impl<'a> VM2<'a> {
                     let escape = cur_frame.escape;
                     self.unwind_frame_saving_stack_top(&mut cur_frame);
                     // TODO: GC schedule
-                    memory_allocator!(self).mark(
+                    self.memory_allocator.mark(
                         self.global_environment,
-                        object_prototypes!(self),
-                        constant_table!(self),
+                        &self.object_prototypes,
+                        &self.constant_table,
                         &self.stack,
                         &cur_frame,
                         &self.saved_frame,
@@ -730,7 +735,7 @@ impl<'a> VM2<'a> {
                     let val: Value2 = self.stack.pop().unwrap().into();
                     let type_str = val.type_of();
                     let type_str_val =
-                        Value2::string(memory_allocator!(self), type_str.to_string());
+                        Value2::string(&mut self.memory_allocator, type_str.to_string());
                     self.stack.push(type_str_val.into());
                 }
                 VMInst::END => break,
@@ -761,13 +766,13 @@ impl<'a> VM2<'a> {
     }
 
     fn push_env(&mut self, id: usize, cur_frame: &mut frame::Frame) -> VMResult {
-        let lex_names = constant_table!(self).get(id).as_lex_env_info();
+        let lex_names = self.constant_table.get(id).as_lex_env_info();
         let mut record = FxHashMap::default();
         for name in lex_names {
             record.insert(name.clone(), Value2::uninitialized());
         }
 
-        let lex_env = memory_allocator!(self).alloc(frame::LexicalEnvironment {
+        let lex_env = self.memory_allocator.alloc(frame::LexicalEnvironment {
             record: frame::EnvironmentRecord::Declarative(record),
             outer: Some(cur_frame.execution_context.lexical_environment),
         });
@@ -782,7 +787,7 @@ impl<'a> VM2<'a> {
     }
 
     fn create_object(&mut self, id: usize) -> VMResult {
-        let (len, special_properties) = constant_table!(self).get(id).as_object_literal_info();
+        let (len, special_properties) = self.constant_table.get(id).as_object_literal_info();
         let mut properties = FxHashMap::default();
 
         for i in 0..len {
@@ -819,8 +824,8 @@ impl<'a> VM2<'a> {
         }
 
         let obj = Value2::object(
-            memory_allocator!(self),
-            object_prototypes!(self),
+            &mut self.memory_allocator,
+            &self.object_prototypes,
             properties,
         );
         self.stack.push(obj.into());
@@ -840,7 +845,7 @@ impl<'a> VM2<'a> {
             }));
         }
 
-        let ary = Value2::array(memory_allocator!(self), object_prototypes!(self), elems);
+        let ary = Value2::array(&mut self.memory_allocator, &self.object_prototypes, elems);
         self.stack.push(ary.into());
 
         Ok(())
@@ -861,8 +866,8 @@ impl<'a> VM2<'a> {
         };
 
         let this = Value2::object(
-            memory_allocator!(self),
-            object_prototypes!(self),
+            &mut self.memory_allocator,
+            &self.object_prototypes,
             properties,
         );
 
@@ -922,7 +927,7 @@ impl<'a> VM2<'a> {
             cur_frame
         });
 
-        let var_env = memory_allocator!(self).alloc(frame::LexicalEnvironment {
+        let var_env = self.memory_allocator.alloc(frame::LexicalEnvironment {
             record: frame::EnvironmentRecord::Declarative({
                 let mut record = FxHashMap::default();
 
@@ -940,7 +945,7 @@ impl<'a> VM2<'a> {
             outer: user_func.outer,
         });
 
-        let lex_env = memory_allocator!(self).alloc(frame::LexicalEnvironment {
+        let lex_env = self.memory_allocator.alloc(frame::LexicalEnvironment {
             record: frame::EnvironmentRecord::Declarative({
                 let mut record = FxHashMap::default();
                 for name in user_func.lex_names {
@@ -952,7 +957,7 @@ impl<'a> VM2<'a> {
         });
 
         for func in user_func.func_decls {
-            let mut func = func.copy_object(memory_allocator!(self));
+            let mut func = func.copy_object(&mut self.memory_allocator);
             let name = func.as_function().name.clone().unwrap();
             func.set_function_outer_environment(lex_env);
             unsafe { &mut *lex_env }.set_value(name, func)?;
@@ -975,21 +980,6 @@ impl<'a> VM2<'a> {
         *cur_frame = frame;
 
         Ok(())
-    }
-
-    #[inline]
-    pub fn constant_table(&self) -> &constant::ConstantTable {
-        &self.code_generator.bytecode_generator.constant_table
-    }
-
-    #[inline]
-    pub fn memory_allocator(&mut self) -> &mut gc::MemoryAllocator {
-        self.code_generator.memory_allocator
-    }
-
-    #[inline]
-    pub fn object_prototypes(&self) -> &ObjectPrototypes {
-        self.code_generator.object_prototypes
     }
 }
 

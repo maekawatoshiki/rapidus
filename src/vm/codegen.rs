@@ -60,9 +60,9 @@ impl<'a> CodeGenerator<'a> {
     ) -> Self {
         CodeGenerator {
             bytecode_generator: ByteCodeGenerator::new(constant_table),
-            function_stack: vec![FunctionInfo::new(None) /* = global */],
             object_prototypes,
             memory_allocator,
+            function_stack: vec![FunctionInfo::new(None) /* = global */],
         }
     }
 

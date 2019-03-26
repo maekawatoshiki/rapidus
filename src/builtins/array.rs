@@ -74,14 +74,8 @@ pub fn array_prototype_map(vm: &mut VM2, args: &[Value2], cur_frame: &Frame) -> 
         ));
     }
 
-    vm.stack.push(
-        Value2::array(
-            vm.code_generator.memory_allocator,
-            vm.code_generator.object_prototypes,
-            new_ary,
-        )
-        .into(),
-    );
+    vm.stack
+        .push(Value2::array(&mut vm.memory_allocator, &vm.object_prototypes, new_ary).into());
 
     Ok(())
 }
