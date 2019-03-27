@@ -87,10 +87,14 @@ impl Frame {
         unsafe { &mut *self.execution_context.lexical_environment }
     }
 
-    pub fn escape(self) -> Self {
-        let mut frame = self;
-        frame.escape = true;
-        frame
+    pub fn escape(mut self) -> Self {
+        self.escape = true;
+        self
+    }
+
+    pub fn saved_stack_len(mut self, saved_stack_len: usize) -> Self {
+        self.saved_stack_len = saved_stack_len;
+        self
     }
 
     pub fn append_function(&mut self, memory_allocator: &mut gc::MemoryAllocator, f: Value2) {

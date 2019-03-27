@@ -193,6 +193,10 @@ impl VM2 {
         this: Value2,
         cur_frame: &frame::Frame,
     ) -> VMResult {
+        if !callee.is_function_object() {
+            return Err(RuntimeError::Type("Not a function".to_string()));
+        }
+
         let info = callee.as_function();
 
         match info.kind {
@@ -215,11 +219,8 @@ impl VM2 {
         cur_frame: &frame::Frame,
         constructor_call: bool,
     ) -> VMResult {
-        self.saved_frame.push({
-            let mut cur_frame = cur_frame.clone();
-            cur_frame.saved_stack_len = self.stack.len();
-            cur_frame
-        });
+        self.saved_frame
+            .push(cur_frame.clone().saved_stack_len(self.stack.len()));
 
         let var_env = self.memory_allocator.alloc(frame::LexicalEnvironment {
             record: frame::EnvironmentRecord::Declarative({
@@ -921,11 +922,8 @@ impl VM2 {
         cur_frame: &mut frame::Frame,
         constructor_call: bool,
     ) -> VMResult {
-        self.saved_frame.push({
-            let mut cur_frame = cur_frame.clone();
-            cur_frame.saved_stack_len = self.stack.len();
-            cur_frame
-        });
+        self.saved_frame
+            .push(cur_frame.clone().saved_stack_len(self.stack.len()));
 
         let var_env = self.memory_allocator.alloc(frame::LexicalEnvironment {
             record: frame::EnvironmentRecord::Declarative({
