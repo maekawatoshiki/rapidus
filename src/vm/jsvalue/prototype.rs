@@ -60,9 +60,20 @@ impl ObjectPrototypes {
                 builtin::string_prototype_index_of,
             );
 
+            let split = Value2::builtin_function_with_proto(
+                memory_allocator,
+                function_prototype,
+                "split".to_string(),
+                builtin::string_prototype_split,
+            );
+
             Value2::Object(memory_allocator.alloc(ObjectInfo {
                 kind: ObjectKind2::Ordinary,
-                property: make_property_map!(__proto__: object_prototype, indexOf: index_of),
+                property: make_property_map!(
+                    __proto__: object_prototype,
+                    indexOf: index_of,
+                    split: split
+                ),
             }))
         };
 

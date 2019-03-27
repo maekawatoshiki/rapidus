@@ -21,6 +21,38 @@ use vm_codegen;
 
 pub type BuiltinFuncTy2 = fn(&mut VM2, &[Value2], &Frame) -> Result<(), RuntimeError>;
 
+// TODO: builtins/string.rs for String methods
+
+pub fn string_prototype_split(
+    vm: &mut VM2,
+    args: &[Value2],
+    cur_frame: &Frame,
+) -> Result<(), RuntimeError> {
+    let string = cur_frame.this.into_str();
+    let separator_ = args.get(0).map(|x| *x).unwrap_or(Value2::undefined());
+    if separator_.is_undefined() {
+        let ary = Value2::array(
+            &mut vm.memory_allocator,
+            &vm.object_prototypes,
+            vec![Property2::new_data_simple(cur_frame.this)],
+        );
+        vm.stack.push(ary.into());
+        return Ok(());
+    }
+    let separator = separator_.to_string();
+    let elems = string
+        .split(separator.as_str())
+        .collect::<Vec<&str>>()
+        .iter()
+        .map(|s| {
+            Property2::new_data_simple(Value2::string(&mut vm.memory_allocator, s.to_string()))
+        })
+        .collect::<Vec<Property2>>();
+    let ary = Value2::array(&mut vm.memory_allocator, &vm.object_prototypes, elems);
+    vm.stack.push(ary.into());
+    Ok(())
+}
+
 pub fn string_prototype_index_of(
     vm: &mut VM2,
     args: &[Value2],
