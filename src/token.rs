@@ -109,6 +109,7 @@ pub enum Symbol {
     AssignLOr,
     Hash,
     Rest,
+    FatArrow,
 }
 
 impl Token {

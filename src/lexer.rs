@@ -482,7 +482,9 @@ impl Lexer {
                 }
             }
             '=' => {
-                if self.take_char_if('=')? {
+                if self.take_char_if('>')? {
+                    symbol = Symbol::FatArrow
+                } else if self.take_char_if('=')? {
                     symbol = if self.take_char_if('=')? {
                         Symbol::SEq
                     } else {

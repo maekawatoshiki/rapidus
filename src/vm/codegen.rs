@@ -110,6 +110,9 @@ impl<'a> CodeGenerator<'a> {
             NodeBase::FunctionExpr(ref name, ref params, ref body) => {
                 self.visit_function_expr(name, params, &*body, iseq, use_value)?
             }
+            NodeBase::ArrowFunction(ref params, ref body) => {
+                self.visit_function_expr(&None, params, &*body, iseq, use_value)? // TODO
+            }
             NodeBase::VarDecl(ref name, ref init, ref kind) => {
                 self.visit_var_decl(node, name, init, kind, iseq)?
             }

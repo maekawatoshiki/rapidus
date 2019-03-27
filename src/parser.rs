@@ -845,9 +845,23 @@ impl Parser {
             // Kind::Keyword(Keyword::Arguments) => Ok(Node::new(NodeBase::Arguments, tok.pos)),
             Kind::Keyword(Keyword::Function) => self.read_function_expression(),
             Kind::Symbol(Symbol::OpeningParen) => {
-                let x = self.read_expression();
-                expect!(self, Kind::Symbol(Symbol::ClosingParen), "expect ')'");
-                x
+                let buf = self.lexer.buf.clone();
+                let pos = self.lexer.pos;
+                let expr = self.read_expression();
+                if expr.is_ok() {
+                    expect!(self, Kind::Symbol(Symbol::ClosingParen), "expect ')'");
+                }
+                if expr.is_err()
+                    || self
+                        .lexer
+                        .next_if_skip_lineterminator(Kind::Symbol(Symbol::FatArrow))
+                        .unwrap_or(false)
+                {
+                    self.lexer.pos = pos;
+                    self.lexer.buf = buf;
+                    return self.read_arrow_function();
+                }
+                expr
             }
             Kind::Symbol(Symbol::OpeningBoxBracket) => self.read_array_literal(),
             Kind::Symbol(Symbol::OpeningBrace) => self.read_object_literal(),
@@ -865,13 +879,34 @@ impl Parser {
             Kind::String(s) => Ok(Node::new(NodeBase::String(s), tok.pos)),
             Kind::Number(num) => Ok(Node::new(NodeBase::Number(num), tok.pos)),
             Kind::LineTerminator => self.read_primary_expression(),
-            _ => {
-                return Err(Error::UnexpectedToken(
-                    tok.pos,
-                    format!("unexpected token."),
-                ));
-            }
+            _ => Err(Error::UnexpectedToken(
+                tok.pos,
+                format!("unexpected token."),
+            )),
         }
+    }
+
+    /// https://www.ecma-international.org/ecma-262/6.0/#sec-arrow-function-definitions
+    fn read_arrow_function(&mut self) -> Result<Node, Error> {
+        let pos = self.lexer.pos;
+        let params = self.read_formal_parameters()?;
+        expect!(self, Kind::Symbol(Symbol::FatArrow), "expect '=>'");
+        let body = if let Ok(true) = self
+            .lexer
+            .next_if_skip_lineterminator(Kind::Symbol(Symbol::OpeningBrace))
+        {
+            self.read_block()?
+        } else {
+            let pos = self.lexer.pos;
+            Node::new(
+                NodeBase::Return(Some(Box::new(self.read_assignment_expression()?))),
+                pos,
+            )
+        };
+        Ok(Node::new(
+            NodeBase::ArrowFunction(params, Box::new(body)),
+            pos,
+        ))
     }
 
     /// https://tc39.github.io/ecma262/#prod-FunctionDeclaration

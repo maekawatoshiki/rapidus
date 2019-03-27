@@ -53,6 +53,7 @@ pub enum NodeBase {
     Block(Vec<Node>),
     FunctionDecl(String, FormalParameters, Box<Node>), // name, params, body
     FunctionExpr(Option<String>, FormalParameters, Box<Node>), // Name, params, body
+    ArrowFunction(FormalParameters, Box<Node>),
     VarDecl(String, Option<Box<Node>>, VarKind),
     Member(Box<Node>, String),
     Index(Box<Node>, Box<Node>),
