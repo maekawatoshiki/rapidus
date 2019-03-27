@@ -179,6 +179,7 @@ impl Value2 {
         var_names: Vec<String>,
         lex_names: Vec<String>,
         func_decls: Vec<Value2>,
+        constructor: bool,
         code: ByteCode,
         exception_table: Vec<Exception>,
     ) -> Self {
@@ -199,6 +200,7 @@ impl Value2 {
                     var_names,
                     lex_names,
                     func_decls,
+                    constructor,
                     code,
                     exception_table,
                     outer: None

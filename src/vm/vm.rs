@@ -922,6 +922,10 @@ impl VM2 {
         cur_frame: &mut frame::Frame,
         constructor_call: bool,
     ) -> VMResult {
+        if !user_func.constructor && constructor_call {
+            return Err(RuntimeError::Type("Not a constructor".to_string()));
+        }
+
         self.saved_frame
             .push(cur_frame.clone().saved_stack_len(self.stack.len()));
 

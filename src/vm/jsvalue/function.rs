@@ -22,6 +22,7 @@ pub struct UserFunctionInfo {
     pub var_names: Vec<String>,
     pub lex_names: Vec<String>,
     pub func_decls: Vec<Value2>,
+    pub constructor: bool,
     pub code: ByteCode,
     pub exception_table: Vec<Exception>,
     pub outer: Option<LexicalEnvironmentRef>,

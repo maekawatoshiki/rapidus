@@ -108,10 +108,10 @@ impl<'a> CodeGenerator<'a> {
                 self.visit_function_decl(name, params, &*body)?
             }
             NodeBase::FunctionExpr(ref name, ref params, ref body) => {
-                self.visit_function_expr(name, params, &*body, iseq, use_value)?
+                self.visit_function_expr(name, params, &*body, true, iseq, use_value)?
             }
             NodeBase::ArrowFunction(ref params, ref body) => {
-                self.visit_function_expr(&None, params, &*body, iseq, use_value)? // TODO
+                self.visit_function_expr(&None, params, &*body, false, iseq, use_value)?
             }
             NodeBase::VarDecl(ref name, ref init, ref kind) => {
                 self.visit_var_decl(node, name, init, kind, iseq)?
@@ -541,7 +541,7 @@ impl<'a> CodeGenerator<'a> {
         params: &FormalParameters,
         body: &Node,
     ) -> CodeGenResult {
-        let func = self.visit_function(Some(name.clone()), params, body)?;
+        let func = self.visit_function(Some(name.clone()), params, body, true)?;
         self.current_function().var_names.push(name.clone());
         self.current_function().func_decls.push(func);
         Ok(())
@@ -552,6 +552,7 @@ impl<'a> CodeGenerator<'a> {
         name: &Option<String>,
         params: &FormalParameters,
         body: &Node,
+        constructor: bool,
         iseq: &mut ByteCode,
         use_value: bool,
     ) -> CodeGenResult {
@@ -559,7 +560,7 @@ impl<'a> CodeGenerator<'a> {
             return Ok(());
         }
 
-        let func = self.visit_function(name.clone(), params, body)?;
+        let func = self.visit_function(name.clone(), params, body, constructor)?;
         self.bytecode_generator.append_push_const(func, iseq);
         self.bytecode_generator.append_set_outer_env(iseq);
 
@@ -571,6 +572,7 @@ impl<'a> CodeGenerator<'a> {
         name: Option<String>,
         params: &FormalParameters,
         body: &Node,
+        constructor: bool,
     ) -> Result<Value2, Error> {
         self.function_stack.push(FunctionInfo::new(name));
 
@@ -607,6 +609,7 @@ impl<'a> CodeGenerator<'a> {
             function_info.var_names,
             function_info.lex_names,
             function_info.func_decls,
+            constructor,
             func_iseq,
             function_info.exception_table,
         ))

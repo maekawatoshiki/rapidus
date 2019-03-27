@@ -30,6 +30,7 @@ impl ObjectPrototypes {
                         var_names: vec![],
                         lex_names: vec![],
                         func_decls: vec![],
+                        constructor: false,
                         code: vec![],
                         outer: None,
                         exception_table: vec![],

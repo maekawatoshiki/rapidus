@@ -15,14 +15,6 @@ pub enum ObjectKind2 {
     Ordinary,
 }
 
-// #[derive(Clone, PartialEq, Debug, Copy)]
-// pub struct Property2 {
-//     pub val: Value2,
-//     pub writable: bool,
-//     pub enumerable: bool,
-//     pub configurable: bool,
-// }
-
 #[derive(Clone, PartialEq, Debug, Copy)]
 pub enum Property2 {
     Data(DataProperty),
