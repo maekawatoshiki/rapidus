@@ -1,4 +1,5 @@
 extern crate rapidus;
+use rapidus::analysis;
 use rapidus::bytecode_gen;
 use rapidus::parser;
 use rapidus::vm_codegen;
@@ -78,6 +79,12 @@ fn main() {
         }
     };
     println!("{:?}", node);
+
+    println!("Analyzer:");
+    println!(
+        "{:?}",
+        analysis::Analyzer::new().analyze(node.clone()).unwrap()
+    );
 
     let mut vm = VM2::new();
     let mut iseq = vec![];

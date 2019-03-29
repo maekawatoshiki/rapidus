@@ -5,7 +5,7 @@ pub struct FormalParameter {
     pub name: String,
     pub init: Option<Node>,
     pub is_rest_param: bool,
-    pub bound: bool,
+    pub bound: Option<usize>,
 }
 
 pub type FormalParameters = Vec<FormalParameter>;
@@ -16,7 +16,7 @@ impl FormalParameter {
             name,
             init,
             is_rest_param,
-            bound: false,
+            bound: None,
         }
     }
 }
@@ -53,6 +53,15 @@ pub enum VarKind {
 pub enum IdentifierInfo {
     Name(String),
     Offset(usize),
+}
+
+impl IdentifierInfo {
+    pub fn get_name(self) -> String {
+        match self {
+            IdentifierInfo::Name(name) => name,
+            _ => panic!(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
