@@ -48,6 +48,12 @@ pub enum VarKind {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub enum IdentifierInfo {
+    Name(String),
+    Offset(usize),
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum NodeBase {
     StatementList(Vec<Node>),
     Block(Vec<Node>),
@@ -74,7 +80,7 @@ pub enum NodeBase {
     Throw(Box<Node>),
     Array(Vec<Node>),
     Object(Vec<PropertyDefinition>),
-    Identifier(String),
+    Identifier(IdentifierInfo),
     This,
     // Arguments,
     // Undefined,

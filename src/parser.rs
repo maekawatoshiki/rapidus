@@ -1,6 +1,6 @@
 pub use lexer;
 use node::{
-    BinOp, FormalParameter, FormalParameters, MethodDefinitionKind, Node, NodeBase,
+    BinOp, FormalParameter, FormalParameters, IdentifierInfo, MethodDefinitionKind, Node, NodeBase,
     PropertyDefinition, UnaryOp, VarKind,
 };
 use token::{get_string_for_symbol, Keyword, Kind, Symbol, Token};
@@ -875,7 +875,10 @@ impl Parser {
             //     Ok(Node::new(NodeBase::Undefined, tok.pos))
             // }
             Kind::Identifier(ref i) if i == "null" => Ok(Node::new(NodeBase::Null, tok.pos)),
-            Kind::Identifier(ident) => Ok(Node::new(NodeBase::Identifier(ident), tok.pos)),
+            Kind::Identifier(ident) => Ok(Node::new(
+                NodeBase::Identifier(IdentifierInfo::Name(ident)),
+                tok.pos,
+            )),
             Kind::String(s) => Ok(Node::new(NodeBase::String(s), tok.pos)),
             Kind::Number(num) => Ok(Node::new(NodeBase::Number(num), tok.pos)),
             Kind::LineTerminator => self.read_primary_expression(),
@@ -1103,7 +1106,9 @@ impl Parser {
             // TODO: should accept BindingPattern
             let pos_param = self.lexer.get_current_pos();
             let catch_param = match self.lexer.next()?.kind {
-                Kind::Identifier(s) => Node::new(NodeBase::Identifier(s), pos_param),
+                Kind::Identifier(s) => {
+                    Node::new(NodeBase::Identifier(IdentifierInfo::Name(s)), pos_param)
+                }
                 _ => {
                     return Err(Error::UnexpectedToken(
                         pos_param,

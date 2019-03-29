@@ -1,7 +1,7 @@
 use bytecode_gen::{ByteCode, ByteCodeGenerator, VMInst};
 use gc::MemoryAllocator;
 use node::{
-    BinOp, FormalParameter, FormalParameters, MethodDefinitionKind, Node, NodeBase,
+    BinOp, FormalParameter, FormalParameters, IdentifierInfo, MethodDefinitionKind, Node, NodeBase,
     PropertyDefinition, UnaryOp, VarKind,
 };
 use vm::constant::{ConstantTable, SpecialProperties, SpecialPropertyKind};
@@ -141,7 +141,12 @@ impl<'a> CodeGenerator<'a> {
             NodeBase::Array(ref elems) => self.visit_array_literal(elems, iseq)?,
             NodeBase::Identifier(ref name) => {
                 if use_value {
-                    self.bytecode_generator.append_get_value(name, iseq)
+                    match name {
+                        IdentifierInfo::Name(name) => {
+                            self.bytecode_generator.append_get_value(name, iseq)
+                        }
+                        IdentifierInfo::Offset(_offset) => unimplemented!(),
+                    }
                 }
             }
             // NodeBase::Undefined => {
@@ -435,7 +440,10 @@ impl<'a> CodeGenerator<'a> {
         let (catch_, catch_to_finally, leave_catch) = if has_catch {
             let catch_start = iseq.len() as usize;
             let param_name = match param.base {
-                NodeBase::Identifier(ref name) => name.clone(),
+                NodeBase::Identifier(ref name) => match name {
+                    IdentifierInfo::Name(name) => name.clone(),
+                    _ => unimplemented!(),
+                },
                 _ => unimplemented!(),
             };
 
@@ -1001,9 +1009,10 @@ impl<'a> CodeGenerator<'a> {
 impl<'a> CodeGenerator<'a> {
     fn assign_stack_top_to(&mut self, dst: &Node, iseq: &mut ByteCode) -> CodeGenResult {
         match dst.base {
-            NodeBase::Identifier(ref name) => {
-                self.bytecode_generator.append_set_value(name, iseq);
-            }
+            NodeBase::Identifier(ref info) => match info {
+                IdentifierInfo::Name(name) => self.bytecode_generator.append_set_value(name, iseq),
+                _ => unimplemented!(),
+            },
             NodeBase::Member(ref parent, ref property) => {
                 self.visit(&*parent, iseq, true)?;
                 let property = Value2::string(self.memory_allocator, property.clone());

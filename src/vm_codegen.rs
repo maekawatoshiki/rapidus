@@ -197,7 +197,7 @@ impl VMCodeGen {
             &NodeBase::New(ref expr) => self.run_new_expr(&*expr, iseq)?,
             &NodeBase::Object(ref properties) => self.run_object_literal(properties, iseq)?,
             &NodeBase::Array(ref properties) => self.run_array_literal(properties, iseq)?,
-            &NodeBase::Identifier(ref name) => self.run_identifier(name, iseq)?,
+            // &NodeBase::Identifier(ref name) => self.run_identifier(name, iseq)?,
             &NodeBase::This => self.bytecode_gen.gen_push_this(iseq),
             // &NodeBase::Arguments => self.bytecode_gen.gen_push_arguments(iseq),
             // &NodeBase::Undefined => self.bytecode_gen.gen_push_undefined(iseq),
@@ -211,7 +211,7 @@ impl VMCodeGen {
                 self.bytecode_gen.gen_push_const(Value::empty(), iseq);
             }
             &NodeBase::Nope => {}
-            _ => panic!()
+            _ => panic!(),
         }
 
         Ok(())
@@ -762,10 +762,10 @@ impl VMCodeGen {
         self.bytecode_gen.gen_push_scope(iseq);
 
         match &param.base {
-            NodeBase::Identifier(param_name) => {
-                self.bytecode_gen.gen_decl_var(&param_name, iseq);
-                self.bytecode_gen.gen_set_value(&param_name, iseq);
-            }
+            // NodeBase::Identifier(param_name) => {
+            //     self.bytecode_gen.gen_decl_var(&param_name, iseq);
+            //     self.bytecode_gen.gen_set_value(&param_name, iseq);
+            // }
             _ => {
                 self.bytecode_gen.gen_pop(iseq);
             }
@@ -1015,9 +1015,9 @@ impl VMCodeGen {
 
     pub fn assign_stack_top(&mut self, dst: &Node, iseq: &mut ByteCode) -> Result<(), Error> {
         match dst.base {
-            NodeBase::Identifier(ref name) => {
-                self.bytecode_gen.gen_set_value(name, iseq);
-            }
+            // NodeBase::Identifier(ref name) => {
+            //     self.bytecode_gen.gen_set_value(name, iseq);
+            // }
             NodeBase::Member(ref parent, ref member) => {
                 self.run(&*parent, iseq, true)?;
                 self.bytecode_gen

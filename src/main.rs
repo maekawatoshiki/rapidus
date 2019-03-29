@@ -45,18 +45,14 @@ fn main() {
         Some(file_name) => file_name,
         None => {
             repl_with_new_vm();
-            // repl(app_matches.is_present("trace"));
             return;
         }
     };
 
-    // Normally run the given code
-    if !app_matches.is_present("debug") {
-        run(file_name, app_matches.is_present("trace"));
-        return;
-    }
-
-    // Show information for debugging
+    // if !app_matches.is_present("debug") {
+    //     run(file_name, app_matches.is_present("trace"));
+    //     return;
+    // }
 
     let mut file_body = String::new();
 
@@ -105,9 +101,6 @@ fn main() {
         let val: Value2 = (*val_boxed).into();
         println!("stack[{}]: {:?}", i, val);
     }
-    // let mut vm = vm::VM::new();
-    // vm.global_objects.extend(vm_codegen.global_varmap);
-    // vm.run(iseq);
 }
 
 fn repl_with_new_vm() {
