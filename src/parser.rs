@@ -907,7 +907,11 @@ impl Parser {
             )
         };
         Ok(Node::new(
-            NodeBase::ArrowFunction(params, Box::new(body)),
+            NodeBase::ArrowFunction {
+                params,
+                body: Box::new(body),
+                bound_variables: 0,
+            },
             pos,
         ))
     }
@@ -931,7 +935,12 @@ impl Parser {
         let body = self.read_block()?;
 
         Ok(Node::new(
-            NodeBase::FunctionExpr(name, params, Box::new(body)),
+            NodeBase::FunctionExpr {
+                name,
+                params,
+                body: Box::new(body),
+                bound_variables: 0,
+            },
             pos,
         ))
     }
@@ -1027,7 +1036,7 @@ impl Parser {
                 let may_identifier = self.lexer.peek_skip_lineterminator();
                 if may_identifier.is_ok() && may_identifier.unwrap().is_identifier() {
                     let f = self.read_function_expression()?;
-                    let func_name = if let NodeBase::FunctionExpr(ref name, _, _) = f.base {
+                    let func_name = if let NodeBase::FunctionExpr { ref name, .. } = f.base {
                         name.clone().unwrap()
                     } else {
                         panic!()
@@ -1263,7 +1272,12 @@ impl Parser {
         let body = self.read_block()?;
 
         Ok(Node::new(
-            NodeBase::FunctionDecl(name, params, Box::new(body)),
+            NodeBase::FunctionDecl {
+                name,
+                params,
+                body: Box::new(body),
+                bound_variables: 0,
+            },
             pos,
         ))
     }
@@ -1388,7 +1402,7 @@ fn identifier() {
         parser.parse_all().unwrap(),
         Node::new(
             NodeBase::StatementList(vec![Node::new(
-                NodeBase::Identifier("variable".to_string()),
+                NodeBase::Identifier(IdentifierInfo::Name("variable".to_string())),
                 0,
             )]),
             0
@@ -1456,7 +1470,10 @@ fn object() {
         Node::new(
             NodeBase::StatementList(vec![Node::new(
                 NodeBase::Assign(
-                    Box::new(Node::new(NodeBase::Identifier("a".to_string()), 0)),
+                    Box::new(Node::new(
+                        NodeBase::Identifier(IdentifierInfo::Name("a".to_string())),
+                        0
+                    )),
                     Box::new(Node::new(
                         NodeBase::Object(vec![
                             PropertyDefinition::Property(
@@ -1618,14 +1635,20 @@ fn simple_expr_cond() {
                 NodeBase::TernaryOp(
                     Box::new(Node::new(
                         NodeBase::BinaryOp(
-                            Box::new(Node::new(NodeBase::Identifier("n".to_string()), 0)),
+                            Box::new(Node::new(
+                                NodeBase::Identifier(IdentifierInfo::Name("n".to_string())),
+                                0
+                            )),
                             Box::new(Node::new(NodeBase::Number(1.0), 5)),
                             BinOp::Eq,
                         ),
                         5,
                     )),
                     Box::new(Node::new(NodeBase::Number(2.0), 9)),
-                    Box::new(Node::new(NodeBase::Identifier("max".to_string()), 13)),
+                    Box::new(Node::new(
+                        NodeBase::Identifier(IdentifierInfo::Name("max".to_string())),
+                        13
+                    )),
                 ),
                 0,
             )]),
@@ -1769,7 +1792,10 @@ fn simple_expr_unary() {
             Node::new(
                 NodeBase::StatementList(vec![Node::new(
                     NodeBase::UnaryOp(
-                        Box::new(Node::new(NodeBase::Identifier("a".to_string()), *pos)),
+                        Box::new(Node::new(
+                            NodeBase::Identifier(IdentifierInfo::Name("a".to_string())),
+                            *pos
+                        )),
                         op.clone(),
                     ),
                     *pos2,
@@ -1787,26 +1813,26 @@ fn simple_expr_assign() {
     macro_rules! f { ($expr:expr) => {
         assert_eq!(
             Node::new(NodeBase::StatementList(vec![Node::new(NodeBase::Assign(
-                Box::new(Node::new(NodeBase::Identifier("v".to_string()), 0)), Box::new($expr)
+                Box::new(Node::new(NodeBase::Identifier(IdentifierInfo::Name("v".to_string())), 0)), Box::new($expr)
             ), 0)]), 0),
             parser.parse_all().unwrap()
         );
     } }
     f!(Node::new(NodeBase::Number(1.0), 4));
     parser = Parser::new("v += 1".to_string());
-    f!(Node::new(NodeBase::BinaryOp(Box::new(Node::new(NodeBase::Identifier("v".to_string()), 0)), 
+    f!(Node::new(NodeBase::BinaryOp(Box::new(Node::new(NodeBase::Identifier(IdentifierInfo::Name("v".to_string())), 0)), 
                                     Box::new(Node::new(NodeBase::Number(1.0), 5)), BinOp::Add), 0));
     parser = Parser::new("v -= 1".to_string());
-    f!(Node::new(NodeBase::BinaryOp(Box::new(Node::new(NodeBase::Identifier("v".to_string()), 0)), 
+    f!(Node::new(NodeBase::BinaryOp(Box::new(Node::new(NodeBase::Identifier(IdentifierInfo::Name("v".to_string())), 0)), 
                                     Box::new(Node::new(NodeBase::Number(1.0), 5)), BinOp::Sub), 0));
     parser = Parser::new("v *= 1".to_string());
-    f!(Node::new(NodeBase::BinaryOp(Box::new(Node::new(NodeBase::Identifier("v".to_string()), 0)), 
+    f!(Node::new(NodeBase::BinaryOp(Box::new(Node::new(NodeBase::Identifier(IdentifierInfo::Name("v".to_string())), 0)), 
                                     Box::new(Node::new(NodeBase::Number(1.0), 5)), BinOp::Mul), 0));
     parser = Parser::new("v /= 1".to_string());
-    f!(Node::new(NodeBase::BinaryOp(Box::new(Node::new(NodeBase::Identifier("v".to_string()), 0)), 
+    f!(Node::new(NodeBase::BinaryOp(Box::new(Node::new(NodeBase::Identifier(IdentifierInfo::Name("v".to_string())), 0)), 
                                     Box::new(Node::new(NodeBase::Number(1.0), 5)), BinOp::Div), 0));
     parser = Parser::new("v %= 1".to_string());
-    f!(Node::new(NodeBase::BinaryOp(Box::new(Node::new(NodeBase::Identifier("v".to_string()), 0)), 
+    f!(Node::new(NodeBase::BinaryOp(Box::new(Node::new(NodeBase::Identifier(IdentifierInfo::Name("v".to_string())), 0)), 
                                     Box::new(Node::new(NodeBase::Number(1.0), 5)), BinOp::Rem), 0));
 }
 
@@ -1819,7 +1845,10 @@ fn simple_expr_new() {
             NodeBase::StatementList(vec![Node::new(
                 NodeBase::New(Box::new(Node::new(
                     NodeBase::Call(
-                        Box::new(Node::new(NodeBase::Identifier("f".to_string()), 4)),
+                        Box::new(Node::new(
+                            NodeBase::Identifier(IdentifierInfo::Name("f".to_string())),
+                            4
+                        )),
                         vec![Node::new(NodeBase::Number(1.0), 6)],
                     ),
                     4,
@@ -1872,7 +1901,10 @@ fn call() {
             Node::new(
                 NodeBase::StatementList(vec![Node::new(
                     NodeBase::Call(
-                        Box::new(Node::new(NodeBase::Identifier("f".to_string()), 0)),
+                        Box::new(Node::new(
+                            NodeBase::Identifier(IdentifierInfo::Name("f".to_string())),
+                            0
+                        )),
                         args.iter()
                             .map(|(n, pos)| Node::new(NodeBase::Number(*n as f64), *pos))
                             .collect(),
@@ -1902,7 +1934,10 @@ fn member() {
                 NodeBase::Member(
                     Box::new(Node::new(
                         NodeBase::Member(
-                            Box::new(Node::new(NodeBase::Identifier("a".to_string()), 0)),
+                            Box::new(Node::new(
+                                NodeBase::Identifier(IdentifierInfo::Name("a".to_string())),
+                                0,
+                            )),
                             "b".to_string(),
                         ),
                         0,
@@ -1916,7 +1951,10 @@ fn member() {
             "console.log",
             Node::new(
                 NodeBase::Member(
-                    Box::new(Node::new(NodeBase::Identifier("console".to_string()), 0)),
+                    Box::new(Node::new(
+                        NodeBase::Identifier(IdentifierInfo::Name("console".to_string())),
+                        0,
+                    )),
                     "log".to_string(),
                 ),
                 0,
@@ -1971,7 +2009,10 @@ fn block() {
             NodeBase::StatementList(vec![Node::new(
                 NodeBase::Block(vec![Node::new(
                     NodeBase::Assign(
-                        Box::new(Node::new(NodeBase::Identifier("a".to_string()), 2)),
+                        Box::new(Node::new(
+                            NodeBase::Identifier(IdentifierInfo::Name("a".to_string())),
+                            2
+                        )),
                         Box::new(Node::new(NodeBase::Number(1.0), 4)),
                     ),
                     2,
@@ -2077,14 +2118,23 @@ fn if_() {
                 NodeBase::If(
                     Box::new(Node::new(
                         NodeBase::BinaryOp(
-                            Box::new(Node::new(NodeBase::Identifier("x".to_string()), 4)),
+                            Box::new(Node::new(
+                                NodeBase::Identifier(IdentifierInfo::Name("x".to_string())),
+                                4
+                            )),
                             Box::new(Node::new(NodeBase::Number(2.0), 9)),
                             BinOp::Le,
                         ),
                         9,
                     )),
-                    Box::new(Node::new(NodeBase::Identifier("then_stmt".to_string()), 25)),
-                    Box::new(Node::new(NodeBase::Identifier("else_stmt".to_string()), 62)),
+                    Box::new(Node::new(
+                        NodeBase::Identifier(IdentifierInfo::Name("then_stmt".to_string())),
+                        25
+                    )),
+                    Box::new(Node::new(
+                        NodeBase::Identifier(IdentifierInfo::Name("else_stmt".to_string())),
+                        62
+                    )),
                 ),
                 0,
             )]),
@@ -2100,13 +2150,19 @@ fn if_() {
                 NodeBase::If(
                     Box::new(Node::new(
                         NodeBase::BinaryOp(
-                            Box::new(Node::new(NodeBase::Identifier("x".to_string()), 4)),
+                            Box::new(Node::new(
+                                NodeBase::Identifier(IdentifierInfo::Name("x".to_string())),
+                                4
+                            )),
                             Box::new(Node::new(NodeBase::Number(2.0), 9)),
                             BinOp::Le,
                         ),
                         9,
                     )),
-                    Box::new(Node::new(NodeBase::Identifier("then_stmt".to_string()), 12)),
+                    Box::new(Node::new(
+                        NodeBase::Identifier(IdentifierInfo::Name("then_stmt".to_string())),
+                        12
+                    )),
                     Box::new(Node::new(NodeBase::Nope, 22)),
                 ),
                 0,
@@ -2188,44 +2244,52 @@ fn function_decl() {
             { 
             }",
             Node::new(
-                NodeBase::FunctionDecl(
-                    "f".to_string(),
-                    vec![],
-                    Box::new(Node::new(NodeBase::StatementList(vec![]), 64)),
-                ),
+                NodeBase::FunctionDecl {
+                    name: "f".to_string(),
+                    params: vec![],
+                    body: Box::new(Node::new(NodeBase::StatementList(vec![]), 64)),
+                    bound_variables: 0,
+                },
                 0,
             ),
         ),
         (
             "function f() { return }",
             Node::new(
-                NodeBase::FunctionDecl(
-                    "f".to_string(),
-                    vec![],
-                    Box::new(Node::new(
+                NodeBase::FunctionDecl {
+                    name: "f".to_string(),
+                    params: vec![],
+                    body: Box::new(Node::new(
                         NodeBase::StatementList(vec![Node::new(NodeBase::Return(None), 15)]),
                         13,
                     )),
-                ),
+                    bound_variables: 0,
+                },
                 0,
             ),
         ),
         (
             "function f(x, y, ...z) { return x + y }",
             Node::new(
-                NodeBase::FunctionDecl(
-                    "f".to_string(),
-                    vec![
+                NodeBase::FunctionDecl {
+                    name: "f".to_string(),
+                    params: vec![
                         FormalParameter::new("x".to_string(), None, false),
                         FormalParameter::new("y".to_string(), None, false),
                         FormalParameter::new("z".to_string(), None, true),
                     ],
-                    Box::new(Node::new(
+                    body: Box::new(Node::new(
                         NodeBase::StatementList(vec![Node::new(
                             NodeBase::Return(Some(Box::new(Node::new(
                                 NodeBase::BinaryOp(
-                                    Box::new(Node::new(NodeBase::Identifier("x".to_string()), 32)),
-                                    Box::new(Node::new(NodeBase::Identifier("y".to_string()), 36)),
+                                    Box::new(Node::new(
+                                        NodeBase::Identifier(IdentifierInfo::Name("x".to_string())),
+                                        32,
+                                    )),
+                                    Box::new(Node::new(
+                                        NodeBase::Identifier(IdentifierInfo::Name("y".to_string())),
+                                        36,
+                                    )),
                                     BinOp::Add,
                                 ),
                                 36,
@@ -2234,7 +2298,8 @@ fn function_decl() {
                         )]),
                         23,
                     )),
-                ),
+                    bound_variables: 0,
+                },
                 0,
             ),
         ),
@@ -2283,17 +2348,18 @@ fn asi1() {
         parser.parse_all().unwrap(),
         Node::new(
             NodeBase::StatementList(vec![Node::new(
-                NodeBase::FunctionDecl(
-                    "f".to_string(),
-                    vec![],
-                    Box::new(Node::new(
+                NodeBase::FunctionDecl {
+                    name: "f".to_string(),
+                    params: vec![],
+                    body: Box::new(Node::new(
                         NodeBase::StatementList(vec![
                             Node::new(NodeBase::Return(None), 38),
                             Node::new(NodeBase::Block(vec![]), 59),
                         ]),
                         23,
                     )),
-                ),
+                    bound_variables: 0
+                },
                 0,
             )]),
             0
@@ -2316,14 +2382,23 @@ fn asi2() {
             NodeBase::StatementList(vec![
                 Node::new(
                     NodeBase::Assign(
-                        Box::new(Node::new(NodeBase::Identifier("b".to_string()), 9)),
-                        Box::new(Node::new(NodeBase::Identifier("a".to_string()), 13)),
+                        Box::new(Node::new(
+                            NodeBase::Identifier(IdentifierInfo::Name("b".to_string())),
+                            9
+                        )),
+                        Box::new(Node::new(
+                            NodeBase::Identifier(IdentifierInfo::Name("a".to_string())),
+                            13
+                        )),
                     ),
                     9,
                 ),
                 Node::new(
                     NodeBase::UnaryOp(
-                        Box::new(Node::new(NodeBase::Identifier("b".to_string()), 25)),
+                        Box::new(Node::new(
+                            NodeBase::Identifier(IdentifierInfo::Name("b".to_string())),
+                            25
+                        )),
                         UnaryOp::PrInc,
                     ),
                     23,
@@ -2369,7 +2444,10 @@ fn try_catch1() {
                 NodeBase::Try(
                     Box::new(Node::new(NodeBase::Block(vec![]), 4)),
                     Box::new(Node::new(NodeBase::StatementList(vec![]), 15)),
-                    Box::new(Node::new(NodeBase::Identifier("e".to_string()), 13)),
+                    Box::new(Node::new(
+                        NodeBase::Identifier(IdentifierInfo::Name("e".to_string())),
+                        13
+                    )),
                     Box::new(Node::new(NodeBase::Block(vec![]), 25))
                 ),
                 0
@@ -2393,7 +2471,10 @@ fn try_catch2() {
                 NodeBase::Try(
                     Box::new(Node::new(NodeBase::Block(vec![]), 4)),
                     Box::new(Node::new(NodeBase::StatementList(vec![]), 15)),
-                    Box::new(Node::new(NodeBase::Identifier("e".to_string()), 13)),
+                    Box::new(Node::new(
+                        NodeBase::Identifier(IdentifierInfo::Name("e".to_string())),
+                        13
+                    )),
                     Box::new(Node::new(NodeBase::Nope, 17))
                 ),
                 0

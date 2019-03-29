@@ -1,10 +1,12 @@
 use bytecode_gen::{ByteCode, ByteCodeGenerator, VMInst};
 use gc::MemoryAllocator;
+use id::IdGen;
 use node::{
     BinOp, FormalParameter, FormalParameters, MethodDefinitionKind, Node, NodeBase,
     PropertyDefinition, UnaryOp, VarKind,
 };
 use parser::Error;
+use rustc_hash::FxHashMap;
 use vm::constant::{ConstantTable, SpecialProperties, SpecialPropertyKind};
 use vm::jsvalue::function::{DestinationKind, Exception};
 use vm::jsvalue::value::Value2;
@@ -13,31 +15,90 @@ use vm::jsvalue::{prototype, value};
 #[derive(Debug)]
 pub struct Analyzer {}
 
+pub type VarMap = FxHashMap<String, usize>;
+
 impl Analyzer {
     pub fn new() -> Self {
         Analyzer {}
     }
 
     pub fn analyze(&mut self, node: Node) -> Result<Node, Error> {
-        self.visit(node)
+        let mut var_map = FxHashMap::default();
+        let mut id_gen = IdGen::new();
+
+        self.visit(node, &mut var_map, &mut id_gen)
     }
 }
 
 impl Analyzer {
-    fn visit(&mut self, node: Node) -> Result<Node, Error> {
+    fn visit(
+        &mut self,
+        node: Node,
+        var_map: &mut VarMap,
+        id_gen: &mut IdGen,
+    ) -> Result<Node, Error> {
         match node.base {
-            NodeBase::StatementList(_) => Ok(node),
-            // NodeBase::If(ref cond, ref then, ref else_) => {
-            //     self.visit_if(&*cond, &*then, &*else_, iseq)?
-            // }
-            _ => Ok(node)
-            // NodeBase::Block(ref node_list) => {
-            //     self.visit_block_statement(node_list, iseq, use_value)?
-            // }
-            // NodeBase::While(ref cond, ref body) => self.visit_while(&*cond, &*body, iseq)?,
-            // NodeBase::For(ref init, ref cond, ref step, ref body) => {
-            //     self.visit_for(&*init, &*cond, &*step, &*body, iseq)?
-            // }
+            NodeBase::StatementList(stmts) => {
+                for stmt in &stmts {
+                    match stmt.base {
+                        NodeBase::VarDecl(ref name, _, _) => {
+                            var_map.insert(name.clone(), id_gen.gen_id());
+                        }
+                        _ => {}
+                    }
+                }
+
+                let mut new_stmts = vec![];
+
+                for stmt in stmts {
+                    new_stmts.push(self.visit(stmt, var_map, id_gen)?)
+                }
+
+                Ok(Node::new(NodeBase::StatementList(new_stmts), node.pos))
+            }
+            NodeBase::Block(stmts) => {
+                for stmt in &stmts {
+                    match stmt.base {
+                        NodeBase::VarDecl(ref name, _, _) => {
+                            var_map.insert(name.clone(), id_gen.gen_id());
+                        }
+                        _ => {}
+                    }
+                }
+
+                let mut new_stmts = vec![];
+
+                for stmt in stmts {
+                    new_stmts.push(self.visit(stmt, var_map, id_gen)?)
+                }
+
+                Ok(Node::new(NodeBase::Block(new_stmts), node.pos))
+            }
+
+            NodeBase::If(cond, then, else_) => Ok(Node::new(
+                NodeBase::If(
+                    Box::new(self.visit(*cond, var_map, id_gen)?),
+                    Box::new(self.visit(*then, var_map, id_gen)?),
+                    Box::new(self.visit(*else_, var_map, id_gen)?),
+                ),
+                node.pos,
+            )),
+            NodeBase::While(cond, body) => Ok(Node::new(
+                NodeBase::While(
+                    Box::new(self.visit(*cond, var_map, id_gen)?),
+                    Box::new(self.visit(*body, var_map, id_gen)?),
+                ),
+                node.pos,
+            )),
+            NodeBase::For(init, cond, step, body) => Ok(Node::new(
+                NodeBase::For(
+                    Box::new(self.visit(*init, var_map, id_gen)?),
+                    Box::new(self.visit(*cond, var_map, id_gen)?),
+                    Box::new(self.visit(*step, var_map, id_gen)?),
+                    Box::new(self.visit(*body, var_map, id_gen)?),
+                ),
+                node.pos,
+            )),
             // NodeBase::Break(ref name) => self.visit_break(name, iseq)?,
             // NodeBase::Try(ref try, ref catch, ref param, ref finally) => {
             //     self.visit_try(&*try, &*catch, &*param, &*finally, iseq)?
@@ -120,6 +181,7 @@ impl Analyzer {
             //     }
             // }
             // ref e => unimplemented!("{:?}", e),
+            _ => Ok(node),
         }
     }
 }

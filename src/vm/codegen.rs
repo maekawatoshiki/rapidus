@@ -104,15 +104,23 @@ impl<'a> CodeGenerator<'a> {
             NodeBase::Try(ref try, ref catch, ref param, ref finally) => {
                 self.visit_try(&*try, &*catch, &*param, &*finally, iseq)?
             }
-            NodeBase::FunctionDecl(ref name, ref params, ref body) => {
-                self.visit_function_decl(name, params, &*body)?
-            }
-            NodeBase::FunctionExpr(ref name, ref params, ref body) => {
-                self.visit_function_expr(name, params, &*body, true, iseq, use_value)?
-            }
-            NodeBase::ArrowFunction(ref params, ref body) => {
-                self.visit_function_expr(&None, params, &*body, false, iseq, use_value)?
-            }
+            NodeBase::FunctionDecl {
+                ref name,
+                ref params,
+                ref body,
+                ..
+            } => self.visit_function_decl(name, params, &*body)?,
+            NodeBase::FunctionExpr {
+                ref name,
+                ref params,
+                ref body,
+                ..
+            } => self.visit_function_expr(name, params, &*body, true, iseq, use_value)?,
+            NodeBase::ArrowFunction {
+                ref params,
+                ref body,
+                ..
+            } => self.visit_function_expr(&None, params, &*body, false, iseq, use_value)?,
             NodeBase::VarDecl(ref name, ref init, ref kind) => {
                 self.visit_var_decl(node, name, init, kind, iseq)?
             }

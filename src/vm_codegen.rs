@@ -153,12 +153,12 @@ impl VMCodeGen {
             &NodeBase::Block(ref node_list) => {
                 self.run_block_statement(node_list, iseq, use_value)?
             }
-            &NodeBase::FunctionDecl(ref name, ref params, ref body) => {
-                self.run_function_decl(name, params, &*body)?
-            }
-            &NodeBase::FunctionExpr(ref name, ref params, ref body) => {
-                self.run_function_expr(name, params, &*body, iseq)?
-            }
+            // &NodeBase::FunctionDecl(ref name, ref params, ref body) => {
+            //     self.run_function_decl(name, params, &*body)?
+            // }
+            // &NodeBase::FunctionExpr(ref name, ref params, ref body) => {
+            //     self.run_function_expr(name, params, &*body, iseq)?
+            // }
             &NodeBase::VarDecl(ref name, ref init, ref var_kind) => {
                 self.run_var_decl(name, init, iseq, var_kind, &node)?
             }

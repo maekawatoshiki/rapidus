@@ -5,6 +5,7 @@ pub struct FormalParameter {
     pub name: String,
     pub init: Option<Node>,
     pub is_rest_param: bool,
+    pub bound: bool,
 }
 
 pub type FormalParameters = Vec<FormalParameter>;
@@ -12,9 +13,10 @@ pub type FormalParameters = Vec<FormalParameter>;
 impl FormalParameter {
     pub fn new(name: String, init: Option<Node>, is_rest_param: bool) -> FormalParameter {
         FormalParameter {
-            name: name,
-            init: init,
-            is_rest_param: is_rest_param,
+            name,
+            init,
+            is_rest_param,
+            bound: false,
         }
     }
 }
@@ -57,9 +59,23 @@ pub enum IdentifierInfo {
 pub enum NodeBase {
     StatementList(Vec<Node>),
     Block(Vec<Node>),
-    FunctionDecl(String, FormalParameters, Box<Node>), // name, params, body
-    FunctionExpr(Option<String>, FormalParameters, Box<Node>), // Name, params, body
-    ArrowFunction(FormalParameters, Box<Node>),
+    FunctionDecl {
+        name: String,
+        params: FormalParameters,
+        body: Box<Node>,
+        bound_variables: usize,
+    },
+    FunctionExpr {
+        name: Option<String>,
+        params: FormalParameters,
+        body: Box<Node>,
+        bound_variables: usize,
+    },
+    ArrowFunction {
+        params: FormalParameters,
+        body: Box<Node>,
+        bound_variables: usize,
+    },
     VarDecl(String, Option<Box<Node>>, VarKind),
     Member(Box<Node>, String),
     Index(Box<Node>, Box<Node>),
