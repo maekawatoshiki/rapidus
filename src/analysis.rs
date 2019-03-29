@@ -189,7 +189,7 @@ impl Analyzer {
                 self.push_new_function_level(params_varmap);
 
                 let body = Box::new(self.visit(*body)?);
-                let (params_varmap, varmap) = self.pop_level().as_function_level();
+                let (params_varmap, _) = self.pop_level().as_function_level();
 
                 for FormalParameter {
                     ref name,
@@ -213,12 +213,83 @@ impl Analyzer {
                     },
                     node.pos,
                 ))
-            } // NodeBase::FunctionExpr(ref name, ref params, ref body) => {
-            //     self.visit_function_expr(name, params, &*body, true, iseq, use_value)?
-            // }
-            // NodeBase::ArrowFunction(ref params, ref body) => {
-            //     self.visit_function_expr(&None, params, &*body, false, iseq, use_value)?
-            // }
+            }
+            NodeBase::FunctionExpr {
+                name,
+                mut params,
+                body,
+                ..
+            } => {
+                self.idgen.save();
+                let mut params_varmap = VarMap::default();
+                for FormalParameter { ref name, .. } in &params {
+                    params_varmap.insert(name.clone(), None);
+                }
+                self.push_new_function_level(params_varmap);
+
+                let body = Box::new(self.visit(*body)?);
+                let (params_varmap, _) = self.pop_level().as_function_level();
+
+                for FormalParameter {
+                    ref name,
+                    ref mut bound,
+                    ..
+                } in &mut params
+                {
+                    if let Some(offset) = params_varmap.get(name).unwrap() {
+                        *bound = Some(*offset);
+                    }
+                }
+
+                self.idgen.restore();
+
+                Ok(Node::new(
+                    NodeBase::FunctionExpr {
+                        name,
+                        params,
+                        body,
+                        bound_variables: self.idgen.get_cur_id(),
+                    },
+                    node.pos,
+                ))
+            }
+            NodeBase::ArrowFunction {
+                mut params, body, ..
+            } => {
+                self.idgen.save();
+
+                let mut params_varmap = VarMap::default();
+                for FormalParameter { ref name, .. } in &params {
+                    params_varmap.insert(name.clone(), None);
+                }
+
+                self.push_new_function_level(params_varmap);
+
+                let body = Box::new(self.visit(*body)?);
+                let (params_varmap, _) = self.pop_level().as_function_level();
+
+                for FormalParameter {
+                    ref name,
+                    ref mut bound,
+                    ..
+                } in &mut params
+                {
+                    if let Some(offset) = params_varmap.get(name).unwrap() {
+                        *bound = Some(*offset);
+                    }
+                }
+
+                self.idgen.restore();
+
+                Ok(Node::new(
+                    NodeBase::ArrowFunction {
+                        params,
+                        body,
+                        bound_variables: self.idgen.get_cur_id(),
+                    },
+                    node.pos,
+                ))
+            }
             NodeBase::VarDecl(name, init, kind) => Ok(Node::new(
                 NodeBase::VarDecl(
                     name,
@@ -231,29 +302,88 @@ impl Analyzer {
                 ),
                 node.pos,
             )),
-            // NodeBase::Member(ref parent, ref property) => {
-            //     self.visit_member(&*parent, property, iseq, use_value)?
-            // }
-            // NodeBase::Index(ref parent, ref index) => {
-            //     self.visit_index(&*parent, &*index, iseq, use_value)?
-            // }
-            // NodeBase::UnaryOp(ref expr, ref op) => {
-            //     self.visit_unary_op(&*expr, op, iseq, use_value)?
-            // }
-            // NodeBase::BinaryOp(ref lhs, ref rhs, ref op) => {
-            //     self.visit_binary_op(&*lhs, &*rhs, op, iseq, use_value)?
-            // }
-            // NodeBase::Assign(ref dst, ref src) => {
-            //     self.visit_assign(&*dst, &*src, iseq, use_value)?
-            // }
-            // NodeBase::Call(ref callee, ref args) => {
-            //     self.visit_call(&*callee, args, iseq, use_value)?
-            // }
-            // NodeBase::Throw(ref val) => self.visit_throw(val, iseq)?,
-            // NodeBase::Return(ref val) => self.visit_return(val, iseq)?,
-            // NodeBase::New(ref expr) => self.visit_new(&*expr, iseq, use_value)?,
-            // NodeBase::Object(ref properties) => self.visit_object_literal(properties, iseq)?,
-            // NodeBase::Array(ref elems) => self.visit_array_literal(elems, iseq)?,
+            NodeBase::Member(parent, property) => Ok(Node::new(
+                NodeBase::Member(Box::new(self.visit(*parent)?), property),
+                node.pos,
+            )),
+            NodeBase::Index(parent, index) => Ok(Node::new(
+                NodeBase::Index(
+                    Box::new(self.visit(*parent)?),
+                    Box::new(self.visit(*index)?),
+                ),
+                node.pos,
+            )),
+            NodeBase::UnaryOp(expr, op) => Ok(Node::new(
+                NodeBase::UnaryOp(Box::new(self.visit(*expr)?), op),
+                node.pos,
+            )),
+            NodeBase::BinaryOp(lhs, rhs, op) => Ok(Node::new(
+                NodeBase::BinaryOp(Box::new(self.visit(*lhs)?), Box::new(self.visit(*rhs)?), op),
+                node.pos,
+            )),
+            NodeBase::Assign(dst, src) => Ok(Node::new(
+                NodeBase::Assign(Box::new(self.visit(*dst)?), Box::new(self.visit(*src)?)),
+                node.pos,
+            )),
+            NodeBase::Call(callee, args) => Ok(Node::new(
+                NodeBase::Call(Box::new(self.visit(*callee)?), {
+                    let mut new_args = vec![];
+                    for arg in args {
+                        new_args.push(self.visit(arg)?)
+                    }
+                    new_args
+                }),
+                node.pos,
+            )),
+            NodeBase::Throw(val) => Ok(Node::new(
+                NodeBase::Throw(Box::new(self.visit(*val)?)),
+                node.pos,
+            )),
+            NodeBase::Return(val) => Ok(Node::new(
+                NodeBase::Return(if let Some(val) = val {
+                    Some(Box::new(self.visit(*val)?))
+                } else {
+                    None
+                }),
+                node.pos,
+            )),
+            NodeBase::New(expr) => Ok(Node::new(
+                NodeBase::New(Box::new(self.visit(*expr)?)),
+                node.pos,
+            )),
+            NodeBase::Object(properties) => Ok(Node::new(
+                NodeBase::Object({
+                    let mut new_properties = vec![];
+                    for property in properties {
+                        match property {
+                            PropertyDefinition::IdentifierReference(name) => {
+                                new_properties.push(PropertyDefinition::IdentifierReference(name))
+                            }
+                            PropertyDefinition::Property(name, val) => new_properties
+                                .push(PropertyDefinition::Property(name, self.visit(val)?)),
+                            PropertyDefinition::MethodDefinition(kind, name, body) => {
+                                new_properties.push(PropertyDefinition::MethodDefinition(
+                                    kind,
+                                    name,
+                                    self.visit(body)?,
+                                ))
+                            }
+                        }
+                    }
+                    new_properties
+                }),
+                node.pos,
+            )),
+            NodeBase::Array(elems) => Ok(Node::new(
+                NodeBase::Array({
+                    let mut new_elems = vec![];
+                    for elem in elems {
+                        new_elems.push(self.visit(elem)?)
+                    }
+                    new_elems
+                }),
+                node.pos,
+            )),
             NodeBase::Identifier(info) => {
                 let name = info.get_name();
                 Ok(Node::new(
