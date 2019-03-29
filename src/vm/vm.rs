@@ -264,7 +264,7 @@ impl VM2 {
             saved_lexical_environment: vec![],
         };
 
-        let frame = frame::Frame::new(
+        let mut frame = frame::Frame::new(
             exec_ctx,
             user_func.code.clone(),
             user_func.exception_table.clone(),
@@ -272,6 +272,8 @@ impl VM2 {
             constructor_call,
         )
         .escape();
+
+        frame.sp = self.stack.len();
 
         self.run(frame)
     }
@@ -571,6 +573,18 @@ impl VM2 {
                     let val = etry!(cur_frame
                         .lex_env()
                         .get_value(self.constant_table.get(name_id).as_string()));
+                    self.stack.push(val.into());
+                }
+                VMInst::SET_VALUE_STACK => {
+                    cur_frame.pc += 1;
+                    read_int32!(cur_frame.bytecode, cur_frame.pc, offset, usize);
+                    let val = self.stack.pop().unwrap();
+                    self.stack[cur_frame.sp + offset] = val;
+                }
+                VMInst::GET_VALUE_STACK => {
+                    cur_frame.pc += 1;
+                    read_int32!(cur_frame.bytecode, cur_frame.pc, offset, usize);
+                    let val = self.stack[cur_frame.sp + offset];
                     self.stack.push(val.into());
                 }
                 VMInst::CONSTRUCT => {
@@ -938,8 +952,12 @@ impl VM2 {
                 }
 
                 // TODO: rest parameter
-                for (i, FunctionParameter { name, .. }) in user_func.params.iter().enumerate() {
-                    record.insert(name.clone(), *args.get(i).unwrap_or(&Value2::undefined()));
+                for (i, FunctionParameter { name, bound, .. }) in
+                    user_func.params.iter().enumerate()
+                {
+                    if bound.is_none() {
+                        record.insert(name.clone(), *args.get(i).unwrap_or(&Value2::undefined()));
+                    }
                 }
 
                 record
@@ -958,6 +976,19 @@ impl VM2 {
             outer: Some(var_env),
         });
 
+        let sp = self.stack.len();
+
+        for _ in 0..user_func.bound_variables {
+            self.stack.push(Value2::undefined().into());
+        }
+
+        for (i, FunctionParameter { bound, .. }) in user_func.params.iter().enumerate() {
+            if let Some(offset) = bound {
+                let val = *args.get(i).unwrap_or(&Value2::undefined());
+                self.stack[sp + offset] = val.into();
+            }
+        }
+
         for func in user_func.func_decls {
             let mut func = func.copy_object(&mut self.memory_allocator);
             let name = func.as_function().name.clone().unwrap();
@@ -971,13 +1002,15 @@ impl VM2 {
             saved_lexical_environment: vec![],
         };
 
-        let frame = frame::Frame::new(
+        let mut frame = frame::Frame::new(
             exec_ctx,
             user_func.code,
             user_func.exception_table,
             this,
             constructor_call,
         );
+
+        frame.sp = sp;
 
         *cur_frame = frame;
 

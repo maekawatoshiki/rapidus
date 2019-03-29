@@ -80,11 +80,9 @@ fn main() {
     };
     println!("{:?}", node);
 
+    let node = analysis::Analyzer::new().analyze(node).unwrap();
     println!("Analyzer:");
-    println!(
-        "{:?}",
-        analysis::Analyzer::new().analyze(node.clone()).unwrap()
-    );
+    println!("{:?}", node);
 
     let mut vm = VM2::new();
     let mut iseq = vec![];

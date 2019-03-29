@@ -23,6 +23,7 @@ pub struct UserFunctionInfo {
     pub lex_names: Vec<String>,
     pub func_decls: Vec<Value2>,
     pub constructor: bool,
+    pub bound_variables: usize,
     pub code: ByteCode,
     pub exception_table: Vec<Exception>,
     pub outer: Option<LexicalEnvironmentRef>,
@@ -32,6 +33,7 @@ pub struct UserFunctionInfo {
 pub struct FunctionParameter {
     pub name: String,
     pub is_rest_param: bool,
+    pub bound: Option<usize>,
 }
 
 #[derive(Clone, Debug)]

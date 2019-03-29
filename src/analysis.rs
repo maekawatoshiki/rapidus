@@ -54,6 +54,8 @@ impl Analyzer {
     fn collect_variable_declarations(&mut self, node: &Node) {
         let stmts = if let NodeBase::StatementList(ref stmts) = node.base {
             stmts
+        } else if let NodeBase::For(ref init, _, _, _) = node.base {
+            return self.collect_variable_declarations(&**init);
         } else {
             return;
         };
@@ -72,6 +74,8 @@ impl Analyzer {
     ) {
         let stmts = if let NodeBase::StatementList(ref mut stmts) = node.base {
             stmts
+        } else if let NodeBase::For(ref mut init, _, _, _) = node.base {
+            return self.replace_variable_declarations(&mut **init, bound_variables);
         } else {
             return;
         };
@@ -132,9 +136,12 @@ impl Analyzer {
                 let level = self.pop_level();
                 let varmap = level.get_varmap();
                 let mut bound_variables: FxHashMap<String, usize> = FxHashMap::default();
+                let mut has_free_variables = false;
                 for (name, offset) in varmap {
                     if let Some(offset) = offset {
                         bound_variables.insert(name.clone(), *offset);
+                    } else {
+                        has_free_variables |= true;
                     }
                 }
 
@@ -142,7 +149,14 @@ impl Analyzer {
                     self.replace_variable_declarations(stmt, &bound_variables);
                 }
 
-                Ok(Node::new(NodeBase::Block(new_stmts), node.pos))
+                Ok(Node::new(
+                    if has_free_variables {
+                        NodeBase::Block(new_stmts)
+                    } else {
+                        NodeBase::StatementList(new_stmts)
+                    },
+                    node.pos,
+                ))
             }
             NodeBase::If(cond, then, else_) => Ok(Node::new(
                 NodeBase::If(
@@ -165,7 +179,6 @@ impl Analyzer {
                 ),
                 node.pos,
             )),
-            NodeBase::Break(_) => Ok(node),
             NodeBase::Try(try, catch, param, finally) => Ok(Node::new(
                 NodeBase::Try(
                     Box::new(self.visit(*try)?),
@@ -202,6 +215,7 @@ impl Analyzer {
                     }
                 }
 
+                let bound_variables = self.idgen.get_cur_id();
                 self.idgen.restore();
 
                 Ok(Node::new(
@@ -209,7 +223,7 @@ impl Analyzer {
                         name,
                         params,
                         body,
-                        bound_variables: self.idgen.get_cur_id(),
+                        bound_variables,
                     },
                     node.pos,
                 ))
@@ -241,6 +255,7 @@ impl Analyzer {
                     }
                 }
 
+                let bound_variables = self.idgen.get_cur_id();
                 self.idgen.restore();
 
                 Ok(Node::new(
@@ -248,7 +263,7 @@ impl Analyzer {
                         name,
                         params,
                         body,
-                        bound_variables: self.idgen.get_cur_id(),
+                        bound_variables,
                     },
                     node.pos,
                 ))
@@ -279,13 +294,14 @@ impl Analyzer {
                     }
                 }
 
+                let bound_variables = self.idgen.get_cur_id();
                 self.idgen.restore();
 
                 Ok(Node::new(
                     NodeBase::ArrowFunction {
                         params,
                         body,
-                        bound_variables: self.idgen.get_cur_id(),
+                        bound_variables,
                     },
                     node.pos,
                 ))
@@ -395,44 +411,6 @@ impl Analyzer {
                     node.pos,
                 ))
             }
-            // // NodeBase::Undefined => {
-            // //     if use_value {
-            // //         self.bytecode_generator.append_push_undefined(iseq);
-            // //     }
-            // // }
-            // NodeBase::Null => {
-            //     if use_value {
-            //         self.bytecode_generator.append_push_null(iseq);
-            //     }
-            // }
-            // NodeBase::This => {
-            //     if use_value {
-            //         self.bytecode_generator.append_push_this(iseq);
-            //     }
-            // }
-            // NodeBase::String(ref s) => {
-            //     if use_value {
-            //         self.bytecode_generator
-            //             .append_push_const(Value2::string(self.memory_allocator, s.clone()), iseq)
-            //     }
-            // }
-            // NodeBase::Number(n) => {
-            //     if use_value {
-            //         self.bytecode_generator.append_push_number(n, iseq)
-            //     }
-            // }
-            // NodeBase::Boolean(b) => {
-            //     if use_value {
-            //         self.bytecode_generator.append_push_bool(b, iseq)
-            //     }
-            // }
-            // NodeBase::Nope => {
-            //     if use_value {
-            //         self.bytecode_generator
-            //             .append_push_const(Value2::empty(), iseq)
-            //     }
-            // }
-            // ref e => unimplemented!("{:?}", e),
             _ => Ok(node),
         }
     }

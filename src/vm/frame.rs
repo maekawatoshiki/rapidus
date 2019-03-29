@@ -17,6 +17,7 @@ pub type LexicalEnvironmentRef = *mut LexicalEnvironment;
 pub struct Frame {
     pub execution_context: ExecutionContext,
     pub pc: usize,
+    pub sp: usize,
     pub saved_stack_len: usize,
     pub bytecode: ByteCode,
     pub exception_table: Vec<Exception>,
@@ -57,6 +58,7 @@ impl Frame {
         Frame {
             execution_context,
             pc: 0,
+            sp: 0,
             saved_stack_len: 0,
             bytecode,
             exception_table,
@@ -70,6 +72,7 @@ impl Frame {
         Frame {
             execution_context: ExecutionContext::new_empty(),
             pc: 0,
+            sp: 0,
             saved_stack_len: 0,
             bytecode: vec![],
             exception_table: vec![],

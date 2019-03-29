@@ -328,6 +328,16 @@ impl<'a> ByteCodeGenerator<'a> {
         iseq.push(VMInst::TYPEOF);
     }
 
+    pub fn append_get_value_stack(&mut self, offset: u32, iseq: &mut ByteCode) {
+        iseq.push(VMInst::GET_VALUE_STACK);
+        self.append_uint32(offset, iseq);
+    }
+
+    pub fn append_set_value_stack(&mut self, offset: u32, iseq: &mut ByteCode) {
+        iseq.push(VMInst::SET_VALUE_STACK);
+        self.append_uint32(offset, iseq);
+    }
+
     // Utils
 
     pub fn append_int8(&self, n: i8, iseq: &mut ByteCode) {
@@ -838,6 +848,14 @@ pub fn show_inst2(code: &ByteCode, i: usize, const_table: &constant::ConstantTab
             }
             VMInst::RETURN_SUB => format!("ReturnSub"),
             VMInst::TYPEOF => format!("Typeof"),
+            VMInst::GET_VALUE_STACK => {
+                let int32 = read_int32(code, i + 1);
+                format!("GetValueStack {:04x}", int32)
+            }
+            VMInst::SET_VALUE_STACK => {
+                let int32 = read_int32(code, i + 1);
+                format!("SetValueStack {:04x}", int32)
+            }
             _ => unreachable!("sorry. need to implement more opcodes"),
         }
     );
@@ -1059,6 +1077,8 @@ pub mod VMInst {
     pub const RETURN_SUB: u8 = 0x44;
     pub const TYPEOF: u8 = 0x45;
     pub const PUSH_NULL: u8 = 0x46;
+    pub const GET_VALUE_STACK: u8 = 0x47;
+    pub const SET_VALUE_STACK: u8 = 0x48;
 
     pub fn get_inst_size(inst: u8) -> Option<usize> {
         match inst {
@@ -1066,7 +1086,8 @@ pub mod VMInst {
             | RETURN_SUB | SET_OUTER_ENV | POP_ENV | TYPEOF | PUSH_NULL => Some(1),
             CONSTRUCT | CREATE_OBJECT | PUSH_CONST | PUSH_INT32 | CREATE_ARRAY | JMP_IF_FALSE
             | RETURN_TRY | DECL_VAR | LOOP_START | JMP | SET_VALUE | GET_VALUE | CALL | JMP_SUB
-            | CALL_METHOD | PUSH_ENV | DECL_LET | DECL_CONST => Some(5),
+            | CALL_METHOD | PUSH_ENV | DECL_LET | DECL_CONST | GET_VALUE_STACK
+            | SET_VALUE_STACK => Some(5),
             PUSH_INT8 => Some(2),
             PUSH_FALSE | END | PUSH_TRUE | PUSH_THIS | ADD | SUB | MUL | DIV | REM | LT
             | PUSH_ARGUMENTS | NEG | POSI | GT | LE | GE | EQ | NE | GET_MEMBER | RETURN | SNE

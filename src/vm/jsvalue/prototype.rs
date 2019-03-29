@@ -31,6 +31,7 @@ impl ObjectPrototypes {
                         lex_names: vec![],
                         func_decls: vec![],
                         constructor: false,
+                        bound_variables: 0,
                         code: vec![],
                         outer: None,
                         exception_table: vec![],

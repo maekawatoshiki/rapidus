@@ -180,6 +180,7 @@ impl Value2 {
         lex_names: Vec<String>,
         func_decls: Vec<Value2>,
         constructor: bool,
+        bound_variables: usize,
         code: ByteCode,
         exception_table: Vec<Exception>,
     ) -> Self {
@@ -201,6 +202,7 @@ impl Value2 {
                     lex_names,
                     func_decls,
                     constructor,
+                    bound_variables,
                     code,
                     exception_table,
                     outer: None

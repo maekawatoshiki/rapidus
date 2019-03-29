@@ -108,19 +108,35 @@ impl<'a> CodeGenerator<'a> {
                 ref name,
                 ref params,
                 ref body,
-                ..
-            } => self.visit_function_decl(name, params, &*body)?,
+                ref bound_variables,
+            } => self.visit_function_decl(name, params, &*body, *bound_variables)?,
             NodeBase::FunctionExpr {
                 ref name,
                 ref params,
                 ref body,
-                ..
-            } => self.visit_function_expr(name, params, &*body, true, iseq, use_value)?,
+                ref bound_variables,
+            } => self.visit_function_expr(
+                name,
+                params,
+                &*body,
+                true,
+                *bound_variables,
+                iseq,
+                use_value,
+            )?,
             NodeBase::ArrowFunction {
                 ref params,
                 ref body,
-                ..
-            } => self.visit_function_expr(&None, params, &*body, false, iseq, use_value)?,
+                ref bound_variables,
+            } => self.visit_function_expr(
+                &None,
+                params,
+                &*body,
+                false,
+                *bound_variables,
+                iseq,
+                use_value,
+            )?,
             NodeBase::VarDecl(ref name, ref init, ref kind) => {
                 self.visit_var_decl(node, name, init, kind, iseq)?
             }
@@ -153,7 +169,9 @@ impl<'a> CodeGenerator<'a> {
                         IdentifierInfo::Name(name) => {
                             self.bytecode_generator.append_get_value(name, iseq)
                         }
-                        IdentifierInfo::Offset(_offset) => unimplemented!(),
+                        IdentifierInfo::Offset(offset) => self
+                            .bytecode_generator
+                            .append_get_value_stack(*offset as u32, iseq),
                     }
                 }
             }
@@ -556,8 +574,9 @@ impl<'a> CodeGenerator<'a> {
         name: &String,
         params: &FormalParameters,
         body: &Node,
+        bound_variables: usize,
     ) -> CodeGenResult {
-        let func = self.visit_function(Some(name.clone()), params, body, true)?;
+        let func = self.visit_function(Some(name.clone()), params, body, true, bound_variables)?;
         self.current_function().var_names.push(name.clone());
         self.current_function().func_decls.push(func);
         Ok(())
@@ -569,6 +588,7 @@ impl<'a> CodeGenerator<'a> {
         params: &FormalParameters,
         body: &Node,
         constructor: bool,
+        bound_variables: usize,
         iseq: &mut ByteCode,
         use_value: bool,
     ) -> CodeGenResult {
@@ -576,7 +596,7 @@ impl<'a> CodeGenerator<'a> {
             return Ok(());
         }
 
-        let func = self.visit_function(name.clone(), params, body, constructor)?;
+        let func = self.visit_function(name.clone(), params, body, constructor, bound_variables)?;
         self.bytecode_generator.append_push_const(func, iseq);
         self.bytecode_generator.append_set_outer_env(iseq);
 
@@ -589,6 +609,7 @@ impl<'a> CodeGenerator<'a> {
         params: &FormalParameters,
         body: &Node,
         constructor: bool,
+        bound_variables: usize,
     ) -> Result<Value2, Error> {
         self.function_stack.push(FunctionInfo::new(name));
 
@@ -607,15 +628,20 @@ impl<'a> CodeGenerator<'a> {
                 |FormalParameter {
                      name,
                      is_rest_param,
+                     bound,
                      ..
                  }| value::FunctionParameter {
                     name: name.clone(),
                     is_rest_param: *is_rest_param,
+                    bound: *bound,
                 },
             )
             .collect();
 
         let function_info = self.function_stack.pop().unwrap();
+
+        use bytecode_gen;
+        bytecode_gen::show2(&func_iseq, &self.bytecode_generator.constant_table);
 
         Ok(Value2::function(
             self.memory_allocator,
@@ -626,6 +652,7 @@ impl<'a> CodeGenerator<'a> {
             function_info.lex_names,
             function_info.func_decls,
             constructor,
+            bound_variables,
             func_iseq,
             function_info.exception_table,
         ))
@@ -733,17 +760,13 @@ impl<'a> CodeGenerator<'a> {
             &UnaryOp::PrInc => {
                 self.bytecode_generator.append_push_int8(1, iseq);
                 self.bytecode_generator.append_add(iseq);
-                if use_value {
-                    self.bytecode_generator.append_double(iseq);
-                }
+                self.bytecode_generator.append_double(iseq);
                 self.assign_stack_top_to(expr, iseq)?;
             }
             &UnaryOp::PrDec => {
                 self.bytecode_generator.append_push_int8(1, iseq);
                 self.bytecode_generator.append_sub(iseq);
-                if use_value {
-                    self.bytecode_generator.append_double(iseq);
-                }
+                self.bytecode_generator.append_double(iseq);
                 self.assign_stack_top_to(expr, iseq)?;
             }
             &UnaryOp::PoInc => {
@@ -1019,7 +1042,9 @@ impl<'a> CodeGenerator<'a> {
         match dst.base {
             NodeBase::Identifier(ref info) => match info {
                 IdentifierInfo::Name(name) => self.bytecode_generator.append_set_value(name, iseq),
-                _ => unimplemented!(),
+                IdentifierInfo::Offset(offset) => self
+                    .bytecode_generator
+                    .append_set_value_stack(*offset as u32, iseq),
             },
             NodeBase::Member(ref parent, ref property) => {
                 self.visit(&*parent, iseq, true)?;
