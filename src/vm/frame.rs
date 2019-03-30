@@ -184,14 +184,14 @@ impl LexicalEnvironment {
         memory_allocator: &mut gc::MemoryAllocator,
         object_prototypes: &ObjectPrototypes,
     ) -> Self {
-        use builtin::{builtin_log, parse_float};
+        use builtin::parse_float;
         use builtins;
 
         let log = Value2::builtin_function(
             memory_allocator,
             object_prototypes,
             "log".to_string(),
-            builtin_log,
+            builtins::console::builtin_log,
         );
         let parse_float = Value2::builtin_function(
             memory_allocator,
