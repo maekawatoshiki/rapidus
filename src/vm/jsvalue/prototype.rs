@@ -1,5 +1,5 @@
 #![macro_use]
-use super::super::super::builtin;
+use super::super::super::builtins;
 use super::super::super::builtins::{array, function};
 use super::super::super::id::get_unique_id;
 use super::value::*;
@@ -58,14 +58,14 @@ impl ObjectPrototypes {
                 memory_allocator,
                 function_prototype,
                 "indexOf".to_string(),
-                builtin::string_prototype_index_of,
+                builtins::string::string_prototype_index_of,
             );
 
             let split = Value2::builtin_function_with_proto(
                 memory_allocator,
                 function_prototype,
                 "split".to_string(),
-                builtin::string_prototype_split,
+                builtins::string::string_prototype_split,
             );
 
             Value2::Object(memory_allocator.alloc(ObjectInfo {

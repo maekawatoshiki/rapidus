@@ -5,3 +5,4 @@ pub mod function;
 pub mod math;
 pub mod number;
 pub mod object;
+pub mod string;
