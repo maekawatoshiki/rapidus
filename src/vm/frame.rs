@@ -191,7 +191,7 @@ impl LexicalEnvironment {
             memory_allocator,
             object_prototypes,
             "log".to_string(),
-            builtins::console::builtin_log,
+            builtins::console::console_log,
         );
         let parse_float = Value2::builtin_function(
             memory_allocator,
@@ -199,7 +199,7 @@ impl LexicalEnvironment {
             "parseFloat".to_string(),
             parse_float,
         );
-        let console = make_normal_object!(memory_allocator,
+        let console = make_normal_object!(memory_allocator, object_prototypes,
             log => true, false, true: log
         );
         let object_constructor = builtins::object::object(memory_allocator, object_prototypes);
@@ -209,6 +209,7 @@ impl LexicalEnvironment {
         LexicalEnvironment {
             record: EnvironmentRecord::Global(make_normal_object!(
                 memory_allocator,
+                object_prototypes,
                 undefined  => false,false,false: Value2::undefined(),
                 NaN        => false,false,false: Value2::Number(::std::f64::NAN),
                 Infinity   => false,false,false: Value2::Number(::std::f64::INFINITY),

@@ -858,19 +858,11 @@ impl VM2 {
         args: &[Value2],
         cur_frame: &mut frame::Frame,
     ) -> VMResult {
-        let properties = match callee
-            .get_property_by_str_key("prototype")
-            .get_object_properties()
-        {
-            Some(properties) => properties.clone(),
-            None => return Err(RuntimeError::Type("Not a constructor".to_string())),
-        };
-
-        let this = Value2::object(
-            &mut self.memory_allocator,
-            &self.object_prototypes,
-            properties,
-        );
+        let this = Value2::Object(self.memory_allocator.alloc(ObjectInfo {
+            kind: ObjectKind2::Ordinary,
+            prototype: callee.get_property_by_str_key("prototype"),
+            property: FxHashMap::default(),
+        }));
 
         if !callee.is_function_object() {
             return Err(RuntimeError::Type("Not a function".to_string()));

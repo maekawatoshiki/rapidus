@@ -17,7 +17,8 @@ impl ObjectPrototypes {
     pub fn new(memory_allocator: &mut MemoryAllocator) -> Self {
         let object_prototype = Value2::Object(memory_allocator.alloc(ObjectInfo {
             kind: ObjectKind2::Ordinary,
-            property: make_property_map!(__proto__: Value2::null()),
+            prototype: Value2::null(),
+            property: make_property_map!(),
         }));
 
         let function_prototype = {
@@ -36,7 +37,8 @@ impl ObjectPrototypes {
                         exception_table: vec![],
                     }),
                 }),
-                property: make_property_map!(__proto__: object_prototype),
+                prototype: object_prototype,
+                property: make_property_map!(),
             }));
 
             let function_prototype_call = Value2::builtin_function_with_proto(
@@ -47,8 +49,8 @@ impl ObjectPrototypes {
             );
 
             let info = function_prototype.get_object_info();
-            info.property =
-                make_property_map!(__proto__: object_prototype, call: function_prototype_call);
+            info.prototype = object_prototype;
+            info.property = make_property_map!(call: function_prototype_call);
 
             function_prototype
         };
@@ -70,11 +72,8 @@ impl ObjectPrototypes {
 
             Value2::Object(memory_allocator.alloc(ObjectInfo {
                 kind: ObjectKind2::Ordinary,
-                property: make_property_map!(
-                    __proto__: object_prototype,
-                    indexOf: index_of,
-                    split: split
-                ),
+                prototype: object_prototype,
+                property: make_property_map!(indexOf: index_of, split: split),
             }))
         };
 
@@ -94,13 +93,13 @@ impl ObjectPrototypes {
             );
 
             Value2::Object(memory_allocator.alloc(ObjectInfo {
-                property: make_property_map!(
-                    __proto__ => false, false, false: object_prototype,
-                    length    => false, false, true : Value2::Number(0.0),
-                    push      => true,  false, true : push,
-                    map       => true,  false, true : map
-                ),
                 kind: ObjectKind2::Array(ArrayObjectInfo { elems: vec![] }),
+                prototype: object_prototype,
+                property: make_property_map!(
+                    length => false, false, true : Value2::Number(0.0),
+                    push   => true,  false, true : push,
+                    map    => true,  false, true : map
+                ),
             }))
         };
 

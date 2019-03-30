@@ -1,10 +1,10 @@
 use vm::{error::RuntimeError, frame::Frame, jsvalue::value::*, vm::VM2};
 
-pub fn builtin_log(vm: &mut VM2, args: &[Value2], _cur_frame: &Frame) -> Result<(), RuntimeError> {
+pub fn console_log(vm: &mut VM2, args: &[Value2], _cur_frame: &Frame) -> Result<(), RuntimeError> {
     let args_len = args.len();
 
     for i in 0..args_len {
-        debug_print2(&args[i], false);
+        debug_print(&args[i], false);
         if args_len - 1 != i {
             print!(" ");
         }
@@ -16,14 +16,14 @@ pub fn builtin_log(vm: &mut VM2, args: &[Value2], _cur_frame: &Frame) -> Result<
     Ok(())
 }
 
-pub fn debug_print2(val: &Value2, nest: bool) {
+pub fn debug_print(val: &Value2, nest: bool) {
     fn show_obj(sorted_key_val: Vec<(&String, &Property2)>) {
         for (i, tupple) in sorted_key_val.iter().enumerate() {
             print!("'{}': ", tupple.0.as_str());
 
             match tupple.1 {
                 Property2::Data(DataProperty { val, .. }) => {
-                    debug_print2(&val, true);
+                    debug_print(&val, true);
                 }
                 Property2::Accessor(AccessorProperty { get, set, .. }) => {
                     let s_get = if get.is_undefined() { "" } else { "Getter" };
@@ -77,13 +77,12 @@ pub fn debug_print2(val: &Value2, nest: bool) {
 
             match obj_info.kind {
                 ObjectKind2::Ordinary => {
-                    print!("{{");
+                    print!("{{ ");
 
                     let mut sorted_key_val = (&obj_info.property)
                         .iter()
                         .collect::<Vec<(&String, &Property2)>>();
                     sorted_key_val.sort_by(|(key1, _), (key2, _)| key1.as_str().cmp(key2.as_str()));
-                    sorted_key_val.retain(|(ref key, _)| key != &"__proto__");
 
                     show_obj(sorted_key_val);
 
@@ -103,7 +102,6 @@ pub fn debug_print2(val: &Value2, nest: bool) {
                         .iter()
                         .collect::<Vec<(&String, &Property2)>>();
                     sorted_key_val.sort_by(|(key1, _), (key2, _)| key1.as_str().cmp(key2.as_str()));
-                    sorted_key_val.retain(|(ref key, _)| key != &"__proto__");
 
                     let length = ary_info.elems.len();
                     let is_last_idx = |idx: usize| -> bool { idx == length - 1 };
@@ -132,7 +130,7 @@ pub fn debug_print2(val: &Value2, nest: bool) {
                             }
                         }
 
-                        debug_print2(&ary_info.elems[i].as_data().val, true);
+                        debug_print(&ary_info.elems[i].as_data().val, true);
 
                         if is_last_idx(i) && sorted_key_val.len() == 0 {
                             print!(" ")

@@ -1,3 +1,4 @@
+use super::super::builtins;
 use ansi_term::Colour;
 use gc::MemoryAllocator;
 use vm::jsvalue::value::Value2;
@@ -55,7 +56,7 @@ impl RuntimeError {
             RuntimeError::Exception2(val) => {
                 runtime_error("Uncaught Exception");
                 unsafe {
-                    super::super::builtins::console::debug_print2(val, false);
+                    builtins::console::debug_print(val, false);
                     libc::puts(b"\0".as_ptr() as *const i8);
                 }
             }

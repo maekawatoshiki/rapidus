@@ -35,6 +35,7 @@ macro_rules! make_property_map_sub {
          $enumerable:ident,
          $configurable:ident
     ),*) => { {
+        #[allow(unused_mut)]
         let mut record = FxHashMap::default();
         $( record.insert(
             (stringify!($property_name)).to_string(),
@@ -62,18 +63,20 @@ macro_rules! make_property_map {
 
 #[macro_export]
 macro_rules! make_normal_object {
-    ($memory_allocator:expr) => { {
+    ($memory_allocator:expr, $object_prototypes:expr) => { {
         Value2::Object($memory_allocator.alloc(
             ObjectInfo {
                 kind: ObjectKind2::Ordinary,
+                prototype: $object_prototypes.object,
                 property: FxHashMap::default()
             }
         ))
     } };
-    ($memory_allocator:expr, $($property_name:ident => $x:ident, $y:ident, $z:ident : $val:expr),*) => { {
+    ($memory_allocator:expr, $object_prototypes:expr, $($property_name:ident => $x:ident, $y:ident, $z:ident : $val:expr),*) => { {
         Value2::Object($memory_allocator.alloc(
             ObjectInfo {
                 kind: ObjectKind2::Ordinary,
+                prototype: $object_prototypes.object,
                 property: make_property_map_sub!($($property_name, $val, $x, $y, $z),* )
             }
             ))
@@ -109,22 +112,12 @@ impl Value2 {
     pub fn object(
         memory_allocator: &mut gc::MemoryAllocator,
         object_prototypes: &ObjectPrototypes,
-        mut properties: FxHashMap<String, Property2>,
+        property: FxHashMap<String, Property2>,
     ) -> Self {
         Value2::Object(memory_allocator.alloc(ObjectInfo {
             kind: ObjectKind2::Ordinary,
-            property: {
-                properties.insert(
-                    "__proto__".to_string(),
-                    Property2::Data(DataProperty {
-                        val: object_prototypes.object,
-                        writable: false,
-                        enumerable: false,
-                        configurable: false,
-                    }),
-                );
-                properties
-            },
+            prototype: object_prototypes.object,
+            property,
         }))
     }
 
@@ -141,10 +134,10 @@ impl Value2 {
                 name: Some(name),
                 kind: FunctionObjectKind::Builtin(func),
             }),
+            prototype: object_prototypes.function,
             property: make_property_map!(
-                __proto__ => false, false, false: object_prototypes.function,
-                length    => false, false, true : Value2::Number(0.0),
-                name      => false, false, true : name_prop
+                length => false, false, true : Value2::Number(0.0),
+                name   => false, false, true : name_prop
             ),
         }))
     }
@@ -162,10 +155,10 @@ impl Value2 {
                 name: Some(name),
                 kind: FunctionObjectKind::Builtin(func),
             }),
+            prototype: proto,
             property: make_property_map!(
-                __proto__ => false, false, false: proto,
-                length    => false, false, true : Value2::Number(0.0),
-                name      => false, false, true : name_prop
+                length => false, false, true : Value2::Number(0.0),
+                name   => false, false, true : name_prop
             ),
         }))
     }
@@ -184,10 +177,11 @@ impl Value2 {
         exception_table: Vec<Exception>,
     ) -> Self {
         let name_prop = Value2::string(memory_allocator, name.clone().unwrap_or("".to_string()));
-        let prototype = make_normal_object!(memory_allocator);
+        let prototype = Value2::object(memory_allocator, object_prototypes, FxHashMap::default());
+
         let f = Value2::Object(memory_allocator.alloc(ObjectInfo {
+            prototype: object_prototypes.function,
             property: make_property_map!(
-                __proto__ => false, false, false: object_prototypes.function,
                 length    => false, false, true : Value2::Number(params.len() as f64), /* TODO: rest param */
                 name      => false, false, true : name_prop,
                 prototype => true , false, false: prototype
@@ -207,7 +201,12 @@ impl Value2 {
                 }),
             }),
         }));
-        f.get_property_by_str_key("prototype").set_constructor(f);
+
+        f.get_property_by_str_key("prototype")
+            .get_object_info()
+            .property
+            .insert("constructor".to_string(), Property2::new_data_simple(f));
+
         f
     }
 
@@ -217,10 +216,9 @@ impl Value2 {
         elems: Vec<Property2>,
     ) -> Self {
         Value2::Object(memory_allocator.alloc(ObjectInfo {
-            property: make_property_map!(
-                __proto__ => false, false, false: object_prototypes.array
-            ),
             kind: ObjectKind2::Array(ArrayObjectInfo { elems }),
+            prototype: object_prototypes.array,
+            property: make_property_map!(),
         }))
     }
 }
@@ -309,6 +307,13 @@ impl Value2 {
         }
     }
 
+    pub fn get_prototype(&self) -> Value2 {
+        match self {
+            Value2::Object(info) => unsafe { &**info }.get_prototype(),
+            _ => Value2::undefined(),
+        }
+    }
+
     pub fn get_object_properties(&self) -> Option<&FxHashMap<String, Property2>> {
         match self {
             Value2::Object(obj_info) => Some(&unsafe { &**obj_info }.property),
@@ -329,30 +334,46 @@ impl Value2 {
         object_prototypes: &ObjectPrototypes,
         key: Value2,
     ) -> Result<Property2, error::RuntimeError> {
-        let mut string_get_property =
-            |s: &str, key: Value2| -> Result<Property2, error::RuntimeError> {
-                match key {
-                    Value2::Number(idx) if is_integer(idx) => Ok(Property2::new_data_simple(
-                        Value2::string(allocator, s.chars().nth(idx as usize).unwrap().to_string()),
-                    )),
-                    Value2::String(x) if unsafe { &*x }.to_str().unwrap() == "length" => {
-                        Ok(Property2::new_data_simple(Value2::Number(
-                            s.chars().fold(0, |x, c| x + c.len_utf16()) as f64,
-                        )))
-                    }
-                    key => object_prototypes.string.get_object_info().get_property(key),
+        fn string_get_property(
+            allocator: &mut gc::MemoryAllocator,
+            object_prototypes: &ObjectPrototypes,
+            s: &str,
+            key: Value2,
+        ) -> Result<Property2, error::RuntimeError> {
+            match key {
+                Value2::Number(idx) if is_integer(idx) => Ok(Property2::new_data_simple(
+                    Value2::string(allocator, s.chars().nth(idx as usize).unwrap().to_string()),
+                )),
+                Value2::String(x) if unsafe { &*x }.to_str().unwrap() == "length" => {
+                    Ok(Property2::new_data_simple(Value2::Number(
+                        s.chars().fold(0, |x, c| x + c.len_utf16()) as f64,
+                    )))
                 }
-            };
+                key => object_prototypes.string.get_object_info().get_property(
+                    allocator,
+                    object_prototypes,
+                    key,
+                ),
+            }
+        }
 
         match self {
             Value2::String(s) => {
-                return string_get_property(unsafe { &**s }.to_str().unwrap(), key)
+                return string_get_property(
+                    allocator,
+                    object_prototypes,
+                    unsafe { &**s }.to_str().unwrap(),
+                    key,
+                )
             }
+            // TODO: Number
             _ => {}
         }
 
         match self {
-            Value2::Object(obj_info) => unsafe { &**obj_info }.get_property(key),
+            Value2::Object(obj_info) => {
+                unsafe { &**obj_info }.get_property(allocator, object_prototypes, key)
+            }
             _ => Ok(Property2::new_data_simple(Value2::undefined())),
         }
     }
@@ -766,7 +787,6 @@ impl Value2 {
                                 .collect::<Vec<(&String, &Property2)>>();
                         sorted_key_val
                             .sort_by(|(key1, _), (key2, _)| key1.as_str().cmp(key2.as_str()));
-                        sorted_key_val.retain(|(ref key, _)| key != &"__proto__");
 
                         format!("{{ {} }}", property_string(sorted_key_val))
                     }
@@ -786,7 +806,6 @@ impl Value2 {
                                 .collect::<Vec<(&String, &Property2)>>();
                         sorted_key_val
                             .sort_by(|(key1, _), (key2, _)| key1.as_str().cmp(key2.as_str()));
-                        sorted_key_val.retain(|(ref key, _)| key != &"__proto__");
 
                         let length = ary_info.elems.len();
                         let is_last_idx = |idx: usize| -> bool { idx == length - 1 };

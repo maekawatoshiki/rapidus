@@ -1,10 +1,16 @@
+use super::super::super::gc::MemoryAllocator;
 use super::super::error;
+use super::prototype::ObjectPrototypes;
 use super::value::*;
 pub use rustc_hash::FxHashMap;
 
 #[derive(Clone, Debug)]
 pub struct ObjectInfo {
+    /// Kind
     pub kind: ObjectKind2,
+    /// [[Prototype]] internal slot
+    pub prototype: Value2,
+    /// Properties 
     pub property: FxHashMap<String, Property2>,
 }
 
@@ -42,7 +48,22 @@ impl ObjectInfo {
         self.property.contains_key(key)
     }
 
-    pub fn get_property(&self, key: Value2) -> Result<Property2, error::RuntimeError> {
+    #[inline]
+    pub fn get_prototype(&self) -> Value2 {
+        self.prototype
+    }
+
+    pub fn get_property(
+        &self,
+        allocator: &mut MemoryAllocator,
+        object_prototypes: &ObjectPrototypes,
+        key: Value2,
+    ) -> Result<Property2, error::RuntimeError> {
+        // Annoying
+        if key.is_string() && key.into_str() == "__proto__" {
+            return Ok(Property2::new_data_simple(self.get_prototype()));
+        }
+
         match self.kind {
             ObjectKind2::Array(ref info) => {
                 if let Some(idx) = key.is_array_index() {
@@ -64,26 +85,16 @@ impl ObjectInfo {
 
         match self.property.get(key.to_string().as_str()) {
             Some(prop) => Ok(*prop),
-            None => match self.property.get("__proto__") {
-                Some(Property2::Data(DataProperty {
-                    val: Value2::Object(obj_info),
-                    ..
-                })) => unsafe { &**obj_info }.get_property(key),
-                _ => Ok(Property2::new_data_simple(Value2::undefined())),
-            },
+            None => self
+                .prototype
+                .get_property(allocator, object_prototypes, key),
         }
     }
 
     pub fn get_property_by_str_key(&self, key: &str) -> Value2 {
         match self.property.get(key) {
             Some(prop) => prop.as_data().val,
-            None => match self.property.get("__proto__") {
-                Some(Property2::Data(DataProperty {
-                    val: Value2::Object(obj_info),
-                    ..
-                })) => unsafe { &**obj_info }.get_property_by_str_key(key),
-                _ => Value2::undefined(),
-            },
+            None => self.prototype.get_property_by_str_key(key),
         }
     }
 
@@ -103,6 +114,12 @@ impl ObjectInfo {
         key: Value2,
         val_: Value2,
     ) -> Result<Option<Value2>, error::RuntimeError> {
+        // Annoying
+        if key.is_string() && key.into_str() == "__proto__" {
+            self.prototype = val_;
+            return Ok(None);
+        }
+
         match self.kind {
             ObjectKind2::Array(ref mut info) => {
                 if let Some(idx) = key.is_array_index() {
