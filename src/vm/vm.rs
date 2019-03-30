@@ -943,38 +943,57 @@ impl VM2 {
         self.saved_frame
             .push(cur_frame.clone().saved_stack_len(self.stack.len()));
 
-        let var_env = self.memory_allocator.alloc(frame::LexicalEnvironment {
-            record: frame::EnvironmentRecord::Declarative({
-                let mut record = FxHashMap::default();
+        let mut count = 0;
+        for (i, FunctionParameter { bound, .. }) in user_func.params.iter().enumerate() {
+            if bound.is_none() {
+                count += 1
+            }
+        }
+        count += user_func.var_names.len() + user_func.lex_names.len() + user_func.func_decls.len();
 
-                for name in user_func.var_names {
-                    record.insert(name, Value2::undefined());
-                }
+        let var_env = if count != 0 {
+            self.memory_allocator.alloc(frame::LexicalEnvironment {
+                record: frame::EnvironmentRecord::Declarative({
+                    let mut record = FxHashMap::default();
 
-                // TODO: rest parameter
-                for (i, FunctionParameter { name, bound, .. }) in
-                    user_func.params.iter().enumerate()
-                {
-                    if bound.is_none() {
-                        record.insert(name.clone(), *args.get(i).unwrap_or(&Value2::undefined()));
+                    for name in user_func.var_names {
+                        record.insert(name, Value2::undefined());
                     }
-                }
 
-                record
-            }),
-            outer: user_func.outer,
-        });
+                    // TODO: rest parameter
+                    for (i, FunctionParameter { name, bound, .. }) in
+                        user_func.params.iter().enumerate()
+                    {
+                        if bound.is_none() {
+                            record
+                                .insert(name.clone(), *args.get(i).unwrap_or(&Value2::undefined()));
+                        }
+                    }
 
-        let lex_env = self.memory_allocator.alloc(frame::LexicalEnvironment {
-            record: frame::EnvironmentRecord::Declarative({
-                let mut record = FxHashMap::default();
-                for name in user_func.lex_names {
-                    record.insert(name, Value2::uninitialized());
-                }
-                record
-            }),
-            outer: Some(var_env),
-        });
+                    record
+                }),
+                outer: user_func.outer,
+            })
+        } else {
+            // ::std::ptr::null_mut()
+            user_func.outer.unwrap()
+        };
+
+        let lex_env = if count != 0 {
+            self.memory_allocator.alloc(frame::LexicalEnvironment {
+                record: frame::EnvironmentRecord::Declarative({
+                    let mut record = FxHashMap::default();
+                    for name in user_func.lex_names {
+                        record.insert(name, Value2::uninitialized());
+                    }
+                    record
+                }),
+                outer: Some(var_env),
+            })
+        } else {
+            user_func.outer.unwrap()
+            // ::std::ptr::null_mut()
+        };
 
         let sp = self.stack.len();
 

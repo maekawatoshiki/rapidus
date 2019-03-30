@@ -29,8 +29,7 @@ pub type VarMap = FxHashMap<String, Option<usize>>;
 impl Analyzer {
     pub fn new() -> Self {
         Analyzer {
-            level: vec![Level::Function {
-                params: VarMap::default(),
+            level: vec![Level::Block {
                 varmap: VarMap::default(),
             }],
             idgen: IdGen::new(),
@@ -99,64 +98,90 @@ impl Analyzer {
     fn visit(&mut self, node: Node) -> Result<Node, Error> {
         match node.base {
             NodeBase::StatementList(stmts) => {
-                for stmt in &stmts {
-                    self.collect_variable_declarations(stmt);
-                }
-
-                let mut new_stmts = vec![];
-                for stmt in stmts {
-                    new_stmts.push(self.visit(stmt)?)
-                }
-
-                let mut bound_variables = FxHashMap::default();
-                for (name, offset) in self.get_current_varmap() {
-                    if let Some(offset) = offset {
-                        bound_variables.insert(name.clone(), *offset);
+                if self.in_function_level() {
+                    for stmt in &stmts {
+                        self.collect_variable_declarations(stmt);
                     }
-                }
 
-                for stmt in &mut new_stmts {
-                    self.replace_variable_declarations(stmt, &bound_variables);
-                }
+                    let mut new_stmts = vec![];
+                    for stmt in stmts {
+                        new_stmts.push(self.visit(stmt)?)
+                    }
 
-                Ok(Node::new(NodeBase::StatementList(new_stmts), node.pos))
+                    let mut bound_variables = FxHashMap::default();
+                    for (name, offset) in self.get_current_varmap() {
+                        if let Some(offset) = offset {
+                            bound_variables.insert(name.clone(), *offset);
+                        }
+                    }
+
+                    for stmt in &mut new_stmts {
+                        self.replace_variable_declarations(stmt, &bound_variables);
+                    }
+
+                    Ok(Node::new(NodeBase::StatementList(new_stmts), node.pos))
+                } else {
+                    Ok(Node::new(
+                        NodeBase::StatementList({
+                            let mut new_stmts = vec![];
+                            for stmt in stmts {
+                                new_stmts.push(self.visit(stmt)?)
+                            }
+                            new_stmts
+                        }),
+                        node.pos,
+                    ))
+                }
             }
             NodeBase::Block(stmts) => {
-                self.push_new_block_level();
+                if self.in_function_level() {
+                    self.push_new_block_level();
 
-                for stmt in &stmts {
-                    self.collect_variable_declarations(stmt);
-                }
-
-                let mut new_stmts = vec![];
-                for stmt in stmts {
-                    new_stmts.push(self.visit(stmt)?)
-                }
-
-                let level = self.pop_level();
-                let varmap = level.get_varmap();
-                let mut bound_variables: FxHashMap<String, usize> = FxHashMap::default();
-                let mut has_free_variables = false;
-                for (name, offset) in varmap {
-                    if let Some(offset) = offset {
-                        bound_variables.insert(name.clone(), *offset);
-                    } else {
-                        has_free_variables |= true;
+                    for stmt in &stmts {
+                        self.collect_variable_declarations(stmt);
                     }
-                }
 
-                for stmt in &mut new_stmts {
-                    self.replace_variable_declarations(stmt, &bound_variables);
-                }
+                    let mut new_stmts = vec![];
+                    for stmt in stmts {
+                        new_stmts.push(self.visit(stmt)?)
+                    }
 
-                Ok(Node::new(
-                    if has_free_variables {
-                        NodeBase::Block(new_stmts)
-                    } else {
-                        NodeBase::StatementList(new_stmts)
-                    },
-                    node.pos,
-                ))
+                    let level = self.pop_level();
+                    let varmap = level.get_varmap();
+                    let mut bound_variables: FxHashMap<String, usize> = FxHashMap::default();
+                    let mut has_free_variables = false;
+                    for (name, offset) in varmap {
+                        if let Some(offset) = offset {
+                            bound_variables.insert(name.clone(), *offset);
+                        } else {
+                            has_free_variables |= true;
+                        }
+                    }
+
+                    for stmt in &mut new_stmts {
+                        self.replace_variable_declarations(stmt, &bound_variables);
+                    }
+
+                    Ok(Node::new(
+                        if has_free_variables {
+                            NodeBase::Block(new_stmts)
+                        } else {
+                            NodeBase::StatementList(new_stmts)
+                        },
+                        node.pos,
+                    ))
+                } else {
+                    Ok(Node::new(
+                        NodeBase::Block({
+                            let mut new_stmts = vec![];
+                            for stmt in stmts {
+                                new_stmts.push(self.visit(stmt)?)
+                            }
+                            new_stmts
+                        }),
+                        node.pos,
+                    ))
+                }
             }
             NodeBase::If(cond, then, else_) => Ok(Node::new(
                 NodeBase::If(
@@ -432,6 +457,16 @@ impl Analyzer {
 
     pub fn pop_level(&mut self) -> Level {
         self.level.pop().unwrap()
+    }
+
+    pub fn in_function_level(&self) -> bool {
+        for level in self.level.iter().rev() {
+            match level {
+                Level::Function { .. } => return true,
+                _ => {}
+            }
+        }
+        false
     }
 
     pub fn get_current_varmap_mut(&mut self) -> &mut VarMap {
