@@ -14,8 +14,14 @@ use vm::jsvalue::{prototype, value};
 
 #[derive(Clone, Debug)]
 pub enum Level {
-    Function { params: VarMap, varmap: VarMap },
-    Block { varmap: VarMap },
+    Function {
+        params: VarMap,
+        varmap: VarMap,
+        fv: FVSet,
+    },
+    Block {
+        varmap: VarMap,
+    },
 }
 
 #[derive(Debug)]
@@ -25,6 +31,7 @@ pub struct Analyzer {
 }
 
 pub type VarMap = FxHashMap<String, Option<usize>>;
+pub type FVSet = FxHashSet<String>;
 
 impl Analyzer {
     pub fn new() -> Self {
@@ -227,7 +234,8 @@ impl Analyzer {
                 self.push_new_function_level(params_varmap);
 
                 let body = Box::new(self.visit(*body)?);
-                let (params_varmap, _) = self.pop_level().as_function_level();
+                let (params_varmap, _, fv) = self.pop_level().as_function_level();
+                println!("fv {:?}", fv);
 
                 for FormalParameter {
                     ref name,
@@ -267,7 +275,8 @@ impl Analyzer {
                 self.push_new_function_level(params_varmap);
 
                 let body = Box::new(self.visit(*body)?);
-                let (params_varmap, _) = self.pop_level().as_function_level();
+                let (params_varmap, _, fv) = self.pop_level().as_function_level();
+                println!("fv {:?}", fv);
 
                 for FormalParameter {
                     ref name,
@@ -306,7 +315,8 @@ impl Analyzer {
                 self.push_new_function_level(params_varmap);
 
                 let body = Box::new(self.visit(*body)?);
-                let (params_varmap, _) = self.pop_level().as_function_level();
+                let (params_varmap, _, fv) = self.pop_level().as_function_level();
+                println!("fv {:?}", fv);
 
                 for FormalParameter {
                     ref name,
@@ -452,6 +462,7 @@ impl Analyzer {
         self.level.push(Level::Function {
             params,
             varmap: VarMap::default(),
+            fv: FVSet::default(),
         })
     }
 
@@ -489,6 +500,7 @@ impl Analyzer {
                 Level::Function {
                     ref mut varmap,
                     ref mut params,
+                    ref mut fv,
                 } => {
                     if let Some(v) = params.get_mut(name) {
                         if v.is_some() {
@@ -505,6 +517,8 @@ impl Analyzer {
                         *v = Some(self.idgen.gen_id());
                         return *v;
                     }
+
+                    fv.insert(name.clone());
 
                     return None;
                 }
@@ -532,9 +546,9 @@ impl Level {
         }
     }
 
-    pub fn as_function_level(self) -> (VarMap, VarMap) {
+    pub fn as_function_level(self) -> (VarMap, VarMap, FVSet) {
         match self {
-            Level::Function { params, varmap } => (params, varmap),
+            Level::Function { params, varmap, fv } => (params, varmap, fv),
             _ => panic!(),
         }
     }
