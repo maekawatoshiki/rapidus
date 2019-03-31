@@ -222,45 +222,56 @@ impl VM2 {
         self.saved_frame
             .push(cur_frame.clone().saved_stack_len(self.stack.len()));
 
-        let var_env = self.memory_allocator.alloc(frame::LexicalEnvironment {
-            record: frame::EnvironmentRecord::Declarative({
-                let mut record = FxHashMap::default();
-
+        let var_env_ref = self.create_declarative_environment(
+            |vm, record| {
                 for name in &user_func.var_names {
                     record.insert(name.clone(), Value2::undefined());
                 }
 
-                // TODO: rest parameter
-                for (i, FunctionParameter { name, .. }) in user_func.params.iter().enumerate() {
-                    record.insert(name.clone(), *args.get(i).unwrap_or(&Value2::undefined()));
+                for (i, FunctionParameter { name, rest_param }) in
+                    user_func.params.iter().enumerate()
+                {
+                    record.insert(
+                        name.clone(),
+                        if *rest_param {
+                            Value2::array(
+                                &mut vm.memory_allocator,
+                                &vm.object_prototypes,
+                                (*args)
+                                    .get(i..)
+                                    .unwrap_or(&vec![])
+                                    .iter()
+                                    .map(|elem| Property2::new_data_simple(*elem))
+                                    .collect::<Vec<Property2>>(),
+                            )
+                        } else {
+                            *args.get(i).unwrap_or(&Value2::undefined())
+                        },
+                    );
                 }
+            },
+            user_func.outer,
+        );
 
-                record
-            }),
-            outer: user_func.outer,
-        });
-
-        let lex_env = self.memory_allocator.alloc(frame::LexicalEnvironment {
-            record: frame::EnvironmentRecord::Declarative({
-                let mut record = FxHashMap::default();
+        let lex_env_ref = self.create_declarative_environment(
+            |_, record| {
                 for name in &user_func.lex_names {
                     record.insert(name.clone(), Value2::uninitialized());
                 }
-                record
-            }),
-            outer: Some(var_env),
-        });
+            },
+            Some(var_env_ref),
+        );
 
         for func in &user_func.func_decls {
             let mut func = func.copy_object(&mut self.memory_allocator);
             let name = func.as_function().name.clone().unwrap();
-            func.set_function_outer_environment(lex_env);
-            unsafe { &mut *lex_env }.set_value(name, func)?;
+            func.set_function_outer_environment(lex_env_ref);
+            unsafe { &mut *lex_env_ref }.set_value(name, func)?;
         }
 
         let exec_ctx = frame::ExecutionContext {
-            variable_environment: var_env,
-            lexical_environment: lex_env,
+            variable_environment: var_env_ref,
+            lexical_environment: lex_env_ref,
             saved_lexical_environment: vec![],
         };
 
@@ -906,6 +917,25 @@ impl VM2 {
         }
     }
 
+    fn create_declarative_environment<F>(
+        &mut self,
+        f: F,
+        outer: Option<frame::LexicalEnvironmentRef>,
+    ) -> frame::LexicalEnvironmentRef
+    where
+        F: Fn(&mut VM2, &mut FxHashMap<String, Value2>),
+    {
+        let env = frame::LexicalEnvironment {
+            record: frame::EnvironmentRecord::Declarative({
+                let mut record = FxHashMap::default();
+                f(self, &mut record);
+                record
+            }),
+            outer,
+        };
+        self.memory_allocator.alloc(env)
+    }
+
     fn enter_user_function(
         &mut self,
         user_func: UserFunctionInfo,
@@ -921,45 +951,56 @@ impl VM2 {
         self.saved_frame
             .push(cur_frame.clone().saved_stack_len(self.stack.len()));
 
-        let var_env = self.memory_allocator.alloc(frame::LexicalEnvironment {
-            record: frame::EnvironmentRecord::Declarative({
-                let mut record = FxHashMap::default();
-
-                for name in user_func.var_names {
-                    record.insert(name, Value2::undefined());
+        let var_env_ref = self.create_declarative_environment(
+            |vm, record| {
+                for name in &user_func.var_names {
+                    record.insert(name.clone(), Value2::undefined());
                 }
 
-                // TODO: rest parameter
-                for (i, FunctionParameter { name, .. }) in user_func.params.iter().enumerate() {
-                    record.insert(name.clone(), *args.get(i).unwrap_or(&Value2::undefined()));
+                for (i, FunctionParameter { name, rest_param }) in
+                    user_func.params.iter().enumerate()
+                {
+                    record.insert(
+                        name.clone(),
+                        if *rest_param {
+                            Value2::array(
+                                &mut vm.memory_allocator,
+                                &vm.object_prototypes,
+                                (*args)
+                                    .get(i..)
+                                    .unwrap_or(&vec![])
+                                    .iter()
+                                    .map(|elem| Property2::new_data_simple(*elem))
+                                    .collect::<Vec<Property2>>(),
+                            )
+                        } else {
+                            *args.get(i).unwrap_or(&Value2::undefined())
+                        },
+                    );
                 }
+            },
+            user_func.outer,
+        );
 
-                record
-            }),
-            outer: user_func.outer,
-        });
-
-        let lex_env = self.memory_allocator.alloc(frame::LexicalEnvironment {
-            record: frame::EnvironmentRecord::Declarative({
-                let mut record = FxHashMap::default();
-                for name in user_func.lex_names {
-                    record.insert(name, Value2::uninitialized());
+        let lex_env_ref = self.create_declarative_environment(
+            |_, record| {
+                for name in &user_func.lex_names {
+                    record.insert(name.clone(), Value2::uninitialized());
                 }
-                record
-            }),
-            outer: Some(var_env),
-        });
+            },
+            Some(var_env_ref),
+        );
 
         for func in user_func.func_decls {
             let mut func = func.copy_object(&mut self.memory_allocator);
             let name = func.as_function().name.clone().unwrap();
-            func.set_function_outer_environment(lex_env);
-            unsafe { &mut *lex_env }.set_value(name, func)?;
+            func.set_function_outer_environment(lex_env_ref);
+            unsafe { &mut *lex_env_ref }.set_value(name, func)?;
         }
 
         let exec_ctx = frame::ExecutionContext {
-            variable_environment: var_env,
-            lexical_environment: lex_env,
+            variable_environment: var_env_ref,
+            lexical_environment: lex_env_ref,
             saved_lexical_environment: vec![],
         };
 

@@ -8,9 +8,9 @@ pub use rustc_hash::FxHashMap;
 pub struct ObjectInfo {
     /// Kind
     pub kind: ObjectKind2,
-    /// [[Prototype]] internal slot
+    /// Internal slot \[\[Prototype\]\]
     pub prototype: Value2,
-    /// Properties 
+    /// Properties
     pub property: FxHashMap<String, Property2>,
 }
 
