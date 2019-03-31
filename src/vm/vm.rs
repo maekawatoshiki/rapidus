@@ -873,6 +873,7 @@ impl VM2 {
             kind: ObjectKind2::Ordinary,
             prototype: callee.get_property_by_str_key("prototype"),
             property: FxHashMap::default(),
+            sym_property: FxHashMap::default(),
         }));
 
         if !callee.is_function_object() {

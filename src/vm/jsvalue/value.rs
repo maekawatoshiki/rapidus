@@ -4,16 +4,17 @@ pub use super::array::*;
 pub use super::function::*;
 pub use super::object::*;
 pub use super::prototype::*;
+pub use super::symbol::*;
 use builtin::BuiltinFuncTy2;
 use gc;
 use id::get_unique_id;
 pub use rustc_hash::FxHashMap;
 use std::ffi::CString;
 
-pub const UNINITIALIZED: u32 = 0;
-pub const EMPTY: u32 = 1;
-pub const NULL: u32 = 2;
-pub const UNDEFINED: u32 = 3;
+pub const UNINITIALIZED: i32 = 0;
+pub const EMPTY: i32 = 1;
+pub const NULL: i32 = 2;
+pub const UNDEFINED: i32 = 3;
 
 make_nanbox! {
     #[derive(Clone, PartialEq, Debug, Copy)]
@@ -22,7 +23,8 @@ make_nanbox! {
         Bool(u8), // 0 | 1 = false | true
         String(*mut CString), // TODO: Using CString is good for JIT. However, we need better one instead.
         Object(*mut ObjectInfo),
-        Other(u32) // UNINITIALIZED | EMPTY | NULL | UNDEFINED
+        Symbol(*mut SymbolInfo),
+        Other(i32) // UNINITIALIZED | EMPTY | NULL | UNDEFINED
     }
 }
 
@@ -67,7 +69,8 @@ macro_rules! make_normal_object {
             ObjectInfo {
                 kind: ObjectKind2::Ordinary,
                 prototype: $object_prototypes.object,
-                property: FxHashMap::default()
+                property: FxHashMap::default(),
+                sym_property: FxHashMap::default()
             }
         ))
     } };
@@ -76,7 +79,8 @@ macro_rules! make_normal_object {
             ObjectInfo {
                 kind: ObjectKind2::Ordinary,
                 prototype: $object_prototypes.object,
-                property: make_property_map_sub!($($property_name, $val, $x, $y, $z),* )
+                property: make_property_map_sub!($($property_name, $val, $x, $y, $z),* ),
+                sym_property: FxHashMap::default()
             }
             ))
     } };
@@ -117,6 +121,7 @@ impl Value2 {
             kind: ObjectKind2::Ordinary,
             prototype: object_prototypes.object,
             property,
+            sym_property: FxHashMap::default(),
         }))
     }
 
@@ -138,6 +143,7 @@ impl Value2 {
                 length => false, false, true : Value2::Number(0.0),
                 name   => false, false, true : name_prop
             ),
+            sym_property: FxHashMap::default(),
         }))
     }
 
@@ -159,6 +165,7 @@ impl Value2 {
                 length => false, false, true : Value2::Number(0.0),
                 name   => false, false, true : name_prop
             ),
+            sym_property: FxHashMap::default(),
         }))
     }
 
@@ -191,6 +198,7 @@ impl Value2 {
                 name: name,
                 kind: FunctionObjectKind::User(info)
             }),
+            sym_property: FxHashMap::default(),
         }));
 
         f.get_property_by_str_key("prototype")
@@ -210,6 +218,19 @@ impl Value2 {
             kind: ObjectKind2::Array(ArrayObjectInfo { elems }),
             prototype: object_prototypes.array,
             property: make_property_map!(),
+            sym_property: FxHashMap::default(),
+        }))
+    }
+
+    pub fn symbol(memory_allocator: &mut gc::MemoryAllocator, desc: Value2) -> Self {
+        let description = if desc.is_undefined() {
+            None
+        } else {
+            Some(desc.to_string())
+        };
+        Value2::Symbol(memory_allocator.alloc(SymbolInfo {
+            id: get_unique_id(),
+            description,
         }))
     }
 }
@@ -259,6 +280,13 @@ impl Value2 {
     pub fn is_number(&self) -> bool {
         match self {
             Value2::Number(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_symbol(&self) -> bool {
+        match self {
+            Value2::Symbol(_) => true,
             _ => false,
         }
     }
@@ -452,6 +480,13 @@ impl Value2 {
     pub fn get_object_info(&self) -> &mut ObjectInfo {
         match self {
             Value2::Object(obj) => unsafe { &mut **obj },
+            _ => panic!(),
+        }
+    }
+
+    pub fn get_symbol_info(&self) -> &mut SymbolInfo {
+        match self {
+            Value2::Symbol(info) => unsafe { &mut **info },
             _ => panic!(),
         }
     }
@@ -767,6 +802,13 @@ impl Value2 {
                 } else {
                     s.to_str().unwrap().to_string()
                 }
+            }
+            Value2::Symbol(info) => {
+                let info = unsafe { &**info };
+                format!(
+                    "Symbol({})",
+                    info.description.as_ref().unwrap_or(&"".to_string())
+                )
             }
             Value2::Object(obj_info) => {
                 let obj_info = unsafe { &**obj_info };

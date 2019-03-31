@@ -55,10 +55,8 @@ impl RuntimeError {
             }
             RuntimeError::Exception2(val) => {
                 runtime_error("Uncaught Exception");
-                unsafe {
-                    builtins::console::debug_print(val, false);
-                    libc::puts(b"\0".as_ptr() as *const i8);
-                }
+                builtins::console::debug_print(val, false);
+                println!()
             }
             RuntimeError::Exception(val) => {
                 runtime_error("Uncaught Exception");
