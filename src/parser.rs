@@ -875,7 +875,30 @@ impl Parser {
             //     Ok(Node::new(NodeBase::Undefined, tok.pos))
             // }
             Kind::Identifier(ref i) if i == "null" => Ok(Node::new(NodeBase::Null, tok.pos)),
-            Kind::Identifier(ident) => Ok(Node::new(NodeBase::Identifier(ident), tok.pos)),
+            Kind::Identifier(ident) => {
+                if self.lexer.next_if(Kind::Symbol(Symbol::FatArrow)) {
+                    let param = FormalParameter::new(ident, None, false);
+                    let body = if let Ok(true) = self
+                        .lexer
+                        .next_if_skip_lineterminator(Kind::Symbol(Symbol::OpeningBrace))
+                    {
+                        self.read_block()?
+                    } else {
+                        let pos = self.lexer.pos;
+                        Node::new(
+                            NodeBase::Return(Some(Box::new(self.read_assignment_expression()?))),
+                            pos,
+                        )
+                    };
+
+                    Ok(Node::new(
+                        NodeBase::ArrowFunction(vec![param], Box::new(body)),
+                        tok.pos,
+                    ))
+                } else {
+                    Ok(Node::new(NodeBase::Identifier(ident), tok.pos))
+                }
+            }
             Kind::String(s) => Ok(Node::new(NodeBase::String(s), tok.pos)),
             Kind::Number(num) => Ok(Node::new(NodeBase::Number(num), tok.pos)),
             Kind::LineTerminator => self.read_primary_expression(),
