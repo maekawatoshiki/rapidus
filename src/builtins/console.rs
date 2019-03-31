@@ -72,6 +72,13 @@ pub fn debug_print(val: &Value2, nest: bool) {
                 print!("{}", s)
             }
         }
+        Value2::Symbol(info) => {
+            let info = unsafe { &**info };
+            print!(
+                "Symbol({})",
+                info.description.as_ref().unwrap_or(&"".to_string())
+            )
+        }
         Value2::Object(obj_info) => {
             let obj_info = unsafe { &**obj_info };
 

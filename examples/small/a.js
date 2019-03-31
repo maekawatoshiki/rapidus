@@ -198,3 +198,18 @@ ary[3] = 123
 console.log(ary)
 ary.length=1
 console.log(ary[30])
+
+let color = {
+  red:   Symbol(),
+  green: Symbol(),
+  blue:  Symbol()
+}
+
+let objects = {}
+objects[color.red]   = ["apple"]
+objects[color.green] = ["leaf"]
+objects[color.blue]  = ["sky"]
+objects[color.red].push("tomato")
+console.log(objects[color.red])
+console.log(objects[color.green])
+console.log(objects[color.blue])

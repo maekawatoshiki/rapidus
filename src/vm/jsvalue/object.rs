@@ -12,6 +12,8 @@ pub struct ObjectInfo {
     pub prototype: Value2,
     /// Properties
     pub property: FxHashMap<String, Property2>,
+    /// Symbol properties
+    pub sym_property: FxHashMap<usize, Property2>,
 }
 
 #[derive(Clone, Debug)]
@@ -62,6 +64,16 @@ impl ObjectInfo {
         // Annoying
         if key.is_string() && key.into_str() == "__proto__" {
             return Ok(Property2::new_data_simple(self.get_prototype()));
+        }
+
+        if key.is_symbol() {
+            let id = key.get_symbol_info().id;
+            return match self.sym_property.get(&id) {
+                Some(prop) => Ok(*prop),
+                None => self
+                    .prototype
+                    .get_property(allocator, object_prototypes, key),
+            };
         }
 
         match self.kind {
@@ -140,10 +152,16 @@ impl ObjectInfo {
             _ => {}
         }
 
-        let property = self
-            .property
-            .entry(key.to_string())
-            .or_insert_with(|| Property2::new_data_simple(Value2::undefined()));
+        let property = if key.is_symbol() {
+            let id = key.get_symbol_info().id;
+            self.sym_property
+                .entry(id)
+                .or_insert_with(|| Property2::new_data_simple(Value2::undefined()))
+        } else {
+            self.property
+                .entry(key.to_string())
+                .or_insert_with(|| Property2::new_data_simple(Value2::undefined()))
+        };
 
         match property {
             Property2::Data(DataProperty {
