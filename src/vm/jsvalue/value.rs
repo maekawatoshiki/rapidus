@@ -5,7 +5,6 @@ pub use super::function::*;
 pub use super::object::*;
 pub use super::prototype::*;
 use builtin::BuiltinFuncTy2;
-use bytecode_gen::ByteCode;
 use gc;
 use id::get_unique_id;
 pub use rustc_hash::FxHashMap;
@@ -168,13 +167,14 @@ impl Value2 {
         object_prototypes: &ObjectPrototypes,
         // TODO: Too many arguments, I think.
         name: Option<String>,
-        params: Vec<FunctionParameter>,
-        var_names: Vec<String>,
-        lex_names: Vec<String>,
-        func_decls: Vec<Value2>,
-        constructor: bool,
-        code: ByteCode,
-        exception_table: Vec<Exception>,
+        info: UserFunctionInfo,
+        // params: Vec<FunctionParameter>,
+        // var_names: Vec<String>,
+        // lex_names: Vec<String>,
+        // func_decls: Vec<Value2>,
+        // constructor: bool,
+        // code: ByteCode,
+        // exception_table: Vec<Exception>,
     ) -> Self {
         let name_prop = Value2::string(memory_allocator, name.clone().unwrap_or("".to_string()));
         let prototype = Value2::object(memory_allocator, object_prototypes, FxHashMap::default());
@@ -182,23 +182,14 @@ impl Value2 {
         let f = Value2::Object(memory_allocator.alloc(ObjectInfo {
             prototype: object_prototypes.function,
             property: make_property_map!(
-                length    => false, false, true : Value2::Number(params.len() as f64), /* TODO: rest param */
+                length    => false, false, true : Value2::Number(info.params.len() as f64), /* TODO: rest param */
                 name      => false, false, true : name_prop,
                 prototype => true , false, false: prototype
             ),
             kind: ObjectKind2::Function(FunctionObjectInfo {
                 id: get_unique_id(),
                 name: name,
-                kind: FunctionObjectKind::User(UserFunctionInfo {
-                    params,
-                    var_names,
-                    lex_names,
-                    func_decls,
-                    constructor,
-                    code,
-                    exception_table,
-                    outer: None
-                }),
+                kind: FunctionObjectKind::User(info)
             }),
         }));
 

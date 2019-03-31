@@ -5,7 +5,7 @@ use node::{
     PropertyDefinition, UnaryOp, VarKind,
 };
 use vm::constant::{ConstantTable, SpecialProperties, SpecialPropertyKind};
-use vm::jsvalue::function::{DestinationKind, Exception};
+use vm::jsvalue::function::{DestinationKind, Exception, UserFunctionInfo};
 use vm::jsvalue::value::Value2;
 use vm::jsvalue::{prototype, value};
 
@@ -594,7 +594,7 @@ impl<'a> CodeGenerator<'a> {
                      ..
                  }| value::FunctionParameter {
                     name: name.clone(),
-                    is_rest_param: *is_rest_param,
+                    rest_param: *is_rest_param,
                 },
             )
             .collect();
@@ -605,13 +605,16 @@ impl<'a> CodeGenerator<'a> {
             self.memory_allocator,
             self.object_prototypes,
             function_info.name,
-            params,
-            function_info.var_names,
-            function_info.lex_names,
-            function_info.func_decls,
-            constructor,
-            func_iseq,
-            function_info.exception_table,
+            UserFunctionInfo {
+                params,
+                var_names: function_info.var_names,
+                lex_names: function_info.lex_names,
+                func_decls: function_info.func_decls,
+                constructor,
+                code: func_iseq,
+                exception_table: function_info.exception_table,
+                outer: None,
+            },
         ))
     }
 

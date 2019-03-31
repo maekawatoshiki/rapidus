@@ -31,7 +31,7 @@ pub struct UserFunctionInfo {
 #[derive(Clone, Debug)]
 pub struct FunctionParameter {
     pub name: String,
-    pub is_rest_param: bool,
+    pub rest_param: bool,
 }
 
 #[derive(Clone, Debug)]
