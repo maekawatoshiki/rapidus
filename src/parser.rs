@@ -272,8 +272,7 @@ impl Parser {
                     _ if newline_found => return Ok(false),
                     _ => break,
                 },
-                Err(_) if newline_found => return Ok(false),
-                _ => break,
+                Err(_) => return Ok(false),
             }
         }
 
