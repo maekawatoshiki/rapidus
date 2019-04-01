@@ -15,6 +15,7 @@ pub struct Lexer {
     pub line: usize,
     pub buf: VecDeque<Token>,
     pub pos_line_list: Vec<(usize, usize)>, // pos, line // TODO: Delete this and consider another way.
+    pub states: Vec<(usize, VecDeque<Token>)>,
 }
 
 impl Lexer {
@@ -25,6 +26,7 @@ impl Lexer {
             line: 1,
             buf: VecDeque::new(),
             pos_line_list: vec![(0, 1)],
+            states: vec![],
         }
     }
 
@@ -62,6 +64,18 @@ impl Lexer {
         for tok in &self.buf {
             println!("{:?}", tok);
         }
+    }
+
+    pub fn save_state(&mut self) {
+        let pos = self.get_current_pos();
+        let buf = self.buf.clone();
+        self.states.push((pos, buf));
+    }
+
+    pub fn restore_state(&mut self) {
+        let (pos, buf) = self.states.pop().unwrap();
+        self.pos = pos;
+        self.buf = buf;
     }
 }
 
