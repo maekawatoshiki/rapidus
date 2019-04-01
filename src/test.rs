@@ -4,6 +4,10 @@ use std::io::Read;
 use vm;
 use vm::jsvalue::value::Value2;
 
+/// Load the file ("test/{file_name}.js"), execute the script,
+/// and compare returned value and the given answer.
+/// ### Panic
+/// Panic if the returned value was different from the answer.
 pub fn test_file(file_name: String, answer: String) {
     println!("{}", format!("test/{}.js", file_name));
     compare_scripts(load_file(file_name), answer);
@@ -29,13 +33,18 @@ fn load_file(file_name: String) -> String {
     file_body
 }
 
+/// Execute the given code, and compare returned value and the given answer.
+/// ### Panic
+/// Panic if the returned value was different from the answer.
 pub fn test_code(code: String, answer: String) {
     compare_scripts(code, answer);
 }
 
+/// Execute the given code.
+/// ### Panic
+/// Panic if the given code returned Err.
 pub fn execute_script(text: String) -> String {
     let mut vm = vm::vm::VM2::new();
-    //vm.jit_on = false;
 
     let mut parser = parser::Parser::new(text);
     let node = parser.parse_all().unwrap();
