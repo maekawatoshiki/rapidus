@@ -172,10 +172,7 @@ impl Parser {
             match tok.kind {
                 Kind::Keyword(Keyword::Function) => self.read_declaration(),
                 Kind::Keyword(Keyword::Const) => self.read_declaration(),
-                Kind::Keyword(Keyword::Let) => {
-                    self.read_declaration()
-                    // expect_semicolon!(self, "Expected ';' or newline");
-                }
+                Kind::Keyword(Keyword::Let) => self.read_declaration(),
                 _ => self.read_statement(),
             }
         } else {
