@@ -6,7 +6,7 @@ use super::{
     constant,
     error::*,
     frame,
-    jsvalue::function::DestinationKind,
+    jsvalue::function::{DestinationKind, ThisMode},
     jsvalue::prototype::ObjectPrototypes,
     jsvalue::value::*,
     task::{Task, TaskManager, TimerKind},
@@ -222,7 +222,14 @@ impl VM2 {
         self.saved_frame
             .push(cur_frame.clone().saved_stack_len(self.stack.len()));
 
-        let var_env_ref = self.create_declarative_environment(
+        let this = if user_func.this_mode == ThisMode::Lexical {
+            // Arrow function
+            unsafe { &*user_func.outer.unwrap() }.get_this_binding()
+        } else {
+            this
+        };
+
+        let var_env_ref = self.create_function_environment(
             |vm, record| {
                 for name in &user_func.var_names {
                     record.insert(name.clone(), Value2::undefined());
@@ -250,6 +257,7 @@ impl VM2 {
                     );
                 }
             },
+            this,
             user_func.outer,
         );
 
@@ -873,6 +881,7 @@ impl VM2 {
             kind: ObjectKind2::Ordinary,
             prototype: callee.get_property_by_str_key("prototype"),
             property: FxHashMap::default(),
+            sym_property: FxHashMap::default(),
         }));
 
         if !callee.is_function_object() {
@@ -936,6 +945,29 @@ impl VM2 {
         self.memory_allocator.alloc(env)
     }
 
+    fn create_function_environment<F>(
+        &mut self,
+        f: F,
+        this: Value2,
+        outer: Option<frame::LexicalEnvironmentRef>,
+    ) -> frame::LexicalEnvironmentRef
+    where
+        F: Fn(&mut VM2, &mut FxHashMap<String, Value2>),
+    {
+        let env = frame::LexicalEnvironment {
+            record: frame::EnvironmentRecord::Function {
+                record: {
+                    let mut record = FxHashMap::default();
+                    f(self, &mut record);
+                    record
+                },
+                this,
+            },
+            outer,
+        };
+        self.memory_allocator.alloc(env)
+    }
+
     fn enter_user_function(
         &mut self,
         user_func: UserFunctionInfo,
@@ -944,14 +976,21 @@ impl VM2 {
         cur_frame: &mut frame::Frame,
         constructor_call: bool,
     ) -> VMResult {
-        if !user_func.constructor && constructor_call {
+        if !user_func.constructible && constructor_call {
             return Err(RuntimeError::Type("Not a constructor".to_string()));
         }
 
         self.saved_frame
             .push(cur_frame.clone().saved_stack_len(self.stack.len()));
 
-        let var_env_ref = self.create_declarative_environment(
+        let this = if user_func.this_mode == ThisMode::Lexical {
+            // Arrow function
+            unsafe { &*user_func.outer.unwrap() }.get_this_binding()
+        } else {
+            this
+        };
+
+        let var_env_ref = self.create_function_environment(
             |vm, record| {
                 for name in &user_func.var_names {
                     record.insert(name.clone(), Value2::undefined());
@@ -979,6 +1018,7 @@ impl VM2 {
                     );
                 }
             },
+            this,
             user_func.outer,
         );
 

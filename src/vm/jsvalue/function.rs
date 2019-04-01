@@ -18,14 +18,40 @@ pub enum FunctionObjectKind {
 
 #[derive(Clone, Debug)]
 pub struct UserFunctionInfo {
+    /// Internal slot \[\[FormalParameters\]\]
     pub params: Vec<FunctionParameter>,
+
+    /// Varaible declared names
     pub var_names: Vec<String>,
+
+    /// Lexically declared names
     pub lex_names: Vec<String>,
+
+    /// Declared functions to initialize
     pub func_decls: Vec<Value2>,
-    pub constructor: bool,
+
+    /// Bytecode to execute
     pub code: ByteCode,
+
+    /// Exception table
     pub exception_table: Vec<Exception>,
+
+    /// Represent if constructible or not
+    pub constructible: bool,
+
+    /// Internal slot \[\[ThisMode\]\]
+    pub this_mode: ThisMode,
+
+    /// Internal slot \[\[Environment\]\]
+    // TODO: Should rename 'outer' to 'environment'?
     pub outer: Option<LexicalEnvironmentRef>,
+}
+
+#[derive(Clone, Debug, Copy, PartialEq)]
+pub enum ThisMode {
+    Lexical,
+    Global,
+    Strict,
 }
 
 #[derive(Clone, Debug)]

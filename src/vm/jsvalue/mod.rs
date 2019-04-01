@@ -4,3 +4,4 @@ pub mod array;
 pub mod function;
 pub mod object;
 pub mod prototype;
+pub mod symbol;

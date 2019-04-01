@@ -247,12 +247,39 @@ impl Parser {
 
         loop {
             list.push(self.read_variable_declaration()?);
-            if !self.lexer.next_if(Kind::Symbol(Symbol::Comma)) {
+            if !self.variable_declaration_continuation()? {
                 break;
             }
         }
 
         Ok(Node::new(NodeBase::StatementList(list), pos))
+    }
+
+    fn variable_declaration_continuation(&mut self) -> Result<bool, Error> {
+        let mut newline_found = false;
+
+        for i in 0.. {
+            match self.lexer.peek(i) {
+                Ok(tok) => match tok.kind {
+                    Kind::LineTerminator => newline_found = true,
+                    Kind::Symbol(Symbol::Semicolon) => {
+                        return Ok(false);
+                    }
+                    Kind::Symbol(Symbol::Comma) => {
+                        self.lexer.next()?;
+                        return Ok(true);
+                    }
+                    _ if newline_found => return Ok(false),
+                    _ => break,
+                },
+                Err(_) => return Ok(false),
+            }
+        }
+
+        Err(Error::Expect(
+            self.lexer.get_current_pos(),
+            "expect ';' or line terminator".to_string(),
+        ))
     }
 
     /// https://tc39.github.io/ecma262/#prod-VariableDeclaration
@@ -464,7 +491,20 @@ impl Parser {
     // TODO: Implement all features.
     fn read_assignment_expression(&mut self) -> Result<Node, Error> {
         let pos = self.lexer.get_current_pos();
+
+        // Arrow function
+        if self.lexer.peek(0)?.kind == Kind::Symbol(Symbol::OpeningParen) {
+            self.lexer.save_state();
+            let f = self.read_arrow_function();
+            if f.is_err() {
+                self.lexer.restore_state();
+            } else {
+                return f;
+            }
+        }
+
         let mut lhs = self.read_conditional_expression()?;
+
         if let Ok(tok) = self.lexer.next() {
             macro_rules! assignop {
                 ($op:ident) => {{
@@ -845,22 +885,8 @@ impl Parser {
             // Kind::Keyword(Keyword::Arguments) => Ok(Node::new(NodeBase::Arguments, tok.pos)),
             Kind::Keyword(Keyword::Function) => self.read_function_expression(),
             Kind::Symbol(Symbol::OpeningParen) => {
-                let buf = self.lexer.buf.clone();
-                let pos = self.lexer.pos;
                 let expr = self.read_expression();
-                if expr.is_ok() {
-                    expect!(self, Kind::Symbol(Symbol::ClosingParen), "expect ')'");
-                }
-                if expr.is_err()
-                    || self
-                        .lexer
-                        .next_if_skip_lineterminator(Kind::Symbol(Symbol::FatArrow))
-                        .unwrap_or(false)
-                {
-                    self.lexer.pos = pos;
-                    self.lexer.buf = buf;
-                    return self.read_arrow_function();
-                }
+                expect!(self, Kind::Symbol(Symbol::ClosingParen), "expect ')'");
                 expr
             }
             Kind::Symbol(Symbol::OpeningBoxBracket) => self.read_array_literal(),
@@ -888,12 +914,13 @@ impl Parser {
 
     /// https://www.ecma-international.org/ecma-262/6.0/#sec-arrow-function-definitions
     fn read_arrow_function(&mut self) -> Result<Node, Error> {
+        expect!(self, Kind::Symbol(Symbol::OpeningParen), "expect '('");
         let pos = self.lexer.pos;
         let params = self.read_formal_parameters()?;
         expect!(self, Kind::Symbol(Symbol::FatArrow), "expect '=>'");
-        let body = if let Ok(true) = self
+        let body = if self
             .lexer
-            .next_if_skip_lineterminator(Kind::Symbol(Symbol::OpeningBrace))
+            .next_if_skip_lineterminator(Kind::Symbol(Symbol::OpeningBrace))?
         {
             self.read_block()?
         } else {
@@ -1224,12 +1251,7 @@ impl Parser {
                 list.push(Node::new(NodeBase::VarDecl(name, None, var_kind), pos))
             }
 
-            let comma_found = self
-                .lexer
-                .next_if_skip_lineterminator(Kind::Symbol(Symbol::Comma))
-                == Ok(true);
-
-            if !comma_found {
+            if !self.variable_declaration_continuation()? {
                 break;
             }
         }

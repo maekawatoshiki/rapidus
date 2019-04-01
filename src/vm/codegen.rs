@@ -5,7 +5,7 @@ use node::{
     PropertyDefinition, UnaryOp, VarKind,
 };
 use vm::constant::{ConstantTable, SpecialProperties, SpecialPropertyKind};
-use vm::jsvalue::function::{DestinationKind, Exception, UserFunctionInfo};
+use vm::jsvalue::function::{DestinationKind, Exception, ThisMode, UserFunctionInfo};
 use vm::jsvalue::value::Value2;
 use vm::jsvalue::{prototype, value};
 
@@ -552,7 +552,7 @@ impl<'a> CodeGenerator<'a> {
         name: &Option<String>,
         params: &FormalParameters,
         body: &Node,
-        constructor: bool,
+        arrow_function: bool,
         iseq: &mut ByteCode,
         use_value: bool,
     ) -> CodeGenResult {
@@ -560,7 +560,7 @@ impl<'a> CodeGenerator<'a> {
             return Ok(());
         }
 
-        let func = self.visit_function(name.clone(), params, body, constructor)?;
+        let func = self.visit_function(name.clone(), params, body, arrow_function)?;
         self.bytecode_generator.append_push_const(func, iseq);
         self.bytecode_generator.append_set_outer_env(iseq);
 
@@ -572,7 +572,7 @@ impl<'a> CodeGenerator<'a> {
         name: Option<String>,
         params: &FormalParameters,
         body: &Node,
-        constructor: bool,
+        arrow_function: bool,
     ) -> Result<Value2, Error> {
         self.function_stack.push(FunctionInfo::new(name));
 
@@ -610,7 +610,12 @@ impl<'a> CodeGenerator<'a> {
                 var_names: function_info.var_names,
                 lex_names: function_info.lex_names,
                 func_decls: function_info.func_decls,
-                constructor,
+                constructible: arrow_function,
+                this_mode: if arrow_function {
+                    ThisMode::Global
+                } else {
+                    ThisMode::Lexical
+                },
                 code: func_iseq,
                 exception_table: function_info.exception_table,
                 outer: None,

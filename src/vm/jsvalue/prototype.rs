@@ -2,8 +2,9 @@
 use super::super::super::builtins;
 use super::super::super::builtins::{array, function};
 use super::super::super::id::get_unique_id;
-use super::value::*;
+use super::{function::ThisMode, value::*};
 use gc::MemoryAllocator;
+use rustc_hash::FxHashMap;
 
 #[derive(Debug, Clone)]
 pub struct ObjectPrototypes {
@@ -11,6 +12,7 @@ pub struct ObjectPrototypes {
     pub function: Value2,
     pub string: Value2,
     pub array: Value2,
+    pub symbol: Value2,
 }
 
 impl ObjectPrototypes {
@@ -19,6 +21,7 @@ impl ObjectPrototypes {
             kind: ObjectKind2::Ordinary,
             prototype: Value2::null(),
             property: make_property_map!(),
+            sym_property: FxHashMap::default(),
         }));
 
         let function_prototype = {
@@ -31,7 +34,8 @@ impl ObjectPrototypes {
                         var_names: vec![],
                         lex_names: vec![],
                         func_decls: vec![],
-                        constructor: false,
+                        constructible: false,
+                        this_mode: ThisMode::Global,
                         code: vec![],
                         outer: None,
                         exception_table: vec![],
@@ -39,6 +43,7 @@ impl ObjectPrototypes {
                 }),
                 prototype: object_prototype,
                 property: make_property_map!(),
+                sym_property: FxHashMap::default(),
             }));
 
             let function_prototype_call = Value2::builtin_function_with_proto(
@@ -74,6 +79,7 @@ impl ObjectPrototypes {
                 kind: ObjectKind2::Ordinary,
                 prototype: object_prototype,
                 property: make_property_map!(indexOf: index_of, split: split),
+                sym_property: FxHashMap::default(),
             }))
         };
 
@@ -100,6 +106,16 @@ impl ObjectPrototypes {
                     push   => true,  false, true : push,
                     map    => true,  false, true : map
                 ),
+                sym_property: FxHashMap::default(),
+            }))
+        };
+
+        let symbol_prototype = {
+            Value2::Object(memory_allocator.alloc(ObjectInfo {
+                kind: ObjectKind2::Ordinary,
+                prototype: object_prototype,
+                property: make_property_map!(),
+                sym_property: FxHashMap::default(),
             }))
         };
 
@@ -108,6 +124,7 @@ impl ObjectPrototypes {
             function: function_prototype,
             string: string_prototype,
             array: array_prototype,
+            symbol: symbol_prototype,
         }
     }
 }

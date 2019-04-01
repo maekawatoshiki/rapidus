@@ -12,7 +12,7 @@ use vm::{
     callobj::CallObject,
     constant, frame,
     jsvalue::{
-        function, object, prototype,
+        function, object, prototype, symbol,
         value::{BoxedValue, Value2},
     },
     value::{ArrayValue, ObjectKind, Property, Value},
@@ -271,7 +271,8 @@ impl GcTarget for frame::LexicalEnvironment {
     fn initial_trace(&self, markset: &mut MarkSet) {
         fn trace_record(record: &frame::EnvironmentRecord, markset: &mut MarkSet) {
             match record {
-                frame::EnvironmentRecord::Declarative(record) => {
+                frame::EnvironmentRecord::Declarative(record)
+                | frame::EnvironmentRecord::Function { record, .. } => {
                     for (_, val) in record {
                         val.initial_trace(markset);
                     }
@@ -296,7 +297,8 @@ impl GcTarget for frame::LexicalEnvironment {
             markset: &mut MarkSet,
         ) {
             match record {
-                frame::EnvironmentRecord::Declarative(record) => {
+                frame::EnvironmentRecord::Declarative(record)
+                | frame::EnvironmentRecord::Function { record, .. } => {
                     for (_, val) in record {
                         val.trace(allocator, markset);
                     }
@@ -337,6 +339,9 @@ impl GcTarget for Value2 {
             Value2::String(s) => {
                 mark!(markset, *s);
             }
+            Value2::Symbol(s) => {
+                mark!(markset, *s);
+            }
             _ => {}
         }
     }
@@ -345,12 +350,23 @@ impl GcTarget for Value2 {
         match self {
             Value2::Object(obj) => mark_if_white!(allocator, markset, *obj),
             Value2::String(s) => mark_if_white!(allocator, markset, *s),
+            Value2::Symbol(s) => mark_if_white!(allocator, markset, *s),
             _ => {}
         }
     }
 
     fn free(&self) -> usize {
         mem::size_of::<Value2>()
+    }
+}
+
+impl GcTarget for symbol::SymbolInfo {
+    fn initial_trace(&self, _markset: &mut MarkSet) {}
+
+    fn trace(&self, _allocator: &mut MemoryAllocator, _markset: &mut MarkSet) {}
+
+    fn free(&self) -> usize {
+        mem::size_of::<symbol::SymbolInfo>()
     }
 }
 
