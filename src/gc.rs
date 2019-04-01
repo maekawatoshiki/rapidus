@@ -271,7 +271,8 @@ impl GcTarget for frame::LexicalEnvironment {
     fn initial_trace(&self, markset: &mut MarkSet) {
         fn trace_record(record: &frame::EnvironmentRecord, markset: &mut MarkSet) {
             match record {
-                frame::EnvironmentRecord::Declarative(record) => {
+                frame::EnvironmentRecord::Declarative(record)
+                | frame::EnvironmentRecord::Function { record, .. } => {
                     for (_, val) in record {
                         val.initial_trace(markset);
                     }
@@ -296,7 +297,8 @@ impl GcTarget for frame::LexicalEnvironment {
             markset: &mut MarkSet,
         ) {
             match record {
-                frame::EnvironmentRecord::Declarative(record) => {
+                frame::EnvironmentRecord::Declarative(record)
+                | frame::EnvironmentRecord::Function { record, .. } => {
                     for (_, val) in record {
                         val.trace(allocator, markset);
                     }

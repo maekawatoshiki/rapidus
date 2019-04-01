@@ -23,9 +23,17 @@ pub struct UserFunctionInfo {
     pub lex_names: Vec<String>,
     pub func_decls: Vec<Value2>,
     pub constructor: bool,
+    pub this_mode: ThisMode,
     pub code: ByteCode,
     pub exception_table: Vec<Exception>,
     pub outer: Option<LexicalEnvironmentRef>,
+}
+
+#[derive(Clone, Debug, Copy, PartialEq)]
+pub enum ThisMode {
+    Lexical,
+    Global,
+    Strict,
 }
 
 #[derive(Clone, Debug)]

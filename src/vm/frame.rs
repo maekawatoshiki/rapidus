@@ -43,7 +43,11 @@ pub enum EnvironmentRecord {
     Declarative(FxHashMap<String, Value2>),
     Object(Value2),
     Global(Value2),
-    // TODO: Function...
+    Function {
+        this: Value2,
+        record: FxHashMap<String, Value2>,
+        // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-function-environment-records
+    },
 }
 
 impl Frame {
@@ -227,7 +231,8 @@ impl LexicalEnvironment {
 
     pub fn get_value(&self, name: &String) -> Result<Value2, RuntimeError> {
         match self.record {
-            EnvironmentRecord::Declarative(ref record) => match record.get(name) {
+            EnvironmentRecord::Function { ref record, .. }
+            | EnvironmentRecord::Declarative(ref record) => match record.get(name) {
                 Some(binding) if binding == &Value2::uninitialized() => {
                     return Err(RuntimeError::Reference(format!(
                         "'{}' is not defined",
@@ -237,19 +242,18 @@ impl LexicalEnvironment {
                 Some(binding) => return Ok(*binding),
                 None => {}
             },
-            EnvironmentRecord::Global(obj) | EnvironmentRecord::Object(obj)
-                if obj.has_own_property(name.as_str()) =>
-            {
-                let val = obj.get_property_by_str_key(name.as_str());
-                if val == Value2::uninitialized() {
-                    return Err(RuntimeError::Reference(format!(
-                        "'{}' is not defined",
-                        name
-                    )));
+            EnvironmentRecord::Global(obj) | EnvironmentRecord::Object(obj) => {
+                if obj.has_own_property(name.as_str()) {
+                    let val = obj.get_property_by_str_key(name.as_str());
+                    if val == Value2::uninitialized() {
+                        return Err(RuntimeError::Reference(format!(
+                            "'{}' is not defined",
+                            name
+                        )));
+                    }
+                    return Ok(val);
                 }
-                return Ok(val);
             }
-            _ => {}
         };
 
         if let Some(outer) = self.get_outer() {
@@ -264,7 +268,8 @@ impl LexicalEnvironment {
 
     pub fn set_value(&mut self, name: String, val: Value2) -> VMResult {
         match self.record {
-            EnvironmentRecord::Declarative(ref mut record) => match record.get_mut(&name) {
+            EnvironmentRecord::Function { ref mut record, .. }
+            | EnvironmentRecord::Declarative(ref mut record) => match record.get_mut(&name) {
                 Some(binding) => {
                     *binding = val;
                     return Ok(());
@@ -289,7 +294,8 @@ impl LexicalEnvironment {
 
     pub fn set_own_value(&mut self, name: String, val: Value2) -> VMResult {
         match self.record {
-            EnvironmentRecord::Declarative(ref mut record) => {
+            EnvironmentRecord::Function { ref mut record, .. }
+            | EnvironmentRecord::Declarative(ref mut record) => {
                 record.insert(name, val);
             }
             EnvironmentRecord::Global(obj) | EnvironmentRecord::Object(obj) => {
@@ -307,6 +313,20 @@ impl LexicalEnvironment {
         match self.record {
             EnvironmentRecord::Global(obj) => obj,
             _ => panic!(),
+        }
+    }
+
+    pub fn get_this_binding(&self) -> Value2 {
+        match self.record {
+            EnvironmentRecord::Function { this, .. } => this,
+            EnvironmentRecord::Global(obj) => obj,
+            _ => {
+                if let Some(outer) = self.outer {
+                    unsafe { &*outer }.get_this_binding()
+                } else {
+                    Value2::undefined()
+                }
+            }
         }
     }
 }

@@ -2,7 +2,7 @@
 use super::super::super::builtins;
 use super::super::super::builtins::{array, function};
 use super::super::super::id::get_unique_id;
-use super::value::*;
+use super::{function::ThisMode, value::*};
 use gc::MemoryAllocator;
 use rustc_hash::FxHashMap;
 
@@ -35,6 +35,7 @@ impl ObjectPrototypes {
                         lex_names: vec![],
                         func_decls: vec![],
                         constructor: false,
+                        this_mode: ThisMode::Global,
                         code: vec![],
                         outer: None,
                         exception_table: vec![],
