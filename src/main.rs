@@ -43,7 +43,7 @@ fn main() {
     let file_name = match app_matches.value_of("file") {
         Some(file_name) => file_name,
         None => {
-            repl();
+            // repl();
             return;
         }
     };
@@ -97,77 +97,77 @@ fn main() {
     }
 }
 
-fn repl() {
-    let mut rl = rustyline::Editor::<()>::new();
-    let mut vm = VM2::new();
-    let mut global_frame: Option<frame::Frame> = None;
-
-    loop {
-        let mut parser;
-
-        let line = if let Ok(line) = rl.readline("> ") {
-            line
-        } else {
-            break;
-        };
-
-        rl.add_history_entry(line.as_ref());
-
-        let mut lines = line + "\n";
-
-        loop {
-            parser = parser::Parser::new(lines.clone());
-            match parser.parse_all() {
-                Ok(node) => {
-                    // compile and execute
-                    let mut iseq = vec![];
-                    let global_info = match vm.compile(&node, &mut iseq, true) {
-                        Ok(ok) => ok,
-                        Err(vm::codegen::Error { msg, token_pos, .. }) => {
-                            parser.show_error_at(token_pos, msg.as_str());
-                            break;
-                        }
-                    };
-
-                    match global_frame {
-                        Some(ref mut frame) => {
-                            frame.bytecode = iseq;
-                            frame.exception_table = global_info.exception_table.clone();
-                            frame.append_from_function_info(&mut vm.memory_allocator, &global_info)
-                        }
-                        None => global_frame = Some(vm.create_global_frame(global_info, iseq)),
-                    }
-
-                    if let Err(e) = vm.run(global_frame.clone().unwrap()) {
-                        e.show_error_message();
-                        break;
-                    }
-
-                    if vm.stack.len() != 0 {
-                        let val: Value2 = vm.stack[0].into();
-                        println!("{}", val.debug_string(true));
-                        vm.stack = vec![];
-                    }
-
-                    break;
-                }
-                Err(parser::Error::UnexpectedEOF(_)) => match rl.readline("... ") {
-                    Ok(line) => {
-                        rl.add_history_entry(line.as_ref());
-                        lines += line.as_str();
-                        lines += "\n";
-                        continue;
-                    }
-                    Err(_) => break,
-                },
-                Err(e) => {
-                    parser.handle_error(e);
-                    break;
-                }
-            }
-        }
-    }
-}
+// fn repl() {
+//     let mut rl = rustyline::Editor::<()>::new();
+//     let mut vm = VM2::new();
+//     let mut global_frame: Option<frame::Frame> = None;
+//
+//     loop {
+//         let mut parser;
+//
+//         let line = if let Ok(line) = rl.readline("> ") {
+//             line
+//         } else {
+//             break;
+//         };
+//
+//         rl.add_history_entry(line.as_ref());
+//
+//         let mut lines = line + "\n";
+//
+//         loop {
+//             parser = parser::Parser::new(lines.clone());
+//             match parser.parse_all() {
+//                 Ok(node) => {
+//                     // compile and execute
+//                     let mut iseq = vec![];
+//                     let global_info = match vm.compile(&node, &mut iseq, true) {
+//                         Ok(ok) => ok,
+//                         Err(vm::codegen::Error { msg, token_pos, .. }) => {
+//                             parser.show_error_at(token_pos, msg.as_str());
+//                             break;
+//                         }
+//                     };
+//
+//                     match global_frame {
+//                         Some(ref mut frame) => {
+//                             frame.bytecode = iseq;
+//                             frame.exception_table = global_info.exception_table.clone();
+//                             frame.append_from_function_info(&mut vm.memory_allocator, &global_info)
+//                         }
+//                         None => global_frame = Some(vm.create_global_frame(global_info, iseq)),
+//                     }
+//
+//                     if let Err(e) = vm.run(global_frame.clone().unwrap()) {
+//                         e.show_error_message();
+//                         break;
+//                     }
+//
+//                     if vm.stack.len() != 0 {
+//                         let val: Value2 = vm.stack[0].into();
+//                         println!("{}", val.debug_string(true));
+//                         vm.stack = vec![];
+//                     }
+//
+//                     break;
+//                 }
+//                 Err(parser::Error::UnexpectedEOF(_)) => match rl.readline("... ") {
+//                     Ok(line) => {
+//                         rl.add_history_entry(line.as_ref());
+//                         lines += line.as_str();
+//                         lines += "\n";
+//                         continue;
+//                     }
+//                     Err(_) => break,
+//                 },
+//                 Err(e) => {
+//                     parser.handle_error(e);
+//                     break;
+//                 }
+//             }
+//         }
+//     }
+// }
 
 #[test]
 fn vm_test() {

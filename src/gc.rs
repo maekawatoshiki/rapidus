@@ -7,7 +7,7 @@ use std::hash::{Hash, Hasher};
 use std::mem;
 use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{self, AtomicUsize};
-use stopwatch::Stopwatch;
+// use stopwatch::Stopwatch;
 use vm::{
     callobj::CallObject,
     constant, frame,
@@ -37,7 +37,7 @@ impl Hash for GcTargetKey {
     where
         H: Hasher,
     {
-        state.write_u64(self.0 as *mut libc::c_void as u64);
+        state.write_u64(self.0 as *mut u64 as u64);
         state.finish();
     }
 }
@@ -524,7 +524,7 @@ impl Hash for GcPtr {
     where
         H: Hasher,
     {
-        state.write_u64(self.0 as *mut libc::c_void as u64);
+        // state.write_u64(self.0 as *mut libc::c_void as u64);
         state.finish();
     }
 }
@@ -800,24 +800,24 @@ pub fn mark_and_sweep(vm: &mut VM) {
         ALLOCATED_MEM_SIZE_BYTE.load(atomic::Ordering::SeqCst) > 16 * 1024
     }
 
-    if vm.gc_on && over16kb_allocated() {
-        let _sw = Stopwatch::start_new();
-        let mut marked = FxHashSet::default();
-        let pre_alloc_size = ALLOCATED_MEM_SIZE_BYTE.load(atomic::Ordering::SeqCst);
-        let pre_gc_size = GC_MEM.with(|mem| mem.borrow_mut().len());
-        trace(vm, &mut marked);
-        free(&marked);
-        if vm.is_debug {
-            println!(
-                "GC executed: pause duration {} ms. {} -> {} bytes. {} => {} objects",
-                _sw.elapsed_ms(),
-                pre_alloc_size,
-                ALLOCATED_MEM_SIZE_BYTE.load(atomic::Ordering::SeqCst),
-                pre_gc_size,
-                GC_MEM.with(|mem| mem.borrow_mut().len()),
-            );
-        }
-    }
+    // if vm.gc_on && over16kb_allocated() {
+    //     let _sw = Stopwatch::start_new();
+    //     let mut marked = FxHashSet::default();
+    //     let pre_alloc_size = ALLOCATED_MEM_SIZE_BYTE.load(atomic::Ordering::SeqCst);
+    //     let pre_gc_size = GC_MEM.with(|mem| mem.borrow_mut().len());
+    //     trace(vm, &mut marked);
+    //     free(&marked);
+    //     if vm.is_debug {
+    //         println!(
+    //             "GC executed: pause duration {} ms. {} -> {} bytes. {} => {} objects",
+    //             _sw.elapsed_ms(),
+    //             pre_alloc_size,
+    //             ALLOCATED_MEM_SIZE_BYTE.load(atomic::Ordering::SeqCst),
+    //             pre_gc_size,
+    //             GC_MEM.with(|mem| mem.borrow_mut().len()),
+    //         );
+    //     }
+    // }
 }
 
 fn trace(vm: &mut VM, marked: &mut FxHashSet<GcPtr>) {

@@ -20,9 +20,9 @@ use bytecode_gen::ByteCode;
 use bytecode_gen::VMInst;
 use chrono::Utc;
 use gc;
-use jit::TracingJit;
-use libc;
-use llvm::core::*;
+// use jit::TracingJit;
+// use libc;
+// use llvm::core::*;
 use rustc_hash::FxHashMap;
 use std::{ffi::CString, thread, time};
 use vm_codegen;
@@ -1061,7 +1061,7 @@ impl VM2 {
 // Old VM below
 
 pub struct VM {
-    pub jit: TracingJit,
+    // pub jit: TracingJit,
     pub state: VMState,
     pub context_stack: Vec<VMState>,
     pub op_table: [fn(&mut VM) -> Result<bool, RuntimeError>; 63],
@@ -1237,7 +1237,7 @@ impl ConstantTable {
 
 impl VM {
     pub fn new() -> VM {
-        let jit = unsafe { TracingJit::new() };
+        // let jit = unsafe { TracingJit::new() };
         let mut global_vals = CallObject::new_global();
 
         // TODO: Support for 'require' is not enough.
@@ -1260,108 +1260,108 @@ impl VM {
             .set_local_value("exports".to_string(), module_exports)
             .unwrap();
 
-        global_vals
-            .set_local_value("console".to_string(), {
-                let func_log = Value::builtin_function_with_jit(
-                    builtin::console_log,
-                    BuiltinJITFuncInfo::ConsoleLog {
-                        bool: (builtin::jit_console_log_bool as *mut libc::c_void, unsafe {
-                            LLVMAddFunction(
-                                jit.module,
-                                CString::new("jit_console_log_bool").unwrap().as_ptr(),
-                                LLVMFunctionType(
-                                    LLVMVoidType(),
-                                    vec![LLVMInt1TypeInContext(jit.context)]
-                                        .as_mut_slice()
-                                        .as_mut_ptr(),
-                                    1,
-                                    0,
-                                ),
-                            )
-                        }),
-                        f64: (builtin::jit_console_log_f64 as *mut libc::c_void, unsafe {
-                            LLVMAddFunction(
-                                jit.module,
-                                CString::new("jit_console_log_f64").unwrap().as_ptr(),
-                                LLVMFunctionType(
-                                    LLVMVoidType(),
-                                    vec![LLVMDoubleTypeInContext(jit.context)]
-                                        .as_mut_slice()
-                                        .as_mut_ptr(),
-                                    1,
-                                    0,
-                                ),
-                            )
-                        }),
-                        string: (
-                            builtin::jit_console_log_string as *mut libc::c_void,
-                            unsafe {
-                                LLVMAddFunction(
-                                    jit.module,
-                                    CString::new("jit_console_log_string").unwrap().as_ptr(),
-                                    LLVMFunctionType(
-                                        LLVMVoidType(),
-                                        vec![LLVMPointerType(
-                                            LLVMInt8TypeInContext(jit.context),
-                                            0,
-                                        )]
-                                        .as_mut_slice()
-                                        .as_mut_ptr(),
-                                        1,
-                                        0,
-                                    ),
-                                )
-                            },
-                        ),
-                        newline: (
-                            builtin::jit_console_log_newline as *mut libc::c_void,
-                            unsafe {
-                                LLVMAddFunction(
-                                    jit.module,
-                                    CString::new("jit_console_log_newline").unwrap().as_ptr(),
-                                    LLVMFunctionType(LLVMVoidType(), vec![].as_mut_ptr(), 0, 0),
-                                )
-                            },
-                        ),
-                    },
-                );
-                let npp = make_npp!(log: func_log);
-                Value::object_from_npp(&npp)
-            })
-            .unwrap();
-
-        let llvm_process_stdout_write = unsafe {
-            LLVMAddFunction(
-                jit.module,
-                CString::new("process_stdout_write").unwrap().as_ptr(),
-                LLVMFunctionType(
-                    LLVMVoidType(),
-                    vec![LLVMPointerType(LLVMInt8TypeInContext(jit.context), 0)]
-                        .as_mut_slice()
-                        .as_mut_ptr(),
-                    1,
-                    0,
-                ),
-            )
-        };
-
-        global_vals.set_local_value(
-            "process".to_string(),
-            make_object!(
-                stdout:
-                    Value::object_from_npp(
-                        &make_npp!(
-                             write:  Value::builtin_function_with_jit(
-                                 builtin::process_stdout_write,
-                                 BuiltinJITFuncInfo::Normal {
-                                     func: builtin::jit_process_stdout_write as *mut libc::c_void,
-                                     llvm_func: llvm_process_stdout_write,
-                                 },
-                             )
-                         ),
-                    )
-            ),
-        ).unwrap();
+        // global_vals
+        //     .set_local_value("console".to_string(), {
+        //         let func_log = Value::builtin_function_with_jit(
+        //             builtin::console_log,
+        //             BuiltinJITFuncInfo::ConsoleLog {
+        //                 bool: (builtin::jit_console_log_bool as *mut libc::c_void, unsafe {
+        //                     LLVMAddFunction(
+        //                         jit.module,
+        //                         CString::new("jit_console_log_bool").unwrap().as_ptr(),
+        //                         LLVMFunctionType(
+        //                             LLVMVoidType(),
+        //                             vec![LLVMInt1TypeInContext(jit.context)]
+        //                                 .as_mut_slice()
+        //                                 .as_mut_ptr(),
+        //                             1,
+        //                             0,
+        //                         ),
+        //                     )
+        //                 }),
+        //                 f64: (builtin::jit_console_log_f64 as *mut libc::c_void, unsafe {
+        //                     LLVMAddFunction(
+        //                         jit.module,
+        //                         CString::new("jit_console_log_f64").unwrap().as_ptr(),
+        //                         LLVMFunctionType(
+        //                             LLVMVoidType(),
+        //                             vec![LLVMDoubleTypeInContext(jit.context)]
+        //                                 .as_mut_slice()
+        //                                 .as_mut_ptr(),
+        //                             1,
+        //                             0,
+        //                         ),
+        //                     )
+        //                 }),
+        //                 string: (
+        //                     builtin::jit_console_log_string as *mut libc::c_void,
+        //                     unsafe {
+        //                         LLVMAddFunction(
+        //                             jit.module,
+        //                             CString::new("jit_console_log_string").unwrap().as_ptr(),
+        //                             LLVMFunctionType(
+        //                                 LLVMVoidType(),
+        //                                 vec![LLVMPointerType(
+        //                                     LLVMInt8TypeInContext(jit.context),
+        //                                     0,
+        //                                 )]
+        //                                 .as_mut_slice()
+        //                                 .as_mut_ptr(),
+        //                                 1,
+        //                                 0,
+        //                             ),
+        //                         )
+        //                     },
+        //                 ),
+        //                 newline: (
+        //                     builtin::jit_console_log_newline as *mut libc::c_void,
+        //                     unsafe {
+        //                         LLVMAddFunction(
+        //                             jit.module,
+        //                             CString::new("jit_console_log_newline").unwrap().as_ptr(),
+        //                             LLVMFunctionType(LLVMVoidType(), vec![].as_mut_ptr(), 0, 0),
+        //                         )
+        //                     },
+        //                 ),
+        //             },
+        //         );
+        //         let npp = make_npp!(log: func_log);
+        //         Value::object_from_npp(&npp)
+        //     })
+        //     .unwrap();
+        //
+        // let llvm_process_stdout_write = unsafe {
+        //     LLVMAddFunction(
+        //         jit.module,
+        //         CString::new("process_stdout_write").unwrap().as_ptr(),
+        //         LLVMFunctionType(
+        //             LLVMVoidType(),
+        //             vec![LLVMPointerType(LLVMInt8TypeInContext(jit.context), 0)]
+        //                 .as_mut_slice()
+        //                 .as_mut_ptr(),
+        //             1,
+        //             0,
+        //         ),
+        //     )
+        // };
+        //
+        // global_vals.set_local_value(
+        //     "process".to_string(),
+        //     make_object!(
+        //         stdout:
+        //             Value::object_from_npp(
+        //                 &make_npp!(
+        //                      write:  Value::builtin_function_with_jit(
+        //                          builtin::process_stdout_write,
+        //                          BuiltinJITFuncInfo::Normal {
+        //                              func: builtin::jit_process_stdout_write as *mut libc::c_void,
+        //                              llvm_func: llvm_process_stdout_write,
+        //                          },
+        //                      )
+        //                  ),
+        //             )
+        //     ),
+        // ).unwrap();
 
         global_vals
             .set_local_value(
@@ -1421,9 +1421,9 @@ impl VM {
         global_vals
             .set_local_value("Date".to_string(), DATE_OBJ.with(|x| x.clone()))
             .unwrap();
-        global_vals
-            .set_local_value("Math".to_string(), builtins::math::init(jit.clone()))
-            .unwrap();
+        // global_vals
+        //     .set_local_value("Math".to_string(), builtins::math::init(jit.clone()))
+        //     .unwrap();
         /*
                 println!(
                     "CallObject:{} Value:{} PropMapRef:{} ArrayValue:{}",
@@ -1434,7 +1434,7 @@ impl VM {
                 );
         */
         VM {
-            jit: jit,
+            // jit: jit,
             state: VMState {
                 stack: Vec::with_capacity(128),
                 scope: vec![global_vals.clone()],
@@ -1894,30 +1894,30 @@ pub fn call_function(
 
     let FuncInfo { func_id, iseq, .. } = func_info.clone();
 
-    if args_all_numbers && self_.jit_on {
-        if let Some(f) = unsafe {
-            self_.jit.can_jit(
-                func_info,
-                self_.state.clone(),
-                &self_.codegen.bytecode_gen.const_table,
-                argc,
-            )
-        } {
-            self_
-                .state
-                .stack
-                .push(unsafe { self_.jit.run_llvm_func(func_id, f, &args) });
-            self_.restore_state();
-            return Ok(());
-        }
-    }
+    // if args_all_numbers && self_.jit_on {
+    //     if let Some(f) = unsafe {
+    //         self_.jit.can_jit(
+    //             func_info,
+    //             self_.state.clone(),
+    //             &self_.codegen.bytecode_gen.const_table,
+    //             argc,
+    //         )
+    //     } {
+    //         self_
+    //             .state
+    //             .stack
+    //             .push(unsafe { self_.jit.run_llvm_func(func_id, f, &args) });
+    //         self_.restore_state();
+    //         return Ok(());
+    //     }
+    // }
     self_.state.iseq = iseq;
     let res = self_.do_run();
 
     if self_.jit_on {
-        self_
-            .jit
-            .record_function_return_type(func_id, self_.state.stack.last().unwrap());
+        // self_
+        //     .jit
+        //     .record_function_return_type(func_id, self_.state.stack.last().unwrap());
     };
     self_.restore_state();
     res
@@ -2550,19 +2550,19 @@ fn loop_start(self_: &mut VM) -> Result<bool, RuntimeError> {
 
     let id = self_.state.cur_func_id;
 
-    if self_.jit_on {
-        if let Some(pc) = unsafe {
-            self_.jit.can_loop_jit(
-                id,
-                &self_.codegen.bytecode_gen.const_table,
-                &mut self_.state,
-                loop_start,
-                loop_end,
-            )?
-        } {
-            self_.state.pc = pc;
-        }
-    }
+    // if self_.jit_on {
+    //     if let Some(pc) = unsafe {
+    // self_.jit.can_loop_jit(
+    //     id,
+    //     &self_.codegen.bytecode_gen.const_table,
+    //     &mut self_.state,
+    //     loop_start,
+    //     loop_end,
+    // )?
+    //     } {
+    //         self_.state.pc = pc;
+    //     }
+    // }
 
     Ok(true)
 }

@@ -1,118 +1,119 @@
 //use libc;
 use builtin::BuiltinJITFuncInfo;
-use jit::TracingJit;
-use llvm::core::*;
+// use jit::TracingJit;
+// use llvm::core::*;
 use rand::random;
 use std::ffi::CString;
 use vm::value::*;
 use vm::{error::RuntimeError, vm::VM};
 
-pub fn init(jit: TracingJit) -> Value {
-    make_object!(
-        PI:     Value::Number(::std::f64::consts::PI),
-        abs:    Value::default_builtin_function(math_abs),
-        acos:   Value::default_builtin_function(math_acos),
-        acosh:  Value::default_builtin_function(math_acosh),
-        asin:   Value::default_builtin_function(math_asin),
-        asinh:  Value::default_builtin_function(math_asinh),
-        atan:   Value::default_builtin_function(math_atan),
-        atanh:  Value::default_builtin_function(math_atanh),
-        atan2:  Value::default_builtin_function(math_atan2),
-        cbrt:   Value::default_builtin_function(math_cbrt),
-        ceil:   Value::default_builtin_function(math_ceil),
-        clz32:  Value::default_builtin_function(math_clz32),
-        cos:    Value::default_builtin_function(math_cos),
-        cosh:   Value::default_builtin_function(math_cosh),
-        exp:    Value::default_builtin_function(math_exp),
-        expm1:  Value::default_builtin_function(math_expm1),
-        fround: Value::default_builtin_function(math_fround),
-        hypot:  Value::default_builtin_function(math_hypot),
-        log:    Value::default_builtin_function(math_log),
-        log1p:  Value::default_builtin_function(math_log1p),
-        log10:  Value::default_builtin_function(math_log10),
-        log2:   Value::default_builtin_function(math_log2),
-        max:    Value::default_builtin_function(math_max),
-        min:    Value::default_builtin_function(math_min),
-        round:  Value::default_builtin_function(math_round),
-        sign:   Value::default_builtin_function(math_sign),
-        sin:    Value::default_builtin_function(math_sin),
-        sinh:   Value::default_builtin_function(math_sinh),
-        sqrt:   Value::default_builtin_function(math_sqrt),
-        tan:    Value::default_builtin_function(math_tan),
-        tanh:   Value::default_builtin_function(math_tanh),
-        trunc:  Value::default_builtin_function(math_trunc),
-        floor:  {
-            let llvm_func = unsafe {
-                LLVMAddFunction(
-                    jit.module,
-                    CString::new("jit_math_floor").unwrap().as_ptr(),
-                    LLVMFunctionType(
-                        LLVMDoubleTypeInContext(jit.context),
-                        vec![LLVMDoubleTypeInContext(jit.context)]
-                            .as_mut_slice()
-                            .as_mut_ptr(),
-                        1,
-                        0,
-                    ),
-                )
-            };
-            Value::builtin_function_with_jit(
-                math_floor,
-                BuiltinJITFuncInfo::Normal {
-                    func: jit_math_floor as *mut libc::c_void,
-                    llvm_func,
-                },
-            )
-        },
-        random: {
-            let llvm_func = unsafe {
-                LLVMAddFunction(
-                    jit.module,
-                    CString::new("jit_math_random").unwrap().as_ptr(),
-                    LLVMFunctionType(
-                        LLVMDoubleTypeInContext(jit.context),
-                        vec![].as_mut_slice().as_mut_ptr(),
-                        0,
-                        0,
-                    ),
-                )
-            };
-            Value::builtin_function_with_jit(
-                math_random,
-                BuiltinJITFuncInfo::Normal {
-                    func: jit_math_random as *mut libc::c_void,
-                    llvm_func,
-                },
-            )
-        },
-        pow:    {
-            let llvm_func = unsafe {
-                LLVMAddFunction(
-                    jit.module,
-                    CString::new("jit_math_pow").unwrap().as_ptr(),
-                    LLVMFunctionType(
-                        LLVMDoubleTypeInContext(jit.context),
-                        vec![
-                            LLVMDoubleTypeInContext(jit.context),
-                            LLVMDoubleTypeInContext(jit.context),
-                        ]
-                            .as_mut_slice()
-                            .as_mut_ptr(),
-                        2,
-                        0,
-                    ),
-                )
-            };
-            Value::builtin_function_with_jit(
-                math_pow,
-                BuiltinJITFuncInfo::Normal {
-                    func: jit_math_pow as *mut libc::c_void,
-                    llvm_func,
-                },
-            )
-                }
-    )
-}
+// pub fn init(jit: TracingJit) -> Value {
+// make_object!()
+// make_object!(
+//     PI:     Value::Number(::std::f64::consts::PI),
+//     abs:    Value::default_builtin_function(math_abs),
+//     acos:   Value::default_builtin_function(math_acos),
+//     acosh:  Value::default_builtin_function(math_acosh),
+//     asin:   Value::default_builtin_function(math_asin),
+//     asinh:  Value::default_builtin_function(math_asinh),
+//     atan:   Value::default_builtin_function(math_atan),
+//     atanh:  Value::default_builtin_function(math_atanh),
+//     atan2:  Value::default_builtin_function(math_atan2),
+//     cbrt:   Value::default_builtin_function(math_cbrt),
+//     ceil:   Value::default_builtin_function(math_ceil),
+//     clz32:  Value::default_builtin_function(math_clz32),
+//     cos:    Value::default_builtin_function(math_cos),
+//     cosh:   Value::default_builtin_function(math_cosh),
+//     exp:    Value::default_builtin_function(math_exp),
+//     expm1:  Value::default_builtin_function(math_expm1),
+//     fround: Value::default_builtin_function(math_fround),
+//     hypot:  Value::default_builtin_function(math_hypot),
+//     log:    Value::default_builtin_function(math_log),
+//     log1p:  Value::default_builtin_function(math_log1p),
+//     log10:  Value::default_builtin_function(math_log10),
+//     log2:   Value::default_builtin_function(math_log2),
+//     max:    Value::default_builtin_function(math_max),
+//     min:    Value::default_builtin_function(math_min),
+//     round:  Value::default_builtin_function(math_round),
+//     sign:   Value::default_builtin_function(math_sign),
+//     sin:    Value::default_builtin_function(math_sin),
+//     sinh:   Value::default_builtin_function(math_sinh),
+//     sqrt:   Value::default_builtin_function(math_sqrt),
+//     tan:    Value::default_builtin_function(math_tan),
+//     tanh:   Value::default_builtin_function(math_tanh),
+//     trunc:  Value::default_builtin_function(math_trunc),
+//     floor:  {
+//         let llvm_func = unsafe {
+//             LLVMAddFunction(
+//                 jit.module,
+//                 CString::new("jit_math_floor").unwrap().as_ptr(),
+//                 LLVMFunctionType(
+//                     LLVMDoubleTypeInContext(jit.context),
+//                     vec![LLVMDoubleTypeInContext(jit.context)]
+//                         .as_mut_slice()
+//                         .as_mut_ptr(),
+//                     1,
+//                     0,
+//                 ),
+//             )
+//         };
+//         Value::builtin_function_with_jit(
+//             math_floor,
+//             BuiltinJITFuncInfo::Normal {
+//                 func: jit_math_floor as *mut libc::c_void,
+//                 llvm_func,
+//             },
+//         )
+//     },
+//     random: {
+//         let llvm_func = unsafe {
+//             LLVMAddFunction(
+//                 jit.module,
+//                 CString::new("jit_math_random").unwrap().as_ptr(),
+//                 LLVMFunctionType(
+//                     LLVMDoubleTypeInContext(jit.context),
+//                     vec![].as_mut_slice().as_mut_ptr(),
+//                     0,
+//                     0,
+//                 ),
+//             )
+//         };
+//         Value::builtin_function_with_jit(
+//             math_random,
+//             BuiltinJITFuncInfo::Normal {
+//                 func: jit_math_random as *mut libc::c_void,
+//                 llvm_func,
+//             },
+//         )
+//     },
+//     pow:    {
+//         let llvm_func = unsafe {
+//             LLVMAddFunction(
+//                 jit.module,
+//                 CString::new("jit_math_pow").unwrap().as_ptr(),
+//                 LLVMFunctionType(
+//                     LLVMDoubleTypeInContext(jit.context),
+//                     vec![
+//                         LLVMDoubleTypeInContext(jit.context),
+//                         LLVMDoubleTypeInContext(jit.context),
+//                     ]
+//                         .as_mut_slice()
+//                         .as_mut_ptr(),
+//                     2,
+//                     0,
+//                 ),
+//             )
+//         };
+//         Value::builtin_function_with_jit(
+//             math_pow,
+//             BuiltinJITFuncInfo::Normal {
+//                 func: jit_math_pow as *mut libc::c_void,
+//                 llvm_func,
+//             },
+//         )
+//             }
+// )
+// }
 
 macro_rules! simple_math {
     ($name:ident, $f:ident) => {

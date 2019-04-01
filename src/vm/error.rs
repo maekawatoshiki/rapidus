@@ -62,7 +62,7 @@ impl RuntimeError {
                 runtime_error("Uncaught Exception");
                 unsafe {
                     super::super::builtin::debug_print(&val, false);
-                    libc::puts(b"\0".as_ptr() as *const i8);
+                    // libc::puts(b"\0".as_ptr() as *const i8);
                 }
             }
         }

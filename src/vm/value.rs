@@ -14,7 +14,7 @@ use vm;
 
 pub type FuncId = Id;
 
-pub type RawStringPtr = *mut libc::c_char;
+pub type RawStringPtr = *mut u8;
 
 pub type NamePropPair = (String, Property);
 /// 24 bytes
