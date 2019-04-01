@@ -34,7 +34,7 @@ impl ObjectPrototypes {
                         var_names: vec![],
                         lex_names: vec![],
                         func_decls: vec![],
-                        constructor: false,
+                        constructible: false,
                         this_mode: ThisMode::Global,
                         code: vec![],
                         outer: None,
