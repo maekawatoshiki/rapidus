@@ -518,6 +518,18 @@ impl VM2 {
                     let lhs: Value2 = self.stack.pop().unwrap().into();
                     self.stack.push(lhs.le(rhs).into());
                 }
+                VMInst::GT => {
+                    cur_frame.pc += 1;
+                    let rhs: Value2 = self.stack.pop().unwrap().into();
+                    let lhs: Value2 = self.stack.pop().unwrap().into();
+                    self.stack.push(rhs.lt(lhs).into());
+                }
+                VMInst::GE => {
+                    cur_frame.pc += 1;
+                    let rhs: Value2 = self.stack.pop().unwrap().into();
+                    let lhs: Value2 = self.stack.pop().unwrap().into();
+                    self.stack.push(rhs.le(lhs).into());
+                }
                 VMInst::NEG => {
                     cur_frame.pc += 1;
                     let val: Value2 = self.stack.pop().unwrap().into();
@@ -527,6 +539,12 @@ impl VM2 {
                     cur_frame.pc += 1;
                     let val: Value2 = self.stack.pop().unwrap().into();
                     self.stack.push(val.positive().into());
+                }
+                VMInst::LNOT => {
+                    cur_frame.pc += 1;
+                    let val: Value2 = self.stack.pop().unwrap().into();
+                    let res = Value2::bool(!val.to_boolean());
+                    self.stack.push(res.into());
                 }
                 VMInst::PUSH_INT8 => {
                     cur_frame.pc += 1;
