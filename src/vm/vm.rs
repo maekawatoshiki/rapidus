@@ -222,6 +222,13 @@ impl VM2 {
         self.saved_frame
             .push(cur_frame.clone().saved_stack_len(self.stack.len()));
 
+        let this = if user_func.this_mode == ThisMode::Lexical {
+            // Arrow function
+            unsafe { &*user_func.outer.unwrap() }.get_this_binding()
+        } else {
+            this
+        };
+
         let var_env_ref = self.create_function_environment(
             |vm, record| {
                 for name in &user_func.var_names {
@@ -969,7 +976,7 @@ impl VM2 {
         cur_frame: &mut frame::Frame,
         constructor_call: bool,
     ) -> VMResult {
-        if !user_func.constructor && constructor_call {
+        if !user_func.constructible && constructor_call {
             return Err(RuntimeError::Type("Not a constructor".to_string()));
         }
 

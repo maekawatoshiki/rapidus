@@ -610,7 +610,7 @@ impl<'a> CodeGenerator<'a> {
                 var_names: function_info.var_names,
                 lex_names: function_info.lex_names,
                 func_decls: function_info.func_decls,
-                constructor: arrow_function,
+                constructible: arrow_function,
                 this_mode: if arrow_function {
                     ThisMode::Global
                 } else {
