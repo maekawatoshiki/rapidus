@@ -172,7 +172,10 @@ impl Parser {
             match tok.kind {
                 Kind::Keyword(Keyword::Function) => self.read_declaration(),
                 Kind::Keyword(Keyword::Const) => self.read_declaration(),
-                Kind::Keyword(Keyword::Let) => self.read_declaration(),
+                Kind::Keyword(Keyword::Let) => {
+                    self.read_declaration()
+                    // expect_semicolon!(self, "Expected ';' or newline");
+                }
                 _ => self.read_statement(),
             }
         } else {
@@ -247,12 +250,40 @@ impl Parser {
 
         loop {
             list.push(self.read_variable_declaration()?);
-            if !self.lexer.next_if(Kind::Symbol(Symbol::Comma)) {
+            if !self.variable_declaration_continuation()? {
                 break;
             }
         }
 
         Ok(Node::new(NodeBase::StatementList(list), pos))
+    }
+
+    fn variable_declaration_continuation(&mut self) -> Result<bool, Error> {
+        let mut newline_found = false;
+
+        for i in 0.. {
+            match self.lexer.peek(i) {
+                Ok(tok) => match tok.kind {
+                    Kind::LineTerminator => newline_found = true,
+                    Kind::Symbol(Symbol::Semicolon) => {
+                        return Ok(false);
+                    }
+                    Kind::Symbol(Symbol::Comma) => {
+                        self.lexer.next()?;
+                        return Ok(true);
+                    }
+                    _ if newline_found => return Ok(false),
+                    _ => break,
+                },
+                Err(_) if newline_found => return Ok(false),
+                _ => break,
+            }
+        }
+
+        Err(Error::Expect(
+            self.lexer.get_current_pos(),
+            "expect ';' or line terminator".to_string(),
+        ))
     }
 
     /// https://tc39.github.io/ecma262/#prod-VariableDeclaration
@@ -1224,12 +1255,7 @@ impl Parser {
                 list.push(Node::new(NodeBase::VarDecl(name, None, var_kind), pos))
             }
 
-            let comma_found = self
-                .lexer
-                .next_if_skip_lineterminator(Kind::Symbol(Symbol::Comma))
-                == Ok(true);
-
-            if !comma_found {
+            if !self.variable_declaration_continuation()? {
                 break;
             }
         }
