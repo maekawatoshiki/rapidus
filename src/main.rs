@@ -170,7 +170,7 @@ fn repl() {
 }
 
 #[cfg(test)]
-use rapidus::test::{execute_script, test_code, test_file};
+use rapidus::test::{assert_file, execute_script, test_code, test_file};
 
 #[test]
 fn vm_test() {
@@ -180,7 +180,7 @@ fn vm_test() {
     // assert_file("trinity".to_string());
     // assert_file("closure".to_string());
     // assert_file("fact".to_string());
-    // assert_file("operator".to_string());
+
     // assert_file("letconst".to_string());
     // assert_file("nested_block".to_string());
     // assert_file("nested_block2".to_string());
@@ -225,6 +225,11 @@ fn string_test2() {
 #[test]
 fn operator_test() {
     test_code("+(5>3)+60%7+(3>=5)+!!5+(-6)".to_string(), "0".to_string());
+}
+
+#[test]
+fn operator_test2() {
+    assert_file("operator".to_string());
 }
 
 #[test]
