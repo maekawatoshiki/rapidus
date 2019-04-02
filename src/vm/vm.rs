@@ -16,6 +16,7 @@ use builtin;
 use builtin::BuiltinJITFuncInfo;
 use builtins;
 use bytecode_gen;
+use bytecode_gen::show_inst2;
 use bytecode_gen::ByteCode;
 use bytecode_gen::VMInst;
 use chrono::Utc;
@@ -530,6 +531,47 @@ impl VM2 {
                     let lhs: Value2 = self.stack.pop().unwrap().into();
                     self.stack.push(rhs.le(lhs).into());
                 }
+                VMInst::AND => {
+                    cur_frame.pc += 1;
+                    let rhs: Value2 = self.stack.pop().unwrap().into();
+                    let lhs: Value2 = self.stack.pop().unwrap().into();
+                    self.stack.push(rhs.and(lhs).into());
+                }
+                VMInst::OR => {
+                    cur_frame.pc += 1;
+                    let rhs: Value2 = self.stack.pop().unwrap().into();
+                    let lhs: Value2 = self.stack.pop().unwrap().into();
+                    self.stack.push(rhs.or(lhs).into());
+                }
+                VMInst::XOR => {
+                    cur_frame.pc += 1;
+                    let rhs: Value2 = self.stack.pop().unwrap().into();
+                    let lhs: Value2 = self.stack.pop().unwrap().into();
+                    self.stack.push(rhs.xor(lhs).into());
+                }
+                VMInst::NOT => {
+                    cur_frame.pc += 1;
+                    let rhs: Value2 = self.stack.pop().unwrap().into();
+                    self.stack.push(rhs.not().into());
+                }
+                VMInst::SHL => {
+                    cur_frame.pc += 1;
+                    let rhs: Value2 = self.stack.pop().unwrap().into();
+                    let lhs: Value2 = self.stack.pop().unwrap().into();
+                    self.stack.push(lhs.shift_l(rhs).into());
+                }
+                VMInst::SHR => {
+                    cur_frame.pc += 1;
+                    let rhs: Value2 = self.stack.pop().unwrap().into();
+                    let lhs: Value2 = self.stack.pop().unwrap().into();
+                    self.stack.push(lhs.shift_r(rhs).into());
+                }
+                VMInst::ZFSHR => {
+                    cur_frame.pc += 1;
+                    let rhs: Value2 = self.stack.pop().unwrap().into();
+                    let lhs: Value2 = self.stack.pop().unwrap().into();
+                    self.stack.push(lhs.z_shift_r(rhs).into());
+                }
                 VMInst::NEG => {
                     cur_frame.pc += 1;
                     let val: Value2 = self.stack.pop().unwrap().into();
@@ -777,7 +819,12 @@ impl VM2 {
                     self.stack.push(type_str_val.into());
                 }
                 VMInst::END => break,
-                e => unimplemented!("code: {}", e),
+                _ => {
+                    print!("Not yet implemented VMInst: ");
+                    show_inst2(&cur_frame.bytecode, cur_frame.pc, &self.constant_table);
+                    println!();
+                    unimplemented!();
+                }
             }
         }
 

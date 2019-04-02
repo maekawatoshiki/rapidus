@@ -8,11 +8,15 @@ use vm::jsvalue::value::Value2;
 /// and compare returned value and the given answer.
 /// ### Panic
 /// Panic if the returned value was different from the answer.
+
 pub fn test_file(file_name: String, answer: String) {
     println!("{}", format!("test/{}.js", file_name));
     compare_scripts(load_file(file_name), answer);
 }
 
+/// Load the file ("test/{file_name}.js"), and execute the script.
+/// ### Panic
+/// Panic if the given code returned Err.
 pub fn assert_file(file_name: String) {
     println!("{}", format!("test/{}.js", file_name));
     execute_script(load_file(file_name));
