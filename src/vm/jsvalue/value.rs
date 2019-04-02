@@ -383,7 +383,7 @@ impl Value2 {
                     object_prototypes,
                     unsafe { &**s }.to_str().unwrap(),
                     key,
-                )
+                );
             }
             // TODO: Number
             _ => {}
@@ -570,6 +570,13 @@ impl Value2 {
         match self {
             Value2::Bool(0) => false,
             Value2::Bool(1) => true,
+            Value2::Number(num) => {
+                if *num == 0f64 || num.is_nan() {
+                    false
+                } else {
+                    true
+                }
+            }
             // TODO
             _ => false,
         }
@@ -587,7 +594,7 @@ impl Value2 {
                 let cat = format!("{}{}", x, y);
                 Value2::string(memory_allocator, cat)
             }
-            _ => Value2::undefined(),
+            (x, y) => Value2::Number(x.to_number() + y.to_number()),
         }
     }
 

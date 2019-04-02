@@ -722,6 +722,8 @@ impl<'a> CodeGenerator<'a> {
             &UnaryOp::Typeof => self.bytecode_generator.append_typeof(iseq),
             &UnaryOp::Plus => self.bytecode_generator.append_posi(iseq),
             &UnaryOp::Minus => self.bytecode_generator.append_neg(iseq),
+            &UnaryOp::Not => self.bytecode_generator.append_lnot(iseq),
+            &UnaryOp::BitwiseNot => self.bytecode_generator.append_not(iseq),
             &UnaryOp::PrInc => {
                 self.bytecode_generator.append_push_int8(1, iseq);
                 self.bytecode_generator.append_add(iseq);

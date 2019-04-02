@@ -188,7 +188,6 @@ fn vm_test() {
     //     "array".to_string(),
     //     "'2,3,6,7,3,4,2,3,three1,5,4,1,2,three'".to_string(),
     // );
-    // test_code("+(5>3)+60%7+(3>=5)+!!5+(-6)".to_string(), "0".to_string());
     // test_code("'true'*3".to_string(), "'truetruetrue'".to_string());
     // test_code("(100).toString(15)".to_string(), "'6a'".to_string());
     // test_file(
@@ -197,7 +196,7 @@ fn vm_test() {
     // );
 
     // test_file("trycatch".to_string(), "[ 0, 2, 123, 10110 ]".to_string());
-    // test_file(
+    //test_file(
     //    "qsort".to_string(),
     //    "[ 0, 0, 1, 3, 5, 7, 7, 10, 11, 12, 14, 14, 16, 17, 19 ]".to_string(),
     //);
@@ -222,6 +221,10 @@ fn string_test2() {
         "'死して屍拾う者なし'.length".to_string(),
         "9".to_string(),
     );
+}
+#[test]
+fn operator_test() {
+    test_code("+(5>3)+60%7+(3>=5)+!!5+(-6)".to_string(), "0".to_string());
 }
 
 #[test]
