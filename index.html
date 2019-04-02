@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Hello Rapidus on WASM</title>
+  </head>
+  <body>
+    <div>JS Engine written in Rust runs on WASM. Made by <a href="https://twitter.com/uint256_t">@uint256_t</a></div>
+    <div>あんまり重たい処理をさせるとフリーズするかもしれないので注意</div>
+    <div id="editor" style="height: 300px;width: 600px;">
+let fact = (x) => {
+  if (x == 1) return 1;
+  return fact(x - 1) * x;
+};
+
+print(fact(10));
+    </div>
+    <input onclick="runJsCode()" type="button" value="Run" style="width: 300px">
+    <input onclick="clearOutput()" type="button" value="Clear Output" style="width: 300px">
+    <div id="output"></div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.2.0/ace.js"></script>
+    <!-- <script src="./bootstrap.js"></script> -->
+    <script>
+      fetch("./rapidus_bg.wasm").then(function(response) {
+        return response.arrayBuffer();
+      }).then(function(bytes) {
+        return WebAssembly.compile(bytes);
+      }).then(function(module) {
+        console.log(WebAssembly.Module.imports(module))
+        return WebAssembly.instantiate(module, { 
+          "./rapidus": {
+            __wbg_writeoutput_32a1c514a701d259: function (arg0, arg1) { 
+              let s = this.getStringFromWasm(arg0, arg1);
+              document.getElementById('output').innerHTML += s + '<br>';
+            } 
+          }
+        });
+      }).then(function(instance) {
+        console.log(instance);
+        let wasm = instance.exports;
+        let cachedTextDecoder = new TextDecoder('utf-8');
+        let cachedTextEncoder = new TextEncoder('utf-8');
+        let cachegetUint8Memory = null;
+        function getUint8Memory() {
+          if (cachegetUint8Memory === null || cachegetUint8Memory.buffer !== wasm.memory.buffer) {
+            cachegetUint8Memory = new Uint8Array(wasm.memory.buffer);
+          }
+          return cachegetUint8Memory;
+        }
+        this.getStringFromWasm = function (ptr, len) {
+          return cachedTextDecoder.decode(getUint8Memory().subarray(ptr, ptr + len));
+        }
+        document.run_js = function(code) {
+          let passStringToWasm = function(arg) {
+            const buf = cachedTextEncoder.encode(arg);
+            const ptr = wasm.__wbindgen_malloc(buf.length);
+            getUint8Memory().set(buf, ptr);
+            WASM_VECTOR_LEN = buf.length;
+            return ptr;
+          };
+          const ptr0 = passStringToWasm(code);
+          const len0 = WASM_VECTOR_LEN;
+          instance.exports.run_js(ptr0, len0)
+        }
+      });
+
+      let editor = ace.edit("editor");
+      editor.setFontSize(16);
+      function runJsCode() {
+        let code = editor.getValue();
+        console.log(document.run_js(code));
+      }
+      function clearOutput() {
+        document.getElementById('output').innerHTML = ""
+      }
+    </script>
+  </body>
+</html>
