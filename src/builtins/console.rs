@@ -1,4 +1,28 @@
 use vm::{error::RuntimeError, frame::Frame, jsvalue::value::*, vm::VM2};
+extern crate wasm_bindgen;
+
+use wasm_bindgen::prelude::*;
+
+#[wasm_bindgen]
+extern "C" {
+    pub fn write_output(s: &str);
+}
+
+pub fn print(vm: &mut VM2, args: &[Value2], _cur_frame: &Frame) -> Result<(), RuntimeError> {
+    let mut output = "".to_string();
+
+    let args_len = args.len();
+    for i in 0..args_len {
+        output += format!("{}", args[i].debug_string(false)).as_str();
+        if args_len - 1 != i {
+            output += " ";
+        }
+    }
+    write_output(output.as_str());
+
+    vm.stack.push(Value2::undefined().into());
+    Ok(())
+}
 
 pub fn console_log(vm: &mut VM2, args: &[Value2], _cur_frame: &Frame) -> Result<(), RuntimeError> {
     let args_len = args.len();

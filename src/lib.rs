@@ -38,16 +38,6 @@ extern crate wasm_bindgen;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
-extern "C" {
-    pub fn write_output(s: &str);
-}
-
-use std::ffi::CStr;
-use std::os::raw::c_char;
-use std::str;
-
-#[wasm_bindgen]
-#[no_mangle]
 pub extern "C" fn run_js(source: &str) {
     use vm::{jsvalue::value::Value2, vm::VM2};
 
@@ -65,7 +55,7 @@ pub extern "C" fn run_js(source: &str) {
 
     let mut vm = VM2::new();
     let mut iseq = vec![];
-    let global_info = match vm.compile(&node, &mut iseq, true) {
+    let global_info = match vm.compile(&node, &mut iseq, false) {
         Ok(ok) => ok,
         Err(vm::codegen::Error { msg, token_pos, .. }) => {
             parser.show_error_at(token_pos, msg.as_str());
@@ -84,6 +74,5 @@ pub extern "C" fn run_js(source: &str) {
     for (i, val_boxed) in vm.stack.iter().enumerate() {
         let val: Value2 = (*val_boxed).into();
         let s = val.debug_string(true);
-        write_output(s.as_str());
     }
 }

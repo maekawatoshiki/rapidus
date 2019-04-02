@@ -197,6 +197,12 @@ impl LexicalEnvironment {
             "log".to_string(),
             builtins::console::console_log,
         );
+        let print = Value2::builtin_function(
+            memory_allocator,
+            object_prototypes,
+            "print".to_string(),
+            builtins::console::print,
+        );
         let parse_float = Value2::builtin_function(
             memory_allocator,
             object_prototypes,
@@ -223,7 +229,8 @@ impl LexicalEnvironment {
                 Object     => true, false, true: object_constructor,
                 Function   => true, false, true: function_constructor,
                 Array      => true, false, true: array_constructor,
-                Symbol     => true, false, true: symbol_constructor
+                Symbol     => true, false, true: symbol_constructor,
+                print      => true, false, true: print
             )),
             outer: None,
         }
