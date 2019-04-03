@@ -588,6 +588,14 @@ impl Value2 {
                     format!("{}", n)
                 }
             }
+            Value2::Object(info) => {
+                let info = unsafe { &**info };
+                match info.kind {
+                    ObjectKind2::Ordinary => "[object Object]".to_string(),
+                    ObjectKind2::Array(ref info) => info.join(None),
+                    _ => "[unimplemented]".to_string(), // TODO
+                }
+            }
             _ => "[unimplemented]".to_string(),
         }
     }
@@ -688,13 +696,23 @@ impl Value2 {
 impl Value2 {
     // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-addition-operator-plus-runtime-semantics-evaluation
     pub fn add(self, allocator: &mut gc::MemoryAllocator, val: Value2) -> Self {
-        match (self, val) {
+        let lprim = self.to_primitive(allocator, None);
+        let rprim = val.to_primitive(allocator, None);
+        match (lprim, rprim) {
             (Value2::Number(x), Value2::Number(y)) => Value2::Number(x + y),
             (Value2::String(x), Value2::String(y)) => {
                 let x = unsafe { &*x }.to_str().unwrap();
                 let y = unsafe { &*y }.to_str().unwrap();
                 let cat = format!("{}{}", x, y);
                 Value2::string(allocator, cat)
+            }
+            (Value2::String(x), _) => {
+                let x = unsafe { &*x }.to_str().unwrap();
+                Value2::string(allocator, format!("{}{}", x, rprim.to_string()))
+            }
+            (_, Value2::String(y)) => {
+                let y = unsafe { &*y }.to_str().unwrap();
+                Value2::string(allocator, format!("{}{}", lprim.to_string(), y))
             }
             (x, y) => Value2::Number(x.to_number(allocator) + y.to_number(allocator)),
         }
