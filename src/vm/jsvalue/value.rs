@@ -562,6 +562,10 @@ impl Value2 {
                 let s = unsafe { &**s }.to_str().unwrap();
                 if s == "Infinity" || s == "-Infinity" {
                     ::std::f64::INFINITY
+                } else if s.len() == 0 {
+                    0.0
+                } else if s.chars().all(|c| c.is_whitespace()) {
+                    0.0
                 } else {
                     s.parse::<f64>().unwrap_or(::std::f64::NAN)
                 }
@@ -577,6 +581,8 @@ impl Value2 {
     // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-tostring
     pub fn to_string(&self) -> String {
         match self {
+            Value2::Bool(0) => "false".to_string(),
+            Value2::Bool(1) => "true".to_string(),
             Value2::String(s) => unsafe { &**s }.to_str().unwrap().to_string(),
             Value2::Other(UNDEFINED) => "undefined".to_string(),
             Value2::Number(n) => {
@@ -611,8 +617,8 @@ impl Value2 {
                     true
                 }
             }
-            // TODO
-            _ => false,
+            Value2::String(s) => unsafe { &**s }.to_str().unwrap().len() != 0,
+            _ => true,
         }
     }
 
