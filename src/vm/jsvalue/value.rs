@@ -581,6 +581,24 @@ impl Value2 {
             _ => false,
         }
     }
+
+    /// https://tc39.github.io/ecma262/#sec-toint32
+    pub fn to_int32(&self) -> i32 {
+        let number = self.to_number();
+        match number {
+            number if number.is_nan() || number == 0.0 || number.is_infinite() => 0,
+            number => (number.trunc()) as i32,
+        }
+    }
+
+    /// https://tc39.github.io/ecma262/#sec-touint32
+    pub fn to_uint32(&self) -> u32 {
+        let number = self.to_number();
+        match number {
+            number if number.is_nan() || number == 0.0 || number.is_infinite() => 0,
+            number => (number.trunc()) as u32,
+        }
+    }
 }
 
 impl Value2 {
@@ -625,6 +643,37 @@ impl Value2 {
             (Value2::Number(x), Value2::Number(y)) => Value2::Number((x as i64 % y as i64) as f64),
             _ => Value2::undefined(),
         }
+    }
+
+    pub fn and(self, val: Value2) -> Self {
+        Value2::Number((self.to_int32() & val.to_int32()) as f64)
+    }
+
+    pub fn or(self, val: Value2) -> Self {
+        Value2::Number((self.to_int32() | val.to_int32()) as f64)
+    }
+
+    pub fn xor(self, val: Value2) -> Self {
+        Value2::Number((self.to_int32() ^ val.to_int32()) as f64)
+    }
+
+    pub fn not(self) -> Self {
+        Value2::Number((!self.to_int32()) as f64)
+    }
+
+    /// https://tc39.github.io/ecma262/#sec-left-shift-operator
+    pub fn shift_l(self, val: Value2) -> Self {
+        Value2::Number((self.to_int32() << (val.to_uint32() & 0x1f)) as f64)
+    }
+
+    /// https://tc39.github.io/ecma262/#sec-signed-right-shift-operator
+    pub fn shift_r(self, val: Value2) -> Self {
+        Value2::Number((self.to_int32() >> (val.to_uint32() & 0x1f)) as f64)
+    }
+
+    /// https://tc39.github.io/ecma262/#sec-unsigned-right-shift-operator
+    pub fn z_shift_r(self, val: Value2) -> Self {
+        Value2::Number((self.to_uint32() >> (val.to_uint32() & 0x1f)) as f64)
     }
 
     // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-abstract-equality-comparison
