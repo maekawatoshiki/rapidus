@@ -58,7 +58,7 @@ pub fn debug_print(val: &Value2, nest: bool) {
         Value2::Other(NULL) => print!("null"),
         Value2::Other(UNDEFINED) => print!("undefined"),
         Value2::Other(_) => unreachable!(),
-        Value2::Bool(1) => println!("true"),
+        Value2::Bool(1) => print!("true"),
         Value2::Bool(0) => print!("false"),
         Value2::Bool(_) => unreachable!(),
         Value2::Number(n) if n.is_nan() => print!("NaN"),
@@ -71,13 +71,6 @@ pub fn debug_print(val: &Value2, nest: bool) {
             } else {
                 print!("{}", s)
             }
-        }
-        Value2::Symbol(info) => {
-            let info = unsafe { &**info };
-            print!(
-                "Symbol({})",
-                info.description.as_ref().unwrap_or(&"".to_string())
-            )
         }
         Value2::Object(obj_info) => {
             let obj_info = unsafe { &**obj_info };
@@ -95,6 +88,10 @@ pub fn debug_print(val: &Value2, nest: bool) {
 
                     print!("}}");
                 }
+                ObjectKind2::Symbol(ref info) => print!(
+                    "Symbol({})",
+                    info.description.as_ref().unwrap_or(&"".to_string())
+                ),
                 ObjectKind2::Function(ref func_info) => {
                     if let Some(ref name) = func_info.name {
                         print!("[Function: {}]", name);

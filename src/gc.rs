@@ -12,7 +12,7 @@ use vm::{
     callobj::CallObject,
     constant, frame,
     jsvalue::{
-        function, object, prototype, symbol,
+        function, object, prototype,
         value::{BoxedValue, Value2},
     },
     value::{ArrayValue, ObjectKind, Property, Value},
@@ -339,9 +339,6 @@ impl GcTarget for Value2 {
             Value2::String(s) => {
                 mark!(markset, *s);
             }
-            Value2::Symbol(s) => {
-                mark!(markset, *s);
-            }
             _ => {}
         }
     }
@@ -350,23 +347,12 @@ impl GcTarget for Value2 {
         match self {
             Value2::Object(obj) => mark_if_white!(allocator, markset, *obj),
             Value2::String(s) => mark_if_white!(allocator, markset, *s),
-            Value2::Symbol(s) => mark_if_white!(allocator, markset, *s),
             _ => {}
         }
     }
 
     fn free(&self) -> usize {
         mem::size_of::<Value2>()
-    }
-}
-
-impl GcTarget for symbol::SymbolInfo {
-    fn initial_trace(&self, _markset: &mut MarkSet) {}
-
-    fn trace(&self, _allocator: &mut MemoryAllocator, _markset: &mut MarkSet) {}
-
-    fn free(&self) -> usize {
-        mem::size_of::<symbol::SymbolInfo>()
     }
 }
 
@@ -445,6 +431,7 @@ impl GcTarget for object::ObjectKind2 {
                     elem.initial_trace(markset)
                 }
             }
+            object::ObjectKind2::Symbol(_) => {}
             object::ObjectKind2::Ordinary => {}
         }
     }
@@ -476,6 +463,7 @@ impl GcTarget for object::ObjectKind2 {
                     elem.trace(allocator, markset)
                 }
             }
+            object::ObjectKind2::Symbol(_) => {}
             object::ObjectKind2::Ordinary => {}
         }
     }

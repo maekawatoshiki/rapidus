@@ -213,3 +213,7 @@ objects[color.red].push("tomato")
 console.log(objects[color.red])
 console.log(objects[color.green])
 console.log(objects[color.blue])
+
+let xx = Symbol.for("xx")
+let xx2= Symbol.for("xx")
+console.log(xx === xx2)
