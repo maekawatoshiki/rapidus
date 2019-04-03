@@ -40,4 +40,12 @@ impl GlobalSymbolRegistry {
 
         sym
     }
+
+    pub fn key_for(&mut self, allocator: &mut MemoryAllocator, sym: Value2) -> Value2 {
+        if let Some((key, _)) = self.list.iter().find(|(_, sym_)| sym == *sym_) {
+            return Value2::string(allocator, key.to_owned());
+        }
+
+        Value2::undefined()
+    }
 }
