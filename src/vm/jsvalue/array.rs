@@ -74,3 +74,23 @@ impl ArrayObjectInfo {
         self.elems.len()
     }
 }
+
+impl ArrayObjectInfo {
+    /// https://tc39.github.io/ecma262/#sec-array.prototype.join
+    pub fn join(&self, separator: Option<String>) -> String {
+        let separator = separator.unwrap_or(",".to_string());
+        let separator_str = separator.as_str();
+        let mut res = "".to_string();
+        for (i, elem) in self.elems.iter().enumerate() {
+            if let Some(data) = elem.get_data() {
+                res += &(data.val.to_string()
+                    + if self.elems.len() - 1 != i {
+                        separator_str
+                    } else {
+                        ""
+                    });
+            }
+        }
+        res
+    }
+}

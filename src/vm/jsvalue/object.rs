@@ -228,4 +228,11 @@ impl Property2 {
             _ => panic!(),
         }
     }
+
+    pub fn get_data(&self) -> Option<&DataProperty> {
+        match self {
+            Property2::Data(data) => Some(data),
+            _ => None,
+        }
+    }
 }
