@@ -83,7 +83,7 @@ impl ObjectInfo {
                     return Ok(info.get_element(idx));
                 }
 
-                if let Some(idx) = key.is_canonical_numeric_index_string() {
+                if let Some(idx) = key.is_canonical_numeric_index_string(allocator) {
                     return Ok(info.get_element(idx));
                 }
 
@@ -124,6 +124,7 @@ impl ObjectInfo {
 
     pub fn set_property(
         &mut self,
+        allocator: &mut MemoryAllocator,
         key: Value2,
         val_: Value2,
     ) -> Result<Option<Value2>, error::RuntimeError> {
@@ -139,7 +140,7 @@ impl ObjectInfo {
                     return Ok(info.set_element(idx, val_));
                 }
 
-                if let Some(idx) = key.is_canonical_numeric_index_string() {
+                if let Some(idx) = key.is_canonical_numeric_index_string(allocator) {
                     return Ok(info.set_element(idx, val_));
                 }
 

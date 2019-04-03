@@ -1,6 +1,6 @@
 #![macro_use]
 use super::super::super::builtins;
-use super::super::super::builtins::{array, function, symbol};
+use super::super::super::builtins::{array, function};
 use super::super::super::id::get_unique_id;
 use super::{function::ThisMode, value::*};
 use gc::MemoryAllocator;
