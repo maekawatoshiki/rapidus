@@ -8,6 +8,7 @@ use super::{
     frame,
     jsvalue::function::{DestinationKind, ThisMode},
     jsvalue::prototype::ObjectPrototypes,
+    jsvalue::symbol::GlobalSymbolRegistry,
     jsvalue::value::*,
     task::{Task, TaskManager, TimerKind},
     value::*,
@@ -37,6 +38,7 @@ pub struct VM2 {
     pub memory_allocator: gc::MemoryAllocator,
     pub object_prototypes: ObjectPrototypes,
     pub constant_table: constant::ConstantTable,
+    pub global_symbol_registry: GlobalSymbolRegistry,
     pub stack: Vec<BoxedValue>,
     pub saved_frame: Vec<frame::Frame>,
 }
@@ -64,6 +66,7 @@ impl VM2 {
             memory_allocator,
             object_prototypes,
             constant_table: constant::ConstantTable::new(),
+            global_symbol_registry: GlobalSymbolRegistry::new(),
             stack: vec![],
             saved_frame: vec![],
         }

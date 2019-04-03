@@ -1,6 +1,6 @@
 #![macro_use]
 use super::super::super::builtins;
-use super::super::super::builtins::{array, function};
+use super::super::super::builtins::{array, function, symbol};
 use super::super::super::id::get_unique_id;
 use super::{function::ThisMode, value::*};
 use gc::MemoryAllocator;
@@ -114,6 +114,7 @@ impl ObjectPrototypes {
             Value2::Object(memory_allocator.alloc(ObjectInfo {
                 kind: ObjectKind2::Ordinary,
                 prototype: object_prototype,
+                // TODO: https://tc39.github.io/ecma262/#sec-properties-of-the-symbol-prototype-object
                 property: make_property_map!(),
                 sym_property: FxHashMap::default(),
             }))

@@ -20,6 +20,7 @@ pub struct ObjectInfo {
 pub enum ObjectKind2 {
     Function(FunctionObjectInfo),
     Array(ArrayObjectInfo),
+    Symbol(SymbolInfo),
     Ordinary,
 }
 

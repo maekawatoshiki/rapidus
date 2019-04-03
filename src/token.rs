@@ -20,7 +20,7 @@ pub enum Kind {
     EOF,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Copy)]
 pub enum Keyword {
     Abstract,
     Arguments,
@@ -206,6 +206,43 @@ impl Symbol {
             Symbol::Comma => Some(BinOp::Comma),
             Symbol::Assign => Some(BinOp::Assign),
             _ => None,
+        }
+    }
+}
+
+impl Keyword {
+    pub fn to_str(self) -> &'static str {
+        match self {
+            Keyword::Abstract => "abstract",
+            Keyword::Arguments => "arguments",
+            Keyword::Break => "break",
+            Keyword::Case => "case",
+            Keyword::Catch => "catch",
+            Keyword::Continue => "continue",
+            Keyword::Const => "const",
+            Keyword::Debugger => "debugger",
+            Keyword::Default => "default",
+            Keyword::Delete => "delete",
+            Keyword::Do => "do",
+            Keyword::Else => "else",
+            Keyword::Finally => "finally",
+            Keyword::For => "for",
+            Keyword::Function => "function",
+            Keyword::If => "if",
+            Keyword::In => "in",
+            Keyword::Instanceof => "instanceof",
+            Keyword::Let => "let",
+            Keyword::New => "new",
+            Keyword::Return => "return",
+            Keyword::Switch => "switch",
+            Keyword::This => "this",
+            Keyword::Throw => "throw",
+            Keyword::Try => "try",
+            Keyword::Typeof => "typeof",
+            Keyword::Var => "var",
+            Keyword::Void => "void",
+            Keyword::While => "while",
+            Keyword::With => "with",
         }
     }
 }

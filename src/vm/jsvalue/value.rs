@@ -23,7 +23,7 @@ make_nanbox! {
         Bool(u8), // 0 | 1 = false | true
         String(*mut CString), // TODO: Using CString is good for JIT. However, we need better one instead.
         Object(*mut ObjectInfo),
-        Symbol(*mut SymbolInfo),
+        // Symbol(*mut SymbolInfo),
         Other(i32) // UNINITIALIZED | EMPTY | NULL | UNDEFINED
     }
 }
@@ -222,15 +222,19 @@ impl Value2 {
         }))
     }
 
-    pub fn symbol(memory_allocator: &mut gc::MemoryAllocator, desc: Value2) -> Self {
-        let description = if desc.is_undefined() {
-            None
-        } else {
-            Some(desc.to_string())
-        };
-        Value2::Symbol(memory_allocator.alloc(SymbolInfo {
-            id: get_unique_id(),
-            description,
+    pub fn symbol(
+        memory_allocator: &mut gc::MemoryAllocator,
+        object_prototypes: &ObjectPrototypes,
+        description: Option<String>,
+    ) -> Self {
+        Value2::Object(memory_allocator.alloc(ObjectInfo {
+            kind: ObjectKind2::Symbol(SymbolInfo {
+                id: get_unique_id(),
+                description,
+            }),
+            prototype: object_prototypes.symbol,
+            property: make_property_map!(),
+            sym_property: FxHashMap::default(),
         }))
     }
 }
@@ -286,7 +290,10 @@ impl Value2 {
 
     pub fn is_symbol(&self) -> bool {
         match self {
-            Value2::Symbol(_) => true,
+            Value2::Object(info) => match unsafe { &**info }.kind {
+                ObjectKind2::Symbol(_) => true,
+                _ => false,
+            },
             _ => false,
         }
     }
@@ -486,7 +493,10 @@ impl Value2 {
 
     pub fn get_symbol_info(&self) -> &mut SymbolInfo {
         match self {
-            Value2::Symbol(info) => unsafe { &mut **info },
+            Value2::Object(info) => match unsafe { &mut **info }.kind {
+                ObjectKind2::Symbol(ref mut info) => info,
+                _ => panic!(),
+            },
             _ => panic!(),
         }
     }
@@ -788,6 +798,7 @@ impl Value2 {
                 match info.kind {
                     ObjectKind2::Function(_) => "function",
                     ObjectKind2::Array(_) => "object",
+                    ObjectKind2::Symbol(_) => "symbol",
                     ObjectKind2::Ordinary => "object",
                 }
             }
@@ -859,13 +870,6 @@ impl Value2 {
                     s.to_str().unwrap().to_string()
                 }
             }
-            Value2::Symbol(info) => {
-                let info = unsafe { &**info };
-                format!(
-                    "Symbol({})",
-                    info.description.as_ref().unwrap_or(&"".to_string())
-                )
-            }
             Value2::Object(obj_info) => {
                 let obj_info = unsafe { &**obj_info };
                 match obj_info.kind {
@@ -879,6 +883,10 @@ impl Value2 {
 
                         format!("{{ {} }}", property_string(sorted_key_val))
                     }
+                    ObjectKind2::Symbol(ref info) => format!(
+                        "Symbol({})",
+                        info.description.as_ref().unwrap_or(&"".to_string())
+                    ),
                     ObjectKind2::Function(ref func_info) => {
                         if let Some(ref name) = func_info.name {
                             format!("[Function: {}]", name)

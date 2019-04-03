@@ -809,6 +809,10 @@ impl Parser {
                     Kind::Identifier(name) => {
                         lhs = Node::new(NodeBase::Member(Box::new(lhs), name), pos)
                     }
+                    Kind::Keyword(kw) => {
+                        lhs =
+                            Node::new(NodeBase::Member(Box::new(lhs), kw.to_str().to_owned()), pos)
+                    }
                     _ => {
                         return Err(Error::Expect(pos_, "expect identifier".to_string()));
                     }
