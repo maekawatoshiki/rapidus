@@ -666,7 +666,8 @@ impl<'a> CodeGenerator<'a> {
                 self.current_function().var_names.push(name.clone());
             }
             VarKind::Let => let_decl(self, node, name.clone())?,
-            _ => unimplemented!(),
+            // TODO: Const needs double-assignment check
+            VarKind::Const => let_decl(self, node, name.clone())?,
         }
 
         Ok(())
