@@ -803,6 +803,8 @@ impl Value2 {
             (Value2::Number(x), Value2::Bool(_)) => Value2::bool(x == val.to_number(allocator)),
             // (Value2::Number(x), Value2::Number(y)) => Value2::Bool(if x == y { 1 } else { 0 }),
             // (Value2::Number(_), obj) | (Value2::String(_), obj) => self.eq(val),
+            (Value2::Object(_), _) => self.to_primitive(allocator, None).eq(allocator, val),
+            (_, Value2::Object(_)) => val.to_primitive(allocator, None).eq(allocator, self),
             _ => Value2::bool(false),
         }
     }
