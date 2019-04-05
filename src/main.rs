@@ -262,12 +262,27 @@ mod tests {
     }
 
     #[test]
-    fn typeof_() {
+    fn r#typeof() {
         assert_file("typeof");
     }
 
     #[test]
     fn exotic_cmp() {
         assert_file("exotic_cmp")
+    }
+
+    #[test]
+    fn r#while() {
+        assert_file("while")
+    }
+
+    #[test]
+    fn r#for() {
+        assert_file("for")
+    }
+
+    #[test]
+    fn r#if() {
+        assert_file("if")
     }
 }

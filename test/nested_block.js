@@ -1,4 +1,4 @@
-var assert = require('assert').deepEqual
+var assert = (x, y) => { if (x !== y) throw "err" }
 const i = 100
 try {
   const i = 10 
