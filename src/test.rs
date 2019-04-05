@@ -9,7 +9,7 @@ use vm::jsvalue::value::Value2;
 /// ### Panic
 /// Panic if the returned value was different from the answer.
 
-pub fn test_file(file_name: String, answer: String) {
+pub fn test_file(file_name: &str, answer: String) {
     println!("{}", format!("test/{}.js", file_name));
     compare_scripts(load_file(file_name), answer);
 }
@@ -17,16 +17,16 @@ pub fn test_file(file_name: String, answer: String) {
 /// Load the file ("test/{file_name}.js"), and execute the script.
 /// ### Panic
 /// Panic if the given code returned Err.
-pub fn assert_file(file_name: String) {
+pub fn assert_file(file_name: &str) {
     println!("{}", format!("test/{}.js", file_name));
     execute_script(load_file(file_name));
 }
 
-fn load_file(file_name: String) -> String {
+fn load_file(file_name: &str) -> String {
     let mut file_body = String::new();
     match OpenOptions::new()
         .read(true)
-        .open(format!("test/{}.js", file_name.clone()))
+        .open(format!("test/{}.js", file_name))
     {
         Ok(mut file) => match file.read_to_string(&mut file_body).ok() {
             Some(x) => x,

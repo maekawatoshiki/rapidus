@@ -20,6 +20,7 @@ pub struct ObjectInfo {
 pub enum ObjectKind2 {
     Function(FunctionObjectInfo),
     Array(ArrayObjectInfo),
+    Symbol(SymbolInfo),
     Ordinary,
 }
 
@@ -82,7 +83,7 @@ impl ObjectInfo {
                     return Ok(info.get_element(idx));
                 }
 
-                if let Some(idx) = key.is_canonical_numeric_index_string() {
+                if let Some(idx) = key.is_canonical_numeric_index_string(allocator) {
                     return Ok(info.get_element(idx));
                 }
 
@@ -123,6 +124,7 @@ impl ObjectInfo {
 
     pub fn set_property(
         &mut self,
+        allocator: &mut MemoryAllocator,
         key: Value2,
         val_: Value2,
     ) -> Result<Option<Value2>, error::RuntimeError> {
@@ -138,7 +140,7 @@ impl ObjectInfo {
                     return Ok(info.set_element(idx, val_));
                 }
 
-                if let Some(idx) = key.is_canonical_numeric_index_string() {
+                if let Some(idx) = key.is_canonical_numeric_index_string(allocator) {
                     return Ok(info.set_element(idx, val_));
                 }
 
@@ -224,6 +226,13 @@ impl Property2 {
         match self {
             Property2::Accessor(ref mut accessor) => accessor,
             _ => panic!(),
+        }
+    }
+
+    pub fn get_data(&self) -> Option<&DataProperty> {
+        match self {
+            Property2::Data(data) => Some(data),
+            _ => None,
         }
     }
 }

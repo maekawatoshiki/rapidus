@@ -16,6 +16,13 @@ pub const EMPTY: i32 = 1;
 pub const NULL: i32 = 2;
 pub const UNDEFINED: i32 = 3;
 
+#[derive(Debug, Clone, PartialEq, Copy)]
+pub enum PreferredType {
+    Default,
+    Number,
+    String,
+}
+
 make_nanbox! {
     #[derive(Clone, PartialEq, Debug, Copy)]
     pub unsafe enum BoxedValue, Value2 {
@@ -23,7 +30,7 @@ make_nanbox! {
         Bool(u8), // 0 | 1 = false | true
         String(*mut CString), // TODO: Using CString is good for JIT. However, we need better one instead.
         Object(*mut ObjectInfo),
-        Symbol(*mut SymbolInfo),
+        // Symbol(*mut SymbolInfo),
         Other(i32) // UNINITIALIZED | EMPTY | NULL | UNDEFINED
     }
 }
@@ -222,15 +229,19 @@ impl Value2 {
         }))
     }
 
-    pub fn symbol(memory_allocator: &mut gc::MemoryAllocator, desc: Value2) -> Self {
-        let description = if desc.is_undefined() {
-            None
-        } else {
-            Some(desc.to_string())
-        };
-        Value2::Symbol(memory_allocator.alloc(SymbolInfo {
-            id: get_unique_id(),
-            description,
+    pub fn symbol(
+        memory_allocator: &mut gc::MemoryAllocator,
+        object_prototypes: &ObjectPrototypes,
+        description: Option<String>,
+    ) -> Self {
+        Value2::Object(memory_allocator.alloc(ObjectInfo {
+            kind: ObjectKind2::Symbol(SymbolInfo {
+                id: get_unique_id(),
+                description,
+            }),
+            prototype: object_prototypes.symbol,
+            property: make_property_map!(),
+            sym_property: FxHashMap::default(),
         }))
     }
 }
@@ -286,18 +297,24 @@ impl Value2 {
 
     pub fn is_symbol(&self) -> bool {
         match self {
-            Value2::Symbol(_) => true,
+            Value2::Object(info) => match unsafe { &**info }.kind {
+                ObjectKind2::Symbol(_) => true,
+                _ => false,
+            },
             _ => false,
         }
     }
 
     // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-canonicalnumericindexstring
-    pub fn is_canonical_numeric_index_string(&self) -> Option<usize> {
+    pub fn is_canonical_numeric_index_string(
+        &self,
+        allocator: &mut gc::MemoryAllocator,
+    ) -> Option<usize> {
         if !self.is_string() {
             return None;
         }
         let s = self.into_str();
-        let num = self.to_number();
+        let num = self.to_number(allocator);
         if s == Value2::Number(num).to_string() && is_integer(num) && num >= 0.0 {
             Some(num as usize)
         } else {
@@ -408,11 +425,14 @@ impl Value2 {
 
     pub fn set_property(
         &self,
+        allocator: &mut gc::MemoryAllocator,
         key: Value2,
         val: Value2,
     ) -> Result<Option<Value2>, error::RuntimeError> {
         match self {
-            Value2::Object(obj_info) => unsafe { &mut **obj_info }.set_property(key, val),
+            Value2::Object(obj_info) => {
+                unsafe { &mut **obj_info }.set_property(allocator, key, val)
+            }
             _ => Ok(None),
         }
     }
@@ -486,7 +506,10 @@ impl Value2 {
 
     pub fn get_symbol_info(&self) -> &mut SymbolInfo {
         match self {
-            Value2::Symbol(info) => unsafe { &mut **info },
+            Value2::Object(info) => match unsafe { &mut **info }.kind {
+                ObjectKind2::Symbol(ref mut info) => info,
+                _ => panic!(),
+            },
             _ => panic!(),
         }
     }
@@ -528,7 +551,7 @@ impl Value2 {
 
 impl Value2 {
     // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-tonumber
-    pub fn to_number(&self) -> f64 {
+    pub fn to_number(&self, allocator: &mut gc::MemoryAllocator) -> f64 {
         match self {
             Value2::Other(UNDEFINED) => ::std::f64::NAN,
             Value2::Other(NULL) => 0.0,
@@ -539,10 +562,17 @@ impl Value2 {
                 let s = unsafe { &**s }.to_str().unwrap();
                 if s == "Infinity" || s == "-Infinity" {
                     ::std::f64::INFINITY
+                } else if s.len() == 0 {
+                    0.0
+                } else if s.chars().all(|c| c.is_whitespace()) {
+                    0.0
                 } else {
                     s.parse::<f64>().unwrap_or(::std::f64::NAN)
                 }
             }
+            Value2::Object(_) => self
+                .to_primitive(allocator, Some(PreferredType::Number))
+                .to_number(allocator),
             // TODO
             _ => 0.0,
         }
@@ -551,6 +581,8 @@ impl Value2 {
     // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-tostring
     pub fn to_string(&self) -> String {
         match self {
+            Value2::Bool(0) => "false".to_string(),
+            Value2::Bool(1) => "true".to_string(),
             Value2::String(s) => unsafe { &**s }.to_str().unwrap().to_string(),
             Value2::Other(UNDEFINED) => "undefined".to_string(),
             Value2::Number(n) => {
@@ -560,6 +592,14 @@ impl Value2 {
                     "Infinity".to_string()
                 } else {
                     format!("{}", n)
+                }
+            }
+            Value2::Object(info) => {
+                let info = unsafe { &**info };
+                match info.kind {
+                    ObjectKind2::Ordinary => "[object Object]".to_string(),
+                    ObjectKind2::Array(ref info) => info.join(None),
+                    _ => "[unimplemented]".to_string(), // TODO
                 }
             }
             _ => "[unimplemented]".to_string(),
@@ -577,14 +617,14 @@ impl Value2 {
                     true
                 }
             }
-            // TODO
-            _ => false,
+            Value2::String(s) => unsafe { &**s }.to_str().unwrap().len() != 0,
+            _ => true,
         }
     }
 
     /// https://tc39.github.io/ecma262/#sec-toint32
-    pub fn to_int32(&self) -> i32 {
-        let number = self.to_number();
+    pub fn to_int32(&self, allocator: &mut gc::MemoryAllocator) -> i32 {
+        let number = self.to_number(allocator);
         match number {
             number if number.is_nan() || number == 0.0 || number.is_infinite() => 0,
             number => (number.trunc()) as i32,
@@ -592,27 +632,95 @@ impl Value2 {
     }
 
     /// https://tc39.github.io/ecma262/#sec-touint32
-    pub fn to_uint32(&self) -> u32 {
-        let number = self.to_number();
+    pub fn to_uint32(&self, allocator: &mut gc::MemoryAllocator) -> u32 {
+        let number = self.to_number(allocator);
         match number {
             number if number.is_nan() || number == 0.0 || number.is_infinite() => 0,
             number => (number.trunc()) as u32,
+        }
+    }
+
+    /// https://tc39.github.io/ecma262/#sec-toprimitive
+    pub fn to_primitive(
+        &self,
+        allocator: &mut gc::MemoryAllocator,
+        preferred_type: Option<PreferredType>,
+    ) -> Value2 {
+        if !self.is_object() {
+            return *self;
+        }
+
+        let mut hint = preferred_type.unwrap_or(PreferredType::Default);
+
+        // TODO: Call @@toPrimitive if present
+
+        if hint == PreferredType::Default {
+            hint = PreferredType::Number
+        }
+
+        self.ordinary_to_primitive(allocator, hint)
+    }
+
+    /// https://tc39.github.io/ecma262/#sec-ordinarytoprimitive
+    pub fn ordinary_to_primitive(
+        &self,
+        allocator: &mut gc::MemoryAllocator,
+        hint: PreferredType,
+    ) -> Value2 {
+        match hint {
+            PreferredType::Number => {
+                if let Some(val) = self.value_of() {
+                    if !val.is_object() {
+                        return val;
+                    }
+                }
+
+                Value2::string(allocator, self.to_string())
+            }
+            PreferredType::String => Value2::string(allocator, self.to_string()),
+            PreferredType::Default => unreachable!(),
+        }
+    }
+
+    pub fn value_of(self) -> Option<Value2> {
+        match self {
+            Value2::Object(info) => {
+                let info = unsafe { &*info };
+                match info.kind {
+                    ObjectKind2::Ordinary => Some(self),
+                    ObjectKind2::Function(_) => None,
+                    ObjectKind2::Array(_) => None,
+                    ObjectKind2::Symbol(_) => Some(self), // TODO
+                }
+            }
+            Value2::String(_) => Some(self), // TODO
+            _ => None,
         }
     }
 }
 
 impl Value2 {
     // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-addition-operator-plus-runtime-semantics-evaluation
-    pub fn add(self, memory_allocator: &mut gc::MemoryAllocator, val: Value2) -> Self {
-        match (self, val) {
+    pub fn add(self, allocator: &mut gc::MemoryAllocator, val: Value2) -> Self {
+        let lprim = self.to_primitive(allocator, None);
+        let rprim = val.to_primitive(allocator, None);
+        match (lprim, rprim) {
             (Value2::Number(x), Value2::Number(y)) => Value2::Number(x + y),
             (Value2::String(x), Value2::String(y)) => {
                 let x = unsafe { &*x }.to_str().unwrap();
                 let y = unsafe { &*y }.to_str().unwrap();
                 let cat = format!("{}{}", x, y);
-                Value2::string(memory_allocator, cat)
+                Value2::string(allocator, cat)
             }
-            (x, y) => Value2::Number(x.to_number() + y.to_number()),
+            (Value2::String(x), _) => {
+                let x = unsafe { &*x }.to_str().unwrap();
+                Value2::string(allocator, format!("{}{}", x, rprim.to_string()))
+            }
+            (_, Value2::String(y)) => {
+                let y = unsafe { &*y }.to_str().unwrap();
+                Value2::string(allocator, format!("{}{}", lprim.to_string(), y))
+            }
+            (x, y) => Value2::Number(x.to_number(allocator) + y.to_number(allocator)),
         }
     }
 
@@ -645,39 +753,39 @@ impl Value2 {
         }
     }
 
-    pub fn and(self, val: Value2) -> Self {
-        Value2::Number((self.to_int32() & val.to_int32()) as f64)
+    pub fn and(self, allocator: &mut gc::MemoryAllocator, val: Value2) -> Self {
+        Value2::Number((self.to_int32(allocator) & val.to_int32(allocator)) as f64)
     }
 
-    pub fn or(self, val: Value2) -> Self {
-        Value2::Number((self.to_int32() | val.to_int32()) as f64)
+    pub fn or(self, allocator: &mut gc::MemoryAllocator, val: Value2) -> Self {
+        Value2::Number((self.to_int32(allocator) | val.to_int32(allocator)) as f64)
     }
 
-    pub fn xor(self, val: Value2) -> Self {
-        Value2::Number((self.to_int32() ^ val.to_int32()) as f64)
+    pub fn xor(self, allocator: &mut gc::MemoryAllocator, val: Value2) -> Self {
+        Value2::Number((self.to_int32(allocator) ^ val.to_int32(allocator)) as f64)
     }
 
-    pub fn not(self) -> Self {
-        Value2::Number((!self.to_int32()) as f64)
+    pub fn not(self, allocator: &mut gc::MemoryAllocator) -> Self {
+        Value2::Number((!self.to_int32(allocator)) as f64)
     }
 
     /// https://tc39.github.io/ecma262/#sec-left-shift-operator
-    pub fn shift_l(self, val: Value2) -> Self {
-        Value2::Number((self.to_int32() << (val.to_uint32() & 0x1f)) as f64)
+    pub fn shift_l(self, allocator: &mut gc::MemoryAllocator, val: Value2) -> Self {
+        Value2::Number((self.to_int32(allocator) << (val.to_uint32(allocator) & 0x1f)) as f64)
     }
 
     /// https://tc39.github.io/ecma262/#sec-signed-right-shift-operator
-    pub fn shift_r(self, val: Value2) -> Self {
-        Value2::Number((self.to_int32() >> (val.to_uint32() & 0x1f)) as f64)
+    pub fn shift_r(self, allocator: &mut gc::MemoryAllocator, val: Value2) -> Self {
+        Value2::Number((self.to_int32(allocator) >> (val.to_uint32(allocator) & 0x1f)) as f64)
     }
 
     /// https://tc39.github.io/ecma262/#sec-unsigned-right-shift-operator
-    pub fn z_shift_r(self, val: Value2) -> Self {
-        Value2::Number((self.to_uint32() >> (val.to_uint32() & 0x1f)) as f64)
+    pub fn z_shift_r(self, allocator: &mut gc::MemoryAllocator, val: Value2) -> Self {
+        Value2::Number((self.to_uint32(allocator) >> (val.to_uint32(allocator) & 0x1f)) as f64)
     }
 
     // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-abstract-equality-comparison
-    pub fn eq(self, val: Value2) -> Self {
+    pub fn eq(self, allocator: &mut gc::MemoryAllocator, val: Value2) -> Self {
         if self.is_same_type_as(&val) {
             return self.strict_eq(val);
         }
@@ -689,12 +797,14 @@ impl Value2 {
         }
 
         match (self, val) {
-            (Value2::Number(x), Value2::String(_)) => Value2::bool(x == val.to_number()),
-            (Value2::String(_), Value2::Number(y)) => Value2::bool(self.to_number() == y),
-            (Value2::Bool(_), Value2::Number(y)) => Value2::bool(self.to_number() == y),
-            (Value2::Number(x), Value2::Bool(_)) => Value2::bool(x == val.to_number()),
+            (Value2::Number(x), Value2::String(_)) => Value2::bool(x == val.to_number(allocator)),
+            (Value2::String(_), Value2::Number(y)) => Value2::bool(self.to_number(allocator) == y),
+            (Value2::Bool(_), Value2::Number(y)) => Value2::bool(self.to_number(allocator) == y),
+            (Value2::Number(x), Value2::Bool(_)) => Value2::bool(x == val.to_number(allocator)),
             // (Value2::Number(x), Value2::Number(y)) => Value2::Bool(if x == y { 1 } else { 0 }),
             // (Value2::Number(_), obj) | (Value2::String(_), obj) => self.eq(val),
+            (Value2::Object(_), _) => self.to_primitive(allocator, None).eq(allocator, val),
+            (_, Value2::Object(_)) => val.to_primitive(allocator, None).eq(allocator, self),
             _ => Value2::bool(false),
         }
     }
@@ -725,8 +835,8 @@ impl Value2 {
         }
     }
 
-    pub fn ne(self, val: Value2) -> Self {
-        Value2::bool(!self.eq(val).into_bool())
+    pub fn ne(self, allocator: &mut gc::MemoryAllocator, val: Value2) -> Self {
+        Value2::bool(!self.eq(allocator, val).into_bool())
     }
 
     pub fn strict_ne(self, val: Value2) -> Self {
@@ -757,8 +867,8 @@ impl Value2 {
     }
 
     // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-unary-plus-operator-runtime-semantics-evaluation
-    pub fn positive(self) -> Self {
-        Value2::Number(self.to_number())
+    pub fn positive(self, allocator: &mut gc::MemoryAllocator) -> Self {
+        Value2::Number(self.to_number(allocator))
     }
 
     pub fn is_same_type_as(&self, val: &Value2) -> bool {
@@ -788,6 +898,7 @@ impl Value2 {
                 match info.kind {
                     ObjectKind2::Function(_) => "function",
                     ObjectKind2::Array(_) => "object",
+                    ObjectKind2::Symbol(_) => "symbol",
                     ObjectKind2::Ordinary => "object",
                 }
             }
@@ -859,13 +970,6 @@ impl Value2 {
                     s.to_str().unwrap().to_string()
                 }
             }
-            Value2::Symbol(info) => {
-                let info = unsafe { &**info };
-                format!(
-                    "Symbol({})",
-                    info.description.as_ref().unwrap_or(&"".to_string())
-                )
-            }
             Value2::Object(obj_info) => {
                 let obj_info = unsafe { &**obj_info };
                 match obj_info.kind {
@@ -879,6 +983,10 @@ impl Value2 {
 
                         format!("{{ {} }}", property_string(sorted_key_val))
                     }
+                    ObjectKind2::Symbol(ref info) => format!(
+                        "Symbol({})",
+                        info.description.as_ref().unwrap_or(&"".to_string())
+                    ),
                     ObjectKind2::Function(ref func_info) => {
                         if let Some(ref name) = func_info.name {
                             format!("[Function: {}]", name)

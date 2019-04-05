@@ -230,19 +230,39 @@ mod tests {
 
     #[test]
     fn operator_test2() {
-        assert_file("operator".to_string());
+        assert_file("operator");
     }
 
     #[test]
     fn this_test() {
-        test_file("this".to_string(), "[1,101,124]".to_string());
+        test_file("this", "[1,101,124]".to_string());
     }
 
     #[test]
     fn prototype_test() {
         test_file(
-            "prototypes".to_string(),
+            "prototypes",
             "[true,true,true,true,true,true,true,true,true,true]".to_string(),
         );
+    }
+
+    #[test]
+    fn accessor_property() {
+        test_file("accessor_property", "[0,123]".to_string())
+    }
+
+    #[test]
+    fn trinity() {
+        assert_file("trinity");
+    }
+
+    #[test]
+    fn trycatch() {
+        test_file("trycatch", "[0,2,123,10110]".to_string());
+    }
+
+    #[test]
+    fn typeof_() {
+        test_file("typeof", "".to_string());
     }
 }
