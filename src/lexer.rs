@@ -15,7 +15,10 @@ pub struct Lexer {
     pub line: usize,
     pub buf: VecDeque<Token>,
     pub pos_line_list: Vec<(usize, usize)>, // pos, line // TODO: Delete this and consider another way.
-    pub states: Vec<(usize, VecDeque<Token>)>,
+    /// current position in buf.
+    pub token_pos: usize,
+    pub prev_token_pos: usize,
+    pub states: Vec<usize>,
 }
 
 impl Lexer {
@@ -26,6 +29,8 @@ impl Lexer {
             line: 1,
             buf: VecDeque::new(),
             pos_line_list: vec![(0, 1)],
+            token_pos: 0,
+            prev_token_pos: 0,
             states: vec![],
         }
     }
@@ -65,17 +70,16 @@ impl Lexer {
             println!("{:?}", tok);
         }
     }
+    pub fn is_empty(&self) -> bool {
+        self.token_pos >= self.buf.len()
+    }
 
     pub fn save_state(&mut self) {
-        let pos = self.get_current_pos();
-        let buf = self.buf.clone();
-        self.states.push((pos, buf));
+        self.states.push(self.token_pos);
     }
 
     pub fn restore_state(&mut self) {
-        let (pos, buf) = self.states.pop().unwrap();
-        self.pos = pos;
-        self.buf = buf;
+        self.token_pos = self.states.pop().unwrap();
     }
 }
 
@@ -83,15 +87,19 @@ impl Lexer {
     /// get next token.
     /// no skipping line terminator.
     pub fn next(&mut self) -> Result<Token, Error> {
+        self.prev_token_pos = self.token_pos;
         self.read_token()
     }
 
     /// get the next token.
     /// skipping line terminators.
     pub fn next_skip_lineterminator(&mut self) -> Result<Token, Error> {
-        match self.read_token() {
-            Ok(ref tok) if tok.kind == Kind::LineTerminator => self.next_skip_lineterminator(),
-            otherwise => otherwise,
+        self.prev_token_pos = self.token_pos;
+        loop {
+            let tok = self.read_token()?;
+            if tok.kind != Kind::LineTerminator {
+                return Ok(tok);
+            }
         }
     }
 
@@ -99,7 +107,7 @@ impl Lexer {
     /// skipping line terminators.
     pub fn peek_skip_lineterminator(&mut self) -> Result<Token, Error> {
         let len = self.buf.len();
-        for i in 0..len {
+        for i in self.token_pos..len {
             let tok = self.buf[i].clone();
             if tok.kind != Kind::LineTerminator {
                 return Ok(tok);
@@ -110,41 +118,43 @@ impl Lexer {
 
     /// peek the token specified by index. return the next token when index = 0.
     pub fn peek(&mut self, index: usize) -> Result<Token, Error> {
-        if self.buf.len() > index {
-            Ok(self.buf[index].clone())
+        let index_in_buf = self.token_pos + index;
+        if index_in_buf < self.buf.len() {
+            Ok(self.buf[index_in_buf].clone())
         } else {
             Err(Error::NormalEOF)
         }
     }
 
-    /// get position of next token.
+    /// get char position in the script of the next token.
     pub fn get_current_pos(&mut self) -> usize {
-        if self.buf.is_empty() {
-            self.pos
+        if self.token_pos < self.buf.len() {
+            self.buf[self.token_pos].pos
         } else {
-            self.buf[0].pos
+            self.pos
         }
     }
 
-    /// get position of previous token.
+    /// get char position in the script of previous token.
     pub fn get_prev_pos(&mut self) -> usize {
-        if self.buf.is_empty() {
-            self.pos - 1
+        if self.token_pos < self.buf.len() {
+            self.buf[self.token_pos].prev_pos
         } else {
-            self.buf[0].prev_pos
+            self.pos - 1
         }
     }
 
     /// peek the next token and if it is kind:Kind, get the next token, return true.
     /// otherwise, return false.
     pub fn next_if(&mut self, kind: Kind) -> bool {
-        match self.next() {
+        match self.peek(0) {
             Ok(tok) => {
-                let success = tok.kind == kind;
-                if !success {
-                    self.unget(&tok)
+                if tok.kind == kind {
+                    let _ = self.read_token().unwrap();
+                    true
+                } else {
+                    false
                 }
-                success
             }
             Err(_) => false,
         }
@@ -154,27 +164,32 @@ impl Lexer {
     /// otherwise, return false.
     /// skipping line terminators.
     pub fn next_if_skip_lineterminator(&mut self, kind: Kind) -> Result<bool, Error> {
-        match self.next_skip_lineterminator() {
+        match self.peek_skip_lineterminator() {
             Ok(tok) => {
-                let success = tok.kind == kind;
-                if !success {
-                    self.unget(&tok)
+                if tok.kind == kind {
+                    self.next_skip_lineterminator()?;
+                    Ok(true)
+                } else {
+                    Ok(false)
                 }
-                Ok(success)
             }
             Err(e) => Err(e),
         }
     }
 
     /// push back the token to the stack.
-    pub fn unget(&mut self, tok: &Token) {
-        self.buf.push_front(tok.clone());
+    pub fn unget(&mut self, _tok: &Token) {
+        println!("unget");
+        self.token_pos = self.prev_token_pos;
     }
 
     /// read token.
     fn read_token(&mut self) -> Result<Token, Error> {
-        if !self.buf.is_empty() {
-            Ok(self.buf.pop_front().unwrap())
+        if self.token_pos < self.buf.len() {
+            let pos = self.token_pos;
+            self.token_pos += 1;
+            println!("pos:{} token:{:?}", pos, self.buf[pos].kind);
+            Ok(self.buf[pos].clone())
         } else {
             Err(Error::NormalEOF)
         }
@@ -184,7 +199,6 @@ impl Lexer {
 ///
 /// tokenizer
 ///
-
 impl Lexer {
     /// tokenize and return the token.
     fn tokenize(&mut self) -> Result<Token, Error> {
@@ -671,10 +685,6 @@ impl Lexer {
 
     fn eof(&self) -> bool {
         self.pos >= self.code.len()
-    }
-
-    pub fn is_eof(&self) -> bool {
-        self.buf.is_empty()
     }
 }
 
