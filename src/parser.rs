@@ -131,7 +131,7 @@ impl Parser {
                 Err(e) => return Err(e),
             }
 
-            if self.lexer.is_empty() {
+            if self.lexer.peek_skip_lineterminator() == Err(Error::NormalEOF) {
                 if break_when_closingbrase {
                     return Err(Error::UnexpectedEOF("expected '}'.".to_string()));
                 } else {
@@ -166,7 +166,6 @@ impl Parser {
 
     /// https://tc39.github.io/ecma262/#prod-StatementListItem
     fn read_statement_list_item(&mut self) -> Result<Node, Error> {
-        println!("statement_list_item");
         if let Ok(tok) = self.lexer.peek_skip_lineterminator() {
             match tok.kind {
                 Kind::Keyword(Keyword::Function) => self.read_declaration(),
@@ -175,7 +174,7 @@ impl Parser {
                 _ => self.read_statement(),
             }
         } else {
-            self.read_statement()
+            Err(Error::NormalEOF)
         }
     }
 
@@ -217,7 +216,7 @@ impl Parser {
             Kind::Symbol(Symbol::OpeningBrace) => self.read_block_statement(),
             Kind::Symbol(Symbol::Semicolon) => return Ok(Node::new(NodeBase::Nope, tok.pos)),
             _ => {
-                self.lexer.unget(&tok);
+                self.lexer.unget();
                 self.read_expression_statement()
             }
         };
@@ -338,7 +337,7 @@ impl Parser {
                     pos,
                 ));
             } else {
-                self.lexer.unget(&expect_else_tok);
+                self.lexer.unget();
             }
         }
 
@@ -429,7 +428,7 @@ impl Parser {
             Kind::LineTerminator
             | Kind::Symbol(Symbol::Semicolon)
             | Kind::Symbol(Symbol::ClosingBrace) => {
-                self.lexer.unget(&tok);
+                self.lexer.unget();
                 Ok(Node::new(NodeBase::Break(None), pos))
             }
             Kind::Identifier(name) => Ok(Node::new(NodeBase::Break(Some(name)), pos)),
@@ -447,7 +446,7 @@ impl Parser {
             Kind::LineTerminator
             | Kind::Symbol(Symbol::Semicolon)
             | Kind::Symbol(Symbol::ClosingBrace) => {
-                self.lexer.unget(&tok);
+                self.lexer.unget();
                 Ok(Node::new(NodeBase::Continue(None), pos))
             }
             Kind::Identifier(name) => Ok(Node::new(NodeBase::Continue(Some(name)), pos)),
@@ -492,7 +491,6 @@ impl Parser {
     // TODO: Implement all features.
     fn read_assignment_expression(&mut self) -> Result<Node, Error> {
         let pos = self.lexer.get_current_pos();
-        println!("assign pos:{:?}", pos);
         // Arrow function
         if self.lexer.peek(0)?.kind == Kind::Symbol(Symbol::OpeningParen) {
             self.lexer.save_state();
@@ -505,7 +503,6 @@ impl Parser {
         }
 
         let mut lhs = self.read_conditional_expression()?;
-        println!("lhs pos:{:?}", lhs.pos);
         if let Ok(tok) = self.lexer.next() {
             macro_rules! assignop {
                 ($op:ident) => {{
@@ -542,7 +539,7 @@ impl Parser {
                 Kind::Symbol(Symbol::AssignMul) => assignop!(Mul),
                 Kind::Symbol(Symbol::AssignDiv) => assignop!(Div),
                 Kind::Symbol(Symbol::AssignMod) => assignop!(Rem),
-                _ => self.lexer.unget(&tok),
+                _ => self.lexer.unget(),
             }
         }
         Ok(lhs)
@@ -565,7 +562,7 @@ impl Parser {
                         pos,
                     ));
                 }
-                _ => self.lexer.unget(&tok),
+                _ => self.lexer.unget(),
             }
         }
 
@@ -660,7 +657,7 @@ impl Parser {
                     pos,
                 ));
             } else {
-                self.lexer.unget(&tok);
+                self.lexer.unget();
             }
         }
         Ok(lhs)
@@ -716,7 +713,7 @@ impl Parser {
                 pos,
             )),
             _ => {
-                self.lexer.unget(&tok);
+                self.lexer.unget();
                 self.read_update_expression()
             }
         }
@@ -726,7 +723,6 @@ impl Parser {
     // TODO: Implement all features.
     fn read_update_expression(&mut self) -> Result<Node, Error> {
         let tok = self.lexer.peek_skip_lineterminator()?;
-        println!("Pre? {:?}", tok.kind);
         match tok.kind {
             Kind::Symbol(Symbol::Inc) => {
                 self.lexer.next_skip_lineterminator().unwrap();
@@ -756,7 +752,6 @@ impl Parser {
         let pos = self.lexer.get_current_pos();
         let e = self.read_left_hand_side_expression()?;
         if let Ok(tok) = self.lexer.peek(0) {
-            println!("Post? {:?}", tok.kind);
             match tok.kind {
                 Kind::Symbol(Symbol::Inc) => {
                     self.lexer.next().unwrap();
@@ -831,7 +826,7 @@ impl Parser {
                     lhs = Node::new(NodeBase::Index(Box::new(lhs), Box::new(idx)), pos);
                 }
                 _ => {
-                    self.lexer.unget(&tok);
+                    self.lexer.unget();
                     break;
                 }
             }
@@ -859,14 +854,14 @@ impl Parser {
                         break;
                     }
                 }
-                Ok(ref tok) => {
+                Ok(_) => {
                     if args.len() != 0 {
                         return Err(Error::Expect(
                             self.lexer.get_prev_pos(),
                             "expect ',' or ')'.".to_string(),
                         ));
                     } else {
-                        self.lexer.unget(tok);
+                        self.lexer.unget();
                     }
                 }
                 Err(_) => {
@@ -881,7 +876,6 @@ impl Parser {
 
     /// https://tc39.github.io/ecma262/#prod-PrimaryExpression
     fn read_primary_expression(&mut self) -> Result<Node, Error> {
-        println!("primary");
         let tok = self.lexer.next_skip_lineterminator()?;
 
         match tok.kind {

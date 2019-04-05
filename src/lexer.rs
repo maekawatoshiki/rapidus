@@ -172,8 +172,9 @@ impl Lexer {
         }
     }
 
-    /// push back the token to the stack.
-    pub fn unget(&mut self, _tok: &Token) {
+    /// revert the previous next() or next_skip_lineterminator().
+    /// does not support next_if() and next_if_skip_lineterminator().
+    pub fn unget(&mut self) {
         self.token_pos = self.prev_token_pos;
     }
 
