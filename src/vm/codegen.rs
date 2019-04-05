@@ -795,6 +795,12 @@ impl<'a> CodeGenerator<'a> {
 
                 return Ok(());
             }
+            // http://www.ecma-international.org/ecma-262/9.0/index.html#sec-comma-operator
+            &BinOp::Comma => {
+                self.visit(lhs, iseq, false)?;
+                self.visit(rhs, iseq, true)?;
+                return Ok(());
+            }
             _ => {}
         }
 
@@ -821,7 +827,7 @@ impl<'a> CodeGenerator<'a> {
             &BinOp::Shl => self.bytecode_generator.append_shl(iseq),
             &BinOp::Shr => self.bytecode_generator.append_shr(iseq),
             &BinOp::ZFShr => self.bytecode_generator.append_zfshr(iseq),
-            _ => {}
+            _ => unimplemented!(),
         }
 
         Ok(())
