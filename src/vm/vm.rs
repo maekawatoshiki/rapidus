@@ -516,25 +516,29 @@ impl VM2 {
                     cur_frame.pc += 1;
                     let rhs: Value2 = self.stack.pop().unwrap().into();
                     let lhs: Value2 = self.stack.pop().unwrap().into();
-                    self.stack.push(lhs.lt(rhs).into());
+                    self.stack
+                        .push(lhs.lt(&mut self.memory_allocator, rhs).into());
                 }
                 VMInst::LE => {
                     cur_frame.pc += 1;
                     let rhs: Value2 = self.stack.pop().unwrap().into();
                     let lhs: Value2 = self.stack.pop().unwrap().into();
-                    self.stack.push(lhs.le(rhs).into());
+                    self.stack
+                        .push(lhs.le(&mut self.memory_allocator, rhs).into());
                 }
                 VMInst::GT => {
                     cur_frame.pc += 1;
                     let rhs: Value2 = self.stack.pop().unwrap().into();
                     let lhs: Value2 = self.stack.pop().unwrap().into();
-                    self.stack.push(rhs.lt(lhs).into());
+                    self.stack
+                        .push(rhs.lt(&mut self.memory_allocator, lhs).into());
                 }
                 VMInst::GE => {
                     cur_frame.pc += 1;
                     let rhs: Value2 = self.stack.pop().unwrap().into();
                     let lhs: Value2 = self.stack.pop().unwrap().into();
-                    self.stack.push(rhs.le(lhs).into());
+                    self.stack
+                        .push(rhs.le(&mut self.memory_allocator, lhs).into());
                 }
                 VMInst::AND => {
                     cur_frame.pc += 1;
