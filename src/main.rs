@@ -263,6 +263,11 @@ mod tests {
 
     #[test]
     fn typeof_() {
-        test_file("typeof", "".to_string());
+        assert_file("typeof");
+    }
+
+    #[test]
+    fn exotic_cmp() {
+        assert_file("exotic_cmp")
     }
 }
