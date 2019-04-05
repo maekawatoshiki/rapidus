@@ -8,6 +8,7 @@ use super::{
     frame,
     jsvalue::function::{DestinationKind, ThisMode},
     jsvalue::prototype::ObjectPrototypes,
+    jsvalue::symbol::GlobalSymbolRegistry,
     jsvalue::value::*,
     task::{Task, TaskManager, TimerKind},
     value::*,
@@ -37,6 +38,7 @@ pub struct VM2 {
     pub memory_allocator: gc::MemoryAllocator,
     pub object_prototypes: ObjectPrototypes,
     pub constant_table: constant::ConstantTable,
+    pub global_symbol_registry: GlobalSymbolRegistry,
     pub stack: Vec<BoxedValue>,
     pub saved_frame: Vec<frame::Frame>,
 }
@@ -64,6 +66,7 @@ impl VM2 {
             memory_allocator,
             object_prototypes,
             constant_table: constant::ConstantTable::new(),
+            global_symbol_registry: GlobalSymbolRegistry::new(),
             stack: vec![],
             saved_frame: vec![],
         }
@@ -344,7 +347,7 @@ impl VM2 {
         val: Value2,
         cur_frame: &frame::Frame,
     ) -> VMResult {
-        let maybe_setter = parent.set_property(key, val)?;
+        let maybe_setter = parent.set_property(&mut self.memory_allocator, key, val)?;
         if let Some(setter) = maybe_setter {
             self.call_function(setter, &[val], parent, cur_frame)?;
             self.stack.pop().unwrap(); // Pop undefined (setter's return value)
@@ -487,7 +490,8 @@ impl VM2 {
                     cur_frame.pc += 1;
                     let rhs: Value2 = self.stack.pop().unwrap().into();
                     let lhs: Value2 = self.stack.pop().unwrap().into();
-                    self.stack.push(lhs.eq(rhs).into());
+                    self.stack
+                        .push(lhs.eq(&mut self.memory_allocator, rhs).into());
                 }
                 VMInst::SEQ => {
                     cur_frame.pc += 1;
@@ -499,7 +503,8 @@ impl VM2 {
                     cur_frame.pc += 1;
                     let rhs: Value2 = self.stack.pop().unwrap().into();
                     let lhs: Value2 = self.stack.pop().unwrap().into();
-                    self.stack.push(lhs.ne(rhs).into());
+                    self.stack
+                        .push(lhs.ne(&mut self.memory_allocator, rhs).into());
                 }
                 VMInst::SNE => {
                     cur_frame.pc += 1;
@@ -535,42 +540,48 @@ impl VM2 {
                     cur_frame.pc += 1;
                     let rhs: Value2 = self.stack.pop().unwrap().into();
                     let lhs: Value2 = self.stack.pop().unwrap().into();
-                    self.stack.push(rhs.and(lhs).into());
+                    self.stack
+                        .push(rhs.and(&mut self.memory_allocator, lhs).into());
                 }
                 VMInst::OR => {
                     cur_frame.pc += 1;
                     let rhs: Value2 = self.stack.pop().unwrap().into();
                     let lhs: Value2 = self.stack.pop().unwrap().into();
-                    self.stack.push(rhs.or(lhs).into());
+                    self.stack
+                        .push(rhs.or(&mut self.memory_allocator, lhs).into());
                 }
                 VMInst::XOR => {
                     cur_frame.pc += 1;
                     let rhs: Value2 = self.stack.pop().unwrap().into();
                     let lhs: Value2 = self.stack.pop().unwrap().into();
-                    self.stack.push(rhs.xor(lhs).into());
+                    self.stack
+                        .push(rhs.xor(&mut self.memory_allocator, lhs).into());
                 }
                 VMInst::NOT => {
                     cur_frame.pc += 1;
                     let rhs: Value2 = self.stack.pop().unwrap().into();
-                    self.stack.push(rhs.not().into());
+                    self.stack.push(rhs.not(&mut self.memory_allocator).into());
                 }
                 VMInst::SHL => {
                     cur_frame.pc += 1;
                     let rhs: Value2 = self.stack.pop().unwrap().into();
                     let lhs: Value2 = self.stack.pop().unwrap().into();
-                    self.stack.push(lhs.shift_l(rhs).into());
+                    self.stack
+                        .push(lhs.shift_l(&mut self.memory_allocator, rhs).into());
                 }
                 VMInst::SHR => {
                     cur_frame.pc += 1;
                     let rhs: Value2 = self.stack.pop().unwrap().into();
                     let lhs: Value2 = self.stack.pop().unwrap().into();
-                    self.stack.push(lhs.shift_r(rhs).into());
+                    self.stack
+                        .push(lhs.shift_r(&mut self.memory_allocator, rhs).into());
                 }
                 VMInst::ZFSHR => {
                     cur_frame.pc += 1;
                     let rhs: Value2 = self.stack.pop().unwrap().into();
                     let lhs: Value2 = self.stack.pop().unwrap().into();
-                    self.stack.push(lhs.z_shift_r(rhs).into());
+                    self.stack
+                        .push(lhs.z_shift_r(&mut self.memory_allocator, rhs).into());
                 }
                 VMInst::NEG => {
                     cur_frame.pc += 1;
@@ -580,7 +591,8 @@ impl VM2 {
                 VMInst::POSI => {
                     cur_frame.pc += 1;
                     let val: Value2 = self.stack.pop().unwrap().into();
-                    self.stack.push(val.positive().into());
+                    self.stack
+                        .push(val.positive(&mut self.memory_allocator).into());
                 }
                 VMInst::LNOT => {
                     cur_frame.pc += 1;
