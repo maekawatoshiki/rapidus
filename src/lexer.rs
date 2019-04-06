@@ -57,11 +57,6 @@ impl Lexer {
             tok.prev_pos = prev_pos;
             prev_pos = tok.pos;
         }
-        /*
-        for (pos, line) in &self.pos_line_list {
-            println!("{} {}", pos, line);
-        }
-        */
         Ok(())
     }
 
@@ -179,7 +174,6 @@ impl Lexer {
 
     /// push back the token to the stack.
     pub fn unget(&mut self, _tok: &Token) {
-        println!("unget");
         self.token_pos = self.prev_token_pos;
     }
 
@@ -188,7 +182,6 @@ impl Lexer {
         if self.token_pos < self.buf.len() {
             let pos = self.token_pos;
             self.token_pos += 1;
-            println!("pos:{} token:{:?}", pos, self.buf[pos].kind);
             Ok(self.buf[pos].clone())
         } else {
             Err(Error::NormalEOF)
