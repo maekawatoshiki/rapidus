@@ -27,9 +27,9 @@ impl ObjectPrototypes {
         let function_prototype = {
             let function_prototype = Value2::Object(memory_allocator.alloc(ObjectInfo {
                 kind: ObjectKind2::Function(FunctionObjectInfo {
-                    id: get_unique_id(),
                     name: None,
                     kind: FunctionObjectKind::User(UserFunctionInfo {
+                        id: get_unique_id(),
                         params: vec![],
                         var_names: vec![],
                         lex_names: vec![],
@@ -37,8 +37,8 @@ impl ObjectPrototypes {
                         constructible: false,
                         this_mode: ThisMode::Global,
                         code: vec![],
-                        outer: None,
                         exception_table: vec![],
+                        outer: None,
                     }),
                 }),
                 prototype: object_prototype,

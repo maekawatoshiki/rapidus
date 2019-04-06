@@ -5,7 +5,6 @@ use bytecode_gen::ByteCode;
 
 #[derive(Clone, Debug)]
 pub struct FunctionObjectInfo {
-    pub id: usize,
     pub name: Option<String>,
     pub kind: FunctionObjectKind,
 }
@@ -18,6 +17,9 @@ pub enum FunctionObjectKind {
 
 #[derive(Clone, Debug)]
 pub struct UserFunctionInfo {
+    /// Unique id for many purposes
+    pub id: usize,
+
     /// Internal slot \[\[FormalParameters\]\]
     pub params: Vec<FunctionParameter>,
 
@@ -65,6 +67,7 @@ pub struct Exception {
     /// Throws may happen in bytecode's range of [start, end)
     pub start: usize,
     pub end: usize,
+
     /// Kind of throw's destination
     pub dst_kind: DestinationKind,
 }

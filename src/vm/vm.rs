@@ -41,6 +41,7 @@ pub struct VM2 {
     pub global_symbol_registry: GlobalSymbolRegistry,
     pub stack: Vec<BoxedValue>,
     pub saved_frame: Vec<frame::Frame>,
+    pub to_source_map: FxHashMap<usize, codegen::ToSourcePos>,
 }
 
 macro_rules! gc_lock {
@@ -69,6 +70,7 @@ impl VM2 {
             global_symbol_registry: GlobalSymbolRegistry::new(),
             stack: vec![],
             saved_frame: vec![],
+            to_source_map: FxHashMap::default(),
         }
     }
 
@@ -79,11 +81,14 @@ impl VM2 {
         use_value: bool,
     ) -> Result<codegen::FunctionInfo, codegen::Error> {
         let mut code_generator = CodeGenerator::new(
+            // &parser,
             &mut self.constant_table,
             &mut self.memory_allocator,
             &self.object_prototypes,
         );
-        code_generator.compile(node, iseq, use_value)
+        let res = code_generator.compile(node, iseq, use_value);
+        self.to_source_map = code_generator.to_source_map;
+        res
     }
 
     pub fn create_global_frame(
@@ -294,7 +299,8 @@ impl VM2 {
             this,
             constructor_call,
         )
-        .escape();
+        .escape()
+        .id(user_func.id);
 
         self.run(frame)
     }
@@ -389,6 +395,12 @@ impl VM2 {
                 let mut exception_found = false;
                 let mut outer_break = false;
 
+                let node_pos = self
+                    .to_source_map
+                    .get(&cur_frame.id)
+                    .unwrap()
+                    .get_node_pos(cur_frame.pc);
+
                 loop {
                     for exception in &cur_frame.exception_table {
                         let in_range =
@@ -423,7 +435,7 @@ impl VM2 {
 
                 if !exception_found {
                     let val: Value2 = self.stack.pop().unwrap().into();
-                    return Err(RuntimeError::Exception2(val));
+                    return Err(RuntimeError::Exception2(val, node_pos));
                 }
             }};
         }
@@ -516,25 +528,29 @@ impl VM2 {
                     cur_frame.pc += 1;
                     let rhs: Value2 = self.stack.pop().unwrap().into();
                     let lhs: Value2 = self.stack.pop().unwrap().into();
-                    self.stack.push(lhs.lt(rhs).into());
+                    self.stack
+                        .push(lhs.lt(&mut self.memory_allocator, rhs).into());
                 }
                 VMInst::LE => {
                     cur_frame.pc += 1;
                     let rhs: Value2 = self.stack.pop().unwrap().into();
                     let lhs: Value2 = self.stack.pop().unwrap().into();
-                    self.stack.push(lhs.le(rhs).into());
+                    self.stack
+                        .push(lhs.le(&mut self.memory_allocator, rhs).into());
                 }
                 VMInst::GT => {
                     cur_frame.pc += 1;
                     let rhs: Value2 = self.stack.pop().unwrap().into();
                     let lhs: Value2 = self.stack.pop().unwrap().into();
-                    self.stack.push(rhs.lt(lhs).into());
+                    self.stack
+                        .push(rhs.lt(&mut self.memory_allocator, lhs).into());
                 }
                 VMInst::GE => {
                     cur_frame.pc += 1;
                     let rhs: Value2 = self.stack.pop().unwrap().into();
                     let lhs: Value2 = self.stack.pop().unwrap().into();
-                    self.stack.push(rhs.le(lhs).into());
+                    self.stack
+                        .push(rhs.le(&mut self.memory_allocator, lhs).into());
                 }
                 VMInst::AND => {
                     cur_frame.pc += 1;
@@ -1127,7 +1143,8 @@ impl VM2 {
             user_func.exception_table,
             this,
             constructor_call,
-        );
+        )
+        .id(user_func.id);
 
         *cur_frame = frame;
 

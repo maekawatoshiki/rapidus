@@ -141,7 +141,6 @@ impl Value2 {
         let name_prop = Value2::string(memory_allocator, name.clone());
         Value2::Object(memory_allocator.alloc(ObjectInfo {
             kind: ObjectKind2::Function(FunctionObjectInfo {
-                id: get_unique_id(),
                 name: Some(name),
                 kind: FunctionObjectKind::Builtin(func),
             }),
@@ -163,7 +162,6 @@ impl Value2 {
         let name_prop = Value2::string(memory_allocator, name.clone());
         Value2::Object(memory_allocator.alloc(ObjectInfo {
             kind: ObjectKind2::Function(FunctionObjectInfo {
-                id: get_unique_id(),
                 name: Some(name),
                 kind: FunctionObjectKind::Builtin(func),
             }),
@@ -201,7 +199,6 @@ impl Value2 {
                 prototype => true , false, false: prototype
             ),
             kind: ObjectKind2::Function(FunctionObjectInfo {
-                id: get_unique_id(),
                 name: name,
                 kind: FunctionObjectKind::User(info)
             }),
@@ -843,18 +840,40 @@ impl Value2 {
         Value2::bool(!self.strict_eq(val).into_bool())
     }
 
-    // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-abstract-relational-comparison
-    pub fn lt(self, val: Value2) -> Self {
-        match (self, val) {
-            (Value2::Number(x), Value2::Number(y)) => Value2::Bool(if x < y { 1 } else { 0 }),
-            _ => Value2::undefined(),
+    /// https://tc39.github.io/ecma262/#sec-abstract-relational-comparison
+    pub fn cmp(self, allocator: &mut gc::MemoryAllocator, val: Value2) -> Self {
+        let px = self.to_primitive(allocator, None);
+        let py = val.to_primitive(allocator, None);
+
+        if let (Value2::String(x), Value2::String(y)) = (px, py) {
+            return Value2::bool(cstrp_to_str(x) < cstrp_to_str(y));
+        }
+
+        let nx = px.to_number(allocator);
+        let ny = py.to_number(allocator);
+
+        if nx.is_nan() || ny.is_nan() {
+            return Value2::undefined();
+        }
+
+        if nx == ny {
+            return Value2::Bool(0);
+        }
+
+        Value2::bool(nx < ny)
+    }
+
+    pub fn lt(self, allocator: &mut gc::MemoryAllocator, val: Value2) -> Self {
+        match self.cmp(allocator, val) {
+            Value2::Other(UNDEFINED) => Value2::Bool(0),
+            otherwise => otherwise,
         }
     }
 
-    pub fn le(self, val: Value2) -> Self {
-        match (self, val) {
-            (Value2::Number(x), Value2::Number(y)) => Value2::Bool(if x <= y { 1 } else { 0 }),
-            _ => Value2::undefined(),
+    pub fn le(self, allocator: &mut gc::MemoryAllocator, val: Value2) -> Self {
+        match val.cmp(allocator, self) {
+            Value2::Other(UNDEFINED) | Value2::Bool(1) => Value2::Bool(0),
+            _ => Value2::Bool(1),
         }
     }
 
@@ -1059,4 +1078,9 @@ impl Value2 {
 #[inline]
 pub fn is_integer(n: f64) -> bool {
     n - n.floor() == 0.0
+}
+
+#[inline]
+pub fn cstrp_to_str(p: *mut CString) -> &'static str {
+    unsafe { &*p }.to_str().unwrap()
 }
