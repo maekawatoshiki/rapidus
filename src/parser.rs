@@ -131,7 +131,7 @@ impl Parser {
                 Err(e) => return Err(e),
             }
 
-            if self.lexer.is_empty() {
+            if self.lexer.peek_skip_lineterminator() == Err(Error::NormalEOF) {
                 if break_when_closingbrase {
                     return Err(Error::UnexpectedEOF("expected '}'.".to_string()));
                 } else {
@@ -178,7 +178,7 @@ impl Parser {
                 _ => self.read_statement(),
             }
         } else {
-            self.read_statement()
+            Err(Error::NormalEOF)
         }
     }
 
