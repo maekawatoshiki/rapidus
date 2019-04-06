@@ -1,4 +1,5 @@
 use super::super::builtins;
+use crate::lexer;
 use ansi_term::Colour;
 use gc::MemoryAllocator;
 use vm::jsvalue::value::Value2;
@@ -11,7 +12,7 @@ pub enum RuntimeError {
     Reference(String),
     General(String),
     Exception(Value),
-    Exception2(Value2),
+    Exception2(Value2, Option<usize>),
     Unimplemented,
 }
 
@@ -20,7 +21,7 @@ impl RuntimeError {
     pub fn to_value(&self) -> Value {
         match self {
             RuntimeError::Exception(ref v) => v.clone(),
-            RuntimeError::Exception2(ref _v) => Value::string("Value2".to_string()),
+            RuntimeError::Exception2(ref _v, _) => Value::string("Value2".to_string()),
             RuntimeError::Type(ref s) => Value::string(s.clone()),
             RuntimeError::General(ref s) => Value::string(s.clone()),
             RuntimeError::Reference(ref s) => Value::string(s.clone()),
@@ -32,7 +33,7 @@ impl RuntimeError {
     /// convert RuntimeError -> Value2
     pub fn to_value2(self, memory_allocator: &mut MemoryAllocator) -> Value2 {
         match self {
-            RuntimeError::Exception2(v) => v,
+            RuntimeError::Exception2(v, _) => v,
             RuntimeError::Type(s) => Value2::string(memory_allocator, s),
             RuntimeError::General(s) => Value2::string(memory_allocator, s),
             RuntimeError::Reference(s) => {
@@ -46,17 +47,22 @@ impl RuntimeError {
         }
     }
 
-    pub fn show_error_message(&self) {
+    pub fn show_error_message(&self, lexer: Option<&lexer::Lexer>) {
         match self {
             RuntimeError::Unknown => runtime_error("unknown error occurred"),
             RuntimeError::Unimplemented => runtime_error("unimplemented feature"),
             RuntimeError::Reference(msg) | RuntimeError::Type(msg) | RuntimeError::General(msg) => {
                 runtime_error(msg.as_str())
             }
-            RuntimeError::Exception2(val) => {
+            RuntimeError::Exception2(val, node_pos) => {
                 runtime_error("Uncaught Exception");
+                if let (Some(pos), Some(lexer)) = (node_pos, lexer) {
+                    let (msg, _, line) = lexer.get_code_around_err_point(*pos);
+                    println!("line: {}", line);
+                    println!("{}", msg);
+                }
                 builtins::console::debug_print(val, false);
-                println!()
+                println!();
             }
             RuntimeError::Exception(val) => {
                 runtime_error("Uncaught Exception");
