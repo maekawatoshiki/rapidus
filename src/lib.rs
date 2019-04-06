@@ -10,13 +10,12 @@ pub mod builtins;
 pub mod bytecode_gen;
 pub mod gc;
 pub mod id;
-pub mod jit;
+// pub mod jit;
 pub mod lexer;
 pub mod node;
 pub mod parser;
 pub mod test;
 pub mod token;
-pub mod vm_codegen;
 
 extern crate ansi_term;
 extern crate chrono;

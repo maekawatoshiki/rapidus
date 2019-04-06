@@ -219,6 +219,7 @@ impl LexicalEnvironment {
             builtins::function::function(memory_allocator, object_prototypes);
         let array_constructor = builtins::array::array(memory_allocator, object_prototypes);
         let symbol_constructor = builtins::symbol::symbol(memory_allocator, object_prototypes);
+        let math_object = builtins::math::math(memory_allocator, object_prototypes);
         LexicalEnvironment {
             record: EnvironmentRecord::Global(make_normal_object!(
                 memory_allocator,
@@ -231,7 +232,8 @@ impl LexicalEnvironment {
                 Object     => true, false, true: object_constructor,
                 Function   => true, false, true: function_constructor,
                 Array      => true, false, true: array_constructor,
-                Symbol     => true, false, true: symbol_constructor
+                Symbol     => true, false, true: symbol_constructor,
+                Math       => true, false, true: math_object
             )),
             outer: None,
         }
