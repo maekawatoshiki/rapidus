@@ -88,7 +88,7 @@ fn main() {
 
     println!("Result:");
     if let Err(e) = vm.run_global(global_info, iseq) {
-        e.show_error_message();
+        e.show_error_message(Some(&parser.lexer));
     }
 
     for (i, val_boxed) in vm.stack.iter().enumerate() {
@@ -139,7 +139,7 @@ fn repl() {
                     }
 
                     if let Err(e) = vm.run(global_frame.clone().unwrap()) {
-                        e.show_error_message();
+                        e.show_error_message(None);
                         break;
                     }
 

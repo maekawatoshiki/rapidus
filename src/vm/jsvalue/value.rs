@@ -141,7 +141,6 @@ impl Value2 {
         let name_prop = Value2::string(memory_allocator, name.clone());
         Value2::Object(memory_allocator.alloc(ObjectInfo {
             kind: ObjectKind2::Function(FunctionObjectInfo {
-                id: get_unique_id(),
                 name: Some(name),
                 kind: FunctionObjectKind::Builtin(func),
             }),
@@ -163,7 +162,6 @@ impl Value2 {
         let name_prop = Value2::string(memory_allocator, name.clone());
         Value2::Object(memory_allocator.alloc(ObjectInfo {
             kind: ObjectKind2::Function(FunctionObjectInfo {
-                id: get_unique_id(),
                 name: Some(name),
                 kind: FunctionObjectKind::Builtin(func),
             }),
@@ -201,7 +199,6 @@ impl Value2 {
                 prototype => true , false, false: prototype
             ),
             kind: ObjectKind2::Function(FunctionObjectInfo {
-                id: get_unique_id(),
                 name: name,
                 kind: FunctionObjectKind::User(info)
             }),

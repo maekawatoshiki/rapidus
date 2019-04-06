@@ -15,6 +15,7 @@ pub type LexicalEnvironmentRef = *mut LexicalEnvironment;
 
 #[derive(Debug, Clone)]
 pub struct Frame {
+    pub id: usize, // 0 => global scope, n => function id
     pub execution_context: ExecutionContext,
     pub pc: usize,
     pub saved_stack_len: usize,
@@ -59,6 +60,7 @@ impl Frame {
         constructor_call: bool,
     ) -> Self {
         Frame {
+            id: 0,
             execution_context,
             pc: 0,
             saved_stack_len: 0,
@@ -72,6 +74,7 @@ impl Frame {
 
     pub fn new_empty_with_this(this: Value2, constructor_call: bool) -> Self {
         Frame {
+            id: 0,
             execution_context: ExecutionContext::new_empty(),
             pc: 0,
             saved_stack_len: 0,
@@ -98,6 +101,11 @@ impl Frame {
 
     pub fn saved_stack_len(mut self, saved_stack_len: usize) -> Self {
         self.saved_stack_len = saved_stack_len;
+        self
+    }
+
+    pub fn id(mut self, id: usize) -> Self {
+        self.id = id;
         self
     }
 

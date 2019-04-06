@@ -1,9 +1,11 @@
+use crate::id::get_unique_id;
 use bytecode_gen::{ByteCode, ByteCodeGenerator, VMInst};
 use gc::MemoryAllocator;
 use node::{
     BinOp, FormalParameter, FormalParameters, MethodDefinitionKind, Node, NodeBase,
     PropertyDefinition, UnaryOp, VarKind,
 };
+use rustc_hash::FxHashMap;
 use vm::constant::{ConstantTable, SpecialProperties, SpecialPropertyKind};
 use vm::jsvalue::function::{DestinationKind, Exception, ThisMode, UserFunctionInfo};
 use vm::jsvalue::value::Value2;
@@ -30,6 +32,7 @@ pub struct CodeGenerator<'a> {
     pub memory_allocator: &'a mut MemoryAllocator,
     pub object_prototypes: &'a prototype::ObjectPrototypes,
     pub function_stack: Vec<FunctionInfo>,
+    pub to_source_map: FxHashMap<usize, ToSourcePos>,
 }
 
 #[derive(Debug, Clone)]
@@ -41,6 +44,12 @@ pub struct FunctionInfo {
     pub func_decls: Vec<Value2>,
     pub level: Vec<Level>,
     pub exception_table: Vec<Exception>,
+    pub to_source_pos: ToSourcePos,
+}
+
+#[derive(Debug, Clone)]
+pub struct ToSourcePos {
+    table: Vec<(usize, usize)>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -63,6 +72,7 @@ impl<'a> CodeGenerator<'a> {
             object_prototypes,
             memory_allocator,
             function_stack: vec![FunctionInfo::new(None) /* = global */],
+            to_source_map: FxHashMap::default(),
         }
     }
 
@@ -75,8 +85,9 @@ impl<'a> CodeGenerator<'a> {
         self.visit(node, iseq, use_value)?;
         self.bytecode_generator.append_end(iseq);
 
-        let global_info = self.function_stack[0].clone();
-        self.function_stack[0] = FunctionInfo::new(None);
+        let global_info = self.function_stack.pop().unwrap();
+        self.to_source_map
+            .insert(0, global_info.to_source_pos.clone());
 
         Ok(global_info)
     }
@@ -129,18 +140,29 @@ impl<'a> CodeGenerator<'a> {
                 self.visit_binary_op(&*lhs, &*rhs, op, iseq, use_value)?
             }
             NodeBase::Assign(ref dst, ref src) => {
+                self.current_function()
+                    .to_source_pos
+                    .append(iseq.len(), node.pos);
                 self.visit_assign(&*dst, &*src, iseq, use_value)?
             }
             NodeBase::Call(ref callee, ref args) => {
                 self.visit_call(&*callee, args, iseq, use_value)?
             }
-            NodeBase::Throw(ref val) => self.visit_throw(val, iseq)?,
+            NodeBase::Throw(ref val) => {
+                self.current_function()
+                    .to_source_pos
+                    .append(iseq.len(), node.pos);
+                self.visit_throw(val, iseq)?
+            }
             NodeBase::Return(ref val) => self.visit_return(val, iseq)?,
             NodeBase::New(ref expr) => self.visit_new(&*expr, iseq, use_value)?,
             NodeBase::Object(ref properties) => self.visit_object_literal(properties, iseq)?,
             NodeBase::Array(ref elems) => self.visit_array_literal(elems, iseq)?,
             NodeBase::Identifier(ref name) => {
                 if use_value {
+                    self.current_function()
+                        .to_source_pos
+                        .append(iseq.len(), node.pos);
                     self.bytecode_generator.append_get_value(name, iseq)
                 }
             }
@@ -601,11 +623,16 @@ impl<'a> CodeGenerator<'a> {
 
         let function_info = self.function_stack.pop().unwrap();
 
+        let id = get_unique_id();
+
+        self.to_source_map.insert(id, function_info.to_source_pos);
+
         Ok(Value2::function(
             self.memory_allocator,
             self.object_prototypes,
             function_info.name,
             UserFunctionInfo {
+                id,
                 params,
                 var_names: function_info.var_names,
                 lex_names: function_info.lex_names,
@@ -1103,6 +1130,7 @@ impl FunctionInfo {
             param_names: vec![],
             level: vec![Level::Function],
             exception_table: vec![],
+            to_source_pos: ToSourcePos::new(),
         }
     }
 
@@ -1249,5 +1277,24 @@ impl Level {
             );
         }
         has_return_from_try_or_catch
+    }
+}
+
+impl ToSourcePos {
+    pub fn new() -> Self {
+        Self { table: vec![] }
+    }
+
+    pub fn append(&mut self, bp: usize, np: usize) {
+        self.table.push((bp, np));
+    }
+
+    pub fn get_node_pos(&self, bytecode_offset: usize) -> Option<usize> {
+        for (bp, np) in &self.table {
+            if *bp < bytecode_offset {
+                return Some(*np);
+            }
+        }
+        None
     }
 }
