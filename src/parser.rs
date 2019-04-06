@@ -179,7 +179,6 @@ impl Parser {
     }
 
     fn read_statement(&mut self) -> Result<Node, Error> {
-        println!("statement");
         let tok = self.lexer.next_skip_lineterminator()?;
 
         // Label
