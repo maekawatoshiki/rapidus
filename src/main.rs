@@ -288,6 +288,19 @@ mod tests {
 
     #[test]
     fn arrow_function() {
-        test_code("let f = (x) => { return x * x }; f(5)".to_string(), "25".to_string());
+        test_code(
+            "let f = (x) => { return x * x }; f(5)".to_string(),
+            "25".to_string(),
+        );
+    }
+
+    #[test]
+    fn symbol() {
+        assert_file("symbol")
+    }
+
+    #[test]
+    fn array() {
+        assert_file("array")
     }
 }
