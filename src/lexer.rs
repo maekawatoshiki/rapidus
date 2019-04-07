@@ -9,15 +9,28 @@ use encoding::{DecoderTrap, Encoding};
 #[derive(Clone, Debug)]
 pub struct Lexer {
     pub code: String,
-    /// current positon in code.
-    /// after tokenizing, always indicate eof.
+
+    /// Current positon in code.
+    /// After tokenizing, always indicate EOF.
     pub pos: usize,
+
+    /// Current line number
     pub line: usize,
+
+    /// Hold all tokens
     pub buf: VecDeque<Token>,
-    pub pos_line_list: Vec<(usize, usize)>, // pos, line // TODO: Delete this and consider another way.
-    /// current position in buf.
+
+    /// Associate position in ``code`` and line number
+    // TODO: Delete this and consider another way.
+    pub pos_line_list: Vec<(usize, usize)>,
+
+    /// Current position in ``buf``.
     pub token_pos: usize,
+
+    /// Previous position of ``token_pos``
     pub prev_token_pos: usize,
+
+    /// Saved states
     pub states: Vec<usize>,
 }
 
@@ -35,15 +48,14 @@ impl Lexer {
         }
     }
 
-    /// tokenize all scripts.
+    /// Tokenize all the script
     pub fn tokenize_all(&mut self) -> Result<(), Error> {
         loop {
             match self.tokenize() {
                 Ok(tok) => self.buf.push_back(tok),
                 Err(Error::NormalEOF) => break,
                 Err(err) => {
-                    // when error occurs in tokenizer, pos_line_list is not completed.
-                    //
+                    // When error occurs in tokenizer, pos_line_list is not completed.
                     self.skip_char_while(|c| c != '\n')?;
                     self.take_char().unwrap_or(' ');
                     self.pos_line_list.push((self.pos + 1, self.line + 1));
@@ -51,12 +63,15 @@ impl Lexer {
                 }
             };
         }
+
         self.pos_line_list.push((self.pos + 1, self.line + 1));
+
         let mut prev_pos = 0;
         for mut tok in &mut self.buf {
             tok.prev_pos = prev_pos;
             prev_pos = tok.pos;
         }
+
         Ok(())
     }
 
@@ -65,6 +80,7 @@ impl Lexer {
             println!("{:?}", tok);
         }
     }
+
     pub fn is_empty(&self) -> bool {
         self.token_pos >= self.buf.len()
     }
@@ -79,15 +95,15 @@ impl Lexer {
 }
 
 impl Lexer {
-    /// get next token.
-    /// no skipping line terminator.
+    /// Get next token.
+    /// No skipping line terminator.
     pub fn next(&mut self) -> Result<Token, Error> {
         self.prev_token_pos = self.token_pos;
         self.read_token()
     }
 
-    /// get the next token.
-    /// skipping line terminators.
+    /// Get the next token.
+    /// Skipping line terminators.
     pub fn next_skip_lineterminator(&mut self) -> Result<Token, Error> {
         self.prev_token_pos = self.token_pos;
         loop {
@@ -98,8 +114,8 @@ impl Lexer {
         }
     }
 
-    /// peek the next token.
-    /// skipping line terminators.
+    /// Peek the next token.
+    /// Skipping line terminators.
     pub fn peek_skip_lineterminator(&mut self) -> Result<Token, Error> {
         let len = self.buf.len();
         for i in self.token_pos..len {
@@ -111,7 +127,8 @@ impl Lexer {
         Err(Error::NormalEOF)
     }
 
-    /// peek the token specified by index. return the next token when index = 0.
+    /// Peek the token specified by index.
+    /// Return the next token when index = 0.
     pub fn peek(&mut self, index: usize) -> Result<Token, Error> {
         let index_in_buf = self.token_pos + index;
         if index_in_buf < self.buf.len() {
@@ -121,13 +138,13 @@ impl Lexer {
         }
     }
 
-    /// peek the previous token.
+    /// Peek the previous token
     pub fn peek_prev(&mut self) -> Token {
         let index_in_buf = self.token_pos - 1;
         self.buf[index_in_buf].clone()
     }
 
-    /// get char position in the script of the next token.
+    /// Get char position in the script of the next token
     pub fn get_current_pos(&mut self) -> usize {
         if self.token_pos < self.buf.len() {
             self.buf[self.token_pos].pos
@@ -136,7 +153,7 @@ impl Lexer {
         }
     }
 
-    /// get char position in the script of previous token.
+    /// Get char position in the script of previous token.
     pub fn get_prev_pos(&mut self) -> usize {
         if self.token_pos < self.buf.len() {
             self.buf[self.token_pos].prev_pos
@@ -145,8 +162,8 @@ impl Lexer {
         }
     }
 
-    /// peek the next token and if it is kind:Kind, get the next token, return true.
-    /// otherwise, return false.
+    /// Peek the next token and if it is ``kind``, get the next token, return true.
+    /// Otherwise, return false.
     pub fn next_if(&mut self, kind: Kind) -> bool {
         match self.peek(0) {
             Ok(tok) => {
@@ -161,9 +178,9 @@ impl Lexer {
         }
     }
 
-    /// peek the next token, and when token is kind:Kind, get the token and return true.
-    /// otherwise, return false.
-    /// skipping line terminators.
+    /// Peek the next token, and when token is kind:Kind, get the token and return true.
+    /// Otherwise, return false.
+    /// Skipping line terminators.
     pub fn next_if_skip_lineterminator(&mut self, kind: Kind) -> Result<bool, Error> {
         match self.peek_skip_lineterminator() {
             Ok(tok) => {
@@ -178,13 +195,13 @@ impl Lexer {
         }
     }
 
-    /// revert the previous next() or next_skip_lineterminator().
-    /// does not support next_if() and next_if_skip_lineterminator().
+    /// Revert the previous ``next()`` or ``next_skip_lineterminator()``.
+    /// Does not support ``next_if()`` and ``next_if_skip_lineterminator()``.
     pub fn unget(&mut self) {
         self.token_pos = self.prev_token_pos;
     }
 
-    /// read token.
+    /// Read token
     fn read_token(&mut self) -> Result<Token, Error> {
         if self.token_pos < self.buf.len() {
             let pos = self.token_pos;
@@ -197,10 +214,10 @@ impl Lexer {
 }
 
 ///
-/// tokenizer
+/// Tokenizer
 ///
 impl Lexer {
-    /// tokenize and return the token.
+    /// Tokenize and return the token
     fn tokenize(&mut self) -> Result<Token, Error> {
         if self.starts_with("//") {
             self.skip_line_comment()?;
@@ -250,7 +267,6 @@ impl Lexer {
 impl Lexer {
     fn read_identifier(&mut self) -> Result<Token, Error> {
         let pos = self.pos;
-
         let ident = self.take_char_while(|c| c.is_alphanumeric() || c == '_' || c == '$')?;
         if let Some(keyword) = convert_reserved_keyword(ident.as_str()) {
             Ok(Token::new_keyword(keyword, pos))
@@ -261,7 +277,7 @@ impl Lexer {
 }
 
 impl Lexer {
-    pub fn read_number(&mut self) -> Result<Token, Error> {
+    fn read_number(&mut self) -> Result<Token, Error> {
         let pos = self.pos;
         #[derive(Debug, Clone, PartialEq)]
         enum NumLiteralKind {
@@ -374,10 +390,9 @@ impl Lexer {
 }
 
 impl Lexer {
-    pub fn read_string_literal(&mut self) -> Result<Token, Error> {
+    fn read_string_literal(&mut self) -> Result<Token, Error> {
         let pos = self.pos;
         let quote = self.take_char()?;
-        // TODO: support escape sequence
         let mut s = "".to_string();
         loop {
             match self.take_char()? {
@@ -393,6 +408,7 @@ impl Lexer {
         Ok(Token::new_string(s, pos))
     }
 
+    // TODO: Support more escape sequences
     fn read_escaped_char(&mut self) -> Result<Vec<char>, Error> {
         let c = self.take_char()?;
         Ok(match c {
@@ -447,7 +463,6 @@ impl Lexer {
 impl Lexer {
     pub fn read_symbol(&mut self) -> Result<Token, Error> {
         let pos = self.pos;
-
         let mut symbol = Symbol::Hash;
         let c = self.take_char()?;
         match c {
@@ -599,8 +614,7 @@ impl Lexer {
                     symbol = if self.take_char_if('.')? {
                         Symbol::Rest
                     } else {
-                        // TODO: better error handler needed
-                        return Err(Error::General(pos, "invalid token.".to_string()));
+                        return Err(Error::General(pos, "Invalid token".to_string()));
                     }
                 } else {
                     symbol = Symbol::Point
@@ -614,8 +628,8 @@ impl Lexer {
 }
 
 impl Lexer {
-    /// read line terminator. (if next char is not line terminator, panic.)
-    pub fn read_line_terminator(&mut self) -> Result<Token, Error> {
+    /// Read line terminator. (if next char is not line terminator, panic.)
+    fn read_line_terminator(&mut self) -> Result<Token, Error> {
         let pos = self.pos;
         assert_eq!(self.take_char()?, '\n');
         self.line += 1;
@@ -625,13 +639,13 @@ impl Lexer {
 }
 
 impl Lexer {
-    /// skip whitespace and tabs.
+    /// Skip whitespace and tabs
     fn skip_whitespace(&mut self) -> Result<(), Error> {
         self.take_char_while(|c| c == ' ' || c == '\t').and(Ok(()))
     }
 
-    /// while predicete f(char) is true, read chars, and move cursor next.
-    /// return all chars as String.
+    /// While ``f(char)`` is true, read chars, and move cursor next.
+    /// Return all chars as String.
     fn take_char_while<F>(&mut self, mut f: F) -> Result<String, Error>
     where
         F: FnMut(char) -> bool,
@@ -643,7 +657,7 @@ impl Lexer {
         Ok(s)
     }
 
-    /// while predicete f(char) and !eof is true, move cursor next.
+    /// While ``f(char)`` is true and not reached EOF, move cursor next
     fn skip_char_while<F>(&mut self, mut f: F) -> Result<(), Error>
     where
         F: FnMut(char) -> bool,
@@ -654,7 +668,7 @@ impl Lexer {
         Ok(())
     }
 
-    /// read next char, and move cursor next.
+    /// Read next char, and move cursor next
     fn take_char(&mut self) -> Result<char, Error> {
         let mut iter = self.code[self.pos..].char_indices();
         let (_, cur_char) = iter.next().ok_or(Error::NormalEOF)?;
@@ -663,8 +677,8 @@ impl Lexer {
         Ok(cur_char)
     }
 
-    /// if the next char is c:char, move cursor next, return true.
-    /// if not (include EOF), return false.
+    /// If the next char is ``c``, move cursor next, return true.
+    /// If not (include EOF), return false.
     fn take_char_if(&mut self, c: char) -> Result<bool, Error> {
         let f = !self.eof() && self.peek_char()? == c;
         if f {
@@ -673,7 +687,7 @@ impl Lexer {
         Ok(f)
     }
 
-    /// if chars start with s:&str, return true.
+    /// If chars start with ``s``, return true
     fn starts_with(&self, s: &str) -> bool {
         self.code[self.pos..].starts_with(s)
     }

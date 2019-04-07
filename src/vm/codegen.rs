@@ -330,36 +330,17 @@ impl<'a> CodeGenerator<'a> {
         self.bytecode_generator
             .append_jmp((start - loop_pos) as i32 - 5, iseq);
 
-        // self.bytecode_generator.replace_int32(
-        //     (iseq.len() as i32 - start as i32) - 5,
-        //     &mut iseq[start as usize + 1..start as usize + 5],
-        // );
-
-        // let break_pos = iseq.len() as isize;
-        // self.replace_continue_dsts(&name, start, iseq);
-        // self.replace_break_dsts(&name, break_pos, iseq);
-
         let end = iseq.len() as isize;
         self.bytecode_generator.replace_int32(
             (end - cond_pos) as i32 - 5,
             &mut iseq[cond_pos as usize + 1..cond_pos as usize + 5],
         );
 
-        let (break_jmp_instr_pos, continue_jmp_instr_pos) =
-            self.current_function().level.pop().unwrap().as_loop();
-        // TODO: Refactor
-        for instr_pos in break_jmp_instr_pos {
-            self.bytecode_generator.replace_int32(
-                (end - instr_pos as isize) as i32 - 5,
-                &mut iseq[instr_pos as usize + 1..instr_pos as usize + 5],
-            );
-        }
-        for instr_pos in continue_jmp_instr_pos {
-            self.bytecode_generator.replace_int32(
-                (start - instr_pos as isize) as i32 - 5,
-                &mut iseq[instr_pos as usize + 1..instr_pos as usize + 5],
-            );
-        }
+        self.current_function()
+            .level
+            .pop()
+            .unwrap()
+            .replace_break_and_continue(&mut self.bytecode_generator, iseq, end, start);
 
         Ok(())
     }
@@ -402,20 +383,11 @@ impl<'a> CodeGenerator<'a> {
             &mut iseq[cond_pos as usize + 1..cond_pos as usize + 5],
         );
 
-        let (break_jmp_instr_pos, continue_jmp_instr_pos) =
-            self.current_function().level.pop().unwrap().as_loop();
-        for instr_pos in break_jmp_instr_pos {
-            self.bytecode_generator.replace_int32(
-                (end - instr_pos as isize) as i32 - 5,
-                &mut iseq[instr_pos as usize + 1..instr_pos as usize + 5],
-            );
-        }
-        for instr_pos in continue_jmp_instr_pos {
-            self.bytecode_generator.replace_int32(
-                (continue_pos - instr_pos as isize) as i32 - 5,
-                &mut iseq[instr_pos as usize + 1..instr_pos as usize + 5],
-            );
-        }
+        self.current_function()
+            .level
+            .pop()
+            .unwrap()
+            .replace_break_and_continue(&mut self.bytecode_generator, iseq, end, continue_pos);
 
         Ok(())
     }
@@ -1283,6 +1255,28 @@ impl Level {
                 ref mut continue_jmp_instr_pos,
             } => (break_jmp_instr_pos, continue_jmp_instr_pos),
             _ => panic!(),
+        }
+    }
+
+    pub fn replace_break_and_continue(
+        self,
+        bytecode_generator: &mut ByteCodeGenerator,
+        iseq: &mut ByteCode,
+        break_dst: isize,
+        continue_dst: isize,
+    ) {
+        let (break_jmp_instr_pos, continue_jmp_instr_pos) = self.as_loop();
+        for instr_pos in break_jmp_instr_pos {
+            bytecode_generator.replace_int32(
+                (break_dst - instr_pos as isize) as i32 - 5,
+                &mut iseq[instr_pos as usize + 1..instr_pos as usize + 5],
+            );
+        }
+        for instr_pos in continue_jmp_instr_pos {
+            bytecode_generator.replace_int32(
+                (continue_dst - instr_pos as isize) as i32 - 5,
+                &mut iseq[instr_pos as usize + 1..instr_pos as usize + 5],
+            );
         }
     }
 
