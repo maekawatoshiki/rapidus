@@ -16,6 +16,15 @@ macro_rules! expect {
     }};
 }
 
+macro_rules! expect_no_lineterminator {
+    ($self:ident, $kind:expr, $msg:expr) => {{
+        let tok = $self.lexer.next()?;
+        if tok.kind != $kind {
+            return Err(Error::Expect(tok.pos, $msg.to_string()));
+        }
+    }};
+}
+
 // TODO: It's dirty. Make it simpler.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Error {
@@ -131,9 +140,7 @@ impl Parser {
                 Err(e) => return Err(e),
             }
 
-            if self.lexer.buf.is_empty()
-            /* && self.lexer.eof()*/
-            {
+            if self.lexer.peek_skip_lineterminator() == Err(Error::NormalEOF) {
                 if break_when_closingbrase {
                     return Err(Error::UnexpectedEOF("expected '}'.".to_string()));
                 } else {
@@ -168,7 +175,7 @@ impl Parser {
 
     /// https://tc39.github.io/ecma262/#prod-StatementListItem
     fn read_statement_list_item(&mut self) -> Result<Node, Error> {
-        if let Ok(tok) = self.lexer.peek(0) {
+        if let Ok(tok) = self.lexer.peek_skip_lineterminator() {
             match tok.kind {
                 Kind::Keyword(Keyword::Function) => self.read_declaration(),
                 Kind::Keyword(Keyword::Const) => self.read_declaration(),
@@ -176,7 +183,7 @@ impl Parser {
                 _ => self.read_statement(),
             }
         } else {
-            self.read_statement()
+            Err(Error::NormalEOF)
         }
     }
 
@@ -217,7 +224,7 @@ impl Parser {
             Kind::Symbol(Symbol::OpeningBrace) => self.read_block_statement(),
             Kind::Symbol(Symbol::Semicolon) => return Ok(Node::new(NodeBase::Nope, tok.pos)),
             _ => {
-                self.lexer.unget(&tok);
+                self.lexer.unget();
                 self.read_expression_statement()
             }
         };
@@ -338,7 +345,7 @@ impl Parser {
                     pos,
                 ));
             } else {
-                self.lexer.unget(&expect_else_tok);
+                self.lexer.unget();
             }
         }
 
@@ -429,7 +436,7 @@ impl Parser {
             Kind::LineTerminator
             | Kind::Symbol(Symbol::Semicolon)
             | Kind::Symbol(Symbol::ClosingBrace) => {
-                self.lexer.unget(&tok);
+                self.lexer.unget();
                 Ok(Node::new(NodeBase::Break(None), pos))
             }
             Kind::Identifier(name) => Ok(Node::new(NodeBase::Break(Some(name)), pos)),
@@ -447,7 +454,7 @@ impl Parser {
             Kind::LineTerminator
             | Kind::Symbol(Symbol::Semicolon)
             | Kind::Symbol(Symbol::ClosingBrace) => {
-                self.lexer.unget(&tok);
+                self.lexer.unget();
                 Ok(Node::new(NodeBase::Continue(None), pos))
             }
             Kind::Identifier(name) => Ok(Node::new(NodeBase::Continue(Some(name)), pos)),
@@ -462,17 +469,18 @@ impl Parser {
 macro_rules! expression { ( $name:ident, $lower:ident, [ $( $op:path ),* ] ) => {
     fn $name (&mut self) -> Result<Node, Error> {
         let mut lhs = self. $lower ()?;
-        while let Ok(tok) = self.lexer.next() {
-            let pos = self.lexer.get_current_pos();
+        while let Ok(tok) = self.lexer.peek_skip_lineterminator() {
             match tok.kind {
                 Kind::Symbol(ref op) if $( op == &$op )||* => {
+                    self.lexer.next_skip_lineterminator().unwrap();
+                    let pos = self.lexer.get_current_pos();
                     lhs = Node::new(NodeBase::BinaryOp(
                         Box::new(lhs),
                         Box::new(self. $lower ()?),
                         op.as_binop().unwrap(),
                     ), pos);
                 }
-                _ => { self.lexer.unget(&tok); break }
+                _ => break
             }
         }
         Ok(lhs)
@@ -508,6 +516,7 @@ impl Parser {
         if let Ok(tok) = self.lexer.next() {
             macro_rules! assignop {
                 ($op:ident) => {{
+                    let lhs_pos = lhs.pos;
                     lhs = Node::new(
                         NodeBase::Assign(
                             Box::new(lhs.clone()),
@@ -520,18 +529,19 @@ impl Parser {
                                 pos,
                             )),
                         ),
-                        pos,
+                        lhs_pos,
                     );
                 }};
             }
             match tok.kind {
                 Kind::Symbol(Symbol::Assign) => {
+                    let lhs_pos = lhs.pos;
                     lhs = Node::new(
                         NodeBase::Assign(
                             Box::new(lhs),
                             Box::new(self.read_assignment_expression()?),
                         ),
-                        pos,
+                        lhs_pos,
                     )
                 }
                 Kind::Symbol(Symbol::AssignAdd) => assignop!(Add),
@@ -539,7 +549,7 @@ impl Parser {
                 Kind::Symbol(Symbol::AssignMul) => assignop!(Mul),
                 Kind::Symbol(Symbol::AssignDiv) => assignop!(Div),
                 Kind::Symbol(Symbol::AssignMod) => assignop!(Rem),
-                _ => self.lexer.unget(&tok),
+                _ => self.lexer.unget(),
             }
         }
         Ok(lhs)
@@ -562,7 +572,7 @@ impl Parser {
                         pos,
                     ));
                 }
-                _ => self.lexer.unget(&tok),
+                _ => self.lexer.unget(),
             }
         }
 
@@ -657,7 +667,7 @@ impl Parser {
                     pos,
                 ));
             } else {
-                self.lexer.unget(&tok);
+                self.lexer.unget();
             }
         }
         Ok(lhs)
@@ -713,7 +723,7 @@ impl Parser {
                 pos,
             )),
             _ => {
-                self.lexer.unget(&tok);
+                self.lexer.unget();
                 self.read_update_expression()
             }
         }
@@ -722,10 +732,11 @@ impl Parser {
     /// https://tc39.github.io/ecma262/#prod-UpdateExpression
     // TODO: Implement all features.
     fn read_update_expression(&mut self) -> Result<Node, Error> {
-        let pos = self.lexer.get_current_pos();
-        let tok = self.lexer.next()?;
+        let tok = self.lexer.peek_skip_lineterminator()?;
         match tok.kind {
             Kind::Symbol(Symbol::Inc) => {
+                self.lexer.next_skip_lineterminator().unwrap();
+                let pos = self.lexer.get_prev_pos();
                 return Ok(Node::new(
                     NodeBase::UnaryOp(
                         Box::new(self.read_left_hand_side_expression()?),
@@ -735,6 +746,8 @@ impl Parser {
                 ));
             }
             Kind::Symbol(Symbol::Dec) => {
+                self.lexer.next_skip_lineterminator().unwrap();
+                let pos = self.lexer.get_prev_pos();
                 return Ok(Node::new(
                     NodeBase::UnaryOp(
                         Box::new(self.read_left_hand_side_expression()?),
@@ -743,26 +756,28 @@ impl Parser {
                     pos,
                 ));
             }
-            _ => self.lexer.unget(&tok),
+            _ => {}
         }
 
         let pos = self.lexer.get_current_pos();
         let e = self.read_left_hand_side_expression()?;
-        if let Ok(tok) = self.lexer.next() {
+        if let Ok(tok) = self.lexer.peek(0) {
             match tok.kind {
                 Kind::Symbol(Symbol::Inc) => {
+                    self.lexer.next().unwrap();
                     return Ok(Node::new(
                         NodeBase::UnaryOp(Box::new(e), UnaryOp::PoInc),
                         pos,
                     ));
                 }
                 Kind::Symbol(Symbol::Dec) => {
+                    self.lexer.next().unwrap();
                     return Ok(Node::new(
                         NodeBase::UnaryOp(Box::new(e), UnaryOp::PoDec),
                         pos,
                     ));
                 }
-                _ => self.lexer.unget(&tok),
+                _ => {}
             }
         }
 
@@ -795,11 +810,8 @@ impl Parser {
     fn read_call_expression(&mut self) -> Result<Node, Error> {
         let pos = self.lexer.get_current_pos();
         let mut lhs = self.read_primary_expression()?;
-        let mut lineterminator = false;
-
-        while let Ok(tok) = self.lexer.next() {
+        while let Ok(tok) = self.lexer.next_skip_lineterminator() {
             let pos_ = self.lexer.get_current_pos();
-
             match tok.kind {
                 Kind::Symbol(Symbol::OpeningParen) => {
                     let args = self.read_arguments()?;
@@ -827,12 +839,8 @@ impl Parser {
                     }
                     lhs = Node::new(NodeBase::Index(Box::new(lhs), Box::new(idx)), pos);
                 }
-                Kind::LineTerminator => lineterminator = true,
                 _ => {
-                    self.lexer.unget(&tok);
-                    if lineterminator {
-                        self.lexer.unget(&Token::new_line_terminator(0));
-                    }
+                    self.lexer.unget();
                     break;
                 }
             }
@@ -860,14 +868,14 @@ impl Parser {
                         break;
                     }
                 }
-                Ok(ref tok) => {
+                Ok(_) => {
                     if args.len() != 0 {
                         return Err(Error::Expect(
                             self.lexer.get_prev_pos(),
                             "expect ',' or ')'.".to_string(),
                         ));
                     } else {
-                        self.lexer.unget(tok);
+                        self.lexer.unget();
                     }
                 }
                 Err(_) => {
@@ -882,7 +890,7 @@ impl Parser {
 
     /// https://tc39.github.io/ecma262/#prod-PrimaryExpression
     fn read_primary_expression(&mut self) -> Result<Node, Error> {
-        let tok = self.lexer.next()?;
+        let tok = self.lexer.next_skip_lineterminator()?;
 
         match tok.kind {
             Kind::Keyword(Keyword::This) => Ok(Node::new(NodeBase::This, tok.pos)),
@@ -908,7 +916,6 @@ impl Parser {
             Kind::Identifier(ident) => Ok(Node::new(NodeBase::Identifier(ident), tok.pos)),
             Kind::String(s) => Ok(Node::new(NodeBase::String(s), tok.pos)),
             Kind::Number(num) => Ok(Node::new(NodeBase::Number(num), tok.pos)),
-            Kind::LineTerminator => self.read_primary_expression(),
             _ => Err(Error::UnexpectedToken(
                 tok.pos,
                 format!("unexpected token."),
@@ -921,7 +928,7 @@ impl Parser {
         expect!(self, Kind::Symbol(Symbol::OpeningParen), "expect '('");
         let pos = self.lexer.pos;
         let params = self.read_formal_parameters()?;
-        expect!(self, Kind::Symbol(Symbol::FatArrow), "expect '=>'");
+        expect_no_lineterminator!(self, Kind::Symbol(Symbol::FatArrow), "expect '=>'");
         let body = if self
             .lexer
             .next_if_skip_lineterminator(Kind::Symbol(Symbol::OpeningBrace))?
@@ -979,7 +986,7 @@ impl Parser {
                 break;
             }
 
-            if self.lexer.is_eof() {
+            if self.lexer.is_empty() {
                 return Err(Error::UnexpectedEOF("']' may be needed".to_string()));
             }
 
@@ -1212,7 +1219,7 @@ impl Parser {
 
 impl Parser {
     fn read_declaration(&mut self) -> Result<Node, Error> {
-        let tok = self.lexer.next()?;
+        let tok = self.lexer.next_skip_lineterminator()?;
         match tok.kind {
             Kind::Keyword(Keyword::Function) => self.read_function_declaration(),
             Kind::Keyword(Keyword::Const) => self.read_lexical_declaration(true),
@@ -2285,6 +2292,101 @@ fn function_decl() {
         parser.parse_all().expect_err(input);
     }
     for input in ["a = function(x,y){b=1}"].iter() {
+        let mut parser = Parser::new(input.to_string());
+        parser.parse_all().unwrap();
+    }
+}
+
+#[test]
+fn arrow_function() {
+    for (input, node) in [
+        (
+            "(a, b) => { return a + b }",
+            Node::new(
+                NodeBase::ArrowFunction(
+                    vec![
+                        FormalParameter {
+                            name: "a".to_string(),
+                            init: None,
+                            is_rest_param: false,
+                        },
+                        FormalParameter {
+                            name: "b".to_string(),
+                            init: None,
+                            is_rest_param: false,
+                        },
+                    ],
+                    Box::new(Node::new(
+                        NodeBase::StatementList(vec![Node::new(
+                            NodeBase::Return(Some(Box::new(Node::new(
+                                NodeBase::BinaryOp(
+                                    Box::new(Node::new(NodeBase::Identifier("a".to_string()), 19)),
+                                    Box::new(Node::new(NodeBase::Identifier("b".to_string()), 23)),
+                                    BinOp::Add,
+                                ),
+                                23,
+                            )))),
+                            12,
+                        )]),
+                        10,
+                    )),
+                ),
+                26,
+            ),
+        ),
+        (
+            "(a, b, ...c) => a",
+            Node::new(
+                NodeBase::ArrowFunction(
+                    vec![
+                        FormalParameter {
+                            name: "a".to_string(),
+                            init: None,
+                            is_rest_param: false,
+                        },
+                        FormalParameter {
+                            name: "b".to_string(),
+                            init: None,
+                            is_rest_param: false,
+                        },
+                        FormalParameter {
+                            name: "c".to_string(),
+                            init: None,
+                            is_rest_param: true,
+                        },
+                    ],
+                    Box::new(Node::new(
+                        NodeBase::Return(Some(Box::new(Node::new(
+                            NodeBase::Identifier("a".to_string()),
+                            16,
+                        )))),
+                        17,
+                    )),
+                ),
+                17,
+            ),
+        ),
+    ]
+    .iter()
+    {
+        let mut parser = Parser::new(input.to_string());
+        assert_eq!(
+            parser.parse_all().unwrap(),
+            Node::new(NodeBase::StatementList(vec![node.clone()]), 0)
+        );
+    }
+    for input in [
+        "()
+        =>{}",
+        "(a)=>{ return 7",
+        "(...a, b)=>{ }",
+    ]
+    .iter()
+    {
+        let mut parser = Parser::new(input.to_string());
+        parser.parse_all().expect_err(input);
+    }
+    for input in ["a = (x,y) => x + y"].iter() {
         let mut parser = Parser::new(input.to_string());
         parser.parse_all().unwrap();
     }
