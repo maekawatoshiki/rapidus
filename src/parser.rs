@@ -187,6 +187,7 @@ impl Parser {
         }
     }
 
+    /// http://www.ecma-international.org/ecma-262/9.0/index.html#prod-Statement
     fn read_statement(&mut self) -> Result<Node, Error> {
         let tok = self.lexer.next_skip_lineterminator()?;
 
@@ -210,7 +211,7 @@ impl Parser {
                 ));
             }
         }
-
+        let mut is_expression_statement = false;
         let stmt = match tok.kind {
             Kind::Keyword(Keyword::If) => self.read_if_statement(),
             Kind::Keyword(Keyword::Var) => self.read_variable_statement(),
@@ -225,6 +226,7 @@ impl Parser {
             Kind::Symbol(Symbol::Semicolon) => return Ok(Node::new(NodeBase::Nope, tok.pos)),
             _ => {
                 self.lexer.unget();
+                is_expression_statement = true;
                 self.read_expression_statement()
             }
         };
@@ -233,7 +235,20 @@ impl Parser {
             .lexer
             .next_if_skip_lineterminator(Kind::Symbol(Symbol::Semicolon))
         {
-            Ok(_) | Err(Error::NormalEOF) => {}
+            Ok(true) | Err(Error::NormalEOF) => {}
+            Ok(false) => {
+                if is_expression_statement {
+                    match self.lexer.peek(0)?.kind {
+                        Kind::LineTerminator | Kind::Symbol(Symbol::ClosingBrace) => {}
+                        _ => {
+                            return Err(Error::UnexpectedToken(
+                                self.lexer.get_current_pos(),
+                                format!("unexpected token."),
+                            ));
+                        }
+                    }
+                }
+            }
             Err(e) => return Err(e),
         }
 
@@ -498,17 +513,32 @@ impl Parser {
     /// https://tc39.github.io/ecma262/#prod-AssignmentExpression
     // TODO: Implement all features.
     fn read_assignment_expression(&mut self) -> Result<Node, Error> {
+        self.lexer.skip_lineterminator()?;
         let pos = self.lexer.get_current_pos();
 
         // Arrow function
-        if self.lexer.peek(0)?.kind == Kind::Symbol(Symbol::OpeningParen) {
-            self.lexer.save_state();
-            let f = self.read_arrow_function();
-            if f.is_err() {
-                self.lexer.restore_state();
-            } else {
-                return f;
+        let next_token = self.lexer.peek(0)?;
+        match next_token.kind {
+            // (a,b)=>{}
+            Kind::Symbol(Symbol::OpeningParen) => {
+                let save_pos = self.lexer.token_pos;
+                let f = self.read_arrow_function(true);
+                if f.is_err() {
+                    self.lexer.token_pos = save_pos;
+                } else {
+                    return f;
+                }
             }
+            // a=>{}
+            Kind::Identifier(_) => match self.lexer.peek(1) {
+                Ok(tok) => {
+                    if tok.kind == Kind::Symbol(Symbol::FatArrow) {
+                        return self.read_arrow_function(false);
+                    }
+                }
+                _ => {}
+            },
+            _ => {}
         }
 
         let mut lhs = self.read_conditional_expression()?;
@@ -924,10 +954,23 @@ impl Parser {
     }
 
     /// https://www.ecma-international.org/ecma-262/6.0/#sec-arrow-function-definitions
-    fn read_arrow_function(&mut self) -> Result<Node, Error> {
-        expect!(self, Kind::Symbol(Symbol::OpeningParen), "expect '('");
-        let pos = self.lexer.pos;
-        let params = self.read_formal_parameters()?;
+    fn read_arrow_function(&mut self, is_parenthesized_param: bool) -> Result<Node, Error> {
+        let params;
+        let params_pos = self.lexer.get_current_pos();
+        if is_parenthesized_param {
+            expect!(self, Kind::Symbol(Symbol::OpeningParen), "expect '('");
+            params = self.read_formal_parameters()?;
+        } else {
+            let param_name = match self.lexer.next()?.kind {
+                Kind::Identifier(s) => s,
+                _ => unreachable!(),
+            };
+            params = vec![FormalParameter {
+                init: None,
+                name: param_name,
+                is_rest_param: false,
+            }];
+        }
         expect_no_lineterminator!(self, Kind::Symbol(Symbol::FatArrow), "expect '=>'");
         let body = if self
             .lexer
@@ -935,7 +978,7 @@ impl Parser {
         {
             self.read_block()?
         } else {
-            let pos = self.lexer.pos;
+            let pos = self.lexer.get_current_pos();
             Node::new(
                 NodeBase::Return(Some(Box::new(self.read_assignment_expression()?))),
                 pos,
@@ -943,7 +986,7 @@ impl Parser {
         };
         Ok(Node::new(
             NodeBase::ArrowFunction(params, Box::new(body)),
-            pos,
+            params_pos,
         ))
     }
 
@@ -1396,13 +1439,13 @@ fn string() {
 
 #[test]
 fn boolean() {
-    let mut parser = Parser::new("true false".to_string());
+    let mut parser = Parser::new("true; false".to_string());
     assert_eq!(
         parser.parse_all().unwrap(),
         Node::new(
             NodeBase::StatementList(vec![
                 Node::new(NodeBase::Boolean(true), 0),
-                Node::new(NodeBase::Boolean(false), 5)
+                Node::new(NodeBase::Boolean(false), 6)
             ]),
             0
         )
@@ -1771,6 +1814,18 @@ fn simple_expr_exp() {
                 0
             )
         );
+    }
+}
+
+#[test]
+fn expression_statement() {
+    for input in ["1 2 3"].iter() {
+        let mut parser = Parser::new(input.to_string());
+        parser.parse_all().expect_err("should be error");
+    }
+    for input in ["for(;false;){} 4"].iter() {
+        let mut parser = Parser::new(input.to_string());
+        parser.parse_all().unwrap();
     }
 }
 
@@ -2331,7 +2386,7 @@ fn arrow_function() {
                         10,
                     )),
                 ),
-                26,
+                0,
             ),
         ),
         (
@@ -2360,10 +2415,10 @@ fn arrow_function() {
                             NodeBase::Identifier("a".to_string()),
                             16,
                         )))),
-                        17,
+                        16,
                     )),
                 ),
-                17,
+                0,
             ),
         ),
     ]
@@ -2386,7 +2441,7 @@ fn arrow_function() {
         let mut parser = Parser::new(input.to_string());
         parser.parse_all().expect_err(input);
     }
-    for input in ["a = (x,y) => x + y"].iter() {
+    for input in ["a = (x,y) => x + y", "a = x => x * x"].iter() {
         let mut parser = Parser::new(input.to_string());
         parser.parse_all().unwrap();
     }

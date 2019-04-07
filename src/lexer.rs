@@ -84,14 +84,6 @@ impl Lexer {
     pub fn is_empty(&self) -> bool {
         self.token_pos >= self.buf.len()
     }
-
-    pub fn save_state(&mut self) {
-        self.states.push(self.token_pos);
-    }
-
-    pub fn restore_state(&mut self) {
-        self.token_pos = self.states.pop().unwrap();
-    }
 }
 
 impl Lexer {
@@ -112,6 +104,20 @@ impl Lexer {
                 return Ok(tok);
             }
         }
+    }
+
+    /// Skip line terminators.
+    /// Return Err(Error::NormalEOF) when reached EOF.
+    pub fn skip_lineterminator(&mut self) -> Result<(), Error> {
+        let len = self.buf.len();
+        for i in self.token_pos..len {
+            let tok = self.buf[i].clone();
+            if tok.kind != Kind::LineTerminator {
+                self.token_pos = i;
+                return Ok(());
+            }
+        }
+        Err(Error::NormalEOF)
     }
 
     /// Peek the next token.
