@@ -55,10 +55,17 @@ pub struct ToSourcePos {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Level {
     Function,
-    Block { names: Vec<String> },
-    TryOrCatch { finally_jmp_instr_pos: Vec<usize> },
+    Block {
+        names: Vec<String>,
+    },
+    TryOrCatch {
+        finally_jmp_instr_pos: Vec<usize>,
+    },
     Finally,
-    Loop { break_jmp_instr_pos: Vec<usize> },
+    Loop {
+        break_jmp_instr_pos: Vec<usize>,
+        continue_jmp_instr_pos: Vec<usize>,
+    },
 }
 
 impl<'a> CodeGenerator<'a> {
@@ -112,6 +119,7 @@ impl<'a> CodeGenerator<'a> {
                 self.visit_for(&*init, &*cond, &*step, &*body, iseq)?
             }
             NodeBase::Break(ref name) => self.visit_break(name, iseq)?,
+            NodeBase::Continue(ref name) => self.visit_continue(name, iseq)?,
             NodeBase::Try(ref try, ref catch, ref param, ref finally) => {
                 self.visit_try(&*try, &*catch, &*param, &*finally, iseq)?
             }
@@ -304,6 +312,7 @@ impl<'a> CodeGenerator<'a> {
         // let name = self.state.loop_names.pop();
         self.current_function().level.push(Level::Loop {
             break_jmp_instr_pos: vec![],
+            continue_jmp_instr_pos: vec![],
         });
 
         let start = iseq.len() as isize;
@@ -336,10 +345,18 @@ impl<'a> CodeGenerator<'a> {
             &mut iseq[cond_pos as usize + 1..cond_pos as usize + 5],
         );
 
-        let break_jmp_instr_pos = self.current_function().level.pop().unwrap().as_loop();
+        let (break_jmp_instr_pos, continue_jmp_instr_pos) =
+            self.current_function().level.pop().unwrap().as_loop();
+        // TODO: Refactor
         for instr_pos in break_jmp_instr_pos {
             self.bytecode_generator.replace_int32(
                 (end - instr_pos as isize) as i32 - 5,
+                &mut iseq[instr_pos as usize + 1..instr_pos as usize + 5],
+            );
+        }
+        for instr_pos in continue_jmp_instr_pos {
+            self.bytecode_generator.replace_int32(
+                (start - instr_pos as isize) as i32 - 5,
                 &mut iseq[instr_pos as usize + 1..instr_pos as usize + 5],
             );
         }
@@ -357,6 +374,7 @@ impl<'a> CodeGenerator<'a> {
     ) -> CodeGenResult {
         self.current_function().level.push(Level::Loop {
             break_jmp_instr_pos: vec![],
+            continue_jmp_instr_pos: vec![],
         });
 
         self.visit(init, iseq, false)?;
@@ -370,7 +388,7 @@ impl<'a> CodeGenerator<'a> {
 
         self.visit(body, iseq, false)?;
 
-        // TODO: continue destination here
+        let continue_pos = iseq.len() as isize;
 
         self.visit(step, iseq, false)?;
 
@@ -384,10 +402,17 @@ impl<'a> CodeGenerator<'a> {
             &mut iseq[cond_pos as usize + 1..cond_pos as usize + 5],
         );
 
-        let break_jmp_instr_pos = self.current_function().level.pop().unwrap().as_loop();
+        let (break_jmp_instr_pos, continue_jmp_instr_pos) =
+            self.current_function().level.pop().unwrap().as_loop();
         for instr_pos in break_jmp_instr_pos {
             self.bytecode_generator.replace_int32(
                 (end - instr_pos as isize) as i32 - 5,
+                &mut iseq[instr_pos as usize + 1..instr_pos as usize + 5],
+            );
+        }
+        for instr_pos in continue_jmp_instr_pos {
+            self.bytecode_generator.replace_int32(
+                (continue_pos - instr_pos as isize) as i32 - 5,
                 &mut iseq[instr_pos as usize + 1..instr_pos as usize + 5],
             );
         }
@@ -404,7 +429,21 @@ impl<'a> CodeGenerator<'a> {
         self.current_function()
             .get_last_loop()
             .as_loop_mut()
+            .0
             .push(break_instr_pos);
+
+        Ok(())
+    }
+
+    pub fn visit_continue(&mut self, _name: &Option<String>, iseq: &mut ByteCode) -> CodeGenResult {
+        let continue_instr_pos = iseq.len();
+        self.bytecode_generator.append_jmp(0, iseq);
+
+        self.current_function()
+            .get_last_loop()
+            .as_loop_mut()
+            .1
+            .push(continue_instr_pos);
 
         Ok(())
     }
@@ -1221,20 +1260,22 @@ impl Level {
         }
     }
 
-    pub fn as_loop(self) -> Vec<usize> {
+    pub fn as_loop(self) -> (Vec<usize>, Vec<usize>) {
         match self {
             Level::Loop {
                 break_jmp_instr_pos,
-            } => break_jmp_instr_pos,
+                continue_jmp_instr_pos,
+            } => (break_jmp_instr_pos, continue_jmp_instr_pos),
             _ => panic!(),
         }
     }
 
-    pub fn as_loop_mut(&mut self) -> &mut Vec<usize> {
+    pub fn as_loop_mut(&mut self) -> (&mut Vec<usize>, &mut Vec<usize>) {
         match self {
             Level::Loop {
                 ref mut break_jmp_instr_pos,
-            } => break_jmp_instr_pos,
+                ref mut continue_jmp_instr_pos,
+            } => (break_jmp_instr_pos, continue_jmp_instr_pos),
             _ => panic!(),
         }
     }
