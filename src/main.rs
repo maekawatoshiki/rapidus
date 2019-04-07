@@ -297,4 +297,14 @@ mod tests {
             "36".to_string(),
         );
     }
+
+    #[test]
+    fn symbol() {
+        assert_file("symbol")
+    }
+
+    #[test]
+    fn array() {
+        assert_file("array")
+    }
 }
