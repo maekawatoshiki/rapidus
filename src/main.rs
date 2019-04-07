@@ -285,4 +285,9 @@ mod tests {
     fn r#if() {
         assert_file("if")
     }
+
+    #[test]
+    fn arrow_function() {
+        test_code("let f = (x) => { return x * x }; f(5)".to_string(), "25".to_string());
+    }
 }

@@ -16,6 +16,15 @@ macro_rules! expect {
     }};
 }
 
+macro_rules! expect_no_lineterminator {
+    ($self:ident, $kind:expr, $msg:expr) => {{
+        let tok = $self.lexer.next()?;
+        if tok.kind != $kind {
+            return Err(Error::Expect(tok.pos, $msg.to_string()));
+        }
+    }};
+}
+
 // TODO: It's dirty. Make it simpler.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Error {
@@ -490,7 +499,7 @@ impl Parser {
     // TODO: Implement all features.
     fn read_assignment_expression(&mut self) -> Result<Node, Error> {
         let pos = self.lexer.get_current_pos();
-        
+
         // Arrow function
         if self.lexer.peek(0)?.kind == Kind::Symbol(Symbol::OpeningParen) {
             self.lexer.save_state();
@@ -919,7 +928,7 @@ impl Parser {
         expect!(self, Kind::Symbol(Symbol::OpeningParen), "expect '('");
         let pos = self.lexer.pos;
         let params = self.read_formal_parameters()?;
-        expect!(self, Kind::Symbol(Symbol::FatArrow), "expect '=>'");
+        expect_no_lineterminator!(self, Kind::Symbol(Symbol::FatArrow), "expect '=>'");
         let body = if self
             .lexer
             .next_if_skip_lineterminator(Kind::Symbol(Symbol::OpeningBrace))?
@@ -2283,6 +2292,101 @@ fn function_decl() {
         parser.parse_all().expect_err(input);
     }
     for input in ["a = function(x,y){b=1}"].iter() {
+        let mut parser = Parser::new(input.to_string());
+        parser.parse_all().unwrap();
+    }
+}
+
+#[test]
+fn arrow_function() {
+    for (input, node) in [
+        (
+            "(a, b) => { return a + b }",
+            Node::new(
+                NodeBase::ArrowFunction(
+                    vec![
+                        FormalParameter {
+                            name: "a".to_string(),
+                            init: None,
+                            is_rest_param: false,
+                        },
+                        FormalParameter {
+                            name: "b".to_string(),
+                            init: None,
+                            is_rest_param: false,
+                        },
+                    ],
+                    Box::new(Node::new(
+                        NodeBase::StatementList(vec![Node::new(
+                            NodeBase::Return(Some(Box::new(Node::new(
+                                NodeBase::BinaryOp(
+                                    Box::new(Node::new(NodeBase::Identifier("a".to_string()), 19)),
+                                    Box::new(Node::new(NodeBase::Identifier("b".to_string()), 23)),
+                                    BinOp::Add,
+                                ),
+                                23,
+                            )))),
+                            12,
+                        )]),
+                        10,
+                    )),
+                ),
+                26,
+            ),
+        ),
+        (
+            "(a, b, ...c) => a",
+            Node::new(
+                NodeBase::ArrowFunction(
+                    vec![
+                        FormalParameter {
+                            name: "a".to_string(),
+                            init: None,
+                            is_rest_param: false,
+                        },
+                        FormalParameter {
+                            name: "b".to_string(),
+                            init: None,
+                            is_rest_param: false,
+                        },
+                        FormalParameter {
+                            name: "c".to_string(),
+                            init: None,
+                            is_rest_param: true,
+                        },
+                    ],
+                    Box::new(Node::new(
+                        NodeBase::Return(Some(Box::new(Node::new(
+                            NodeBase::Identifier("a".to_string()),
+                            16,
+                        )))),
+                        17,
+                    )),
+                ),
+                17,
+            ),
+        ),
+    ]
+    .iter()
+    {
+        let mut parser = Parser::new(input.to_string());
+        assert_eq!(
+            parser.parse_all().unwrap(),
+            Node::new(NodeBase::StatementList(vec![node.clone()]), 0)
+        );
+    }
+    for input in [
+        "()
+        =>{}",
+        "(a)=>{ return 7",
+        "(...a, b)=>{ }",
+    ]
+    .iter()
+    {
+        let mut parser = Parser::new(input.to_string());
+        parser.parse_all().expect_err(input);
+    }
+    for input in ["a = (x,y) => x + y"].iter() {
         let mut parser = Parser::new(input.to_string());
         parser.parse_all().unwrap();
     }

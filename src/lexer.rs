@@ -121,6 +121,12 @@ impl Lexer {
         }
     }
 
+    /// peek the previous token.
+    pub fn peek_prev(&mut self) -> Token {
+        let index_in_buf = self.token_pos - 1;
+        self.buf[index_in_buf].clone()
+    }
+
     /// get char position in the script of the next token.
     pub fn get_current_pos(&mut self) -> usize {
         if self.token_pos < self.buf.len() {
