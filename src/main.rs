@@ -292,6 +292,10 @@ mod tests {
             "let f = (x) => { return x * x }; f(5)".to_string(),
             "25".to_string(),
         );
+        test_code(
+            "let f = x => { return x * x }; f(6)".to_string(),
+            "36".to_string(),
+        );
     }
 
     #[test]
