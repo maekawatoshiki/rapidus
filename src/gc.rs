@@ -106,8 +106,8 @@ impl MemoryAllocator {
                 // println!("initial");
                 // println!("before {:?}", self.allocated_memory);
 
-                markset.insert(GcTargetKey(global));
-                unsafe { &*global }.initial_trace(&mut markset);
+                markset.insert(GcTargetKey(global.as_ptr()));
+                global.initial_trace(&mut markset);
 
                 cur_frame.execution_context.initial_trace(&mut markset);
                 cur_frame.this.initial_trace(&mut markset);
@@ -237,18 +237,18 @@ macro_rules! mark_if_white {
 
 impl GcTarget for frame::ExecutionContext {
     fn initial_trace(&self, markset: &mut MarkSet) {
-        mark!(markset, self.lexical_environment);
-        mark!(markset, self.variable_environment);
+        mark!(markset, self.lexical_environment.as_ptr());
+        mark!(markset, self.variable_environment.as_ptr());
         for env in &self.saved_lexical_environment {
-            mark!(markset, *env);
+            mark!(markset, env.as_ptr());
         }
     }
 
     fn trace(&self, allocator: &mut MemoryAllocator, markset: &mut MarkSet) {
-        mark_if_white!(allocator, markset, self.lexical_environment);
-        mark_if_white!(allocator, markset, self.variable_environment);
+        mark_if_white!(allocator, markset, self.lexical_environment.as_ptr());
+        mark_if_white!(allocator, markset, self.variable_environment.as_ptr());
         for env in &self.saved_lexical_environment {
-            mark_if_white!(allocator, markset, *env);
+            mark_if_white!(allocator, markset, env.as_ptr());
         }
     }
 
@@ -276,7 +276,7 @@ impl GcTarget for frame::LexicalEnvironment {
         trace_record(&self.record, markset);
 
         if let Some(outer) = self.outer {
-            mark!(markset, outer);
+            mark!(markset, outer.as_ptr());
         }
     }
 
@@ -302,7 +302,7 @@ impl GcTarget for frame::LexicalEnvironment {
         trace_record(allocator, &self.record, markset);
 
         if let Some(outer) = self.outer {
-            mark_if_white!(allocator, markset, outer);
+            mark_if_white!(allocator, markset, outer.as_ptr());
         }
     }
 
@@ -405,7 +405,7 @@ impl GcTarget for object::ObjectKind2 {
             }
 
             if let Some(outer) = user_func_info.outer {
-                mark!(markset, outer);
+                mark!(markset, outer.as_ptr());
             }
         }
 
@@ -437,7 +437,7 @@ impl GcTarget for object::ObjectKind2 {
             }
 
             if let Some(outer) = user_func_info.outer {
-                mark_if_white!(allocator, markset, outer);
+                mark_if_white!(allocator, markset, outer.as_ptr());
             }
         }
 

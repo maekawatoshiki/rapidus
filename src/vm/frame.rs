@@ -3,6 +3,7 @@
 use bytecode_gen::ByteCode;
 use gc;
 use rustc_hash::FxHashMap;
+use std::ops::{Deref, DerefMut};
 use vm::codegen::FunctionInfo;
 use vm::error::RuntimeError;
 use vm::jsvalue::function::Exception;
@@ -11,7 +12,8 @@ use vm::jsvalue::prototype::ObjectPrototypes;
 use vm::jsvalue::value::Value;
 use vm::vm::VMResult;
 
-pub type LexicalEnvironmentRef = *mut LexicalEnvironment;
+#[derive(Debug, Clone, Copy)]
+pub struct LexicalEnvironmentRef(pub *mut LexicalEnvironment);
 
 #[derive(Debug, Clone)]
 pub struct Frame {
@@ -87,11 +89,11 @@ impl Frame {
     }
 
     pub fn lex_env(&self) -> &LexicalEnvironment {
-        unsafe { &*self.execution_context.lexical_environment }
+        &*self.execution_context.lexical_environment
     }
 
     pub fn lex_env_mut(&mut self) -> &mut LexicalEnvironment {
-        unsafe { &mut *self.execution_context.lexical_environment }
+        &mut *self.execution_context.lexical_environment
     }
 
     pub fn escape(mut self) -> Self {
@@ -120,12 +122,12 @@ impl Frame {
     }
 
     pub fn append_variable_to_var_env(&mut self, name: String) {
-        let var_env = unsafe { &mut *self.execution_context.variable_environment };
+        let var_env = &mut self.execution_context.variable_environment;
         var_env.set_own_value(name, Value::undefined()).unwrap(); // TODO: unwrap()
     }
 
     pub fn append_variable_to_lex_env(&mut self, name: String) {
-        let lex_env = unsafe { &mut *self.execution_context.lexical_environment };
+        let lex_env = &mut self.execution_context.lexical_environment;
         lex_env.set_own_value(name, Value::uninitialized()).unwrap(); // TODO: unwrap()
     }
 
@@ -149,7 +151,7 @@ impl Frame {
 }
 
 impl ExecutionContext {
-    pub fn new(env: *mut LexicalEnvironment) -> Self {
+    pub fn new(env: LexicalEnvironmentRef) -> Self {
         ExecutionContext {
             variable_environment: env,
             lexical_environment: env,
@@ -159,8 +161,8 @@ impl ExecutionContext {
 
     pub fn new_empty() -> Self {
         ExecutionContext {
-            variable_environment: ::std::ptr::null_mut(),
-            lexical_environment: ::std::ptr::null_mut(),
+            variable_environment: LexicalEnvironmentRef::new_null(),
+            lexical_environment: LexicalEnvironmentRef::new_null(),
             saved_lexical_environment: vec![],
         }
     }
@@ -176,14 +178,14 @@ macro_rules! make_global_env {
 }
 
 impl LexicalEnvironment {
-    pub fn new_declarative(outer: Option<*mut LexicalEnvironment>) -> Self {
+    pub fn new_declarative(outer: Option<LexicalEnvironmentRef>) -> Self {
         LexicalEnvironment {
             record: EnvironmentRecord::Declarative(FxHashMap::default()),
             outer,
         }
     }
 
-    pub fn new_object(object: Value, outer: Option<*mut LexicalEnvironment>) -> Self {
+    pub fn new_object(object: Value, outer: Option<LexicalEnvironmentRef>) -> Self {
         LexicalEnvironment {
             record: EnvironmentRecord::Object(object),
             outer,
@@ -314,7 +316,8 @@ impl LexicalEnvironment {
     }
 
     pub fn get_outer(&self) -> Option<&mut LexicalEnvironment> {
-        self.outer.and_then(|outer| Some(unsafe { &mut *outer }))
+        self.outer
+            .and_then(|outer| Some(unsafe { &mut *outer.as_ptr() }))
     }
 
     pub fn get_global_object(&self) -> Value {
@@ -330,11 +333,35 @@ impl LexicalEnvironment {
             EnvironmentRecord::Global(obj) => obj,
             _ => {
                 if let Some(outer) = self.outer {
-                    unsafe { &*outer }.get_this_binding()
+                    outer.get_this_binding()
                 } else {
                     Value::undefined()
                 }
             }
         }
+    }
+}
+
+impl LexicalEnvironmentRef {
+    pub fn new_null() -> Self {
+        LexicalEnvironmentRef(::std::ptr::null_mut())
+    }
+
+    pub fn as_ptr(self) -> *mut LexicalEnvironment {
+        self.0
+    }
+}
+
+impl Deref for LexicalEnvironmentRef {
+    type Target = LexicalEnvironment;
+
+    fn deref(&self) -> &LexicalEnvironment {
+        unsafe { &*self.as_ptr() }
+    }
+}
+
+impl DerefMut for LexicalEnvironmentRef {
+    fn deref_mut(&mut self) -> &mut LexicalEnvironment {
+        unsafe { &mut *self.as_ptr() }
     }
 }

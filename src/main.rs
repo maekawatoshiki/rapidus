@@ -307,4 +307,9 @@ mod tests {
     fn array() {
         assert_file("array")
     }
+
+    #[test]
+    fn env() {
+        assert_file("env")
+    }
 }
