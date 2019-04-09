@@ -1,5 +1,3 @@
-# This branch is for the development of next-gen Rapidus. Some information in this README may be incorrect. Issues are welcome.
-
 # Rapidus
 
 [![CircleCI](https://circleci.com/gh/maekawatoshiki/rapidus.svg?style=shield)](https://circleci.com/gh/maekawatoshiki/rapidus)
@@ -7,6 +5,23 @@
 [![](http://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
 A toy JavaScript engine (now aiming for ES6).
+
+# What's this branch?
+
+In this branch:
+
+- Develop the new generation of Rapidus (old gen in master branch)
+- Some information in this README may vary from the fact
+
+Issues are always welcome
+
+
+
+# Rapidus on WASM
+
+On [this page](https://maekawatoshiki.github.io/rapidus), you can try rapidus compiled into WASM on your browser. How amazing, isn't it?
+
+*The compiled rapidus on the above page is some commits behind this branch. *
 
 # Features 
 
