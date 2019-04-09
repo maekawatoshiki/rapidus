@@ -21,7 +21,7 @@ Issues are always welcome
 
 On [this page](https://maekawatoshiki.github.io/rapidus), you can try rapidus compiled into WASM on your browser. How amazing, isn't it?
 
-*The compiled rapidus on the above page is some commits behind this branch. *
+*The compiled rapidus on the above page is some commits behind this branch.*
 
 # Features 
 
