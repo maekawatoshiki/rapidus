@@ -5,23 +5,23 @@ use super::value::*;
 
 #[derive(Clone, Debug)]
 pub struct ArrayObjectInfo {
-    pub elems: Vec<Property2>,
+    pub elems: Vec<Property>,
 }
 
 impl ArrayObjectInfo {
-    pub fn get_element(&self, idx: usize) -> Property2 {
+    pub fn get_element(&self, idx: usize) -> Property {
         if idx >= self.elems.len() {
-            return Property2::new_data_simple(Value2::undefined());
+            return Property::new_data_simple(Value::undefined());
         }
 
-        if let Property2::Data(DataProperty {
+        if let Property::Data(DataProperty {
             val,
             writable,
             enumerable,
             configurable,
         }) = self.elems[idx]
         {
-            return Property2::Data(DataProperty {
+            return Property::Data(DataProperty {
                 val: val.to_undefined_if_empty(),
                 writable,
                 enumerable,
@@ -32,18 +32,18 @@ impl ArrayObjectInfo {
         self.elems[idx]
     }
 
-    pub fn set_element(&mut self, idx: usize, val_: Value2) -> Option<Value2> {
+    pub fn set_element(&mut self, idx: usize, val_: Value) -> Option<Value> {
         // Extend
         if idx >= self.elems.len() {
             self.set_length(idx + 1);
         }
 
         match self.elems[idx] {
-            Property2::Data(DataProperty { ref mut val, .. }) => {
+            Property::Data(DataProperty { ref mut val, .. }) => {
                 *val = val_;
                 None
             }
-            Property2::Accessor(AccessorProperty { set, .. }) => {
+            Property::Accessor(AccessorProperty { set, .. }) => {
                 if set.is_undefined() {
                     None
                 } else {
@@ -57,7 +57,7 @@ impl ArrayObjectInfo {
         // Extend
         if self.elems.len() < len {
             while self.elems.len() < len {
-                self.elems.push(Property2::new_data_simple(Value2::empty()))
+                self.elems.push(Property::new_data_simple(Value::empty()))
             }
             return;
         }

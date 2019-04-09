@@ -5,7 +5,7 @@ use vm::{
     constant, frame,
     jsvalue::{
         function, object, prototype,
-        value::{BoxedValue, Value2},
+        value::{BoxedValue, Value},
     },
 };
 
@@ -120,7 +120,7 @@ impl MemoryAllocator {
                 constant_table.initial_trace(&mut markset);
 
                 for val_boxed in stack {
-                    let val: Value2 = (*val_boxed).into();
+                    let val: Value = (*val_boxed).into();
                     val.initial_trace(&mut markset);
                 }
 
@@ -183,7 +183,7 @@ impl MemoryAllocator {
         unsafe { &*object.0 }.initial_trace(&mut self.roots);
     }
 
-    pub fn gray2(&mut self, object: Value2) {
+    pub fn gray2(&mut self, object: Value) {
         object.initial_trace(&mut self.roots);
     }
 
@@ -320,13 +320,13 @@ impl GcTarget for ::std::ffi::CString {
     }
 }
 
-impl GcTarget for Value2 {
+impl GcTarget for Value {
     fn initial_trace(&self, markset: &mut MarkSet) {
         match self {
-            Value2::Object(obj) => {
+            Value::Object(obj) => {
                 mark!(markset, *obj);
             }
-            Value2::String(s) => {
+            Value::String(s) => {
                 mark!(markset, *s);
             }
             _ => {}
@@ -335,14 +335,14 @@ impl GcTarget for Value2 {
 
     fn trace(&self, allocator: &mut MemoryAllocator, markset: &mut MarkSet) {
         match self {
-            Value2::Object(obj) => mark_if_white!(allocator, markset, *obj),
-            Value2::String(s) => mark_if_white!(allocator, markset, *s),
+            Value::Object(obj) => mark_if_white!(allocator, markset, *obj),
+            Value::String(s) => mark_if_white!(allocator, markset, *s),
             _ => {}
         }
     }
 
     fn free(&self) -> usize {
-        mem::size_of::<Value2>()
+        mem::size_of::<Value>()
     }
 }
 
@@ -366,11 +366,11 @@ impl GcTarget for object::ObjectInfo {
     }
 }
 
-impl GcTarget for object::Property2 {
+impl GcTarget for object::Property {
     fn initial_trace(&self, markset: &mut MarkSet) {
         match self {
-            object::Property2::Data(object::DataProperty { val, .. }) => val.initial_trace(markset),
-            object::Property2::Accessor(object::AccessorProperty { get, set, .. }) => {
+            object::Property::Data(object::DataProperty { val, .. }) => val.initial_trace(markset),
+            object::Property::Accessor(object::AccessorProperty { get, set, .. }) => {
                 get.initial_trace(markset);
                 set.initial_trace(markset);
             }
@@ -379,10 +379,10 @@ impl GcTarget for object::Property2 {
 
     fn trace(&self, allocator: &mut MemoryAllocator, markset: &mut MarkSet) {
         match self {
-            object::Property2::Data(object::DataProperty { val, .. }) => {
+            object::Property::Data(object::DataProperty { val, .. }) => {
                 val.trace(allocator, markset)
             }
-            object::Property2::Accessor(object::AccessorProperty { get, set, .. }) => {
+            object::Property::Accessor(object::AccessorProperty { get, set, .. }) => {
                 get.trace(allocator, markset);
                 set.trace(allocator, markset);
             }
@@ -390,7 +390,7 @@ impl GcTarget for object::Property2 {
     }
 
     fn free(&self) -> usize {
-        mem::size_of::<object::Property2>()
+        mem::size_of::<object::Property>()
     }
 }
 

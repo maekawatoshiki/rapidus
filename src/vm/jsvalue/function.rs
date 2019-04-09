@@ -30,7 +30,7 @@ pub struct UserFunctionInfo {
     pub lex_names: Vec<String>,
 
     /// Declared functions to initialize
-    pub func_decls: Vec<Value2>,
+    pub func_decls: Vec<Value>,
 
     /// Bytecode to execute
     pub code: ByteCode,

@@ -1,4 +1,4 @@
-use super::{super::super::gc::MemoryAllocator, prototype::ObjectPrototypes, value::Value2};
+use super::{super::super::gc::MemoryAllocator, prototype::ObjectPrototypes, value::Value};
 
 #[derive(Debug, Clone)]
 pub struct SymbolInfo {
@@ -17,7 +17,7 @@ impl SymbolInfo {
 
 #[derive(Debug, Clone)]
 pub struct GlobalSymbolRegistry {
-    list: Vec<(String, Value2)>,
+    list: Vec<(String, Value)>,
 }
 
 impl GlobalSymbolRegistry {
@@ -30,22 +30,22 @@ impl GlobalSymbolRegistry {
         allocator: &mut MemoryAllocator,
         object_prototypes: &ObjectPrototypes,
         key: String,
-    ) -> Value2 {
+    ) -> Value {
         if let Some((_, sym)) = self.list.iter().find(|(key_, _)| key == *key_) {
             return *sym;
         }
 
-        let sym = Value2::symbol(allocator, object_prototypes, Some(key.clone()));
+        let sym = Value::symbol(allocator, object_prototypes, Some(key.clone()));
         self.list.push((key, sym));
 
         sym
     }
 
-    pub fn key_for(&mut self, allocator: &mut MemoryAllocator, sym: Value2) -> Value2 {
+    pub fn key_for(&mut self, allocator: &mut MemoryAllocator, sym: Value) -> Value {
         if let Some((key, _)) = self.list.iter().find(|(_, sym_)| sym == *sym_) {
-            return Value2::string(allocator, key.to_owned());
+            return Value::string(allocator, key.to_owned());
         }
 
-        Value2::undefined()
+        Value::undefined()
     }
 }

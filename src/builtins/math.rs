@@ -5,17 +5,14 @@ use vm::{
     frame,
     jsvalue::prototype::ObjectPrototypes,
     jsvalue::{
-        object::{DataProperty, ObjectInfo, ObjectKind2, Property2},
-        value::Value2,
+        object::{DataProperty, ObjectInfo, ObjectKind2, Property},
+        value::Value,
     },
     vm,
 };
 
-pub fn math(
-    memory_allocator: &mut MemoryAllocator,
-    object_prototypes: &ObjectPrototypes,
-) -> Value2 {
-    let math_random = Value2::builtin_function(
+pub fn math(memory_allocator: &mut MemoryAllocator, object_prototypes: &ObjectPrototypes) -> Value {
+    let math_random = Value::builtin_function(
         memory_allocator,
         object_prototypes,
         "random".to_string(),
@@ -27,7 +24,7 @@ pub fn math(
     )
 }
 
-pub fn math_random(vm: &mut vm::VM2, _args: &[Value2], _cur_frame: &frame::Frame) -> vm::VMResult {
-    vm.stack.push(Value2::Number(random::<f64>()).into());
+pub fn math_random(vm: &mut vm::VM2, _args: &[Value], _cur_frame: &frame::Frame) -> vm::VMResult {
+    vm.stack.push(Value::Number(random::<f64>()).into());
     Ok(())
 }

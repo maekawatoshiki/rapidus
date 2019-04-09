@@ -2,7 +2,7 @@ use parser;
 use std::fs::OpenOptions;
 use std::io::Read;
 use vm;
-use vm::jsvalue::value::Value2;
+use vm::jsvalue::value::Value;
 
 /// Load the file ("test/{file_name}.js"), execute the script,
 /// and compare returned value and the given answer.
@@ -56,7 +56,7 @@ pub fn execute_script(text: String) -> String {
 
     let func_info = vm.compile(&node, &mut iseq, true).unwrap();
     vm.run_global(func_info, iseq).unwrap();
-    let val: Value2 = vm.stack.pop().unwrap_or(Value2::undefined().into()).into();
+    let val: Value = vm.stack.pop().unwrap_or(Value::undefined().into()).into();
     val.debug_string(true)
 }
 

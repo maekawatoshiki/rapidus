@@ -6,9 +6,9 @@ use rustc_hash::FxHashMap;
 use vm::codegen::FunctionInfo;
 use vm::error::RuntimeError;
 use vm::jsvalue::function::Exception;
-use vm::jsvalue::object::{DataProperty, ObjectInfo, ObjectKind2, Property2};
+use vm::jsvalue::object::{DataProperty, ObjectInfo, ObjectKind2, Property};
 use vm::jsvalue::prototype::ObjectPrototypes;
-use vm::jsvalue::value::Value2;
+use vm::jsvalue::value::Value;
 use vm::vm::VMResult;
 
 pub type LexicalEnvironmentRef = *mut LexicalEnvironment;
@@ -21,7 +21,7 @@ pub struct Frame {
     pub saved_stack_len: usize,
     pub bytecode: ByteCode,
     pub exception_table: Vec<Exception>,
-    pub this: Value2,
+    pub this: Value,
     pub constructor_call: bool,
     pub escape: bool,
 }
@@ -41,12 +41,12 @@ pub struct LexicalEnvironment {
 
 #[derive(Debug, Clone)]
 pub enum EnvironmentRecord {
-    Declarative(FxHashMap<String, Value2>),
-    Object(Value2),
-    Global(Value2),
+    Declarative(FxHashMap<String, Value>),
+    Object(Value),
+    Global(Value),
     Function {
-        this: Value2,
-        record: FxHashMap<String, Value2>,
+        this: Value,
+        record: FxHashMap<String, Value>,
         // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-function-environment-records
     },
 }
@@ -56,7 +56,7 @@ impl Frame {
         execution_context: ExecutionContext,
         bytecode: ByteCode,
         exception_table: Vec<Exception>,
-        this: Value2,
+        this: Value,
         constructor_call: bool,
     ) -> Self {
         Frame {
@@ -72,7 +72,7 @@ impl Frame {
         }
     }
 
-    pub fn new_empty_with_this(this: Value2, constructor_call: bool) -> Self {
+    pub fn new_empty_with_this(this: Value, constructor_call: bool) -> Self {
         Frame {
             id: 0,
             execution_context: ExecutionContext::new_empty(),
@@ -109,7 +109,7 @@ impl Frame {
         self
     }
 
-    pub fn append_function(&mut self, memory_allocator: &mut gc::MemoryAllocator, f: Value2) {
+    pub fn append_function(&mut self, memory_allocator: &mut gc::MemoryAllocator, f: Value) {
         let mut val = f.copy_object(memory_allocator);
         let name = val.as_function().name.clone().unwrap();
         val.set_function_outer_environment(self.execution_context.lexical_environment);
@@ -121,14 +121,12 @@ impl Frame {
 
     pub fn append_variable_to_var_env(&mut self, name: String) {
         let var_env = unsafe { &mut *self.execution_context.variable_environment };
-        var_env.set_own_value(name, Value2::undefined()).unwrap(); // TODO: unwrap()
+        var_env.set_own_value(name, Value::undefined()).unwrap(); // TODO: unwrap()
     }
 
     pub fn append_variable_to_lex_env(&mut self, name: String) {
         let lex_env = unsafe { &mut *self.execution_context.lexical_environment };
-        lex_env
-            .set_own_value(name, Value2::uninitialized())
-            .unwrap(); // TODO: unwrap()
+        lex_env.set_own_value(name, Value::uninitialized()).unwrap(); // TODO: unwrap()
     }
 
     pub fn append_from_function_info(
@@ -185,7 +183,7 @@ impl LexicalEnvironment {
         }
     }
 
-    pub fn new_object(object: Value2, outer: Option<*mut LexicalEnvironment>) -> Self {
+    pub fn new_object(object: Value, outer: Option<*mut LexicalEnvironment>) -> Self {
         LexicalEnvironment {
             record: EnvironmentRecord::Object(object),
             outer,
@@ -199,13 +197,13 @@ impl LexicalEnvironment {
         use builtin::parse_float;
         use builtins;
 
-        let log = Value2::builtin_function(
+        let log = Value::builtin_function(
             memory_allocator,
             object_prototypes,
             "log".to_string(),
             builtins::console::console_log,
         );
-        let parse_float = Value2::builtin_function(
+        let parse_float = Value::builtin_function(
             memory_allocator,
             object_prototypes,
             "parseFloat".to_string(),
@@ -224,9 +222,9 @@ impl LexicalEnvironment {
             record: EnvironmentRecord::Global(make_normal_object!(
                 memory_allocator,
                 object_prototypes,
-                undefined  => false,false,false: Value2::undefined(),
-                NaN        => false,false,false: Value2::Number(::std::f64::NAN),
-                Infinity   => false,false,false: Value2::Number(::std::f64::INFINITY),
+                undefined  => false,false,false: Value::undefined(),
+                NaN        => false,false,false: Value::Number(::std::f64::NAN),
+                Infinity   => false,false,false: Value::Number(::std::f64::INFINITY),
                 parseFloat => true, false, true: parse_float,
                 console    => true, false, true: console,
                 Object     => true, false, true: object_constructor,
@@ -239,11 +237,11 @@ impl LexicalEnvironment {
         }
     }
 
-    pub fn get_value(&self, name: &String) -> Result<Value2, RuntimeError> {
+    pub fn get_value(&self, name: &String) -> Result<Value, RuntimeError> {
         match self.record {
             EnvironmentRecord::Function { ref record, .. }
             | EnvironmentRecord::Declarative(ref record) => match record.get(name) {
-                Some(binding) if binding == &Value2::uninitialized() => {
+                Some(binding) if binding == &Value::uninitialized() => {
                     return Err(RuntimeError::Reference(format!(
                         "'{}' is not defined",
                         name
@@ -255,7 +253,7 @@ impl LexicalEnvironment {
             EnvironmentRecord::Global(obj) | EnvironmentRecord::Object(obj) => {
                 if obj.has_own_property(name.as_str()) {
                     let val = obj.get_property_by_str_key(name.as_str());
-                    if val == Value2::uninitialized() {
+                    if val == Value::uninitialized() {
                         return Err(RuntimeError::Reference(format!(
                             "'{}' is not defined",
                             name
@@ -276,7 +274,7 @@ impl LexicalEnvironment {
         }
     }
 
-    pub fn set_value(&mut self, name: String, val: Value2) -> VMResult {
+    pub fn set_value(&mut self, name: String, val: Value) -> VMResult {
         match self.record {
             EnvironmentRecord::Function { ref mut record, .. }
             | EnvironmentRecord::Declarative(ref mut record) => match record.get_mut(&name) {
@@ -302,7 +300,7 @@ impl LexicalEnvironment {
         }
     }
 
-    pub fn set_own_value(&mut self, name: String, val: Value2) -> VMResult {
+    pub fn set_own_value(&mut self, name: String, val: Value) -> VMResult {
         match self.record {
             EnvironmentRecord::Function { ref mut record, .. }
             | EnvironmentRecord::Declarative(ref mut record) => {
@@ -319,14 +317,14 @@ impl LexicalEnvironment {
         self.outer.and_then(|outer| Some(unsafe { &mut *outer }))
     }
 
-    pub fn get_global_object(&self) -> Value2 {
+    pub fn get_global_object(&self) -> Value {
         match self.record {
             EnvironmentRecord::Global(obj) => obj,
             _ => panic!(),
         }
     }
 
-    pub fn get_this_binding(&self) -> Value2 {
+    pub fn get_this_binding(&self) -> Value {
         match self.record {
             EnvironmentRecord::Function { this, .. } => this,
             EnvironmentRecord::Global(obj) => obj,
@@ -334,7 +332,7 @@ impl LexicalEnvironment {
                 if let Some(outer) = self.outer {
                     unsafe { &*outer }.get_this_binding()
                 } else {
-                    Value2::undefined()
+                    Value::undefined()
                 }
             }
         }

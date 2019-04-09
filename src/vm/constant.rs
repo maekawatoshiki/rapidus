@@ -1,10 +1,10 @@
 use rustc_hash::FxHashMap;
-use vm::jsvalue::value::Value2;
+use vm::jsvalue::value::Value;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Constant {
     String(String),
-    Value(Value2),
+    Value(Value),
     LexicalEnvironmentInfo {
         names: Vec<String>,
     },
@@ -45,7 +45,7 @@ impl ConstantTable {
         id
     }
 
-    pub fn add_value(&mut self, value: Value2) -> usize {
+    pub fn add_value(&mut self, value: Value) -> usize {
         for (i, constant) in self.table.iter().enumerate() {
             match constant {
                 Constant::Value(value_) if &value == value_ => return i,
@@ -104,7 +104,7 @@ impl Constant {
         }
     }
 
-    pub fn as_value(&self) -> &Value2 {
+    pub fn as_value(&self) -> &Value {
         match self {
             Constant::Value(value) => value,
             _ => panic!(),

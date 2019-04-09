@@ -5,8 +5,8 @@ use vm::{frame, jsvalue::value::*, vm};
 pub fn object(
     memory_allocator: &mut gc::MemoryAllocator,
     object_prototypes: &ObjectPrototypes,
-) -> Value2 {
-    let obj = Value2::builtin_function(
+) -> Value {
+    let obj = Value::builtin_function(
         memory_allocator,
         object_prototypes,
         "Object".to_string(),
@@ -20,11 +20,11 @@ pub fn object(
 
 pub fn object_constructor(
     vm: &mut vm::VM2,
-    args: &[Value2],
+    args: &[Value],
     _cur_frame: &frame::Frame,
 ) -> vm::VMResult {
     if args.len() == 0 {
-        let empty_obj = Value2::object(
+        let empty_obj = Value::object(
             &mut vm.memory_allocator,
             &vm.object_prototypes,
             FxHashMap::default(),
@@ -34,15 +34,15 @@ pub fn object_constructor(
     }
 
     match &args[0] {
-        Value2::Other(NULL) | Value2::Other(UNDEFINED) => {
-            let empty_obj = Value2::object(
+        Value::Other(NULL) | Value::Other(UNDEFINED) => {
+            let empty_obj = Value::object(
                 &mut vm.memory_allocator,
                 &vm.object_prototypes,
                 FxHashMap::default(),
             );
             vm.stack.push(empty_obj.into());
         }
-        Value2::Other(EMPTY) => unreachable!(),
+        Value::Other(EMPTY) => unreachable!(),
         _ => {
             // TODO: Follow the specification
             vm.stack.push(args[0].into());

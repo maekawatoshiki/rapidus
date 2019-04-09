@@ -2,7 +2,7 @@ use super::super::builtins;
 use crate::lexer;
 use ansi_term::Colour;
 use gc::MemoryAllocator;
-use vm::jsvalue::value::Value2;
+use vm::jsvalue::value::Value;
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum RuntimeError {
@@ -10,24 +10,24 @@ pub enum RuntimeError {
     Type(String),
     Reference(String),
     General(String),
-    Exception2(Value2, Option<usize>),
+    Exception2(Value, Option<usize>),
     Unimplemented,
 }
 
 impl RuntimeError {
-    /// convert RuntimeError -> Value2
-    pub fn to_value2(self, memory_allocator: &mut MemoryAllocator) -> Value2 {
+    /// convert RuntimeError -> Value
+    pub fn to_value2(self, memory_allocator: &mut MemoryAllocator) -> Value {
         match self {
             RuntimeError::Exception2(v, _) => v,
-            RuntimeError::Type(s) => Value2::string(memory_allocator, s),
-            RuntimeError::General(s) => Value2::string(memory_allocator, s),
+            RuntimeError::Type(s) => Value::string(memory_allocator, s),
+            RuntimeError::General(s) => Value::string(memory_allocator, s),
             RuntimeError::Reference(s) => {
-                Value2::string(memory_allocator, format!("Reference error: {}", s))
+                Value::string(memory_allocator, format!("Reference error: {}", s))
             }
             RuntimeError::Unimplemented => {
-                Value2::string(memory_allocator, "Unimplemented".to_string())
+                Value::string(memory_allocator, "Unimplemented".to_string())
             }
-            RuntimeError::Unknown => Value2::string(memory_allocator, "Unknown".to_string()),
+            RuntimeError::Unknown => Value::string(memory_allocator, "Unknown".to_string()),
         }
     }
 

@@ -9,8 +9,8 @@ use vm::{
 pub fn symbol(
     memory_allocator: &mut MemoryAllocator,
     object_prototypes: &ObjectPrototypes,
-) -> Value2 {
-    let obj = Value2::builtin_function(
+) -> Value {
+    let obj = Value::builtin_function(
         memory_allocator,
         object_prototypes,
         "Symbol".to_string(),
@@ -19,7 +19,7 @@ pub fn symbol(
 
     // Symbol.for
     obj.set_property_by_string_key("for".to_string(), {
-        Value2::builtin_function(
+        Value::builtin_function(
             memory_allocator,
             object_prototypes,
             "for".to_string(),
@@ -28,7 +28,7 @@ pub fn symbol(
     });
     // Symbol.keyFor
     obj.set_property_by_string_key("keyFor".to_string(), {
-        Value2::builtin_function(
+        Value::builtin_function(
             memory_allocator,
             object_prototypes,
             "keyFor".to_string(),
@@ -42,8 +42,8 @@ pub fn symbol(
     obj
 }
 
-pub fn symbol_constructor(vm: &mut VM2, args: &[Value2], _cur_frame: &frame::Frame) -> VMResult {
-    let symbol = Value2::symbol(
+pub fn symbol_constructor(vm: &mut VM2, args: &[Value], _cur_frame: &frame::Frame) -> VMResult {
+    let symbol = Value::symbol(
         &mut vm.memory_allocator,
         &vm.object_prototypes,
         args.get(0).map(|arg| arg.to_string()),
@@ -52,18 +52,18 @@ pub fn symbol_constructor(vm: &mut VM2, args: &[Value2], _cur_frame: &frame::Fra
     Ok(())
 }
 
-pub fn symbol_for(vm: &mut VM2, args: &[Value2], _cur_frame: &frame::Frame) -> VMResult {
+pub fn symbol_for(vm: &mut VM2, args: &[Value], _cur_frame: &frame::Frame) -> VMResult {
     let sym = vm.global_symbol_registry.for_(
         &mut vm.memory_allocator,
         &vm.object_prototypes,
-        args.get(0).unwrap_or(&Value2::undefined()).to_string(),
+        args.get(0).unwrap_or(&Value::undefined()).to_string(),
     );
     vm.stack.push(sym.into());
     Ok(())
 }
 
-pub fn symbol_key_for(vm: &mut VM2, args: &[Value2], _cur_frame: &frame::Frame) -> VMResult {
-    let sym = args.get(0).map(|x| *x).unwrap_or(Value2::undefined());
+pub fn symbol_key_for(vm: &mut VM2, args: &[Value], _cur_frame: &frame::Frame) -> VMResult {
+    let sym = args.get(0).map(|x| *x).unwrap_or(Value::undefined());
 
     if !sym.is_symbol() {
         return Err(RuntimeError::Type(format!(

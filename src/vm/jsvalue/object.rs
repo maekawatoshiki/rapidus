@@ -9,11 +9,11 @@ pub struct ObjectInfo {
     /// Kind
     pub kind: ObjectKind2,
     /// Internal slot \[\[Prototype\]\]
-    pub prototype: Value2,
+    pub prototype: Value,
     /// Properties
-    pub property: FxHashMap<String, Property2>,
+    pub property: FxHashMap<String, Property>,
     /// Symbol properties
-    pub sym_property: FxHashMap<usize, Property2>,
+    pub sym_property: FxHashMap<usize, Property>,
 }
 
 #[derive(Clone, Debug)]
@@ -25,14 +25,14 @@ pub enum ObjectKind2 {
 }
 
 #[derive(Clone, PartialEq, Debug, Copy)]
-pub enum Property2 {
+pub enum Property {
     Data(DataProperty),
     Accessor(AccessorProperty),
 }
 
 #[derive(Clone, PartialEq, Debug, Copy)]
 pub struct DataProperty {
-    pub val: Value2,
+    pub val: Value,
     pub writable: bool,
     pub enumerable: bool,
     pub configurable: bool,
@@ -40,8 +40,8 @@ pub struct DataProperty {
 
 #[derive(Clone, PartialEq, Debug, Copy)]
 pub struct AccessorProperty {
-    pub get: Value2,
-    pub set: Value2,
+    pub get: Value,
+    pub set: Value,
     pub enumerable: bool,
     pub configurable: bool,
 }
@@ -52,7 +52,7 @@ impl ObjectInfo {
     }
 
     #[inline]
-    pub fn get_prototype(&self) -> Value2 {
+    pub fn get_prototype(&self) -> Value {
         self.prototype
     }
 
@@ -60,11 +60,11 @@ impl ObjectInfo {
         &self,
         allocator: &mut MemoryAllocator,
         object_prototypes: &ObjectPrototypes,
-        key: Value2,
-    ) -> Result<Property2, error::RuntimeError> {
+        key: Value,
+    ) -> Result<Property, error::RuntimeError> {
         // Annoying
         if key.is_string() && key.into_str() == "__proto__" {
-            return Ok(Property2::new_data_simple(self.get_prototype()));
+            return Ok(Property::new_data_simple(self.get_prototype()));
         }
 
         if key.is_symbol() {
@@ -88,7 +88,7 @@ impl ObjectInfo {
                 }
 
                 if key.is_string() && key.into_str() == "length" {
-                    return Ok(Property2::new_data_simple(Value2::Number(
+                    return Ok(Property::new_data_simple(Value::Number(
                         info.elems.len() as f64
                     )));
                 }
@@ -104,18 +104,18 @@ impl ObjectInfo {
         }
     }
 
-    pub fn get_property_by_str_key(&self, key: &str) -> Value2 {
+    pub fn get_property_by_str_key(&self, key: &str) -> Value {
         match self.property.get(key) {
             Some(prop) => prop.as_data().val,
             None => self.prototype.get_property_by_str_key(key),
         }
     }
 
-    pub fn set_property_by_string_key(&mut self, key: String, val: Value2) {
+    pub fn set_property_by_string_key(&mut self, key: String, val: Value) {
         let property = self
             .property
             .entry(key)
-            .or_insert_with(|| Property2::new_data_simple(Value2::undefined()));
+            .or_insert_with(|| Property::new_data_simple(Value::undefined()));
         let data = property.as_data_mut();
         if data.writable {
             data.val = val;
@@ -125,9 +125,9 @@ impl ObjectInfo {
     pub fn set_property(
         &mut self,
         allocator: &mut MemoryAllocator,
-        key: Value2,
-        val_: Value2,
-    ) -> Result<Option<Value2>, error::RuntimeError> {
+        key: Value,
+        val_: Value,
+    ) -> Result<Option<Value>, error::RuntimeError> {
         // Annoying
         if key.is_string() && key.into_str() == "__proto__" {
             self.prototype = val_;
@@ -158,15 +158,15 @@ impl ObjectInfo {
             let id = key.get_symbol_info().id;
             self.sym_property
                 .entry(id)
-                .or_insert_with(|| Property2::new_data_simple(Value2::undefined()))
+                .or_insert_with(|| Property::new_data_simple(Value::undefined()))
         } else {
             self.property
                 .entry(key.to_string())
-                .or_insert_with(|| Property2::new_data_simple(Value2::undefined()))
+                .or_insert_with(|| Property::new_data_simple(Value::undefined()))
         };
 
         match property {
-            Property2::Data(DataProperty {
+            Property::Data(DataProperty {
                 ref mut val,
                 writable,
                 ..
@@ -176,7 +176,7 @@ impl ObjectInfo {
                 }
                 Ok(None)
             }
-            Property2::Accessor(AccessorProperty { set, .. }) => {
+            Property::Accessor(AccessorProperty { set, .. }) => {
                 if set.is_undefined() {
                     Ok(None)
                 } else {
@@ -187,13 +187,13 @@ impl ObjectInfo {
     }
 }
 
-impl Property2 {
+impl Property {
     pub fn new_data(data: DataProperty) -> Self {
-        Property2::Data(data)
+        Property::Data(data)
     }
 
-    pub fn new_data_simple(val: Value2) -> Self {
-        Property2::Data(DataProperty {
+    pub fn new_data_simple(val: Value) -> Self {
+        Property::Data(DataProperty {
             val,
             writable: true,
             enumerable: true,
@@ -203,35 +203,35 @@ impl Property2 {
 
     pub fn as_data(self) -> DataProperty {
         match self {
-            Property2::Data(data) => data,
+            Property::Data(data) => data,
             _ => panic!(),
         }
     }
 
     pub fn as_accessor(self) -> AccessorProperty {
         match self {
-            Property2::Accessor(accessor) => accessor,
+            Property::Accessor(accessor) => accessor,
             _ => panic!(),
         }
     }
 
     pub fn as_data_mut(&mut self) -> &mut DataProperty {
         match self {
-            Property2::Data(ref mut data) => data,
+            Property::Data(ref mut data) => data,
             _ => panic!(),
         }
     }
 
     pub fn as_accessor_mut(&mut self) -> &mut AccessorProperty {
         match self {
-            Property2::Accessor(ref mut accessor) => accessor,
+            Property::Accessor(ref mut accessor) => accessor,
             _ => panic!(),
         }
     }
 
     pub fn get_data(&self) -> Option<&DataProperty> {
         match self {
-            Property2::Data(data) => Some(data),
+            Property::Data(data) => Some(data),
             _ => None,
         }
     }

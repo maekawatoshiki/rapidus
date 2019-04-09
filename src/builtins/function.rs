@@ -1,11 +1,11 @@
 use gc;
-use vm::{frame, jsvalue, jsvalue::value::Value2, vm};
+use vm::{frame, jsvalue, jsvalue::value::Value, vm};
 
 pub fn function(
     memory_allocator: &mut gc::MemoryAllocator,
     object_prototypes: &jsvalue::prototype::ObjectPrototypes,
-) -> Value2 {
-    let func = Value2::builtin_function(
+) -> Value {
+    let func = Value::builtin_function(
         memory_allocator,
         object_prototypes,
         "Function".to_string(),
@@ -19,19 +19,19 @@ pub fn function(
 
 pub fn function_constructor(
     vm: &mut vm::VM2,
-    _args: &[Value2],
+    _args: &[Value],
     _cur_frame: &frame::Frame,
 ) -> vm::VMResult {
-    vm.stack.push(Value2::undefined().into());
+    vm.stack.push(Value::undefined().into());
     Ok(())
 }
 
 pub fn function_prototype_call(
     vm: &mut vm::VM2,
-    args: &[Value2],
+    args: &[Value],
     cur_frame: &frame::Frame,
 ) -> vm::VMResult {
-    let this_arg = *args.get(0).unwrap_or(&Value2::undefined());
+    let this_arg = *args.get(0).unwrap_or(&Value::undefined());
     let func = cur_frame.this;
     vm.call_function(func, args.get(1..).unwrap_or(&[]), this_arg, cur_frame)
 }

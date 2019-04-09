@@ -1,5 +1,5 @@
 use vm::constant;
-use vm::jsvalue::value::Value2;
+use vm::jsvalue::value::Value;
 
 pub type ByteCode = Vec<u8>;
 
@@ -59,7 +59,7 @@ impl<'a> ByteCodeGenerator<'a> {
             }
         }
 
-        self.append_push_const(Value2::Number(n), iseq)
+        self.append_push_const(Value::Number(n), iseq)
     }
 
     pub fn append_push_bool(&self, b: bool, iseq: &mut ByteCode) {
@@ -70,7 +70,7 @@ impl<'a> ByteCodeGenerator<'a> {
         })
     }
 
-    pub fn append_push_const(&mut self, val: Value2, iseq: &mut ByteCode) {
+    pub fn append_push_const(&mut self, val: Value, iseq: &mut ByteCode) {
         iseq.push(VMInst::PUSH_CONST);
         let id = self.constant_table.add_value(val);
         self.append_int32(id as i32, iseq);

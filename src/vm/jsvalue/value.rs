@@ -25,7 +25,7 @@ pub enum PreferredType {
 
 make_nanbox! {
     #[derive(Clone, PartialEq, Debug, Copy)]
-    pub unsafe enum BoxedValue, Value2 {
+    pub unsafe enum BoxedValue, Value {
         Number(f64),
         Bool(u8), // 0 | 1 = false | true
         String(*mut CString), // TODO: Using CString is good for JIT. However, we need better one instead.
@@ -47,7 +47,7 @@ macro_rules! make_property_map_sub {
         let mut record = FxHashMap::default();
         $( record.insert(
             (stringify!($property_name)).to_string(),
-            Property2::Data(DataProperty {
+            Property::Data(DataProperty {
                 val: $val,
                 writable: $writable,
                 enumerable: $enumerable,
@@ -72,7 +72,7 @@ macro_rules! make_property_map {
 #[macro_export]
 macro_rules! make_normal_object {
     ($memory_allocator:expr, $object_prototypes:expr) => { {
-        Value2::Object($memory_allocator.alloc(
+        Value::Object($memory_allocator.alloc(
             ObjectInfo {
                 kind: ObjectKind2::Ordinary,
                 prototype: $object_prototypes.object,
@@ -82,7 +82,7 @@ macro_rules! make_normal_object {
         ))
     } };
     ($memory_allocator:expr, $object_prototypes:expr, $($property_name:ident => $x:ident, $y:ident, $z:ident : $val:expr),*) => { {
-        Value2::Object($memory_allocator.alloc(
+        Value::Object($memory_allocator.alloc(
             ObjectInfo {
                 kind: ObjectKind2::Ordinary,
                 prototype: $object_prototypes.object,
@@ -93,38 +93,38 @@ macro_rules! make_normal_object {
     } };
 }
 
-impl Value2 {
+impl Value {
     pub const fn null() -> Self {
-        Value2::Other(NULL)
+        Value::Other(NULL)
     }
 
     pub const fn undefined() -> Self {
-        Value2::Other(UNDEFINED)
+        Value::Other(UNDEFINED)
     }
 
     pub const fn uninitialized() -> Self {
-        Value2::Other(UNINITIALIZED)
+        Value::Other(UNINITIALIZED)
     }
 
     pub const fn empty() -> Self {
-        Value2::Other(EMPTY)
+        Value::Other(EMPTY)
     }
 
     #[inline]
     pub fn bool(x: bool) -> Self {
-        Value2::Bool(if x { 1 } else { 0 })
+        Value::Bool(if x { 1 } else { 0 })
     }
 
     pub fn string(memory_allocator: &mut gc::MemoryAllocator, body: String) -> Self {
-        Value2::String(memory_allocator.alloc(CString::new(body).unwrap()))
+        Value::String(memory_allocator.alloc(CString::new(body).unwrap()))
     }
 
     pub fn object(
         memory_allocator: &mut gc::MemoryAllocator,
         object_prototypes: &ObjectPrototypes,
-        property: FxHashMap<String, Property2>,
+        property: FxHashMap<String, Property>,
     ) -> Self {
-        Value2::Object(memory_allocator.alloc(ObjectInfo {
+        Value::Object(memory_allocator.alloc(ObjectInfo {
             kind: ObjectKind2::Ordinary,
             prototype: object_prototypes.object,
             property,
@@ -138,15 +138,15 @@ impl Value2 {
         name: String,
         func: BuiltinFuncTy2,
     ) -> Self {
-        let name_prop = Value2::string(memory_allocator, name.clone());
-        Value2::Object(memory_allocator.alloc(ObjectInfo {
+        let name_prop = Value::string(memory_allocator, name.clone());
+        Value::Object(memory_allocator.alloc(ObjectInfo {
             kind: ObjectKind2::Function(FunctionObjectInfo {
                 name: Some(name),
                 kind: FunctionObjectKind::Builtin(func),
             }),
             prototype: object_prototypes.function,
             property: make_property_map!(
-                length => false, false, true : Value2::Number(0.0),
+                length => false, false, true : Value::Number(0.0),
                 name   => false, false, true : name_prop
             ),
             sym_property: FxHashMap::default(),
@@ -155,19 +155,19 @@ impl Value2 {
 
     pub fn builtin_function_with_proto(
         memory_allocator: &mut gc::MemoryAllocator,
-        proto: Value2,
+        proto: Value,
         name: String,
         func: BuiltinFuncTy2,
     ) -> Self {
-        let name_prop = Value2::string(memory_allocator, name.clone());
-        Value2::Object(memory_allocator.alloc(ObjectInfo {
+        let name_prop = Value::string(memory_allocator, name.clone());
+        Value::Object(memory_allocator.alloc(ObjectInfo {
             kind: ObjectKind2::Function(FunctionObjectInfo {
                 name: Some(name),
                 kind: FunctionObjectKind::Builtin(func),
             }),
             prototype: proto,
             property: make_property_map!(
-                length => false, false, true : Value2::Number(0.0),
+                length => false, false, true : Value::Number(0.0),
                 name   => false, false, true : name_prop
             ),
             sym_property: FxHashMap::default(),
@@ -183,18 +183,18 @@ impl Value2 {
         // params: Vec<FunctionParameter>,
         // var_names: Vec<String>,
         // lex_names: Vec<String>,
-        // func_decls: Vec<Value2>,
+        // func_decls: Vec<Value>,
         // constructor: bool,
         // code: ByteCode,
         // exception_table: Vec<Exception>,
     ) -> Self {
-        let name_prop = Value2::string(memory_allocator, name.clone().unwrap_or("".to_string()));
-        let prototype = Value2::object(memory_allocator, object_prototypes, FxHashMap::default());
+        let name_prop = Value::string(memory_allocator, name.clone().unwrap_or("".to_string()));
+        let prototype = Value::object(memory_allocator, object_prototypes, FxHashMap::default());
 
-        let f = Value2::Object(memory_allocator.alloc(ObjectInfo {
+        let f = Value::Object(memory_allocator.alloc(ObjectInfo {
             prototype: object_prototypes.function,
             property: make_property_map!(
-                length    => false, false, true : Value2::Number(info.params.len() as f64), /* TODO: rest param */
+                length    => false, false, true : Value::Number(info.params.len() as f64), /* TODO: rest param */
                 name      => false, false, true : name_prop,
                 prototype => true , false, false: prototype
             ),
@@ -208,7 +208,7 @@ impl Value2 {
         f.get_property_by_str_key("prototype")
             .get_object_info()
             .property
-            .insert("constructor".to_string(), Property2::new_data_simple(f));
+            .insert("constructor".to_string(), Property::new_data_simple(f));
 
         f
     }
@@ -216,9 +216,9 @@ impl Value2 {
     pub fn array(
         memory_allocator: &mut gc::MemoryAllocator,
         object_prototypes: &ObjectPrototypes,
-        elems: Vec<Property2>,
+        elems: Vec<Property>,
     ) -> Self {
-        Value2::Object(memory_allocator.alloc(ObjectInfo {
+        Value::Object(memory_allocator.alloc(ObjectInfo {
             kind: ObjectKind2::Array(ArrayObjectInfo { elems }),
             prototype: object_prototypes.array,
             property: make_property_map!(),
@@ -231,7 +231,7 @@ impl Value2 {
         object_prototypes: &ObjectPrototypes,
         description: Option<String>,
     ) -> Self {
-        Value2::Object(memory_allocator.alloc(ObjectInfo {
+        Value::Object(memory_allocator.alloc(ObjectInfo {
             kind: ObjectKind2::Symbol(SymbolInfo {
                 id: get_unique_id(),
                 description,
@@ -243,24 +243,24 @@ impl Value2 {
     }
 }
 
-impl Value2 {
+impl Value {
     pub fn is_undefined(&self) -> bool {
         match self {
-            Value2::Other(UNDEFINED) => true,
+            Value::Other(UNDEFINED) => true,
             _ => false,
         }
     }
 
     pub fn is_object(&self) -> bool {
         match self {
-            Value2::Object(_) => true,
+            Value::Object(_) => true,
             _ => false,
         }
     }
 
     pub fn is_function_object(&self) -> bool {
         match self {
-            Value2::Object(info) => match unsafe { &**info }.kind {
+            Value::Object(info) => match unsafe { &**info }.kind {
                 ObjectKind2::Function(_) => true,
                 _ => false,
             },
@@ -270,7 +270,7 @@ impl Value2 {
 
     pub fn is_array_object(&self) -> bool {
         match self {
-            Value2::Object(info) => match unsafe { &**info }.kind {
+            Value::Object(info) => match unsafe { &**info }.kind {
                 ObjectKind2::Array(_) => true,
                 _ => false,
             },
@@ -280,21 +280,21 @@ impl Value2 {
 
     pub fn is_string(&self) -> bool {
         match self {
-            Value2::String(_) => true,
+            Value::String(_) => true,
             _ => false,
         }
     }
 
     pub fn is_number(&self) -> bool {
         match self {
-            Value2::Number(_) => true,
+            Value::Number(_) => true,
             _ => false,
         }
     }
 
     pub fn is_symbol(&self) -> bool {
         match self {
-            Value2::Object(info) => match unsafe { &**info }.kind {
+            Value::Object(info) => match unsafe { &**info }.kind {
                 ObjectKind2::Symbol(_) => true,
                 _ => false,
             },
@@ -312,7 +312,7 @@ impl Value2 {
         }
         let s = self.into_str();
         let num = self.to_number(allocator);
-        if s == Value2::Number(num).to_string() && is_integer(num) && num >= 0.0 {
+        if s == Value::Number(num).to_string() && is_integer(num) && num >= 0.0 {
             Some(num as usize)
         } else {
             None
@@ -332,32 +332,32 @@ impl Value2 {
     }
 }
 
-impl Value2 {
+impl Value {
     pub fn has_own_property(&self, key: &str) -> bool {
         match self {
-            Value2::Object(obj_info) => unsafe { &**obj_info }.has_own_property(key),
+            Value::Object(obj_info) => unsafe { &**obj_info }.has_own_property(key),
             _ => false,
         }
     }
 
-    pub fn get_prototype(&self) -> Value2 {
+    pub fn get_prototype(&self) -> Value {
         match self {
-            Value2::Object(info) => unsafe { &**info }.get_prototype(),
-            _ => Value2::undefined(),
+            Value::Object(info) => unsafe { &**info }.get_prototype(),
+            _ => Value::undefined(),
         }
     }
 
-    pub fn get_object_properties(&self) -> Option<&FxHashMap<String, Property2>> {
+    pub fn get_object_properties(&self) -> Option<&FxHashMap<String, Property>> {
         match self {
-            Value2::Object(obj_info) => Some(&unsafe { &**obj_info }.property),
+            Value::Object(obj_info) => Some(&unsafe { &**obj_info }.property),
             _ => None,
         }
     }
 
-    pub fn get_property_by_str_key(&self, key: &str) -> Value2 {
+    pub fn get_property_by_str_key(&self, key: &str) -> Value {
         match self {
-            Value2::Object(obj_info) => unsafe { &**obj_info }.get_property_by_str_key(key),
-            _ => Value2::undefined(),
+            Value::Object(obj_info) => unsafe { &**obj_info }.get_property_by_str_key(key),
+            _ => Value::undefined(),
         }
     }
 
@@ -365,20 +365,20 @@ impl Value2 {
         &self,
         allocator: &mut gc::MemoryAllocator,
         object_prototypes: &ObjectPrototypes,
-        key: Value2,
-    ) -> Result<Property2, error::RuntimeError> {
+        key: Value,
+    ) -> Result<Property, error::RuntimeError> {
         fn string_get_property(
             allocator: &mut gc::MemoryAllocator,
             object_prototypes: &ObjectPrototypes,
             s: &str,
-            key: Value2,
-        ) -> Result<Property2, error::RuntimeError> {
+            key: Value,
+        ) -> Result<Property, error::RuntimeError> {
             match key {
-                Value2::Number(idx) if is_integer(idx) => Ok(Property2::new_data_simple(
-                    Value2::string(allocator, s.chars().nth(idx as usize).unwrap().to_string()),
+                Value::Number(idx) if is_integer(idx) => Ok(Property::new_data_simple(
+                    Value::string(allocator, s.chars().nth(idx as usize).unwrap().to_string()),
                 )),
-                Value2::String(x) if unsafe { &*x }.to_str().unwrap() == "length" => {
-                    Ok(Property2::new_data_simple(Value2::Number(
+                Value::String(x) if unsafe { &*x }.to_str().unwrap() == "length" => {
+                    Ok(Property::new_data_simple(Value::Number(
                         s.chars().fold(0, |x, c| x + c.len_utf16()) as f64,
                     )))
                 }
@@ -391,7 +391,7 @@ impl Value2 {
         }
 
         match self {
-            Value2::String(s) => {
+            Value::String(s) => {
                 return string_get_property(
                     allocator,
                     object_prototypes,
@@ -404,16 +404,16 @@ impl Value2 {
         }
 
         match self {
-            Value2::Object(obj_info) => {
+            Value::Object(obj_info) => {
                 unsafe { &**obj_info }.get_property(allocator, object_prototypes, key)
             }
-            _ => Ok(Property2::new_data_simple(Value2::undefined())),
+            _ => Ok(Property::new_data_simple(Value::undefined())),
         }
     }
 
-    pub fn set_property_by_string_key(&self, key: String, val: Value2) {
+    pub fn set_property_by_string_key(&self, key: String, val: Value) {
         match self {
-            Value2::Object(obj_info) => {
+            Value::Object(obj_info) => {
                 unsafe { &mut **obj_info }.set_property_by_string_key(key, val)
             }
             _ => {}
@@ -423,21 +423,19 @@ impl Value2 {
     pub fn set_property(
         &self,
         allocator: &mut gc::MemoryAllocator,
-        key: Value2,
-        val: Value2,
-    ) -> Result<Option<Value2>, error::RuntimeError> {
+        key: Value,
+        val: Value,
+    ) -> Result<Option<Value>, error::RuntimeError> {
         match self {
-            Value2::Object(obj_info) => {
-                unsafe { &mut **obj_info }.set_property(allocator, key, val)
-            }
+            Value::Object(obj_info) => unsafe { &mut **obj_info }.set_property(allocator, key, val),
             _ => Ok(None),
         }
     }
 
-    pub fn set_constructor(&self, val: Value2) {
+    pub fn set_constructor(&self, val: Value) {
         self.get_object_info().property.insert(
             "constructor".to_string(),
-            Property2::Data(DataProperty {
+            Property::Data(DataProperty {
                 val,
                 writable: true,
                 enumerable: false,
@@ -448,7 +446,7 @@ impl Value2 {
 
     pub fn set_function_outer_environment(&mut self, env: LexicalEnvironmentRef) {
         match self {
-            Value2::Object(obj) => {
+            Value::Object(obj) => {
                 let obj = unsafe { &mut **obj };
                 match obj.kind {
                     ObjectKind2::Function(ref mut info) => info.set_outer_environment(env),
@@ -459,18 +457,16 @@ impl Value2 {
         }
     }
 
-    pub fn copy_object(&self, memory_allocator: &mut gc::MemoryAllocator) -> Value2 {
+    pub fn copy_object(&self, memory_allocator: &mut gc::MemoryAllocator) -> Value {
         match self {
-            Value2::Object(obj) => {
-                Value2::Object(memory_allocator.alloc(unsafe { &**obj }.clone()))
-            }
+            Value::Object(obj) => Value::Object(memory_allocator.alloc(unsafe { &**obj }.clone())),
             e => *e,
         }
     }
 
     pub fn as_function(&self) -> &FunctionObjectInfo {
         match self {
-            Value2::Object(obj) => {
+            Value::Object(obj) => {
                 let obj = unsafe { &**obj };
                 match obj.kind {
                     ObjectKind2::Function(ref info) => return info,
@@ -483,7 +479,7 @@ impl Value2 {
 
     pub fn as_array_mut(&self) -> &mut ArrayObjectInfo {
         match self {
-            Value2::Object(obj) => {
+            Value::Object(obj) => {
                 let obj = unsafe { &mut **obj };
                 match obj.kind {
                     ObjectKind2::Array(ref mut info) => return info,
@@ -496,14 +492,14 @@ impl Value2 {
 
     pub fn get_object_info(&self) -> &mut ObjectInfo {
         match self {
-            Value2::Object(obj) => unsafe { &mut **obj },
+            Value::Object(obj) => unsafe { &mut **obj },
             _ => panic!(),
         }
     }
 
     pub fn get_symbol_info(&self) -> &mut SymbolInfo {
         match self {
-            Value2::Object(info) => match unsafe { &mut **info }.kind {
+            Value::Object(info) => match unsafe { &mut **info }.kind {
                 ObjectKind2::Symbol(ref mut info) => info,
                 _ => panic!(),
             },
@@ -513,21 +509,21 @@ impl Value2 {
 
     pub fn into_number(self) -> f64 {
         match self {
-            Value2::Number(x) => x,
+            Value::Number(x) => x,
             _ => panic!(),
         }
     }
 
     pub fn into_str(self) -> &'static str {
         match self {
-            Value2::String(s) => unsafe { &*s }.to_str().unwrap(),
+            Value::String(s) => unsafe { &*s }.to_str().unwrap(),
             _ => panic!(),
         }
     }
 
     pub fn into_bool(self) -> bool {
         match self {
-            Value2::Bool(b) => {
+            Value::Bool(b) => {
                 if b == 1 {
                     true
                 } else {
@@ -538,24 +534,24 @@ impl Value2 {
         }
     }
 
-    pub fn to_undefined_if_empty(self) -> Value2 {
-        if self == Value2::empty() {
-            return Value2::undefined();
+    pub fn to_undefined_if_empty(self) -> Value {
+        if self == Value::empty() {
+            return Value::undefined();
         }
         self
     }
 }
 
-impl Value2 {
+impl Value {
     // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-tonumber
     pub fn to_number(&self, allocator: &mut gc::MemoryAllocator) -> f64 {
         match self {
-            Value2::Other(UNDEFINED) => ::std::f64::NAN,
-            Value2::Other(NULL) => 0.0,
-            Value2::Bool(0) => 0.0,
-            Value2::Bool(1) => 1.0,
-            Value2::Number(n) => *n,
-            Value2::String(s) => {
+            Value::Other(UNDEFINED) => ::std::f64::NAN,
+            Value::Other(NULL) => 0.0,
+            Value::Bool(0) => 0.0,
+            Value::Bool(1) => 1.0,
+            Value::Number(n) => *n,
+            Value::String(s) => {
                 let s = unsafe { &**s }.to_str().unwrap();
                 if s == "Infinity" || s == "-Infinity" {
                     ::std::f64::INFINITY
@@ -567,7 +563,7 @@ impl Value2 {
                     s.parse::<f64>().unwrap_or(::std::f64::NAN)
                 }
             }
-            Value2::Object(_) => self
+            Value::Object(_) => self
                 .to_primitive(allocator, Some(PreferredType::Number))
                 .to_number(allocator),
             // TODO
@@ -578,11 +574,11 @@ impl Value2 {
     // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-tostring
     pub fn to_string(&self) -> String {
         match self {
-            Value2::Bool(0) => "false".to_string(),
-            Value2::Bool(1) => "true".to_string(),
-            Value2::String(s) => unsafe { &**s }.to_str().unwrap().to_string(),
-            Value2::Other(UNDEFINED) => "undefined".to_string(),
-            Value2::Number(n) => {
+            Value::Bool(0) => "false".to_string(),
+            Value::Bool(1) => "true".to_string(),
+            Value::String(s) => unsafe { &**s }.to_str().unwrap().to_string(),
+            Value::Other(UNDEFINED) => "undefined".to_string(),
+            Value::Number(n) => {
                 if n.is_nan() {
                     "NaN".to_string()
                 } else if n.is_infinite() {
@@ -591,7 +587,7 @@ impl Value2 {
                     format!("{}", n)
                 }
             }
-            Value2::Object(info) => {
+            Value::Object(info) => {
                 let info = unsafe { &**info };
                 match info.kind {
                     ObjectKind2::Ordinary => "[object Object]".to_string(),
@@ -605,16 +601,16 @@ impl Value2 {
 
     pub fn to_boolean(&self) -> bool {
         match self {
-            Value2::Bool(0) => false,
-            Value2::Bool(1) => true,
-            Value2::Number(num) => {
+            Value::Bool(0) => false,
+            Value::Bool(1) => true,
+            Value::Number(num) => {
                 if *num == 0f64 || num.is_nan() {
                     false
                 } else {
                     true
                 }
             }
-            Value2::String(s) => unsafe { &**s }.to_str().unwrap().len() != 0,
+            Value::String(s) => unsafe { &**s }.to_str().unwrap().len() != 0,
             _ => true,
         }
     }
@@ -642,7 +638,7 @@ impl Value2 {
         &self,
         allocator: &mut gc::MemoryAllocator,
         preferred_type: Option<PreferredType>,
-    ) -> Value2 {
+    ) -> Value {
         if !self.is_object() {
             return *self;
         }
@@ -663,7 +659,7 @@ impl Value2 {
         &self,
         allocator: &mut gc::MemoryAllocator,
         hint: PreferredType,
-    ) -> Value2 {
+    ) -> Value {
         match hint {
             PreferredType::Number => {
                 if let Some(val) = self.value_of() {
@@ -672,16 +668,16 @@ impl Value2 {
                     }
                 }
 
-                Value2::string(allocator, self.to_string())
+                Value::string(allocator, self.to_string())
             }
-            PreferredType::String => Value2::string(allocator, self.to_string()),
+            PreferredType::String => Value::string(allocator, self.to_string()),
             PreferredType::Default => unreachable!(),
         }
     }
 
-    pub fn value_of(self) -> Option<Value2> {
+    pub fn value_of(self) -> Option<Value> {
         match self {
-            Value2::Object(info) => {
+            Value::Object(info) => {
                 let info = unsafe { &*info };
                 match info.kind {
                     ObjectKind2::Ordinary => Some(self),
@@ -690,216 +686,216 @@ impl Value2 {
                     ObjectKind2::Symbol(_) => Some(self), // TODO
                 }
             }
-            Value2::String(_) => Some(self), // TODO
+            Value::String(_) => Some(self), // TODO
             _ => None,
         }
     }
 }
 
-impl Value2 {
+impl Value {
     // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-addition-operator-plus-runtime-semantics-evaluation
-    pub fn add(self, allocator: &mut gc::MemoryAllocator, val: Value2) -> Self {
+    pub fn add(self, allocator: &mut gc::MemoryAllocator, val: Value) -> Self {
         let lprim = self.to_primitive(allocator, None);
         let rprim = val.to_primitive(allocator, None);
         match (lprim, rprim) {
-            (Value2::Number(x), Value2::Number(y)) => Value2::Number(x + y),
-            (Value2::String(x), Value2::String(y)) => {
+            (Value::Number(x), Value::Number(y)) => Value::Number(x + y),
+            (Value::String(x), Value::String(y)) => {
                 let x = unsafe { &*x }.to_str().unwrap();
                 let y = unsafe { &*y }.to_str().unwrap();
                 let cat = format!("{}{}", x, y);
-                Value2::string(allocator, cat)
+                Value::string(allocator, cat)
             }
-            (Value2::String(x), _) => {
+            (Value::String(x), _) => {
                 let x = unsafe { &*x }.to_str().unwrap();
-                Value2::string(allocator, format!("{}{}", x, rprim.to_string()))
+                Value::string(allocator, format!("{}{}", x, rprim.to_string()))
             }
-            (_, Value2::String(y)) => {
+            (_, Value::String(y)) => {
                 let y = unsafe { &*y }.to_str().unwrap();
-                Value2::string(allocator, format!("{}{}", lprim.to_string(), y))
+                Value::string(allocator, format!("{}{}", lprim.to_string(), y))
             }
-            (x, y) => Value2::Number(x.to_number(allocator) + y.to_number(allocator)),
+            (x, y) => Value::Number(x.to_number(allocator) + y.to_number(allocator)),
         }
     }
 
     // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-subtraction-operator-minus-runtime-semantics-evaluation
-    pub fn sub(self, val: Value2) -> Self {
+    pub fn sub(self, val: Value) -> Self {
         match (self, val) {
-            (Value2::Number(x), Value2::Number(y)) => Value2::Number(x - y),
-            _ => Value2::undefined(),
+            (Value::Number(x), Value::Number(y)) => Value::Number(x - y),
+            _ => Value::undefined(),
         }
     }
 
-    pub fn mul(self, val: Value2) -> Self {
+    pub fn mul(self, val: Value) -> Self {
         match (self, val) {
-            (Value2::Number(x), Value2::Number(y)) => Value2::Number(x * y),
-            _ => Value2::undefined(),
+            (Value::Number(x), Value::Number(y)) => Value::Number(x * y),
+            _ => Value::undefined(),
         }
     }
 
-    pub fn div(self, val: Value2) -> Self {
+    pub fn div(self, val: Value) -> Self {
         match (self, val) {
-            (Value2::Number(x), Value2::Number(y)) => Value2::Number(x / y),
-            _ => Value2::undefined(),
+            (Value::Number(x), Value::Number(y)) => Value::Number(x / y),
+            _ => Value::undefined(),
         }
     }
 
-    pub fn rem(self, val: Value2) -> Self {
+    pub fn rem(self, val: Value) -> Self {
         match (self, val) {
-            (Value2::Number(x), Value2::Number(y)) => Value2::Number((x as i64 % y as i64) as f64),
-            _ => Value2::undefined(),
+            (Value::Number(x), Value::Number(y)) => Value::Number((x as i64 % y as i64) as f64),
+            _ => Value::undefined(),
         }
     }
 
-    pub fn and(self, allocator: &mut gc::MemoryAllocator, val: Value2) -> Self {
-        Value2::Number((self.to_int32(allocator) & val.to_int32(allocator)) as f64)
+    pub fn and(self, allocator: &mut gc::MemoryAllocator, val: Value) -> Self {
+        Value::Number((self.to_int32(allocator) & val.to_int32(allocator)) as f64)
     }
 
-    pub fn or(self, allocator: &mut gc::MemoryAllocator, val: Value2) -> Self {
-        Value2::Number((self.to_int32(allocator) | val.to_int32(allocator)) as f64)
+    pub fn or(self, allocator: &mut gc::MemoryAllocator, val: Value) -> Self {
+        Value::Number((self.to_int32(allocator) | val.to_int32(allocator)) as f64)
     }
 
-    pub fn xor(self, allocator: &mut gc::MemoryAllocator, val: Value2) -> Self {
-        Value2::Number((self.to_int32(allocator) ^ val.to_int32(allocator)) as f64)
+    pub fn xor(self, allocator: &mut gc::MemoryAllocator, val: Value) -> Self {
+        Value::Number((self.to_int32(allocator) ^ val.to_int32(allocator)) as f64)
     }
 
     pub fn not(self, allocator: &mut gc::MemoryAllocator) -> Self {
-        Value2::Number((!self.to_int32(allocator)) as f64)
+        Value::Number((!self.to_int32(allocator)) as f64)
     }
 
     /// https://tc39.github.io/ecma262/#sec-left-shift-operator
-    pub fn shift_l(self, allocator: &mut gc::MemoryAllocator, val: Value2) -> Self {
-        Value2::Number((self.to_int32(allocator) << (val.to_uint32(allocator) & 0x1f)) as f64)
+    pub fn shift_l(self, allocator: &mut gc::MemoryAllocator, val: Value) -> Self {
+        Value::Number((self.to_int32(allocator) << (val.to_uint32(allocator) & 0x1f)) as f64)
     }
 
     /// https://tc39.github.io/ecma262/#sec-signed-right-shift-operator
-    pub fn shift_r(self, allocator: &mut gc::MemoryAllocator, val: Value2) -> Self {
-        Value2::Number((self.to_int32(allocator) >> (val.to_uint32(allocator) & 0x1f)) as f64)
+    pub fn shift_r(self, allocator: &mut gc::MemoryAllocator, val: Value) -> Self {
+        Value::Number((self.to_int32(allocator) >> (val.to_uint32(allocator) & 0x1f)) as f64)
     }
 
     /// https://tc39.github.io/ecma262/#sec-unsigned-right-shift-operator
-    pub fn z_shift_r(self, allocator: &mut gc::MemoryAllocator, val: Value2) -> Self {
-        Value2::Number((self.to_uint32(allocator) >> (val.to_uint32(allocator) & 0x1f)) as f64)
+    pub fn z_shift_r(self, allocator: &mut gc::MemoryAllocator, val: Value) -> Self {
+        Value::Number((self.to_uint32(allocator) >> (val.to_uint32(allocator) & 0x1f)) as f64)
     }
 
     // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-abstract-equality-comparison
-    pub fn eq(self, allocator: &mut gc::MemoryAllocator, val: Value2) -> Self {
+    pub fn eq(self, allocator: &mut gc::MemoryAllocator, val: Value) -> Self {
         if self.is_same_type_as(&val) {
             return self.strict_eq(val);
         }
 
         match (self, val) {
-            (Value2::Other(NULL), Value2::Other(UNDEFINED)) => return Value2::bool(true),
-            (Value2::Other(UNDEFINED), Value2::Other(NULL)) => return Value2::bool(true),
+            (Value::Other(NULL), Value::Other(UNDEFINED)) => return Value::bool(true),
+            (Value::Other(UNDEFINED), Value::Other(NULL)) => return Value::bool(true),
             _ => {}
         }
 
         match (self, val) {
-            (Value2::Number(x), Value2::String(_)) => Value2::bool(x == val.to_number(allocator)),
-            (Value2::String(_), Value2::Number(y)) => Value2::bool(self.to_number(allocator) == y),
-            (Value2::Bool(_), Value2::Number(y)) => Value2::bool(self.to_number(allocator) == y),
-            (Value2::Number(x), Value2::Bool(_)) => Value2::bool(x == val.to_number(allocator)),
-            // (Value2::Number(x), Value2::Number(y)) => Value2::Bool(if x == y { 1 } else { 0 }),
-            // (Value2::Number(_), obj) | (Value2::String(_), obj) => self.eq(val),
-            (Value2::Object(_), _) => self.to_primitive(allocator, None).eq(allocator, val),
-            (_, Value2::Object(_)) => val.to_primitive(allocator, None).eq(allocator, self),
-            _ => Value2::bool(false),
+            (Value::Number(x), Value::String(_)) => Value::bool(x == val.to_number(allocator)),
+            (Value::String(_), Value::Number(y)) => Value::bool(self.to_number(allocator) == y),
+            (Value::Bool(_), Value::Number(y)) => Value::bool(self.to_number(allocator) == y),
+            (Value::Number(x), Value::Bool(_)) => Value::bool(x == val.to_number(allocator)),
+            // (Value::Number(x), Value::Number(y)) => Value::Bool(if x == y { 1 } else { 0 }),
+            // (Value::Number(_), obj) | (Value::String(_), obj) => self.eq(val),
+            (Value::Object(_), _) => self.to_primitive(allocator, None).eq(allocator, val),
+            (_, Value::Object(_)) => val.to_primitive(allocator, None).eq(allocator, self),
+            _ => Value::bool(false),
         }
     }
 
     // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-strict-equality-comparison
-    pub fn strict_eq(self, val: Value2) -> Self {
-        fn get_obj_ptr(val: Value2) -> u64 {
+    pub fn strict_eq(self, val: Value) -> Self {
+        fn get_obj_ptr(val: Value) -> u64 {
             match val {
-                Value2::Object(obj) => obj as u64,
+                Value::Object(obj) => obj as u64,
                 _ => panic!(),
             }
         }
 
         if !self.is_same_type_as(&val) {
-            return Value2::bool(false);
+            return Value::bool(false);
         }
 
-        if self == Value2::undefined() || self == Value2::null() {
-            return Value2::bool(true);
+        if self == Value::undefined() || self == Value::null() {
+            return Value::bool(true);
         }
 
         match self {
-            Value2::Number(_) => Value2::bool(self.into_number() == val.into_number()),
-            Value2::String(_) => Value2::bool(self.into_str() == val.into_str()),
-            Value2::Bool(_) => Value2::bool(self.into_bool() == val.into_bool()),
-            Value2::Object(_) => Value2::bool(get_obj_ptr(self) == get_obj_ptr(val)),
-            _ => Value2::bool(false),
+            Value::Number(_) => Value::bool(self.into_number() == val.into_number()),
+            Value::String(_) => Value::bool(self.into_str() == val.into_str()),
+            Value::Bool(_) => Value::bool(self.into_bool() == val.into_bool()),
+            Value::Object(_) => Value::bool(get_obj_ptr(self) == get_obj_ptr(val)),
+            _ => Value::bool(false),
         }
     }
 
-    pub fn ne(self, allocator: &mut gc::MemoryAllocator, val: Value2) -> Self {
-        Value2::bool(!self.eq(allocator, val).into_bool())
+    pub fn ne(self, allocator: &mut gc::MemoryAllocator, val: Value) -> Self {
+        Value::bool(!self.eq(allocator, val).into_bool())
     }
 
-    pub fn strict_ne(self, val: Value2) -> Self {
-        Value2::bool(!self.strict_eq(val).into_bool())
+    pub fn strict_ne(self, val: Value) -> Self {
+        Value::bool(!self.strict_eq(val).into_bool())
     }
 
     /// https://tc39.github.io/ecma262/#sec-abstract-relational-comparison
-    pub fn cmp(self, allocator: &mut gc::MemoryAllocator, val: Value2) -> Self {
+    pub fn cmp(self, allocator: &mut gc::MemoryAllocator, val: Value) -> Self {
         let px = self.to_primitive(allocator, None);
         let py = val.to_primitive(allocator, None);
 
-        if let (Value2::String(x), Value2::String(y)) = (px, py) {
-            return Value2::bool(cstrp_to_str(x) < cstrp_to_str(y));
+        if let (Value::String(x), Value::String(y)) = (px, py) {
+            return Value::bool(cstrp_to_str(x) < cstrp_to_str(y));
         }
 
         let nx = px.to_number(allocator);
         let ny = py.to_number(allocator);
 
         if nx.is_nan() || ny.is_nan() {
-            return Value2::undefined();
+            return Value::undefined();
         }
 
         if nx == ny {
-            return Value2::Bool(0);
+            return Value::Bool(0);
         }
 
-        Value2::bool(nx < ny)
+        Value::bool(nx < ny)
     }
 
-    pub fn lt(self, allocator: &mut gc::MemoryAllocator, val: Value2) -> Self {
+    pub fn lt(self, allocator: &mut gc::MemoryAllocator, val: Value) -> Self {
         match self.cmp(allocator, val) {
-            Value2::Other(UNDEFINED) => Value2::Bool(0),
+            Value::Other(UNDEFINED) => Value::Bool(0),
             otherwise => otherwise,
         }
     }
 
-    pub fn le(self, allocator: &mut gc::MemoryAllocator, val: Value2) -> Self {
+    pub fn le(self, allocator: &mut gc::MemoryAllocator, val: Value) -> Self {
         match val.cmp(allocator, self) {
-            Value2::Other(UNDEFINED) | Value2::Bool(1) => Value2::Bool(0),
-            _ => Value2::Bool(1),
+            Value::Other(UNDEFINED) | Value::Bool(1) => Value::Bool(0),
+            _ => Value::Bool(1),
         }
     }
 
     // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-unary-minus-operator-runtime-semantics-evaluation
     pub fn minus(self) -> Self {
         match self {
-            Value2::Number(n) => Value2::Number(-n),
-            _ => Value2::undefined(),
+            Value::Number(n) => Value::Number(-n),
+            _ => Value::undefined(),
         }
     }
 
     // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-unary-plus-operator-runtime-semantics-evaluation
     pub fn positive(self, allocator: &mut gc::MemoryAllocator) -> Self {
-        Value2::Number(self.to_number(allocator))
+        Value::Number(self.to_number(allocator))
     }
 
-    pub fn is_same_type_as(&self, val: &Value2) -> bool {
+    pub fn is_same_type_as(&self, val: &Value) -> bool {
         match (self, val) {
-            (Value2::Other(UNINITIALIZED), Value2::Other(UNINITIALIZED))
-            | (Value2::Other(EMPTY), Value2::Other(EMPTY))
-            | (Value2::Other(NULL), Value2::Other(NULL))
-            | (Value2::Other(UNDEFINED), Value2::Other(UNDEFINED))
-            | (Value2::Number(_), Value2::Number(_))
-            | (Value2::String(_), Value2::String(_))
-            | (Value2::Bool(_), Value2::Bool(_))
-            | (Value2::Object(_), Value2::Object(_)) => true,
+            (Value::Other(UNINITIALIZED), Value::Other(UNINITIALIZED))
+            | (Value::Other(EMPTY), Value::Other(EMPTY))
+            | (Value::Other(NULL), Value::Other(NULL))
+            | (Value::Other(UNDEFINED), Value::Other(UNDEFINED))
+            | (Value::Number(_), Value::Number(_))
+            | (Value::String(_), Value::String(_))
+            | (Value::Bool(_), Value::Bool(_))
+            | (Value::Object(_), Value::Object(_)) => true,
             _ => false,
         }
     }
@@ -907,12 +903,12 @@ impl Value2 {
     // TODO: Correct implementation: https://www.ecma-international.org/ecma-262/6.0/#sec-typeof-operator-runtime-semantics-evaluation
     pub fn type_of(&self) -> &str {
         match self {
-            Value2::Other(UNDEFINED) => "undefined",
-            Value2::Other(NULL) => "object",
-            Value2::Bool(_) => "boolean",
-            Value2::Number(_) => "number",
-            Value2::String(_) => "string",
-            Value2::Object(info) => {
+            Value::Other(UNDEFINED) => "undefined",
+            Value::Other(NULL) => "object",
+            Value::Bool(_) => "boolean",
+            Value::Number(_) => "number",
+            Value::String(_) => "string",
+            Value::Object(info) => {
                 let info = unsafe { &**info };
                 match info.kind {
                     ObjectKind2::Function(_) => "function",
@@ -926,9 +922,9 @@ impl Value2 {
     }
 }
 
-impl Value2 {
+impl Value {
     pub fn debug_string(&self, nest: bool) -> String {
-        fn property_string(sorted_key_val: Vec<(&String, &Property2)>) -> String {
+        fn property_string(sorted_key_val: Vec<(&String, &Property)>) -> String {
             sorted_key_val
                 .iter()
                 .enumerate()
@@ -938,8 +934,8 @@ impl Value2 {
                         acc,
                         tupple.0,
                         match tupple.1 {
-                            Property2::Data(DataProperty { val, .. }) => val.debug_string(true),
-                            Property2::Accessor(AccessorProperty { get, set, .. }) => {
+                            Property::Data(DataProperty { val, .. }) => val.debug_string(true),
+                            Property::Accessor(AccessorProperty { get, set, .. }) => {
                                 let s_get = if get.is_undefined() { "" } else { "Getter" };
                                 let s_set = if set.is_undefined() { "" } else { "Setter" };
                                 format!(
@@ -964,15 +960,15 @@ impl Value2 {
         }
 
         match self {
-            Value2::Other(UNINITIALIZED) => "uninitialized".to_string(),
-            Value2::Other(EMPTY) => "empty".to_string(),
-            Value2::Other(NULL) => "null".to_string(),
-            Value2::Other(UNDEFINED) => "undefined".to_string(),
-            Value2::Other(_) => unreachable!(),
-            Value2::Bool(1) => "true".to_string(),
-            Value2::Bool(0) => "false".to_string(),
-            Value2::Bool(_) => unreachable!(),
-            Value2::Number(n) => {
+            Value::Other(UNINITIALIZED) => "uninitialized".to_string(),
+            Value::Other(EMPTY) => "empty".to_string(),
+            Value::Other(NULL) => "null".to_string(),
+            Value::Other(UNDEFINED) => "undefined".to_string(),
+            Value::Other(_) => unreachable!(),
+            Value::Bool(1) => "true".to_string(),
+            Value::Bool(0) => "false".to_string(),
+            Value::Bool(_) => unreachable!(),
+            Value::Number(n) => {
                 if n.is_nan() {
                     "NaN".to_string()
                 } else if n.is_infinite() {
@@ -981,7 +977,7 @@ impl Value2 {
                     format!("{}", n)
                 }
             }
-            Value2::String(s) => {
+            Value::String(s) => {
                 let s = unsafe { &**s };
                 if nest {
                     format!("'{}'", s.to_str().unwrap())
@@ -989,14 +985,14 @@ impl Value2 {
                     s.to_str().unwrap().to_string()
                 }
             }
-            Value2::Object(obj_info) => {
+            Value::Object(obj_info) => {
                 let obj_info = unsafe { &**obj_info };
                 match obj_info.kind {
                     ObjectKind2::Ordinary => {
                         let mut sorted_key_val =
                             (&obj_info.property)
                                 .iter()
-                                .collect::<Vec<(&String, &Property2)>>();
+                                .collect::<Vec<(&String, &Property)>>();
                         sorted_key_val
                             .sort_by(|(key1, _), (key2, _)| key1.as_str().cmp(key2.as_str()));
 
@@ -1019,7 +1015,7 @@ impl Value2 {
                         let mut sorted_key_val =
                             (&obj_info.property)
                                 .iter()
-                                .collect::<Vec<(&String, &Property2)>>();
+                                .collect::<Vec<(&String, &Property)>>();
                         sorted_key_val
                             .sort_by(|(key1, _), (key2, _)| key1.as_str().cmp(key2.as_str()));
 
@@ -1028,7 +1024,7 @@ impl Value2 {
                         let mut i = 0;
                         while i < length {
                             let mut empty_elems = 0;
-                            while i < length && Value2::empty() == ary_info.elems[i].as_data().val {
+                            while i < length && Value::empty() == ary_info.elems[i].as_data().val {
                                 empty_elems += 1;
                                 i += 1;
                             }

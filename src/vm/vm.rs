@@ -89,7 +89,7 @@ impl VM2 {
             record: frame::EnvironmentRecord::Declarative({
                 let mut record = FxHashMap::default();
                 for name in global_info.var_names {
-                    record.insert(name, Value2::undefined());
+                    record.insert(name, Value::undefined());
                 }
                 record
             }),
@@ -100,7 +100,7 @@ impl VM2 {
             record: frame::EnvironmentRecord::Declarative({
                 let mut record = FxHashMap::default();
                 for name in global_info.lex_names {
-                    record.insert(name, Value2::uninitialized());
+                    record.insert(name, Value::uninitialized());
                 }
                 record
             }),
@@ -138,7 +138,7 @@ impl VM2 {
             record: frame::EnvironmentRecord::Declarative({
                 let mut record = FxHashMap::default();
                 for name in global_info.var_names {
-                    record.insert(name, Value2::undefined());
+                    record.insert(name, Value::undefined());
                 }
                 record
             }),
@@ -149,7 +149,7 @@ impl VM2 {
             record: frame::EnvironmentRecord::Declarative({
                 let mut record = FxHashMap::default();
                 for name in global_info.lex_names {
-                    record.insert(name, Value2::uninitialized());
+                    record.insert(name, Value::uninitialized());
                 }
                 record
             }),
@@ -184,9 +184,9 @@ impl VM2 {
 
     pub fn call_function(
         &mut self,
-        callee: Value2,
-        args: &[Value2],
-        this: Value2,
+        callee: Value,
+        args: &[Value],
+        this: Value,
         cur_frame: &frame::Frame,
     ) -> VMResult {
         if !callee.is_function_object() {
@@ -210,8 +210,8 @@ impl VM2 {
     fn call_user_function(
         &mut self,
         user_func: &UserFunctionInfo,
-        args: &[Value2],
-        this: Value2,
+        args: &[Value],
+        this: Value,
         cur_frame: &frame::Frame,
         constructor_call: bool,
     ) -> VMResult {
@@ -228,7 +228,7 @@ impl VM2 {
         let var_env_ref = self.create_function_environment(
             |vm, record| {
                 for name in &user_func.var_names {
-                    record.insert(name.clone(), Value2::undefined());
+                    record.insert(name.clone(), Value::undefined());
                 }
 
                 for (i, FunctionParameter { name, rest_param }) in
@@ -237,18 +237,18 @@ impl VM2 {
                     record.insert(
                         name.clone(),
                         if *rest_param {
-                            Value2::array(
+                            Value::array(
                                 &mut vm.memory_allocator,
                                 &vm.object_prototypes,
                                 (*args)
                                     .get(i..)
                                     .unwrap_or(&vec![])
                                     .iter()
-                                    .map(|elem| Property2::new_data_simple(*elem))
-                                    .collect::<Vec<Property2>>(),
+                                    .map(|elem| Property::new_data_simple(*elem))
+                                    .collect::<Vec<Property>>(),
                             )
                         } else {
-                            *args.get(i).unwrap_or(&Value2::undefined())
+                            *args.get(i).unwrap_or(&Value::undefined())
                         },
                     );
                 }
@@ -260,7 +260,7 @@ impl VM2 {
         let lex_env_ref = self.create_declarative_environment(
             |_, record| {
                 for name in &user_func.lex_names {
-                    record.insert(name.clone(), Value2::uninitialized());
+                    record.insert(name.clone(), Value::uninitialized());
                 }
             },
             Some(var_env_ref),
@@ -294,19 +294,19 @@ impl VM2 {
 
     fn get_property_to_stack_top(
         &mut self,
-        parent: Value2,
-        key: Value2,
+        parent: Value,
+        key: Value,
         cur_frame: &mut frame::Frame,
     ) -> VMResult {
         let val = parent.get_property(&mut self.memory_allocator, &self.object_prototypes, key)?;
         match val {
-            Property2::Data(DataProperty { val, .. }) => {
+            Property::Data(DataProperty { val, .. }) => {
                 self.stack.push(val.into());
                 Ok(())
             }
-            Property2::Accessor(AccessorProperty { get, .. }) => {
+            Property::Accessor(AccessorProperty { get, .. }) => {
                 if get.is_undefined() {
-                    self.stack.push(Value2::undefined().into());
+                    self.stack.push(Value::undefined().into());
                     return Ok(());
                 }
                 self.enter_function(get, &[], parent, cur_frame, false)
@@ -316,28 +316,28 @@ impl VM2 {
 
     pub fn get_property(
         &mut self,
-        parent: Value2,
-        key: Value2,
+        parent: Value,
+        key: Value,
         cur_frame: &frame::Frame,
-    ) -> Result<Value2, RuntimeError> {
+    ) -> Result<Value, RuntimeError> {
         let val = parent.get_property(&mut self.memory_allocator, &self.object_prototypes, key)?;
         match val {
-            Property2::Data(DataProperty { val, .. }) => Ok(val),
-            Property2::Accessor(AccessorProperty { get, .. }) => {
+            Property::Data(DataProperty { val, .. }) => Ok(val),
+            Property::Accessor(AccessorProperty { get, .. }) => {
                 if get.is_undefined() {
-                    return Ok(Value2::undefined());
+                    return Ok(Value::undefined());
                 }
                 self.call_function(get, &[], parent, cur_frame)?;
-                Ok(self.stack.pop().unwrap().into(): Value2)
+                Ok(self.stack.pop().unwrap().into(): Value)
             }
         }
     }
 
     pub fn set_property(
         &mut self,
-        parent: Value2,
-        key: Value2,
-        val: Value2,
+        parent: Value,
+        key: Value,
+        val: Value,
         cur_frame: &frame::Frame,
     ) -> VMResult {
         let maybe_setter = parent.set_property(&mut self.memory_allocator, key, val)?;
@@ -421,7 +421,7 @@ impl VM2 {
                 }
 
                 if !exception_found {
-                    let val: Value2 = self.stack.pop().unwrap().into();
+                    let val: Value = self.stack.pop().unwrap().into();
                     return Err(RuntimeError::Exception2(val, node_pos));
                 }
             }};
@@ -456,162 +456,162 @@ impl VM2 {
                 // TODO: Macro for bin ops?
                 VMInst::ADD => {
                     cur_frame.pc += 1;
-                    let rhs: Value2 = self.stack.pop().unwrap().into();
-                    let lhs: Value2 = self.stack.pop().unwrap().into();
+                    let rhs: Value = self.stack.pop().unwrap().into();
+                    let lhs: Value = self.stack.pop().unwrap().into();
                     self.stack
                         .push(lhs.add(&mut self.memory_allocator, rhs).into());
                 }
                 VMInst::SUB => {
                     cur_frame.pc += 1;
-                    let rhs: Value2 = self.stack.pop().unwrap().into();
-                    let lhs: Value2 = self.stack.pop().unwrap().into();
+                    let rhs: Value = self.stack.pop().unwrap().into();
+                    let lhs: Value = self.stack.pop().unwrap().into();
                     self.stack.push(lhs.sub(rhs).into());
                 }
                 VMInst::MUL => {
                     cur_frame.pc += 1;
-                    let rhs: Value2 = self.stack.pop().unwrap().into();
-                    let lhs: Value2 = self.stack.pop().unwrap().into();
+                    let rhs: Value = self.stack.pop().unwrap().into();
+                    let lhs: Value = self.stack.pop().unwrap().into();
                     self.stack.push(lhs.mul(rhs).into());
                 }
                 VMInst::DIV => {
                     cur_frame.pc += 1;
-                    let rhs: Value2 = self.stack.pop().unwrap().into();
-                    let lhs: Value2 = self.stack.pop().unwrap().into();
+                    let rhs: Value = self.stack.pop().unwrap().into();
+                    let lhs: Value = self.stack.pop().unwrap().into();
                     self.stack.push(lhs.div(rhs).into());
                 }
                 VMInst::REM => {
                     cur_frame.pc += 1;
-                    let rhs: Value2 = self.stack.pop().unwrap().into();
-                    let lhs: Value2 = self.stack.pop().unwrap().into();
+                    let rhs: Value = self.stack.pop().unwrap().into();
+                    let lhs: Value = self.stack.pop().unwrap().into();
                     self.stack.push(lhs.rem(rhs).into());
                 }
                 VMInst::EQ => {
                     cur_frame.pc += 1;
-                    let rhs: Value2 = self.stack.pop().unwrap().into();
-                    let lhs: Value2 = self.stack.pop().unwrap().into();
+                    let rhs: Value = self.stack.pop().unwrap().into();
+                    let lhs: Value = self.stack.pop().unwrap().into();
                     self.stack
                         .push(lhs.eq(&mut self.memory_allocator, rhs).into());
                 }
                 VMInst::SEQ => {
                     cur_frame.pc += 1;
-                    let rhs: Value2 = self.stack.pop().unwrap().into();
-                    let lhs: Value2 = self.stack.pop().unwrap().into();
+                    let rhs: Value = self.stack.pop().unwrap().into();
+                    let lhs: Value = self.stack.pop().unwrap().into();
                     self.stack.push(lhs.strict_eq(rhs).into());
                 }
                 VMInst::NE => {
                     cur_frame.pc += 1;
-                    let rhs: Value2 = self.stack.pop().unwrap().into();
-                    let lhs: Value2 = self.stack.pop().unwrap().into();
+                    let rhs: Value = self.stack.pop().unwrap().into();
+                    let lhs: Value = self.stack.pop().unwrap().into();
                     self.stack
                         .push(lhs.ne(&mut self.memory_allocator, rhs).into());
                 }
                 VMInst::SNE => {
                     cur_frame.pc += 1;
-                    let rhs: Value2 = self.stack.pop().unwrap().into();
-                    let lhs: Value2 = self.stack.pop().unwrap().into();
+                    let rhs: Value = self.stack.pop().unwrap().into();
+                    let lhs: Value = self.stack.pop().unwrap().into();
                     self.stack.push(lhs.strict_ne(rhs).into());
                 }
                 VMInst::LT => {
                     cur_frame.pc += 1;
-                    let rhs: Value2 = self.stack.pop().unwrap().into();
-                    let lhs: Value2 = self.stack.pop().unwrap().into();
+                    let rhs: Value = self.stack.pop().unwrap().into();
+                    let lhs: Value = self.stack.pop().unwrap().into();
                     self.stack
                         .push(lhs.lt(&mut self.memory_allocator, rhs).into());
                 }
                 VMInst::LE => {
                     cur_frame.pc += 1;
-                    let rhs: Value2 = self.stack.pop().unwrap().into();
-                    let lhs: Value2 = self.stack.pop().unwrap().into();
+                    let rhs: Value = self.stack.pop().unwrap().into();
+                    let lhs: Value = self.stack.pop().unwrap().into();
                     self.stack
                         .push(lhs.le(&mut self.memory_allocator, rhs).into());
                 }
                 VMInst::GT => {
                     cur_frame.pc += 1;
-                    let rhs: Value2 = self.stack.pop().unwrap().into();
-                    let lhs: Value2 = self.stack.pop().unwrap().into();
+                    let rhs: Value = self.stack.pop().unwrap().into();
+                    let lhs: Value = self.stack.pop().unwrap().into();
                     self.stack
                         .push(rhs.lt(&mut self.memory_allocator, lhs).into());
                 }
                 VMInst::GE => {
                     cur_frame.pc += 1;
-                    let rhs: Value2 = self.stack.pop().unwrap().into();
-                    let lhs: Value2 = self.stack.pop().unwrap().into();
+                    let rhs: Value = self.stack.pop().unwrap().into();
+                    let lhs: Value = self.stack.pop().unwrap().into();
                     self.stack
                         .push(rhs.le(&mut self.memory_allocator, lhs).into());
                 }
                 VMInst::AND => {
                     cur_frame.pc += 1;
-                    let rhs: Value2 = self.stack.pop().unwrap().into();
-                    let lhs: Value2 = self.stack.pop().unwrap().into();
+                    let rhs: Value = self.stack.pop().unwrap().into();
+                    let lhs: Value = self.stack.pop().unwrap().into();
                     self.stack
                         .push(rhs.and(&mut self.memory_allocator, lhs).into());
                 }
                 VMInst::OR => {
                     cur_frame.pc += 1;
-                    let rhs: Value2 = self.stack.pop().unwrap().into();
-                    let lhs: Value2 = self.stack.pop().unwrap().into();
+                    let rhs: Value = self.stack.pop().unwrap().into();
+                    let lhs: Value = self.stack.pop().unwrap().into();
                     self.stack
                         .push(rhs.or(&mut self.memory_allocator, lhs).into());
                 }
                 VMInst::XOR => {
                     cur_frame.pc += 1;
-                    let rhs: Value2 = self.stack.pop().unwrap().into();
-                    let lhs: Value2 = self.stack.pop().unwrap().into();
+                    let rhs: Value = self.stack.pop().unwrap().into();
+                    let lhs: Value = self.stack.pop().unwrap().into();
                     self.stack
                         .push(rhs.xor(&mut self.memory_allocator, lhs).into());
                 }
                 VMInst::NOT => {
                     cur_frame.pc += 1;
-                    let rhs: Value2 = self.stack.pop().unwrap().into();
+                    let rhs: Value = self.stack.pop().unwrap().into();
                     self.stack.push(rhs.not(&mut self.memory_allocator).into());
                 }
                 VMInst::SHL => {
                     cur_frame.pc += 1;
-                    let rhs: Value2 = self.stack.pop().unwrap().into();
-                    let lhs: Value2 = self.stack.pop().unwrap().into();
+                    let rhs: Value = self.stack.pop().unwrap().into();
+                    let lhs: Value = self.stack.pop().unwrap().into();
                     self.stack
                         .push(lhs.shift_l(&mut self.memory_allocator, rhs).into());
                 }
                 VMInst::SHR => {
                     cur_frame.pc += 1;
-                    let rhs: Value2 = self.stack.pop().unwrap().into();
-                    let lhs: Value2 = self.stack.pop().unwrap().into();
+                    let rhs: Value = self.stack.pop().unwrap().into();
+                    let lhs: Value = self.stack.pop().unwrap().into();
                     self.stack
                         .push(lhs.shift_r(&mut self.memory_allocator, rhs).into());
                 }
                 VMInst::ZFSHR => {
                     cur_frame.pc += 1;
-                    let rhs: Value2 = self.stack.pop().unwrap().into();
-                    let lhs: Value2 = self.stack.pop().unwrap().into();
+                    let rhs: Value = self.stack.pop().unwrap().into();
+                    let lhs: Value = self.stack.pop().unwrap().into();
                     self.stack
                         .push(lhs.z_shift_r(&mut self.memory_allocator, rhs).into());
                 }
                 VMInst::NEG => {
                     cur_frame.pc += 1;
-                    let val: Value2 = self.stack.pop().unwrap().into();
+                    let val: Value = self.stack.pop().unwrap().into();
                     self.stack.push(val.minus().into());
                 }
                 VMInst::POSI => {
                     cur_frame.pc += 1;
-                    let val: Value2 = self.stack.pop().unwrap().into();
+                    let val: Value = self.stack.pop().unwrap().into();
                     self.stack
                         .push(val.positive(&mut self.memory_allocator).into());
                 }
                 VMInst::LNOT => {
                     cur_frame.pc += 1;
-                    let val: Value2 = self.stack.pop().unwrap().into();
-                    let res = Value2::bool(!val.to_boolean());
+                    let val: Value = self.stack.pop().unwrap().into();
+                    let res = Value::bool(!val.to_boolean());
                     self.stack.push(res.into());
                 }
                 VMInst::PUSH_INT8 => {
                     cur_frame.pc += 1;
                     read_int8!(cur_frame.bytecode, cur_frame.pc, num, f64);
-                    self.stack.push(Value2::Number(num).into());
+                    self.stack.push(Value::Number(num).into());
                 }
                 VMInst::PUSH_INT32 => {
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, num, i32);
-                    self.stack.push(Value2::Number(num as f64).into());
+                    self.stack.push(Value::Number(num as f64).into());
                 }
                 VMInst::PUSH_CONST => {
                     cur_frame.pc += 1;
@@ -621,11 +621,11 @@ impl VM2 {
                 }
                 VMInst::PUSH_NULL => {
                     cur_frame.pc += 1;
-                    self.stack.push(Value2::null().into());
+                    self.stack.push(Value::null().into());
                 }
                 VMInst::PUSH_UNDEFINED => {
                     cur_frame.pc += 1;
-                    self.stack.push(Value2::undefined().into());
+                    self.stack.push(Value::undefined().into());
                 }
                 VMInst::PUSH_THIS => {
                     cur_frame.pc += 1;
@@ -633,23 +633,23 @@ impl VM2 {
                 }
                 VMInst::PUSH_FALSE => {
                     cur_frame.pc += 1;
-                    self.stack.push(Value2::Bool(0).into());
+                    self.stack.push(Value::Bool(0).into());
                 }
                 VMInst::PUSH_TRUE => {
                     cur_frame.pc += 1;
-                    self.stack.push(Value2::Bool(1).into());
+                    self.stack.push(Value::Bool(1).into());
                 }
                 VMInst::GET_MEMBER => {
                     cur_frame.pc += 1;
-                    let property: Value2 = self.stack.pop().unwrap().into();
-                    let parent: Value2 = self.stack.pop().unwrap().into();
+                    let property: Value = self.stack.pop().unwrap().into();
+                    let parent: Value = self.stack.pop().unwrap().into();
                     etry!(self.get_property_to_stack_top(parent, property, &mut cur_frame))
                 }
                 VMInst::SET_MEMBER => {
                     cur_frame.pc += 1;
-                    let property: Value2 = self.stack.pop().unwrap().into();
-                    let parent: Value2 = self.stack.pop().unwrap().into();
-                    let val: Value2 = self.stack.pop().unwrap().into();
+                    let property: Value = self.stack.pop().unwrap().into();
+                    let parent: Value = self.stack.pop().unwrap().into();
+                    let val: Value = self.stack.pop().unwrap().into();
                     etry!(self.set_property(parent, property, val, &cur_frame))
                 }
                 VMInst::SET_VALUE => {
@@ -670,8 +670,8 @@ impl VM2 {
                 VMInst::CONSTRUCT => {
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, argc, usize);
-                    let callee: Value2 = self.stack.pop().unwrap().into();
-                    let mut args: Vec<Value2> = vec![];
+                    let callee: Value = self.stack.pop().unwrap().into();
+                    let mut args: Vec<Value> = vec![];
                     for _ in 0..argc {
                         args.push(self.stack.pop().unwrap().into());
                     }
@@ -680,8 +680,8 @@ impl VM2 {
                 VMInst::CALL => {
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, argc, usize);
-                    let callee: Value2 = self.stack.pop().unwrap().into();
-                    let mut args: Vec<Value2> = vec![];
+                    let callee: Value = self.stack.pop().unwrap().into();
+                    let mut args: Vec<Value> = vec![];
                     for _ in 0..argc {
                         args.push(self.stack.pop().unwrap().into());
                     }
@@ -690,9 +690,9 @@ impl VM2 {
                 VMInst::CALL_METHOD => {
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, argc, usize);
-                    let parent: Value2 = self.stack.pop().unwrap().into();
-                    let method: Value2 = self.stack.pop().unwrap().into();
-                    let mut args: Vec<Value2> = vec![];
+                    let parent: Value = self.stack.pop().unwrap().into();
+                    let method: Value = self.stack.pop().unwrap().into();
+                    let mut args: Vec<Value> = vec![];
                     for _ in 0..argc {
                         args.push(self.stack.pop().unwrap().into());
                     }
@@ -701,14 +701,14 @@ impl VM2 {
                         &self.object_prototypes,
                         method
                     )) {
-                        Property2::Data(DataProperty { val, .. }) => val,
+                        Property::Data(DataProperty { val, .. }) => val,
                         _ => type_error!("Not a function"),
                     };
                     etry!(self.enter_function(callee, &args, parent, &mut cur_frame, false))
                 }
                 VMInst::SET_OUTER_ENV => {
                     cur_frame.pc += 1;
-                    let func_template: Value2 = self.stack.pop().unwrap().into();
+                    let func_template: Value = self.stack.pop().unwrap().into();
                     let mut func = func_template.copy_object(&mut self.memory_allocator);
                     func.set_function_outer_environment(
                         cur_frame.execution_context.lexical_environment,
@@ -772,7 +772,7 @@ impl VM2 {
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, dst, i32);
                     let cond_boxed = self.stack.pop().unwrap();
-                    let cond: Value2 = cond_boxed.into();
+                    let cond: Value = cond_boxed.into();
                     if !cond.to_boolean() {
                         cur_frame.pc = (cur_frame.pc as isize + dst as isize) as usize;
                     }
@@ -827,10 +827,10 @@ impl VM2 {
                 }
                 VMInst::TYPEOF => {
                     cur_frame.pc += 1;
-                    let val: Value2 = self.stack.pop().unwrap().into();
+                    let val: Value = self.stack.pop().unwrap().into();
                     let type_str = val.type_of();
                     let type_str_val =
-                        Value2::string(&mut self.memory_allocator, type_str.to_string());
+                        Value::string(&mut self.memory_allocator, type_str.to_string());
                     self.stack.push(type_str_val.into());
                 }
                 VMInst::END => break,
@@ -848,9 +848,9 @@ impl VM2 {
 
     pub fn unwind_frame_saving_stack_top(&mut self, cur_frame: &mut frame::Frame) {
         let ret_val_boxed = self.stack.pop().unwrap();
-        let ret_val: Value2 = ret_val_boxed.into();
+        let ret_val: Value = ret_val_boxed.into();
         let frame = self.saved_frame.pop().unwrap();
-        unsafe { self.stack.set_len(frame.saved_stack_len) };
+        self.stack.truncate(frame.saved_stack_len);
         if cur_frame.constructor_call && !ret_val.is_object() {
             self.stack.push(cur_frame.this.into());
         } else {
@@ -861,7 +861,7 @@ impl VM2 {
 
     pub fn unwind_frame(&mut self, cur_frame: &mut frame::Frame) {
         let frame = self.saved_frame.pop().unwrap();
-        unsafe { self.stack.set_len(frame.saved_stack_len) };
+        self.stack.truncate(frame.saved_stack_len);
         *cur_frame = frame;
     }
 
@@ -869,7 +869,7 @@ impl VM2 {
         let lex_names = self.constant_table.get(id).as_lex_env_info();
         let mut record = FxHashMap::default();
         for name in lex_names {
-            record.insert(name.clone(), Value2::uninitialized());
+            record.insert(name.clone(), Value::uninitialized());
         }
 
         let lex_env = self.memory_allocator.alloc(frame::LexicalEnvironment {
@@ -891,15 +891,15 @@ impl VM2 {
         let mut properties = FxHashMap::default();
 
         for i in 0..len {
-            let prop: Value2 = self.stack.pop().unwrap().into();
+            let prop: Value = self.stack.pop().unwrap().into();
             let name = prop.to_string();
-            let val: Value2 = self.stack.pop().unwrap().into();
+            let val: Value = self.stack.pop().unwrap().into();
             if let Some(kind) = special_properties.get(&i) {
                 let AccessorProperty { get, set, .. } = properties
                     .entry(name)
-                    .or_insert(Property2::Accessor(AccessorProperty {
-                        get: Value2::undefined(),
-                        set: Value2::undefined(),
+                    .or_insert(Property::Accessor(AccessorProperty {
+                        get: Value::undefined(),
+                        set: Value::undefined(),
                         // TODO
                         enumerable: true,
                         configurable: true,
@@ -912,7 +912,7 @@ impl VM2 {
             } else {
                 properties.insert(
                     name,
-                    Property2::Data(DataProperty {
+                    Property::Data(DataProperty {
                         val,
                         // TODO
                         writable: true,
@@ -923,7 +923,7 @@ impl VM2 {
             }
         }
 
-        let obj = Value2::object(
+        let obj = Value::object(
             &mut self.memory_allocator,
             &self.object_prototypes,
             properties,
@@ -936,8 +936,8 @@ impl VM2 {
     fn create_array(&mut self, len: usize) -> VMResult {
         let mut elems = vec![];
         for _ in 0..len {
-            let val: Value2 = self.stack.pop().unwrap().into();
-            elems.push(Property2::Data(DataProperty {
+            let val: Value = self.stack.pop().unwrap().into();
+            elems.push(Property::Data(DataProperty {
                 val,
                 writable: true,
                 enumerable: true,
@@ -945,7 +945,7 @@ impl VM2 {
             }));
         }
 
-        let ary = Value2::array(&mut self.memory_allocator, &self.object_prototypes, elems);
+        let ary = Value::array(&mut self.memory_allocator, &self.object_prototypes, elems);
         self.stack.push(ary.into());
 
         Ok(())
@@ -953,11 +953,11 @@ impl VM2 {
 
     fn enter_constructor(
         &mut self,
-        callee: Value2,
-        args: &[Value2],
+        callee: Value,
+        args: &[Value],
         cur_frame: &mut frame::Frame,
     ) -> VMResult {
-        let this = Value2::Object(self.memory_allocator.alloc(ObjectInfo {
+        let this = Value::Object(self.memory_allocator.alloc(ObjectInfo {
             kind: ObjectKind2::Ordinary,
             prototype: callee.get_property_by_str_key("prototype"),
             property: FxHashMap::default(),
@@ -982,9 +982,9 @@ impl VM2 {
 
     fn enter_function(
         &mut self,
-        callee: Value2,
-        args: &[Value2],
-        this: Value2,
+        callee: Value,
+        args: &[Value],
+        this: Value,
         cur_frame: &mut frame::Frame,
         constructor_call: bool,
     ) -> VMResult {
@@ -1012,7 +1012,7 @@ impl VM2 {
         outer: Option<frame::LexicalEnvironmentRef>,
     ) -> frame::LexicalEnvironmentRef
     where
-        F: Fn(&mut VM2, &mut FxHashMap<String, Value2>),
+        F: Fn(&mut VM2, &mut FxHashMap<String, Value>),
     {
         let env = frame::LexicalEnvironment {
             record: frame::EnvironmentRecord::Declarative({
@@ -1028,11 +1028,11 @@ impl VM2 {
     fn create_function_environment<F>(
         &mut self,
         f: F,
-        this: Value2,
+        this: Value,
         outer: Option<frame::LexicalEnvironmentRef>,
     ) -> frame::LexicalEnvironmentRef
     where
-        F: Fn(&mut VM2, &mut FxHashMap<String, Value2>),
+        F: Fn(&mut VM2, &mut FxHashMap<String, Value>),
     {
         let env = frame::LexicalEnvironment {
             record: frame::EnvironmentRecord::Function {
@@ -1051,8 +1051,8 @@ impl VM2 {
     fn enter_user_function(
         &mut self,
         user_func: UserFunctionInfo,
-        args: &[Value2],
-        this: Value2,
+        args: &[Value],
+        this: Value,
         cur_frame: &mut frame::Frame,
         constructor_call: bool,
     ) -> VMResult {
@@ -1073,7 +1073,7 @@ impl VM2 {
         let var_env_ref = self.create_function_environment(
             |vm, record| {
                 for name in &user_func.var_names {
-                    record.insert(name.clone(), Value2::undefined());
+                    record.insert(name.clone(), Value::undefined());
                 }
 
                 for (i, FunctionParameter { name, rest_param }) in
@@ -1082,18 +1082,18 @@ impl VM2 {
                     record.insert(
                         name.clone(),
                         if *rest_param {
-                            Value2::array(
+                            Value::array(
                                 &mut vm.memory_allocator,
                                 &vm.object_prototypes,
                                 (*args)
                                     .get(i..)
                                     .unwrap_or(&vec![])
                                     .iter()
-                                    .map(|elem| Property2::new_data_simple(*elem))
-                                    .collect::<Vec<Property2>>(),
+                                    .map(|elem| Property::new_data_simple(*elem))
+                                    .collect::<Vec<Property>>(),
                             )
                         } else {
-                            *args.get(i).unwrap_or(&Value2::undefined())
+                            *args.get(i).unwrap_or(&Value::undefined())
                         },
                     );
                 }
@@ -1105,7 +1105,7 @@ impl VM2 {
         let lex_env_ref = self.create_declarative_environment(
             |_, record| {
                 for name in &user_func.lex_names {
-                    record.insert(name.clone(), Value2::uninitialized());
+                    record.insert(name.clone(), Value::uninitialized());
                 }
             },
             Some(var_env_ref),

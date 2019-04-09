@@ -1,7 +1,7 @@
 extern crate rapidus;
 use rapidus::bytecode_gen;
 use rapidus::parser;
-use rapidus::{vm, vm::frame, vm::jsvalue::value::Value2, vm::vm::VM2};
+use rapidus::{vm, vm::frame, vm::jsvalue::value::Value, vm::vm::VM2};
 
 extern crate libc;
 
@@ -92,7 +92,7 @@ fn main() {
     }
 
     for (i, val_boxed) in vm.stack.iter().enumerate() {
-        let val: Value2 = (*val_boxed).into();
+        let val: Value = (*val_boxed).into();
         println!("stack remaining: [{}]: {:?}", i, val);
     }
 }
@@ -144,7 +144,7 @@ fn repl() {
                     }
 
                     if vm.stack.len() != 0 {
-                        let val: Value2 = vm.stack[0].into();
+                        let val: Value = vm.stack[0].into();
                         println!("{}", val.debug_string(true));
                         vm.stack = vec![];
                     }
