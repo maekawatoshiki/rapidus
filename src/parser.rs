@@ -815,31 +815,41 @@ impl Parser {
     }
 
     /// https://tc39.github.io/ecma262/#prod-LeftHandSideExpression
-    // TODO: Implement all features.
+    /// TODO: Implement NewExpression: new MemberExpression
     fn read_left_hand_side_expression(&mut self) -> Result<Node, Error> {
-        let lhs = self.read_new_expression()?;
-
-        Ok(lhs)
+        let lhs = self.read_member_expression()?;
+        match self.lexer.peek_skip_lineterminator() {
+            Ok(ref tok) if tok.kind == Kind::Symbol(Symbol::OpeningParen) => {
+                self.read_call_expression(lhs)
+            }
+            _ => self.read_new_expression(lhs),
+        }
     }
 
     /// https://tc39.github.io/ecma262/#prod-NewExpression
-    fn read_new_expression(&mut self) -> Result<Node, Error> {
-        let pos = self.lexer.get_current_pos();
-        if self.lexer.next_if(Kind::Keyword(Keyword::New)) {
-            Ok(Node::new(
-                NodeBase::New(Box::new(self.read_new_expression()?)),
-                pos,
-            ))
-        } else {
-            self.read_call_expression()
-        }
+    /// TODO: Implement NewExpression: new MemberExpression
+    fn read_new_expression(&mut self, first_member_expr: Node) -> Result<Node, Error> {
+        Ok(first_member_expr)
     }
 
     /// https://tc39.github.io/ecma262/#prod-CallExpression
     // TODO: Implement all features.
-    fn read_call_expression(&mut self) -> Result<Node, Error> {
-        let pos = self.lexer.get_current_pos();
-        let mut lhs = self.read_primary_expression()?;
+    fn read_call_expression(&mut self, first_member_expr: Node) -> Result<Node, Error> {
+        let pos = first_member_expr.pos;
+        let mut lhs = first_member_expr;
+        match self
+            .lexer
+            .next_if_skip_lineterminator(Kind::Symbol(Symbol::OpeningParen))
+        {
+            Ok(true) => {
+                let args = self.read_arguments()?;
+                lhs = Node::new(NodeBase::Call(Box::new(lhs), args), pos)
+            }
+            _ => {
+                panic!("CallExpression MUST start with MemberExpression.");
+            }
+        };
+
         while let Ok(tok) = self.lexer.next_skip_lineterminator() {
             let pos_ = self.lexer.get_current_pos();
             match tok.kind {
@@ -847,6 +857,59 @@ impl Parser {
                     let args = self.read_arguments()?;
                     lhs = Node::new(NodeBase::Call(Box::new(lhs), args), pos)
                 }
+                Kind::Symbol(Symbol::Point) => match self.lexer.next_skip_lineterminator()?.kind {
+                    Kind::Identifier(name) => {
+                        lhs = Node::new(NodeBase::Member(Box::new(lhs), name), pos)
+                    }
+                    Kind::Keyword(kw) => {
+                        lhs =
+                            Node::new(NodeBase::Member(Box::new(lhs), kw.to_str().to_owned()), pos)
+                    }
+                    _ => {
+                        return Err(Error::Expect(pos_, "expect identifier".to_string()));
+                    }
+                },
+                Kind::Symbol(Symbol::OpeningBoxBracket) => {
+                    let idx = self.read_expression()?;
+                    if !self.lexer.next_if(Kind::Symbol(Symbol::ClosingBoxBracket)) {
+                        return Err(Error::Expect(
+                            self.lexer.get_current_pos(),
+                            "expect ']'".to_string(),
+                        ));
+                    }
+                    lhs = Node::new(NodeBase::Index(Box::new(lhs), Box::new(idx)), pos);
+                }
+                _ => {
+                    self.lexer.unget();
+                    break;
+                }
+            }
+        }
+
+        Ok(lhs)
+    }
+
+    /// https://tc39.github.io/ecma262/#prod-CallExpression
+    // TODO: Implement all features.
+    fn read_member_expression(&mut self) -> Result<Node, Error> {
+        let pos = self.lexer.get_current_pos();
+        let mut lhs = if self.lexer.peek_skip_lineterminator()?.kind == Kind::Keyword(Keyword::New)
+        {
+            self.lexer.next_skip_lineterminator()?;
+            let call_pos = self.lexer.get_current_pos();
+            let lhs = self.read_member_expression()?;
+            expect!(self, Kind::Symbol(Symbol::OpeningParen), "expect '('.");
+            let args = self.read_arguments()?;
+            let call_node = Node::new(NodeBase::Call(Box::new(lhs), args), call_pos);
+            let new_node = Node::new(NodeBase::New(Box::new(call_node)), pos);
+            new_node
+        } else {
+            self.read_primary_expression()?
+        };
+        println!("PE/ME {:?}", lhs);
+        while let Ok(tok) = self.lexer.next_skip_lineterminator() {
+            let pos_ = self.lexer.get_current_pos();
+            match tok.kind {
                 Kind::Symbol(Symbol::Point) => match self.lexer.next_skip_lineterminator()?.kind {
                     Kind::Identifier(name) => {
                         lhs = Node::new(NodeBase::Member(Box::new(lhs), name), pos)

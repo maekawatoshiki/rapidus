@@ -312,4 +312,9 @@ mod tests {
     fn env() {
         assert_file("env")
     }
+
+    #[test]
+    fn new_call_member() {
+        assert_file("new_call_member")
+    }
 }
