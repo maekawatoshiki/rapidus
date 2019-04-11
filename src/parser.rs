@@ -906,7 +906,6 @@ impl Parser {
         } else {
             self.read_primary_expression()?
         };
-        println!("PE/ME {:?}", lhs);
         while let Ok(tok) = self.lexer.next_skip_lineterminator() {
             let pos_ = self.lexer.get_current_pos();
             match tok.kind {

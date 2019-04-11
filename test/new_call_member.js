@@ -5,7 +5,7 @@ const assert = (n, l, r) => {
 }
 
 const o = {
-  h: function(str) {
+  f: function(str) {
     return str2 => {
       return str + str2
     }
@@ -22,5 +22,12 @@ function f() {
   }
 }
 
+let g = function(x) {
+  return function(y) {
+    return { ans: x * y }
+  }
+}
+
 assert(0, new f().g(), 'OK')
-assert(1, new o.h('O')('K'), 'OK')
+assert(1, new o.f('O')('K'), 'OK')
+assert(2, new new g(5)(4).ans, 20)
