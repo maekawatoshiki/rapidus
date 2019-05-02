@@ -7,7 +7,6 @@ pub use super::prototype::*;
 pub use super::symbol::*;
 use builtin::BuiltinFuncTy2;
 use gc;
-use id::get_unique_id;
 pub use rustc_hash::FxHashMap;
 use std::ffi::CString;
 
@@ -33,6 +32,35 @@ make_nanbox! {
         // Symbol(*mut SymbolInfo),
         Other(i32) // UNINITIALIZED | EMPTY | NULL | UNDEFINED
     }
+}
+
+macro_rules! add_property_sub {
+    ($(
+         $objectinfo:ident,
+         $property_name:ident,
+         $val:expr,
+         $writable:ident,
+         $enumerable:ident,
+         $configurable:ident
+    ),*) => { {
+        $( $objectinfo.property.insert(
+            (stringify!($property_name)).to_string(),
+            Property::Data(DataProperty {
+                val: $val,
+                writable: $writable,
+                enumerable: $enumerable,
+                configurable: $configurable
+            })
+            );
+        )*
+    } };
+}
+
+#[macro_export]
+macro_rules! add_property {
+    ($object:ident, $($property_name:ident => $x:ident, $y:ident, $z:ident : $val:expr),*) => { {
+        add_property_sub!($($object, $property_name, $val, $x, $y, $z),* )
+    } };
 }
 
 macro_rules! make_property_map_sub {
@@ -132,27 +160,6 @@ impl Value {
         }))
     }
 
-    pub fn builtin_function(
-        memory_allocator: &mut gc::MemoryAllocator,
-        object_prototypes: &ObjectPrototypes,
-        name: String,
-        func: BuiltinFuncTy2,
-    ) -> Self {
-        let name_prop = Value::string(memory_allocator, name.clone());
-        Value::Object(memory_allocator.alloc(ObjectInfo {
-            kind: ObjectKind2::Function(FunctionObjectInfo {
-                name: Some(name),
-                kind: FunctionObjectKind::Builtin(func),
-            }),
-            prototype: object_prototypes.function,
-            property: make_property_map!(
-                length => false, false, true : Value::Number(0.0),
-                name   => false, false, true : name_prop
-            ),
-            sym_property: FxHashMap::default(),
-        }))
-    }
-
     pub fn builtin_function_with_proto(
         memory_allocator: &mut gc::MemoryAllocator,
         proto: Value,
@@ -170,74 +177,6 @@ impl Value {
                 length => false, false, true : Value::Number(0.0),
                 name   => false, false, true : name_prop
             ),
-            sym_property: FxHashMap::default(),
-        }))
-    }
-
-    pub fn function(
-        memory_allocator: &mut gc::MemoryAllocator,
-        object_prototypes: &ObjectPrototypes,
-        // TODO: Too many arguments, I think.
-        name: Option<String>,
-        info: UserFunctionInfo,
-        // params: Vec<FunctionParameter>,
-        // var_names: Vec<String>,
-        // lex_names: Vec<String>,
-        // func_decls: Vec<Value>,
-        // constructor: bool,
-        // code: ByteCode,
-        // exception_table: Vec<Exception>,
-    ) -> Self {
-        let name_prop = Value::string(memory_allocator, name.clone().unwrap_or("".to_string()));
-        let prototype = Value::object(memory_allocator, object_prototypes, FxHashMap::default());
-
-        let f = Value::Object(memory_allocator.alloc(ObjectInfo {
-            prototype: object_prototypes.function,
-            property: make_property_map!(
-                length    => false, false, true : Value::Number(info.params.len() as f64), /* TODO: rest param */
-                name      => false, false, true : name_prop,
-                prototype => true , false, false: prototype
-            ),
-            kind: ObjectKind2::Function(FunctionObjectInfo {
-                name: name,
-                kind: FunctionObjectKind::User(info)
-            }),
-            sym_property: FxHashMap::default(),
-        }));
-
-        f.get_property_by_str_key("prototype")
-            .get_object_info()
-            .property
-            .insert("constructor".to_string(), Property::new_data_simple(f));
-
-        f
-    }
-
-    pub fn array(
-        memory_allocator: &mut gc::MemoryAllocator,
-        object_prototypes: &ObjectPrototypes,
-        elems: Vec<Property>,
-    ) -> Self {
-        Value::Object(memory_allocator.alloc(ObjectInfo {
-            kind: ObjectKind2::Array(ArrayObjectInfo { elems }),
-            prototype: object_prototypes.array,
-            property: make_property_map!(),
-            sym_property: FxHashMap::default(),
-        }))
-    }
-
-    pub fn symbol(
-        memory_allocator: &mut gc::MemoryAllocator,
-        object_prototypes: &ObjectPrototypes,
-        description: Option<String>,
-    ) -> Self {
-        Value::Object(memory_allocator.alloc(ObjectInfo {
-            kind: ObjectKind2::Symbol(SymbolInfo {
-                id: get_unique_id(),
-                description,
-            }),
-            prototype: object_prototypes.symbol,
-            property: make_property_map!(),
             sym_property: FxHashMap::default(),
         }))
     }

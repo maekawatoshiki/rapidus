@@ -7,7 +7,7 @@ use std::ops::{Deref, DerefMut};
 use vm::codegen::FunctionInfo;
 use vm::error::RuntimeError;
 use vm::jsvalue::function::Exception;
-use vm::jsvalue::object::{DataProperty, ObjectInfo, ObjectKind2, Property};
+use vm::jsvalue::object::{ObjectInfo, ObjectKind2};
 use vm::jsvalue::prototype::ObjectPrototypes;
 use vm::jsvalue::value::Value;
 use vm::vm::VMResult;
@@ -192,49 +192,18 @@ impl LexicalEnvironment {
         }
     }
 
-    pub fn new_global_initialized(
+    pub fn new_global(
         memory_allocator: &mut gc::MemoryAllocator,
         object_prototypes: &ObjectPrototypes,
     ) -> Self {
-        use builtin::parse_float;
-        use builtins;
-
-        let log = Value::builtin_function(
-            memory_allocator,
-            object_prototypes,
-            "log".to_string(),
-            builtins::console::console_log,
-        );
-        let parse_float = Value::builtin_function(
-            memory_allocator,
-            object_prototypes,
-            "parseFloat".to_string(),
-            parse_float,
-        );
-        let console = make_normal_object!(memory_allocator, object_prototypes,
-            log => true, false, true: log
-        );
-        let object_constructor = builtins::object::object(memory_allocator, object_prototypes);
-        let function_constructor =
-            builtins::function::function(memory_allocator, object_prototypes);
-        let array_constructor = builtins::array::array(memory_allocator, object_prototypes);
-        let symbol_constructor = builtins::symbol::symbol(memory_allocator, object_prototypes);
-        let math_object = builtins::math::math(memory_allocator, object_prototypes);
+        let global_object = Value::Object(memory_allocator.alloc(ObjectInfo {
+            kind: ObjectKind2::Ordinary,
+            prototype: object_prototypes.object,
+            property: FxHashMap::default(),
+            sym_property: FxHashMap::default(),
+        }));
         LexicalEnvironment {
-            record: EnvironmentRecord::Global(make_normal_object!(
-                memory_allocator,
-                object_prototypes,
-                undefined  => false,false,false: Value::undefined(),
-                NaN        => false,false,false: Value::Number(::std::f64::NAN),
-                Infinity   => false,false,false: Value::Number(::std::f64::INFINITY),
-                parseFloat => true, false, true: parse_float,
-                console    => true, false, true: console,
-                Object     => true, false, true: object_constructor,
-                Function   => true, false, true: function_constructor,
-                Array      => true, false, true: array_constructor,
-                Symbol     => true, false, true: symbol_constructor,
-                Math       => true, false, true: math_object
-            )),
+            record: EnvironmentRecord::Global(global_object),
             outer: None,
         }
     }

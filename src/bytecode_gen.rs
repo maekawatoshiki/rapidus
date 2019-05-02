@@ -4,13 +4,11 @@ use vm::jsvalue::value::Value;
 pub type ByteCode = Vec<u8>;
 
 #[derive(Debug)]
-pub struct ByteCodeGenerator<'a> {
-    pub constant_table: &'a mut constant::ConstantTable,
-}
+pub struct ByteCodeGenerator {}
 
-impl<'a> ByteCodeGenerator<'a> {
-    pub fn new(constant_table: &'a mut constant::ConstantTable) -> Self {
-        ByteCodeGenerator { constant_table }
+impl<'a> ByteCodeGenerator {
+    pub fn new() -> Self {
+        ByteCodeGenerator {}
     }
 
     pub fn append_end(&self, iseq: &mut ByteCode) {
@@ -46,7 +44,12 @@ impl<'a> ByteCodeGenerator<'a> {
         self.append_int32(n, iseq);
     }
 
-    pub fn append_push_number(&mut self, n: f64, iseq: &mut ByteCode) {
+    pub fn append_push_number(
+        &mut self,
+        n: f64,
+        iseq: &mut ByteCode,
+        constant_table: &mut constant::ConstantTable,
+    ) {
         // If 'n' is an integer:
         if n - n.floor() == 0.0 {
             // If 'n' is within 1 byte:
@@ -59,7 +62,7 @@ impl<'a> ByteCodeGenerator<'a> {
             }
         }
 
-        self.append_push_const(Value::Number(n), iseq)
+        self.append_push_const(Value::Number(n), iseq, constant_table)
     }
 
     pub fn append_push_bool(&self, b: bool, iseq: &mut ByteCode) {
@@ -70,9 +73,14 @@ impl<'a> ByteCodeGenerator<'a> {
         })
     }
 
-    pub fn append_push_const(&mut self, val: Value, iseq: &mut ByteCode) {
+    pub fn append_push_const(
+        &mut self,
+        val: Value,
+        iseq: &mut ByteCode,
+        constant_table: &mut constant::ConstantTable,
+    ) {
         iseq.push(VMInst::PUSH_CONST);
-        let id = self.constant_table.add_value(val);
+        let id = constant_table.add_value(val);
         self.append_int32(id as i32, iseq);
     }
 
@@ -244,14 +252,24 @@ impl<'a> ByteCodeGenerator<'a> {
         iseq.push(VMInst::UPDATE_PARENT_SCOPE);
     }
 
-    pub fn append_get_value(&mut self, name: &String, iseq: &mut ByteCode) {
-        let id = self.constant_table.add_string(name.clone()) as i32;
+    pub fn append_get_value(
+        &mut self,
+        name: &String,
+        iseq: &mut ByteCode,
+        constant_table: &mut constant::ConstantTable,
+    ) {
+        let id = constant_table.add_string(name.clone()) as i32;
         iseq.push(VMInst::GET_VALUE);
         self.append_int32(id, iseq);
     }
 
-    pub fn append_set_value(&mut self, name: &String, iseq: &mut ByteCode) {
-        let id = self.constant_table.add_string(name.clone()) as i32;
+    pub fn append_set_value(
+        &mut self,
+        name: &String,
+        iseq: &mut ByteCode,
+        constant_table: &mut constant::ConstantTable,
+    ) {
+        let id = constant_table.add_string(name.clone()) as i32;
         iseq.push(VMInst::SET_VALUE);
         self.append_int32(id, iseq);
     }

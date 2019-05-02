@@ -1,4 +1,3 @@
-use gc::MemoryAllocator;
 use vm::{
     error::RuntimeError,
     frame,
@@ -6,58 +5,32 @@ use vm::{
     vm::{VMResult, VM2},
 };
 
-pub fn symbol(
-    memory_allocator: &mut MemoryAllocator,
-    object_prototypes: &ObjectPrototypes,
-) -> Value {
-    let obj = Value::builtin_function(
-        memory_allocator,
-        object_prototypes,
-        "Symbol".to_string(),
-        symbol_constructor,
-    );
+pub fn symbol(vm: &mut VM2) -> Value {
+    let obj = vm.builtin_function("Symbol".to_string(), symbol_constructor);
 
     // Symbol.for
     obj.set_property_by_string_key("for".to_string(), {
-        Value::builtin_function(
-            memory_allocator,
-            object_prototypes,
-            "for".to_string(),
-            symbol_for,
-        )
+        vm.builtin_function("for".to_string(), symbol_for)
     });
     // Symbol.keyFor
     obj.set_property_by_string_key("keyFor".to_string(), {
-        Value::builtin_function(
-            memory_allocator,
-            object_prototypes,
-            "keyFor".to_string(),
-            symbol_key_for,
-        )
+        vm.builtin_function("keyFor".to_string(), symbol_key_for)
     });
 
-    obj.set_property_by_string_key("prototype".to_string(), object_prototypes.symbol);
+    obj.set_property_by_string_key("prototype".to_string(), vm.object_prototypes.symbol);
     obj.get_property_by_str_key("prototype")
         .set_constructor(obj);
     obj
 }
 
 pub fn symbol_constructor(vm: &mut VM2, args: &[Value], _cur_frame: &frame::Frame) -> VMResult {
-    let symbol = Value::symbol(
-        &mut vm.memory_allocator,
-        &vm.object_prototypes,
-        args.get(0).map(|arg| arg.to_string()),
-    );
+    let symbol = vm.symbol(args.get(0).map(|arg| arg.to_string()));
     vm.stack.push(symbol.into());
     Ok(())
 }
 
 pub fn symbol_for(vm: &mut VM2, args: &[Value], _cur_frame: &frame::Frame) -> VMResult {
-    let sym = vm.global_symbol_registry.for_(
-        &mut vm.memory_allocator,
-        &vm.object_prototypes,
-        args.get(0).unwrap_or(&Value::undefined()).to_string(),
-    );
+    let sym = vm.symbol_registory_for_(args.get(0).unwrap_or(&Value::undefined()).to_string());
     vm.stack.push(sym.into());
     Ok(())
 }

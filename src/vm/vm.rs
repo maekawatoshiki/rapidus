@@ -10,6 +10,7 @@ use super::{
     jsvalue::symbol::GlobalSymbolRegistry,
     jsvalue::value::*,
 };
+use builtin::BuiltinFuncTy2;
 use bytecode_gen::show_inst2;
 use bytecode_gen::ByteCode;
 use bytecode_gen::VMInst;
@@ -20,6 +21,7 @@ use rustc_hash::FxHashMap;
 
 pub type VMResult = Result<(), RuntimeError>;
 
+#[derive(Debug)]
 pub struct VM2 {
     pub global_environment: frame::LexicalEnvironmentRef,
     pub memory_allocator: gc::MemoryAllocator,
@@ -44,12 +46,10 @@ impl VM2 {
     pub fn new() -> Self {
         let mut memory_allocator = gc::MemoryAllocator::new();
         let object_prototypes = ObjectPrototypes::new(&mut memory_allocator);
-        let global_env = frame::LexicalEnvironment::new_global_initialized(
-            &mut memory_allocator,
-            &object_prototypes,
-        );
+        let global_env =
+            frame::LexicalEnvironment::new_global(&mut memory_allocator, &object_prototypes);
         let global_environment = frame::LexicalEnvironmentRef(memory_allocator.alloc(global_env));
-        VM2 {
+        let mut vm = VM2 {
             global_environment,
             memory_allocator,
             object_prototypes,
@@ -58,7 +58,38 @@ impl VM2 {
             stack: vec![],
             saved_frame: vec![],
             to_source_map: FxHashMap::default(),
-        }
+        };
+
+        use builtin::parse_float;
+        use builtins;
+
+        let log = vm.builtin_function("log".to_string(), builtins::console::console_log);
+        let parse_float = vm.builtin_function("parseFloat".to_string(), parse_float);
+        let console = make_normal_object!(vm.memory_allocator, vm.object_prototypes,
+            log => true, false, true: log
+        );
+        let object_constructor = builtins::object::object(&mut vm);
+        let function_constructor = builtins::function::function(&mut vm);
+        let array_constructor = builtins::array::array(&mut vm);
+        let symbol_constructor = builtins::symbol::symbol(&mut vm);
+        let math_object = builtins::math::math(&mut vm);
+
+        let global_object = vm.global_environment.get_global_object();
+        let global_objectinfo = global_object.get_object_info();
+        add_property!(global_objectinfo,
+            undefined  => false,false,false: Value::undefined(),
+            NaN        => false,false,false: Value::Number(::std::f64::NAN),
+            Infinity   => false,false,false: Value::Number(::std::f64::INFINITY),
+            parseFloat => true, false, true: parse_float,
+            console    => true, false, true: console,
+            Object     => true, false, true: object_constructor,
+            Function   => true, false, true: function_constructor,
+            Array      => true, false, true: array_constructor,
+            Symbol     => true, false, true: symbol_constructor,
+            Math       => true, false, true: math_object
+        );
+
+        vm
     }
 
     pub fn compile(
@@ -67,15 +98,12 @@ impl VM2 {
         iseq: &mut ByteCode,
         use_value: bool,
     ) -> Result<codegen::FunctionInfo, codegen::Error> {
-        let mut code_generator = CodeGenerator::new(
-            // &parser,
-            &mut self.constant_table,
-            &mut self.memory_allocator,
-            &self.object_prototypes,
-        );
-        let res = code_generator.compile(node, iseq, use_value);
-        self.to_source_map = code_generator.to_source_map;
-        res
+        let (res, source_map) = {
+            let mut code_generator = CodeGenerator::new(self);
+            code_generator.compile(node, iseq, use_value)?
+        };
+        self.to_source_map = source_map;
+        Ok(res)
     }
 
     pub fn create_global_frame(
@@ -241,9 +269,7 @@ impl VM2 {
                     record.insert(
                         name.clone(),
                         if *rest_param {
-                            Value::array(
-                                &mut vm.memory_allocator,
-                                &vm.object_prototypes,
+                            vm.array(
                                 (*args)
                                     .get(i..)
                                     .unwrap_or(&vec![])
@@ -946,7 +972,7 @@ impl VM2 {
             }));
         }
 
-        let ary = Value::array(&mut self.memory_allocator, &self.object_prototypes, elems);
+        let ary = self.array(elems);
         self.stack.push(ary.into());
 
         Ok(())
@@ -1085,9 +1111,7 @@ impl VM2 {
                     record.insert(
                         name.clone(),
                         if *rest_param {
-                            Value::array(
-                                &mut vm.memory_allocator,
-                                &vm.object_prototypes,
+                            vm.array(
                                 (*args)
                                     .get(i..)
                                     .unwrap_or(&vec![])
@@ -1139,5 +1163,93 @@ impl VM2 {
         *cur_frame = frame;
 
         Ok(())
+    }
+}
+
+impl VM2 {
+    pub fn function(&mut self, name: Option<String>, info: UserFunctionInfo) -> Value {
+        let name_prop = Value::string(
+            &mut self.memory_allocator,
+            name.clone().unwrap_or("".to_string()),
+        );
+        let prototype = Value::object(
+            &mut self.memory_allocator,
+            &self.object_prototypes,
+            FxHashMap::default(),
+        );
+
+        let f = Value::Object(self.memory_allocator.alloc(ObjectInfo {
+            prototype: self.object_prototypes.function,
+            property: make_property_map!(
+                length    => false, false, true : Value::Number(info.params.len() as f64), /* TODO: rest param */
+                name      => false, false, true : name_prop,
+                prototype => true , false, false: prototype
+            ),
+            kind: ObjectKind2::Function(FunctionObjectInfo {
+                name: name,
+                kind: FunctionObjectKind::User(info)
+            }),
+            sym_property: FxHashMap::default(),
+        }));
+
+        f.get_property_by_str_key("prototype")
+            .get_object_info()
+            .property
+            .insert("constructor".to_string(), Property::new_data_simple(f));
+
+        f
+    }
+
+    pub fn builtin_function(&mut self, name: String, func: BuiltinFuncTy2) -> Value {
+        let name_prop = Value::string(&mut self.memory_allocator, name.clone());
+        Value::Object(self.memory_allocator.alloc(ObjectInfo {
+            kind: ObjectKind2::Function(FunctionObjectInfo {
+                name: Some(name),
+                kind: FunctionObjectKind::Builtin(func),
+            }),
+            prototype: self.object_prototypes.function,
+            property: make_property_map!(
+                length => false, false, true : Value::Number(0.0),
+                name   => false, false, true : name_prop
+            ),
+            sym_property: FxHashMap::default(),
+        }))
+    }
+
+    pub fn array(&mut self, elems: Vec<Property>) -> Value {
+        Value::Object(self.memory_allocator.alloc(ObjectInfo {
+            kind: ObjectKind2::Array(ArrayObjectInfo { elems }),
+            prototype: self.object_prototypes.array,
+            property: make_property_map!(),
+            sym_property: FxHashMap::default(),
+        }))
+    }
+
+    pub fn symbol(&mut self, description: Option<String>) -> Value {
+        Value::Object(self.memory_allocator.alloc(ObjectInfo {
+            kind: ObjectKind2::Symbol(SymbolInfo {
+                id: ::id::get_unique_id(),
+                description,
+            }),
+            prototype: self.object_prototypes.symbol,
+            property: make_property_map!(),
+            sym_property: FxHashMap::default(),
+        }))
+    }
+
+    pub fn symbol_registory_for_(&mut self, key: String) -> Value {
+        if let Some((_, sym)) = self
+            .global_symbol_registry
+            .list
+            .iter()
+            .find(|(key_, _)| key == *key_)
+        {
+            return *sym;
+        }
+
+        let sym = self.symbol(Some(key.clone()));
+        self.global_symbol_registry.list.push((key, sym));
+
+        sym
     }
 }

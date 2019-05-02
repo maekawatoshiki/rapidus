@@ -1,17 +1,8 @@
-use gc;
-use vm::{frame, jsvalue, jsvalue::value::Value, vm};
+use vm::{frame, jsvalue::value::Value, vm};
 
-pub fn function(
-    memory_allocator: &mut gc::MemoryAllocator,
-    object_prototypes: &jsvalue::prototype::ObjectPrototypes,
-) -> Value {
-    let func = Value::builtin_function(
-        memory_allocator,
-        object_prototypes,
-        "Function".to_string(),
-        function_constructor,
-    );
-    func.set_property_by_string_key("prototype".to_string(), object_prototypes.function);
+pub fn function(vm: &mut vm::VM2) -> Value {
+    let func = vm.builtin_function("Function".to_string(), function_constructor);
+    func.set_property_by_string_key("prototype".to_string(), vm.object_prototypes.function);
     func.get_property_by_str_key("prototype")
         .set_constructor(func);
     func
