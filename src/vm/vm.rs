@@ -889,20 +889,7 @@ impl VM2 {
             sym_property: FxHashMap::default(),
         }));
 
-        if !callee.is_function_object() {
-            return Err(RuntimeError::Type("Not a function".to_string()));
-        }
-
-        let info = callee.as_function();
-
-        match info.kind {
-            FunctionObjectKind::Builtin(func) => {
-                func(self, args, &frame::Frame::new_empty_with_this(this, true))
-            }
-            FunctionObjectKind::User(ref user_func) => {
-                self.enter_user_function(user_func, args, this, cur_frame, true)
-            }
-        }
+        self.enter_function(callee, args, this, cur_frame, true)
     }
 
     fn enter_function(
@@ -923,7 +910,11 @@ impl VM2 {
             FunctionObjectKind::Builtin(func) => gc_lock!(
                 self,
                 args,
-                func(self, args, &frame::Frame::new_empty_with_this(this, false))
+                func(
+                    self,
+                    args,
+                    &frame::Frame::new_empty_with_this(this, constructor_call)
+                )
             ),
             FunctionObjectKind::User(ref user_func) => {
                 self.enter_user_function(user_func, args, this, cur_frame, constructor_call)
