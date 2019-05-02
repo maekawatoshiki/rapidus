@@ -1,4 +1,4 @@
-use super::{super::super::gc::MemoryAllocator, value::Value};
+use super::value::Value;
 
 #[derive(Debug, Clone)]
 pub struct SymbolInfo {
@@ -25,9 +25,9 @@ impl GlobalSymbolRegistry {
         Self { list: vec![] }
     }
 
-    pub fn key_for(&mut self, allocator: &mut MemoryAllocator, sym: Value) -> Value {
+    pub fn key_for(&mut self, factory: &mut ::vm::vm::Factory, sym: Value) -> Value {
         if let Some((key, _)) = self.list.iter().find(|(_, sym_)| sym == *sym_) {
-            return Value::string(allocator, key.to_owned());
+            return Value::string(factory, key.to_owned());
         }
 
         Value::undefined()

@@ -1,8 +1,13 @@
 use vm::{frame, jsvalue::value::Value, vm};
 
 pub fn function(vm: &mut vm::VM2) -> Value {
-    let func = vm.builtin_function("Function".to_string(), function_constructor);
-    func.set_property_by_string_key("prototype".to_string(), vm.object_prototypes.function);
+    let func = vm
+        .factory
+        .builtin_function("Function".to_string(), function_constructor);
+    func.set_property_by_string_key(
+        "prototype".to_string(),
+        vm.factory.object_prototypes.function,
+    );
     func.get_property_by_str_key("prototype")
         .set_constructor(func);
     func

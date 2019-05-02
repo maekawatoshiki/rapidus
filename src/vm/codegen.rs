@@ -190,7 +190,7 @@ impl<'a> CodeGenerator<'a> {
             NodeBase::String(ref s) => {
                 if use_value {
                     self.bytecode_generator.append_push_const(
-                        Value::string(&mut self.vm.memory_allocator, s.clone()),
+                        Value::string(&mut self.vm.factory, s.clone()),
                         iseq,
                         &mut self.vm.constant_table,
                     )
@@ -634,7 +634,7 @@ impl<'a> CodeGenerator<'a> {
 
         self.to_source_map.insert(id, function_info.to_source_pos);
 
-        Ok(self.vm.function(
+        Ok(self.vm.factory.function(
             function_info.name,
             UserFunctionInfo {
                 id,
@@ -718,7 +718,7 @@ impl<'a> CodeGenerator<'a> {
         }
 
         self.visit(parent, iseq, true)?;
-        let property = Value::string(&mut self.vm.memory_allocator, member.clone());
+        let property = Value::string(&mut self.vm.factory, member.clone());
         self.bytecode_generator
             .append_push_const(property, iseq, &mut self.vm.constant_table);
         self.bytecode_generator.append_get_member(iseq);
@@ -900,7 +900,7 @@ impl<'a> CodeGenerator<'a> {
         match callee.base {
             NodeBase::Member(ref parent, ref property_name) => {
                 self.bytecode_generator.append_push_const(
-                    Value::string(&mut self.vm.memory_allocator, property_name.clone()),
+                    Value::string(&mut self.vm.factory, property_name.clone()),
                     iseq,
                     &mut self.vm.constant_table,
                 );
@@ -967,7 +967,7 @@ impl<'a> CodeGenerator<'a> {
         match callee.base {
             NodeBase::Member(ref parent, ref property_name) => {
                 self.visit(parent, iseq, true)?;
-                let property = Value::string(&mut self.vm.memory_allocator, property_name.clone());
+                let property = Value::string(&mut self.vm.factory, property_name.clone());
                 self.bytecode_generator.append_push_const(
                     property,
                     iseq,
@@ -1006,7 +1006,7 @@ impl<'a> CodeGenerator<'a> {
                         &mut self.vm.constant_table,
                     );
                     self.bytecode_generator.append_push_const(
-                        Value::string(&mut self.vm.memory_allocator, name.clone()),
+                        Value::string(&mut self.vm.factory, name.clone()),
                         iseq,
                         &mut self.vm.constant_table,
                     );
@@ -1014,7 +1014,7 @@ impl<'a> CodeGenerator<'a> {
                 PropertyDefinition::Property(name, node) => {
                     self.visit(&node, iseq, true)?;
                     self.bytecode_generator.append_push_const(
-                        Value::string(&mut self.vm.memory_allocator, name.clone()),
+                        Value::string(&mut self.vm.factory, name.clone()),
                         iseq,
                         &mut self.vm.constant_table,
                     );
@@ -1031,7 +1031,7 @@ impl<'a> CodeGenerator<'a> {
                     };
                     self.visit(&node, iseq, true)?;
                     self.bytecode_generator.append_push_const(
-                        Value::string(&mut self.vm.memory_allocator, name.clone()),
+                        Value::string(&mut self.vm.factory, name.clone()),
                         iseq,
                         &mut self.vm.constant_table,
                     );
@@ -1070,7 +1070,7 @@ impl<'a> CodeGenerator<'a> {
             }
             NodeBase::Member(ref parent, ref property) => {
                 self.visit(&*parent, iseq, true)?;
-                let property = Value::string(&mut self.vm.memory_allocator, property.clone());
+                let property = Value::string(&mut self.vm.factory, property.clone());
                 self.bytecode_generator.append_push_const(
                     property,
                     iseq,

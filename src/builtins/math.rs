@@ -10,9 +10,11 @@ use vm::{
 };
 
 pub fn math(vm: &mut vm::VM2) -> Value {
-    let math_random = vm.builtin_function("random".to_string(), math_random);
+    let math_random = vm
+        .factory
+        .builtin_function("random".to_string(), math_random);
 
-    make_normal_object!(vm.memory_allocator, vm.object_prototypes,
+    make_normal_object!(vm.factory,
         random => true, false, true: math_random
     )
 }

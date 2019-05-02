@@ -6,9 +6,10 @@ pub use super::object::*;
 pub use super::prototype::*;
 pub use super::symbol::*;
 use builtin::BuiltinFuncTy2;
-use gc;
+use gc::MemoryAllocator;
 pub use rustc_hash::FxHashMap;
 use std::ffi::CString;
+use vm::vm::Factory;
 
 pub const UNINITIALIZED: i32 = 0;
 pub const EMPTY: i32 = 1;
@@ -99,21 +100,21 @@ macro_rules! make_property_map {
 
 #[macro_export]
 macro_rules! make_normal_object {
-    ($memory_allocator:expr, $object_prototypes:expr) => { {
-        Value::Object($memory_allocator.alloc(
+    ($factory:expr) => { {
+        Value::Object($factory.memory_allocator.alloc(
             ObjectInfo {
                 kind: ObjectKind2::Ordinary,
-                prototype: $object_prototypes.object,
+                prototype: $factory.object_prototypes.object,
                 property: FxHashMap::default(),
                 sym_property: FxHashMap::default()
             }
         ))
     } };
-    ($memory_allocator:expr, $object_prototypes:expr, $($property_name:ident => $x:ident, $y:ident, $z:ident : $val:expr),*) => { {
-        Value::Object($memory_allocator.alloc(
+    ($factory:expr, $($property_name:ident => $x:ident, $y:ident, $z:ident : $val:expr),*) => { {
+        Value::Object($factory.memory_allocator.alloc(
             ObjectInfo {
                 kind: ObjectKind2::Ordinary,
-                prototype: $object_prototypes.object,
+                prototype: $factory.object_prototypes.object,
                 property: make_property_map_sub!($($property_name, $val, $x, $y, $z),* ),
                 sym_property: FxHashMap::default()
             }
@@ -143,31 +144,27 @@ impl Value {
         Value::Bool(if x { 1 } else { 0 })
     }
 
-    pub fn string(memory_allocator: &mut gc::MemoryAllocator, body: String) -> Self {
-        Value::String(memory_allocator.alloc(CString::new(body).unwrap()))
+    pub fn string(factory: &mut Factory, body: String) -> Self {
+        Value::String(factory.memory_allocator.alloc(CString::new(body).unwrap()))
     }
 
-    pub fn object(
-        memory_allocator: &mut gc::MemoryAllocator,
-        object_prototypes: &ObjectPrototypes,
-        property: FxHashMap<String, Property>,
-    ) -> Self {
-        Value::Object(memory_allocator.alloc(ObjectInfo {
+    pub fn object(factory: &mut Factory, property: FxHashMap<String, Property>) -> Self {
+        Value::Object(factory.memory_allocator.alloc(ObjectInfo {
             kind: ObjectKind2::Ordinary,
-            prototype: object_prototypes.object,
+            prototype: factory.object_prototypes.object,
             property,
             sym_property: FxHashMap::default(),
         }))
     }
 
     pub fn builtin_function_with_proto(
-        memory_allocator: &mut gc::MemoryAllocator,
+        allocator: &mut MemoryAllocator,
         proto: Value,
         name: String,
         func: BuiltinFuncTy2,
     ) -> Self {
-        let name_prop = Value::string(memory_allocator, name.clone());
-        Value::Object(memory_allocator.alloc(ObjectInfo {
+        let name_prop = Value::String(allocator.alloc(CString::new(name.clone()).unwrap()));
+        Value::Object(allocator.alloc(ObjectInfo {
             kind: ObjectKind2::Function(FunctionObjectInfo {
                 name: Some(name),
                 kind: FunctionObjectKind::Builtin(func),
@@ -242,15 +239,12 @@ impl Value {
     }
 
     // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-canonicalnumericindexstring
-    pub fn is_canonical_numeric_index_string(
-        &self,
-        allocator: &mut gc::MemoryAllocator,
-    ) -> Option<usize> {
+    pub fn is_canonical_numeric_index_string(&self, factory: &mut Factory) -> Option<usize> {
         if !self.is_string() {
             return None;
         }
         let s = self.into_str();
-        let num = self.to_number(allocator);
+        let num = self.to_number(factory);
         if s == Value::Number(num).to_string() && is_integer(num) && num >= 0.0 {
             Some(num as usize)
         } else {
@@ -302,50 +296,42 @@ impl Value {
 
     pub fn get_property(
         &self,
-        allocator: &mut gc::MemoryAllocator,
-        object_prototypes: &ObjectPrototypes,
+        factory: &mut ::vm::vm::Factory,
         key: Value,
     ) -> Result<Property, error::RuntimeError> {
         fn string_get_property(
-            allocator: &mut gc::MemoryAllocator,
-            object_prototypes: &ObjectPrototypes,
+            factory: &mut ::vm::vm::Factory,
             s: &str,
             key: Value,
         ) -> Result<Property, error::RuntimeError> {
             match key {
                 Value::Number(idx) if is_integer(idx) => Ok(Property::new_data_simple(
-                    Value::string(allocator, s.chars().nth(idx as usize).unwrap().to_string()),
+                    Value::string(factory, s.chars().nth(idx as usize).unwrap().to_string()),
                 )),
                 Value::String(x) if unsafe { &*x }.to_str().unwrap() == "length" => {
                     Ok(Property::new_data_simple(Value::Number(
                         s.chars().fold(0, |x, c| x + c.len_utf16()) as f64,
                     )))
                 }
-                key => object_prototypes.string.get_object_info().get_property(
-                    allocator,
-                    object_prototypes,
-                    key,
-                ),
+                key => factory
+                    .object_prototypes
+                    .string
+                    .clone()
+                    .get_object_info()
+                    .get_property(factory, key),
             }
         }
 
         match self {
             Value::String(s) => {
-                return string_get_property(
-                    allocator,
-                    object_prototypes,
-                    unsafe { &**s }.to_str().unwrap(),
-                    key,
-                );
+                return string_get_property(factory, unsafe { &**s }.to_str().unwrap(), key);
             }
             // TODO: Number
             _ => {}
         }
 
         match self {
-            Value::Object(obj_info) => {
-                unsafe { &**obj_info }.get_property(allocator, object_prototypes, key)
-            }
+            Value::Object(obj_info) => unsafe { &**obj_info }.get_property(factory, key),
             _ => Ok(Property::new_data_simple(Value::undefined())),
         }
     }
@@ -361,12 +347,12 @@ impl Value {
 
     pub fn set_property(
         &self,
-        allocator: &mut gc::MemoryAllocator,
+        factory: &mut ::vm::vm::Factory,
         key: Value,
         val: Value,
     ) -> Result<Option<Value>, error::RuntimeError> {
         match self {
-            Value::Object(obj_info) => unsafe { &mut **obj_info }.set_property(allocator, key, val),
+            Value::Object(obj_info) => unsafe { &mut **obj_info }.set_property(factory, key, val),
             _ => Ok(None),
         }
     }
@@ -396,9 +382,11 @@ impl Value {
         }
     }
 
-    pub fn copy_object(&self, memory_allocator: &mut gc::MemoryAllocator) -> Value {
+    pub fn copy_object(&self, factory: &mut Factory) -> Value {
         match self {
-            Value::Object(obj) => Value::Object(memory_allocator.alloc(unsafe { &**obj }.clone())),
+            Value::Object(obj) => {
+                Value::Object(factory.memory_allocator.alloc(unsafe { &**obj }.clone()))
+            }
             e => *e,
         }
     }
@@ -483,7 +471,7 @@ impl Value {
 
 impl Value {
     // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-tonumber
-    pub fn to_number(&self, allocator: &mut gc::MemoryAllocator) -> f64 {
+    pub fn to_number(&self, factory: &mut Factory) -> f64 {
         match self {
             Value::Other(UNDEFINED) => ::std::f64::NAN,
             Value::Other(NULL) => 0.0,
@@ -503,8 +491,8 @@ impl Value {
                 }
             }
             Value::Object(_) => self
-                .to_primitive(allocator, Some(PreferredType::Number))
-                .to_number(allocator),
+                .to_primitive(factory, Some(PreferredType::Number))
+                .to_number(factory),
             // TODO
             _ => 0.0,
         }
@@ -555,8 +543,8 @@ impl Value {
     }
 
     /// https://tc39.github.io/ecma262/#sec-toint32
-    pub fn to_int32(&self, allocator: &mut gc::MemoryAllocator) -> i32 {
-        let number = self.to_number(allocator);
+    pub fn to_int32(&self, factory: &mut Factory) -> i32 {
+        let number = self.to_number(factory);
         match number {
             number if number.is_nan() || number == 0.0 || number.is_infinite() => 0,
             number => (number.trunc()) as i32,
@@ -564,8 +552,8 @@ impl Value {
     }
 
     /// https://tc39.github.io/ecma262/#sec-touint32
-    pub fn to_uint32(&self, allocator: &mut gc::MemoryAllocator) -> u32 {
-        let number = self.to_number(allocator);
+    pub fn to_uint32(&self, factory: &mut Factory) -> u32 {
+        let number = self.to_number(factory);
         match number {
             number if number.is_nan() || number == 0.0 || number.is_infinite() => 0,
             number => (number.trunc()) as u32,
@@ -575,7 +563,7 @@ impl Value {
     /// https://tc39.github.io/ecma262/#sec-toprimitive
     pub fn to_primitive(
         &self,
-        allocator: &mut gc::MemoryAllocator,
+        factory: &mut Factory,
         preferred_type: Option<PreferredType>,
     ) -> Value {
         if !self.is_object() {
@@ -590,15 +578,11 @@ impl Value {
             hint = PreferredType::Number
         }
 
-        self.ordinary_to_primitive(allocator, hint)
+        self.ordinary_to_primitive(factory, hint)
     }
 
     /// https://tc39.github.io/ecma262/#sec-ordinarytoprimitive
-    pub fn ordinary_to_primitive(
-        &self,
-        allocator: &mut gc::MemoryAllocator,
-        hint: PreferredType,
-    ) -> Value {
+    pub fn ordinary_to_primitive(&self, factory: &mut Factory, hint: PreferredType) -> Value {
         match hint {
             PreferredType::Number => {
                 if let Some(val) = self.value_of() {
@@ -607,9 +591,9 @@ impl Value {
                     }
                 }
 
-                Value::string(allocator, self.to_string())
+                Value::string(factory, self.to_string())
             }
-            PreferredType::String => Value::string(allocator, self.to_string()),
+            PreferredType::String => Value::string(factory, self.to_string()),
             PreferredType::Default => unreachable!(),
         }
     }
@@ -633,26 +617,26 @@ impl Value {
 
 impl Value {
     // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-addition-operator-plus-runtime-semantics-evaluation
-    pub fn add(self, allocator: &mut gc::MemoryAllocator, val: Value) -> Self {
-        let lprim = self.to_primitive(allocator, None);
-        let rprim = val.to_primitive(allocator, None);
+    pub fn add(self, factory: &mut Factory, val: Value) -> Self {
+        let lprim = self.to_primitive(factory, None);
+        let rprim = val.to_primitive(factory, None);
         match (lprim, rprim) {
             (Value::Number(x), Value::Number(y)) => Value::Number(x + y),
             (Value::String(x), Value::String(y)) => {
                 let x = unsafe { &*x }.to_str().unwrap();
                 let y = unsafe { &*y }.to_str().unwrap();
                 let cat = format!("{}{}", x, y);
-                Value::string(allocator, cat)
+                Value::string(factory, cat)
             }
             (Value::String(x), _) => {
                 let x = unsafe { &*x }.to_str().unwrap();
-                Value::string(allocator, format!("{}{}", x, rprim.to_string()))
+                Value::string(factory, format!("{}{}", x, rprim.to_string()))
             }
             (_, Value::String(y)) => {
                 let y = unsafe { &*y }.to_str().unwrap();
-                Value::string(allocator, format!("{}{}", lprim.to_string(), y))
+                Value::string(factory, format!("{}{}", lprim.to_string(), y))
             }
-            (x, y) => Value::Number(x.to_number(allocator) + y.to_number(allocator)),
+            (x, y) => Value::Number(x.to_number(factory) + y.to_number(factory)),
         }
     }
 
@@ -685,39 +669,39 @@ impl Value {
         }
     }
 
-    pub fn and(self, allocator: &mut gc::MemoryAllocator, val: Value) -> Self {
-        Value::Number((self.to_int32(allocator) & val.to_int32(allocator)) as f64)
+    pub fn and(self, factory: &mut Factory, val: Value) -> Self {
+        Value::Number((self.to_int32(factory) & val.to_int32(factory)) as f64)
     }
 
-    pub fn or(self, allocator: &mut gc::MemoryAllocator, val: Value) -> Self {
-        Value::Number((self.to_int32(allocator) | val.to_int32(allocator)) as f64)
+    pub fn or(self, factory: &mut Factory, val: Value) -> Self {
+        Value::Number((self.to_int32(factory) | val.to_int32(factory)) as f64)
     }
 
-    pub fn xor(self, allocator: &mut gc::MemoryAllocator, val: Value) -> Self {
-        Value::Number((self.to_int32(allocator) ^ val.to_int32(allocator)) as f64)
+    pub fn xor(self, factory: &mut Factory, val: Value) -> Self {
+        Value::Number((self.to_int32(factory) ^ val.to_int32(factory)) as f64)
     }
 
-    pub fn not(self, allocator: &mut gc::MemoryAllocator) -> Self {
-        Value::Number((!self.to_int32(allocator)) as f64)
+    pub fn not(self, factory: &mut Factory) -> Self {
+        Value::Number((!self.to_int32(factory)) as f64)
     }
 
     /// https://tc39.github.io/ecma262/#sec-left-shift-operator
-    pub fn shift_l(self, allocator: &mut gc::MemoryAllocator, val: Value) -> Self {
-        Value::Number((self.to_int32(allocator) << (val.to_uint32(allocator) & 0x1f)) as f64)
+    pub fn shift_l(self, factory: &mut Factory, val: Value) -> Self {
+        Value::Number((self.to_int32(factory) << (val.to_uint32(factory) & 0x1f)) as f64)
     }
 
     /// https://tc39.github.io/ecma262/#sec-signed-right-shift-operator
-    pub fn shift_r(self, allocator: &mut gc::MemoryAllocator, val: Value) -> Self {
-        Value::Number((self.to_int32(allocator) >> (val.to_uint32(allocator) & 0x1f)) as f64)
+    pub fn shift_r(self, factory: &mut Factory, val: Value) -> Self {
+        Value::Number((self.to_int32(factory) >> (val.to_uint32(factory) & 0x1f)) as f64)
     }
 
     /// https://tc39.github.io/ecma262/#sec-unsigned-right-shift-operator
-    pub fn z_shift_r(self, allocator: &mut gc::MemoryAllocator, val: Value) -> Self {
-        Value::Number((self.to_uint32(allocator) >> (val.to_uint32(allocator) & 0x1f)) as f64)
+    pub fn z_shift_r(self, factory: &mut Factory, val: Value) -> Self {
+        Value::Number((self.to_uint32(factory) >> (val.to_uint32(factory) & 0x1f)) as f64)
     }
 
     // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-abstract-equality-comparison
-    pub fn eq(self, allocator: &mut gc::MemoryAllocator, val: Value) -> Self {
+    pub fn eq(self, factory: &mut Factory, val: Value) -> Self {
         if self.is_same_type_as(&val) {
             return self.strict_eq(val);
         }
@@ -729,14 +713,14 @@ impl Value {
         }
 
         match (self, val) {
-            (Value::Number(x), Value::String(_)) => Value::bool(x == val.to_number(allocator)),
-            (Value::String(_), Value::Number(y)) => Value::bool(self.to_number(allocator) == y),
-            (Value::Bool(_), Value::Number(y)) => Value::bool(self.to_number(allocator) == y),
-            (Value::Number(x), Value::Bool(_)) => Value::bool(x == val.to_number(allocator)),
+            (Value::Number(x), Value::String(_)) => Value::bool(x == val.to_number(factory)),
+            (Value::String(_), Value::Number(y)) => Value::bool(self.to_number(factory) == y),
+            (Value::Bool(_), Value::Number(y)) => Value::bool(self.to_number(factory) == y),
+            (Value::Number(x), Value::Bool(_)) => Value::bool(x == val.to_number(factory)),
             // (Value::Number(x), Value::Number(y)) => Value::Bool(if x == y { 1 } else { 0 }),
             // (Value::Number(_), obj) | (Value::String(_), obj) => self.eq(val),
-            (Value::Object(_), _) => self.to_primitive(allocator, None).eq(allocator, val),
-            (_, Value::Object(_)) => val.to_primitive(allocator, None).eq(allocator, self),
+            (Value::Object(_), _) => self.to_primitive(factory, None).eq(factory, val),
+            (_, Value::Object(_)) => val.to_primitive(factory, None).eq(factory, self),
             _ => Value::bool(false),
         }
     }
@@ -767,8 +751,8 @@ impl Value {
         }
     }
 
-    pub fn ne(self, allocator: &mut gc::MemoryAllocator, val: Value) -> Self {
-        Value::bool(!self.eq(allocator, val).into_bool())
+    pub fn ne(self, factory: &mut Factory, val: Value) -> Self {
+        Value::bool(!self.eq(factory, val).into_bool())
     }
 
     pub fn strict_ne(self, val: Value) -> Self {
@@ -776,16 +760,16 @@ impl Value {
     }
 
     /// https://tc39.github.io/ecma262/#sec-abstract-relational-comparison
-    pub fn cmp(self, allocator: &mut gc::MemoryAllocator, val: Value) -> Self {
-        let px = self.to_primitive(allocator, None);
-        let py = val.to_primitive(allocator, None);
+    pub fn cmp(self, factory: &mut Factory, val: Value) -> Self {
+        let px = self.to_primitive(factory, None);
+        let py = val.to_primitive(factory, None);
 
         if let (Value::String(x), Value::String(y)) = (px, py) {
             return Value::bool(cstrp_to_str(x) < cstrp_to_str(y));
         }
 
-        let nx = px.to_number(allocator);
-        let ny = py.to_number(allocator);
+        let nx = px.to_number(factory);
+        let ny = py.to_number(factory);
 
         if nx.is_nan() || ny.is_nan() {
             return Value::undefined();
@@ -798,15 +782,15 @@ impl Value {
         Value::bool(nx < ny)
     }
 
-    pub fn lt(self, allocator: &mut gc::MemoryAllocator, val: Value) -> Self {
-        match self.cmp(allocator, val) {
+    pub fn lt(self, factory: &mut Factory, val: Value) -> Self {
+        match self.cmp(factory, val) {
             Value::Other(UNDEFINED) => Value::Bool(0),
             otherwise => otherwise,
         }
     }
 
-    pub fn le(self, allocator: &mut gc::MemoryAllocator, val: Value) -> Self {
-        match val.cmp(allocator, self) {
+    pub fn le(self, factory: &mut Factory, val: Value) -> Self {
+        match val.cmp(factory, self) {
             Value::Other(UNDEFINED) | Value::Bool(1) => Value::Bool(0),
             _ => Value::Bool(1),
         }
@@ -821,8 +805,8 @@ impl Value {
     }
 
     // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-unary-plus-operator-runtime-semantics-evaluation
-    pub fn positive(self, allocator: &mut gc::MemoryAllocator) -> Self {
-        Value::Number(self.to_number(allocator))
+    pub fn positive(self, factory: &mut Factory) -> Self {
+        Value::Number(self.to_number(factory))
     }
 
     pub fn is_same_type_as(&self, val: &Value) -> bool {

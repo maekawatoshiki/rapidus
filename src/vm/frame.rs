@@ -10,7 +10,7 @@ use vm::jsvalue::function::Exception;
 use vm::jsvalue::object::{ObjectInfo, ObjectKind2};
 use vm::jsvalue::prototype::ObjectPrototypes;
 use vm::jsvalue::value::Value;
-use vm::vm::VMResult;
+use vm::vm::{Factory, VMResult};
 
 #[derive(Debug, Clone, Copy)]
 pub struct LexicalEnvironmentRef(pub *mut LexicalEnvironment);
@@ -111,14 +111,14 @@ impl Frame {
         self
     }
 
-    pub fn append_function(&mut self, memory_allocator: &mut gc::MemoryAllocator, f: Value) {
-        let mut val = f.copy_object(memory_allocator);
+    pub fn append_function(&mut self, factory: &mut Factory, f: Value) {
+        let mut val = f.copy_object(factory);
         let name = val.as_function().name.clone().unwrap();
         val.set_function_outer_environment(self.execution_context.lexical_environment);
         self.lex_env_mut().set_own_value(name, val).unwrap();
         use gc::GcTarget;
         self.execution_context
-            .initial_trace(&mut memory_allocator.roots);
+            .initial_trace(&mut factory.memory_allocator.roots);
     }
 
     pub fn append_variable_to_var_env(&mut self, name: String) {
@@ -131,13 +131,9 @@ impl Frame {
         lex_env.set_own_value(name, Value::uninitialized()).unwrap(); // TODO: unwrap()
     }
 
-    pub fn append_from_function_info(
-        &mut self,
-        memory_allocator: &mut gc::MemoryAllocator,
-        info: &FunctionInfo,
-    ) {
+    pub fn append_from_function_info(&mut self, factory: &mut Factory, info: &FunctionInfo) {
         for f in &info.func_decls {
-            self.append_function(memory_allocator, *f);
+            self.append_function(factory, *f);
         }
 
         for name in &info.var_names {

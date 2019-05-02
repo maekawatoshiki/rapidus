@@ -1,8 +1,7 @@
-use super::super::super::gc::MemoryAllocator;
 use super::super::error;
-use super::prototype::ObjectPrototypes;
 use super::value::*;
 pub use rustc_hash::FxHashMap;
+use vm::vm::Factory;
 
 #[derive(Clone, Debug)]
 pub struct ObjectInfo {
@@ -58,8 +57,7 @@ impl ObjectInfo {
 
     pub fn get_property(
         &self,
-        allocator: &mut MemoryAllocator,
-        object_prototypes: &ObjectPrototypes,
+        factory: &mut ::vm::vm::Factory,
         key: Value,
     ) -> Result<Property, error::RuntimeError> {
         // Annoying
@@ -71,9 +69,7 @@ impl ObjectInfo {
             let id = key.get_symbol_info().id;
             return match self.sym_property.get(&id) {
                 Some(prop) => Ok(*prop),
-                None => self
-                    .prototype
-                    .get_property(allocator, object_prototypes, key),
+                None => self.prototype.get_property(factory, key),
             };
         }
 
@@ -83,7 +79,7 @@ impl ObjectInfo {
                     return Ok(info.get_element(idx));
                 }
 
-                if let Some(idx) = key.is_canonical_numeric_index_string(allocator) {
+                if let Some(idx) = key.is_canonical_numeric_index_string(factory) {
                     return Ok(info.get_element(idx));
                 }
 
@@ -98,9 +94,7 @@ impl ObjectInfo {
 
         match self.property.get(key.to_string().as_str()) {
             Some(prop) => Ok(*prop),
-            None => self
-                .prototype
-                .get_property(allocator, object_prototypes, key),
+            None => self.prototype.get_property(factory, key),
         }
     }
 
@@ -124,7 +118,7 @@ impl ObjectInfo {
 
     pub fn set_property(
         &mut self,
-        allocator: &mut MemoryAllocator,
+        factory: &mut Factory,
         key: Value,
         val_: Value,
     ) -> Result<Option<Value>, error::RuntimeError> {
@@ -140,7 +134,7 @@ impl ObjectInfo {
                     return Ok(info.set_element(idx, val_));
                 }
 
-                if let Some(idx) = key.is_canonical_numeric_index_string(allocator) {
+                if let Some(idx) = key.is_canonical_numeric_index_string(factory) {
                     return Ok(info.set_element(idx, val_));
                 }
 

@@ -7,8 +7,10 @@ use vm::{
 };
 
 pub fn array(vm: &mut VM2) -> Value {
-    let ary = vm.builtin_function("Array".to_string(), array_constructor);
-    ary.set_property_by_string_key("prototype".to_string(), vm.object_prototypes.array);
+    let ary = vm
+        .factory
+        .builtin_function("Array".to_string(), array_constructor);
+    ary.set_property_by_string_key("prototype".to_string(), vm.factory.object_prototypes.array);
     ary.get_property_by_str_key("prototype")
         .set_constructor(ary);
     ary
@@ -64,7 +66,7 @@ pub fn array_prototype_map(vm: &mut VM2, args: &[Value], cur_frame: &Frame) -> V
         ));
     }
 
-    let array = vm.array(new_ary).clone();
+    let array = vm.factory.array(new_ary).clone();
     vm.stack.push(array.into());
 
     Ok(())

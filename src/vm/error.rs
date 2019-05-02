@@ -1,8 +1,8 @@
 use super::super::builtins;
 use crate::lexer;
 use ansi_term::Colour;
-use gc::MemoryAllocator;
 use vm::jsvalue::value::Value;
+use vm::vm::Factory;
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum RuntimeError {
@@ -16,18 +16,14 @@ pub enum RuntimeError {
 
 impl RuntimeError {
     /// convert RuntimeError -> Value
-    pub fn to_value2(self, memory_allocator: &mut MemoryAllocator) -> Value {
+    pub fn to_value2(self, factory: &mut Factory) -> Value {
         match self {
             RuntimeError::Exception2(v, _) => v,
-            RuntimeError::Type(s) => Value::string(memory_allocator, s),
-            RuntimeError::General(s) => Value::string(memory_allocator, s),
-            RuntimeError::Reference(s) => {
-                Value::string(memory_allocator, format!("Reference error: {}", s))
-            }
-            RuntimeError::Unimplemented => {
-                Value::string(memory_allocator, "Unimplemented".to_string())
-            }
-            RuntimeError::Unknown => Value::string(memory_allocator, "Unknown".to_string()),
+            RuntimeError::Type(s) => Value::string(factory, s),
+            RuntimeError::General(s) => Value::string(factory, s),
+            RuntimeError::Reference(s) => Value::string(factory, format!("Reference error: {}", s)),
+            RuntimeError::Unimplemented => Value::string(factory, "Unimplemented".to_string()),
+            RuntimeError::Unknown => Value::string(factory, "Unknown".to_string()),
         }
     }
 

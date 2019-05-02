@@ -133,7 +133,7 @@ fn repl() {
                         Some(ref mut frame) => {
                             frame.bytecode = iseq;
                             frame.exception_table = global_info.exception_table.clone();
-                            frame.append_from_function_info(&mut vm.memory_allocator, &global_info)
+                            frame.append_from_function_info(&mut vm.factory, &global_info)
                         }
                         None => global_frame = Some(vm.create_global_frame(global_info, iseq)),
                     }

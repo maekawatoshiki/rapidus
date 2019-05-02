@@ -24,8 +24,7 @@ pub type VMResult = Result<(), RuntimeError>;
 #[derive(Debug)]
 pub struct VM2 {
     pub global_environment: frame::LexicalEnvironmentRef,
-    pub memory_allocator: gc::MemoryAllocator,
-    pub object_prototypes: ObjectPrototypes,
+    pub factory: Factory,
     pub constant_table: constant::ConstantTable,
     pub global_symbol_registry: GlobalSymbolRegistry,
     pub stack: Vec<BoxedValue>,
@@ -33,11 +32,17 @@ pub struct VM2 {
     pub to_source_map: FxHashMap<usize, codegen::ToSourcePos>,
 }
 
+#[derive(Debug)]
+pub struct Factory {
+    pub memory_allocator: gc::MemoryAllocator,
+    pub object_prototypes: ObjectPrototypes,
+}
+
 macro_rules! gc_lock {
     ($vm:ident, $targets:expr, $($body:tt)*) => { {
-        for arg in $targets { $vm.memory_allocator.lock(*arg) }
+        for arg in $targets { $vm.factory.memory_allocator.lock(*arg) }
         let ret = { $($body)* };
-        for arg in $targets { $vm.memory_allocator.unlock(*arg) }
+        for arg in $targets { $vm.factory.memory_allocator.unlock(*arg) }
         ret
     } }
 }
@@ -49,10 +54,13 @@ impl VM2 {
         let global_env =
             frame::LexicalEnvironment::new_global(&mut memory_allocator, &object_prototypes);
         let global_environment = frame::LexicalEnvironmentRef(memory_allocator.alloc(global_env));
-        let mut vm = VM2 {
-            global_environment,
+        let factory = Factory {
             memory_allocator,
             object_prototypes,
+        };
+        let mut vm = VM2 {
+            global_environment,
+            factory,
             constant_table: constant::ConstantTable::new(),
             global_symbol_registry: GlobalSymbolRegistry::new(),
             stack: vec![],
@@ -63,9 +71,13 @@ impl VM2 {
         use builtin::parse_float;
         use builtins;
 
-        let log = vm.builtin_function("log".to_string(), builtins::console::console_log);
-        let parse_float = vm.builtin_function("parseFloat".to_string(), parse_float);
-        let console = make_normal_object!(vm.memory_allocator, vm.object_prototypes,
+        let log = vm
+            .factory
+            .builtin_function("log".to_string(), builtins::console::console_log);
+        let parse_float = vm
+            .factory
+            .builtin_function("parseFloat".to_string(), parse_float);
+        let console = make_normal_object!(vm.factory,
             log => true, false, true: log
         );
         let object_constructor = builtins::object::object(&mut vm);
@@ -118,7 +130,7 @@ impl VM2 {
         let mut lex_env = self.create_lexical_environment(&global_info.lex_names, var_env);
 
         for val in global_info.func_decls {
-            let mut val = val.copy_object(&mut self.memory_allocator);
+            let mut val = val.copy_object(&mut self.factory);
             let name = val.as_function().name.clone().unwrap();
             val.set_function_outer_environment(lex_env);
             lex_env.set_value(name, val).unwrap();
@@ -149,7 +161,7 @@ impl VM2 {
         let mut lex_env = self.create_lexical_environment(&global_info.lex_names, var_env);
 
         for val in global_info.func_decls {
-            let mut val = val.copy_object(&mut self.memory_allocator);
+            let mut val = val.copy_object(&mut self.factory);
             let name = val.as_function().name.clone().unwrap();
             val.set_function_outer_environment(lex_env);
             lex_env.set_value(name, val)?;
@@ -232,7 +244,7 @@ impl VM2 {
         key: Value,
         cur_frame: &mut frame::Frame,
     ) -> VMResult {
-        let val = parent.get_property(&mut self.memory_allocator, &self.object_prototypes, key)?;
+        let val = parent.get_property(&mut self.factory, key)?;
         match val {
             Property::Data(DataProperty { val, .. }) => {
                 self.stack.push(val.into());
@@ -254,7 +266,7 @@ impl VM2 {
         key: Value,
         cur_frame: &frame::Frame,
     ) -> Result<Value, RuntimeError> {
-        let val = parent.get_property(&mut self.memory_allocator, &self.object_prototypes, key)?;
+        let val = parent.get_property(&mut self.factory, key)?;
         match val {
             Property::Data(DataProperty { val, .. }) => Ok(val),
             Property::Accessor(AccessorProperty { get, .. }) => {
@@ -274,7 +286,7 @@ impl VM2 {
         val: Value,
         cur_frame: &frame::Frame,
     ) -> VMResult {
-        let maybe_setter = parent.set_property(&mut self.memory_allocator, key, val)?;
+        let maybe_setter = parent.set_property(&mut self.factory, key, val)?;
         if let Some(setter) = maybe_setter {
             self.call_function(setter, &[val], parent, cur_frame)?;
             self.stack.pop().unwrap(); // Pop undefined (setter's return value)
@@ -363,8 +375,7 @@ impl VM2 {
 
         macro_rules! type_error {
             ($msg:expr) => {{
-                let val =
-                    RuntimeError::Type($msg.to_string()).to_value2(&mut self.memory_allocator);
+                let val = RuntimeError::Type($msg.to_string()).to_value2(&mut self.factory);
                 self.stack.push(val.into());
                 exception!();
                 continue;
@@ -376,7 +387,7 @@ impl VM2 {
                 match $val {
                     Ok(ok) => ok,
                     Err(err) => {
-                        let val = err.to_value2(&mut self.memory_allocator);
+                        let val = err.to_value2(&mut self.factory);
                         self.stack.push(val.into());
                         exception!();
                         continue;
@@ -392,8 +403,7 @@ impl VM2 {
                     cur_frame.pc += 1;
                     let rhs: Value = self.stack.pop().unwrap().into();
                     let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack
-                        .push(lhs.add(&mut self.memory_allocator, rhs).into());
+                    self.stack.push(lhs.add(&mut self.factory, rhs).into());
                 }
                 VMInst::SUB => {
                     cur_frame.pc += 1;
@@ -423,8 +433,7 @@ impl VM2 {
                     cur_frame.pc += 1;
                     let rhs: Value = self.stack.pop().unwrap().into();
                     let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack
-                        .push(lhs.eq(&mut self.memory_allocator, rhs).into());
+                    self.stack.push(lhs.eq(&mut self.factory, rhs).into());
                 }
                 VMInst::SEQ => {
                     cur_frame.pc += 1;
@@ -436,8 +445,7 @@ impl VM2 {
                     cur_frame.pc += 1;
                     let rhs: Value = self.stack.pop().unwrap().into();
                     let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack
-                        .push(lhs.ne(&mut self.memory_allocator, rhs).into());
+                    self.stack.push(lhs.ne(&mut self.factory, rhs).into());
                 }
                 VMInst::SNE => {
                     cur_frame.pc += 1;
@@ -449,76 +457,67 @@ impl VM2 {
                     cur_frame.pc += 1;
                     let rhs: Value = self.stack.pop().unwrap().into();
                     let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack
-                        .push(lhs.lt(&mut self.memory_allocator, rhs).into());
+                    self.stack.push(lhs.lt(&mut self.factory, rhs).into());
                 }
                 VMInst::LE => {
                     cur_frame.pc += 1;
                     let rhs: Value = self.stack.pop().unwrap().into();
                     let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack
-                        .push(lhs.le(&mut self.memory_allocator, rhs).into());
+                    self.stack.push(lhs.le(&mut self.factory, rhs).into());
                 }
                 VMInst::GT => {
                     cur_frame.pc += 1;
                     let rhs: Value = self.stack.pop().unwrap().into();
                     let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack
-                        .push(rhs.lt(&mut self.memory_allocator, lhs).into());
+                    self.stack.push(rhs.lt(&mut self.factory, lhs).into());
                 }
                 VMInst::GE => {
                     cur_frame.pc += 1;
                     let rhs: Value = self.stack.pop().unwrap().into();
                     let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack
-                        .push(rhs.le(&mut self.memory_allocator, lhs).into());
+                    self.stack.push(rhs.le(&mut self.factory, lhs).into());
                 }
                 VMInst::AND => {
                     cur_frame.pc += 1;
                     let rhs: Value = self.stack.pop().unwrap().into();
                     let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack
-                        .push(rhs.and(&mut self.memory_allocator, lhs).into());
+                    self.stack.push(rhs.and(&mut self.factory, lhs).into());
                 }
                 VMInst::OR => {
                     cur_frame.pc += 1;
                     let rhs: Value = self.stack.pop().unwrap().into();
                     let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack
-                        .push(rhs.or(&mut self.memory_allocator, lhs).into());
+                    self.stack.push(rhs.or(&mut self.factory, lhs).into());
                 }
                 VMInst::XOR => {
                     cur_frame.pc += 1;
                     let rhs: Value = self.stack.pop().unwrap().into();
                     let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack
-                        .push(rhs.xor(&mut self.memory_allocator, lhs).into());
+                    self.stack.push(rhs.xor(&mut self.factory, lhs).into());
                 }
                 VMInst::NOT => {
                     cur_frame.pc += 1;
                     let rhs: Value = self.stack.pop().unwrap().into();
-                    self.stack.push(rhs.not(&mut self.memory_allocator).into());
+                    self.stack.push(rhs.not(&mut self.factory).into());
                 }
                 VMInst::SHL => {
                     cur_frame.pc += 1;
                     let rhs: Value = self.stack.pop().unwrap().into();
                     let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack
-                        .push(lhs.shift_l(&mut self.memory_allocator, rhs).into());
+                    self.stack.push(lhs.shift_l(&mut self.factory, rhs).into());
                 }
                 VMInst::SHR => {
                     cur_frame.pc += 1;
                     let rhs: Value = self.stack.pop().unwrap().into();
                     let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack
-                        .push(lhs.shift_r(&mut self.memory_allocator, rhs).into());
+                    self.stack.push(lhs.shift_r(&mut self.factory, rhs).into());
                 }
                 VMInst::ZFSHR => {
                     cur_frame.pc += 1;
                     let rhs: Value = self.stack.pop().unwrap().into();
                     let lhs: Value = self.stack.pop().unwrap().into();
                     self.stack
-                        .push(lhs.z_shift_r(&mut self.memory_allocator, rhs).into());
+                        .push(lhs.z_shift_r(&mut self.factory, rhs).into());
                 }
                 VMInst::NEG => {
                     cur_frame.pc += 1;
@@ -528,8 +527,7 @@ impl VM2 {
                 VMInst::POSI => {
                     cur_frame.pc += 1;
                     let val: Value = self.stack.pop().unwrap().into();
-                    self.stack
-                        .push(val.positive(&mut self.memory_allocator).into());
+                    self.stack.push(val.positive(&mut self.factory).into());
                 }
                 VMInst::LNOT => {
                     cur_frame.pc += 1;
@@ -630,11 +628,7 @@ impl VM2 {
                     for _ in 0..argc {
                         args.push(self.stack.pop().unwrap().into());
                     }
-                    let callee = match etry!(parent.get_property(
-                        &mut self.memory_allocator,
-                        &self.object_prototypes,
-                        method
-                    )) {
+                    let callee = match etry!(parent.get_property(&mut self.factory, method)) {
                         Property::Data(DataProperty { val, .. }) => val,
                         _ => type_error!("Not a function"),
                     };
@@ -643,7 +637,7 @@ impl VM2 {
                 VMInst::SET_OUTER_ENV => {
                     cur_frame.pc += 1;
                     let func_template: Value = self.stack.pop().unwrap().into();
-                    let mut func = func_template.copy_object(&mut self.memory_allocator);
+                    let mut func = func_template.copy_object(&mut self.factory);
                     func.set_function_outer_environment(
                         cur_frame.execution_context.lexical_environment,
                     );
@@ -653,9 +647,9 @@ impl VM2 {
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, id, usize);
                     self.create_object(id)?;
-                    self.memory_allocator.mark(
+                    self.factory.memory_allocator.mark(
                         self.global_environment,
-                        &self.object_prototypes,
+                        &self.factory.object_prototypes,
                         &self.constant_table,
                         &self.stack,
                         &cur_frame,
@@ -666,9 +660,9 @@ impl VM2 {
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, len, usize);
                     self.create_array(len)?;
-                    self.memory_allocator.mark(
+                    self.factory.memory_allocator.mark(
                         self.global_environment,
-                        &self.object_prototypes,
+                        &self.factory.object_prototypes,
                         &self.constant_table,
                         &self.stack,
                         &cur_frame,
@@ -743,9 +737,9 @@ impl VM2 {
                     let escape = cur_frame.escape;
                     self.unwind_frame_saving_stack_top(&mut cur_frame);
                     // TODO: GC schedule
-                    self.memory_allocator.mark(
+                    self.factory.memory_allocator.mark(
                         self.global_environment,
-                        &self.object_prototypes,
+                        &self.factory.object_prototypes,
                         &self.constant_table,
                         &self.stack,
                         &cur_frame,
@@ -759,8 +753,7 @@ impl VM2 {
                     cur_frame.pc += 1;
                     let val: Value = self.stack.pop().unwrap().into();
                     let type_str = val.type_of();
-                    let type_str_val =
-                        Value::string(&mut self.memory_allocator, type_str.to_string());
+                    let type_str_val = Value::string(&mut self.factory, type_str.to_string());
                     self.stack.push(type_str_val.into());
                 }
                 VMInst::END => break,
@@ -848,11 +841,7 @@ impl VM2 {
             }
         }
 
-        let obj = Value::object(
-            &mut self.memory_allocator,
-            &self.object_prototypes,
-            properties,
-        );
+        let obj = Value::object(&mut self.factory, properties);
         self.stack.push(obj.into());
 
         Ok(())
@@ -870,7 +859,7 @@ impl VM2 {
             }));
         }
 
-        let ary = self.array(elems);
+        let ary = self.factory.array(elems);
         self.stack.push(ary.into());
 
         Ok(())
@@ -882,7 +871,7 @@ impl VM2 {
         args: &[Value],
         cur_frame: &mut frame::Frame,
     ) -> VMResult {
-        let this = Value::Object(self.memory_allocator.alloc(ObjectInfo {
+        let this = Value::Object(self.factory.memory_allocator.alloc(ObjectInfo {
             kind: ObjectKind2::Ordinary,
             prototype: callee.get_property_by_str_key("prototype"),
             property: FxHashMap::default(),
@@ -961,7 +950,7 @@ impl VM2 {
             outer,
         };
 
-        frame::LexicalEnvironmentRef(self.memory_allocator.alloc(env))
+        frame::LexicalEnvironmentRef(self.factory.memory_allocator.alloc(env))
     }
 
     fn create_variable_environment(
@@ -1014,7 +1003,7 @@ impl VM2 {
                         record.insert(
                             name.clone(),
                             if *rest_param {
-                                self.array(
+                                self.factory.array(
                                     (*args)
                                         .get(i..)
                                         .unwrap_or(&vec![])
@@ -1034,7 +1023,7 @@ impl VM2 {
             outer,
         };
 
-        frame::LexicalEnvironmentRef(self.memory_allocator.alloc(env))
+        frame::LexicalEnvironmentRef(self.factory.memory_allocator.alloc(env))
     }
 
     /// Create new frame for function invokation.
@@ -1063,7 +1052,7 @@ impl VM2 {
         let mut lex_env_ref = self.create_lexical_environment(&user_func.lex_names, var_env_ref);
 
         for func in &user_func.func_decls {
-            let mut func = func.copy_object(&mut self.memory_allocator);
+            let mut func = func.copy_object(&mut self.factory);
             let name = func.as_function().name.clone().unwrap();
             func.set_function_outer_environment(lex_env_ref);
             lex_env_ref.set_value(name, func)?;
@@ -1088,17 +1077,10 @@ impl VM2 {
     }
 }
 
-impl VM2 {
+impl Factory {
     pub fn function(&mut self, name: Option<String>, info: UserFunctionInfo) -> Value {
-        let name_prop = Value::string(
-            &mut self.memory_allocator,
-            name.clone().unwrap_or("".to_string()),
-        );
-        let prototype = Value::object(
-            &mut self.memory_allocator,
-            &self.object_prototypes,
-            FxHashMap::default(),
-        );
+        let name_prop = Value::string(self, name.clone().unwrap_or("".to_string()));
+        let prototype = Value::object(self, FxHashMap::default());
 
         let f = Value::Object(self.memory_allocator.alloc(ObjectInfo {
             prototype: self.object_prototypes.function,
@@ -1123,7 +1105,7 @@ impl VM2 {
     }
 
     pub fn builtin_function(&mut self, name: String, func: BuiltinFuncTy2) -> Value {
-        let name_prop = Value::string(&mut self.memory_allocator, name.clone());
+        let name_prop = Value::string(self, name.clone());
         Value::Object(self.memory_allocator.alloc(ObjectInfo {
             kind: ObjectKind2::Function(FunctionObjectInfo {
                 name: Some(name),
@@ -1158,7 +1140,9 @@ impl VM2 {
             sym_property: FxHashMap::default(),
         }))
     }
+}
 
+impl VM2 {
     pub fn symbol_registory_for_(&mut self, key: String) -> Value {
         if let Some((_, sym)) = self
             .global_symbol_registry
@@ -1169,7 +1153,7 @@ impl VM2 {
             return *sym;
         }
 
-        let sym = self.symbol(Some(key.clone()));
+        let sym = self.factory.symbol(Some(key.clone()));
         self.global_symbol_registry.list.push((key, sym));
 
         sym
