@@ -19,7 +19,7 @@ pub fn string_prototype_split(
         .split(separator.as_str())
         .collect::<Vec<&str>>()
         .iter()
-        .map(|s| Property::new_data_simple(Value::string(&mut vm.factory, s.to_string())))
+        .map(|s| Property::new_data_simple(vm.factory.string(s.to_string())))
         .collect::<Vec<Property>>();
     let ary = vm.factory.array(elems);
     vm.stack.push(ary.into());

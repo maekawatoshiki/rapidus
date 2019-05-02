@@ -19,11 +19,11 @@ impl RuntimeError {
     pub fn to_value2(self, factory: &mut Factory) -> Value {
         match self {
             RuntimeError::Exception2(v, _) => v,
-            RuntimeError::Type(s) => Value::string(factory, s),
-            RuntimeError::General(s) => Value::string(factory, s),
-            RuntimeError::Reference(s) => Value::string(factory, format!("Reference error: {}", s)),
-            RuntimeError::Unimplemented => Value::string(factory, "Unimplemented".to_string()),
-            RuntimeError::Unknown => Value::string(factory, "Unknown".to_string()),
+            RuntimeError::Type(s) => factory.string(s),
+            RuntimeError::General(s) => factory.string(s),
+            RuntimeError::Reference(s) => factory.string(format!("Reference error: {}", s)),
+            RuntimeError::Unimplemented => factory.string("Unimplemented".to_string()),
+            RuntimeError::Unknown => factory.string("Unknown".to_string()),
         }
     }
 

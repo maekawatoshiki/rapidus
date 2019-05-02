@@ -17,14 +17,14 @@ pub fn object_constructor(
     _cur_frame: &frame::Frame,
 ) -> vm::VMResult {
     if args.len() == 0 {
-        let empty_obj = Value::object(&mut vm.factory, FxHashMap::default());
+        let empty_obj = vm.factory.object(FxHashMap::default());
         vm.stack.push(empty_obj.into());
         return Ok(());
     }
 
     match &args[0] {
         Value::Other(NULL) | Value::Other(UNDEFINED) => {
-            let empty_obj = Value::object(&mut vm.factory, FxHashMap::default());
+            let empty_obj = vm.factory.object(FxHashMap::default());
             vm.stack.push(empty_obj.into());
         }
         Value::Other(EMPTY) => unreachable!(),

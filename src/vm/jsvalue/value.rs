@@ -144,19 +144,6 @@ impl Value {
         Value::Bool(if x { 1 } else { 0 })
     }
 
-    pub fn string(factory: &mut Factory, body: String) -> Self {
-        Value::String(factory.memory_allocator.alloc(CString::new(body).unwrap()))
-    }
-
-    pub fn object(factory: &mut Factory, property: FxHashMap<String, Property>) -> Self {
-        Value::Object(factory.memory_allocator.alloc(ObjectInfo {
-            kind: ObjectKind2::Ordinary,
-            prototype: factory.object_prototypes.object,
-            property,
-            sym_property: FxHashMap::default(),
-        }))
-    }
-
     pub fn builtin_function_with_proto(
         allocator: &mut MemoryAllocator,
         proto: Value,
@@ -306,7 +293,7 @@ impl Value {
         ) -> Result<Property, error::RuntimeError> {
             match key {
                 Value::Number(idx) if is_integer(idx) => Ok(Property::new_data_simple(
-                    Value::string(factory, s.chars().nth(idx as usize).unwrap().to_string()),
+                    factory.string(s.chars().nth(idx as usize).unwrap().to_string()),
                 )),
                 Value::String(x) if unsafe { &*x }.to_str().unwrap() == "length" => {
                     Ok(Property::new_data_simple(Value::Number(
@@ -591,9 +578,9 @@ impl Value {
                     }
                 }
 
-                Value::string(factory, self.to_string())
+                factory.string(self.to_string())
             }
-            PreferredType::String => Value::string(factory, self.to_string()),
+            PreferredType::String => factory.string(self.to_string()),
             PreferredType::Default => unreachable!(),
         }
     }
@@ -626,15 +613,15 @@ impl Value {
                 let x = unsafe { &*x }.to_str().unwrap();
                 let y = unsafe { &*y }.to_str().unwrap();
                 let cat = format!("{}{}", x, y);
-                Value::string(factory, cat)
+                factory.string(cat)
             }
             (Value::String(x), _) => {
                 let x = unsafe { &*x }.to_str().unwrap();
-                Value::string(factory, format!("{}{}", x, rprim.to_string()))
+                factory.string(format!("{}{}", x, rprim.to_string()))
             }
             (_, Value::String(y)) => {
                 let y = unsafe { &*y }.to_str().unwrap();
-                Value::string(factory, format!("{}{}", lprim.to_string(), y))
+                factory.string(format!("{}{}", lprim.to_string(), y))
             }
             (x, y) => Value::Number(x.to_number(factory) + y.to_number(factory)),
         }

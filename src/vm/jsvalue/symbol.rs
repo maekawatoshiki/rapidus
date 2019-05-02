@@ -27,7 +27,7 @@ impl GlobalSymbolRegistry {
 
     pub fn key_for(&mut self, factory: &mut ::vm::vm::Factory, sym: Value) -> Value {
         if let Some((key, _)) = self.list.iter().find(|(_, sym_)| sym == *sym_) {
-            return Value::string(factory, key.to_owned());
+            return factory.string(key.to_owned());
         }
 
         Value::undefined()

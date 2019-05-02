@@ -753,7 +753,7 @@ impl VM2 {
                     cur_frame.pc += 1;
                     let val: Value = self.stack.pop().unwrap().into();
                     let type_str = val.type_of();
-                    let type_str_val = Value::string(&mut self.factory, type_str.to_string());
+                    let type_str_val = self.factory.string(type_str.to_string());
                     self.stack.push(type_str_val.into());
                 }
                 VMInst::END => break,
@@ -841,7 +841,7 @@ impl VM2 {
             }
         }
 
-        let obj = Value::object(&mut self.factory, properties);
+        let obj = self.factory.object(properties);
         self.stack.push(obj.into());
 
         Ok(())
@@ -1078,9 +1078,25 @@ impl VM2 {
 }
 
 impl Factory {
+    pub fn string(&mut self, body: String) -> Value {
+        Value::String(
+            self.memory_allocator
+                .alloc(std::ffi::CString::new(body).unwrap()),
+        )
+    }
+
+    pub fn object(&mut self, property: FxHashMap<String, Property>) -> Value {
+        Value::Object(self.memory_allocator.alloc(ObjectInfo {
+            kind: ObjectKind2::Ordinary,
+            prototype: self.object_prototypes.object,
+            property,
+            sym_property: FxHashMap::default(),
+        }))
+    }
+
     pub fn function(&mut self, name: Option<String>, info: UserFunctionInfo) -> Value {
-        let name_prop = Value::string(self, name.clone().unwrap_or("".to_string()));
-        let prototype = Value::object(self, FxHashMap::default());
+        let name_prop = self.string(name.clone().unwrap_or("".to_string()));
+        let prototype = self.object(FxHashMap::default());
 
         let f = Value::Object(self.memory_allocator.alloc(ObjectInfo {
             prototype: self.object_prototypes.function,
@@ -1105,7 +1121,7 @@ impl Factory {
     }
 
     pub fn builtin_function(&mut self, name: String, func: BuiltinFuncTy2) -> Value {
-        let name_prop = Value::string(self, name.clone());
+        let name_prop = self.string(name.clone());
         Value::Object(self.memory_allocator.alloc(ObjectInfo {
             kind: ObjectKind2::Function(FunctionObjectInfo {
                 name: Some(name),
