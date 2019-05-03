@@ -3,7 +3,7 @@ version: 2
 jobs:
   build:
     docker:
-      - image: ragnaroek/kcov:v31
+      - image: ragnaroek/kcov:v33
 
     working_directory: /opt/rapidus
 
