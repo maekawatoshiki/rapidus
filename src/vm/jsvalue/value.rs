@@ -9,7 +9,8 @@ use builtin::BuiltinFuncTy2;
 use gc::MemoryAllocator;
 pub use rustc_hash::FxHashMap;
 use std::ffi::CString;
-use vm::vm::Factory;
+use vm::factory::Factory;
+use vm::jsvalue::object::Property;
 
 pub const UNINITIALIZED: i32 = 0;
 pub const EMPTY: i32 = 1;
@@ -46,7 +47,7 @@ macro_rules! add_property_sub {
     ),*) => { {
         $( $objectinfo.property.insert(
             (stringify!($property_name)).to_string(),
-            Property::Data(DataProperty {
+            ::vm::jsvalue::object::Property::Data(::vm::jsvalue::object::DataProperty {
                 val: $val,
                 writable: $writable,
                 enumerable: $enumerable,
@@ -76,7 +77,7 @@ macro_rules! make_property_map_sub {
         let mut record = FxHashMap::default();
         $( record.insert(
             (stringify!($property_name)).to_string(),
-            Property::Data(DataProperty {
+            ::vm::jsvalue::object::Property::Data(::vm::jsvalue::object::DataProperty {
                 val: $val,
                 writable: $writable,
                 enumerable: $enumerable,
@@ -283,11 +284,11 @@ impl Value {
 
     pub fn get_property(
         &self,
-        factory: &mut ::vm::vm::Factory,
+        factory: &mut Factory,
         key: Value,
     ) -> Result<Property, error::RuntimeError> {
         fn string_get_property(
-            factory: &mut ::vm::vm::Factory,
+            factory: &mut Factory,
             s: &str,
             key: Value,
         ) -> Result<Property, error::RuntimeError> {
@@ -334,7 +335,7 @@ impl Value {
 
     pub fn set_property(
         &self,
-        factory: &mut ::vm::vm::Factory,
+        factory: &mut Factory,
         key: Value,
         val: Value,
     ) -> Result<Option<Value>, error::RuntimeError> {

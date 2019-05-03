@@ -6,11 +6,12 @@ use rustc_hash::FxHashMap;
 use std::ops::{Deref, DerefMut};
 use vm::codegen::FunctionInfo;
 use vm::error::RuntimeError;
+use vm::factory::Factory;
 use vm::jsvalue::function::Exception;
 use vm::jsvalue::object::{ObjectInfo, ObjectKind2};
 use vm::jsvalue::prototype::ObjectPrototypes;
 use vm::jsvalue::value::Value;
-use vm::vm::{Factory, VMResult};
+use vm::vm::VMResult;
 
 #[derive(Debug, Clone, Copy)]
 pub struct LexicalEnvironmentRef(pub *mut LexicalEnvironment);

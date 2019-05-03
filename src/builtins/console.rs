@@ -1,4 +1,12 @@
-use vm::{error::RuntimeError, frame::Frame, jsvalue::value::*, vm::VM2};
+use vm::{
+    error::RuntimeError,
+    frame::Frame,
+    jsvalue::object::Property,
+    jsvalue::value::{
+        AccessorProperty, DataProperty, ObjectKind2, Value, EMPTY, NULL, UNDEFINED, UNINITIALIZED,
+    },
+    vm::VM2,
+};
 
 pub fn console_log(vm: &mut VM2, args: &[Value], _cur_frame: &Frame) -> Result<(), RuntimeError> {
     let args_len = args.len();

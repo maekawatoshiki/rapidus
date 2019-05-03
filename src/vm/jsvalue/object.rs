@@ -1,7 +1,7 @@
 use super::super::error;
 use super::value::*;
 pub use rustc_hash::FxHashMap;
-use vm::vm::Factory;
+use vm::factory::Factory;
 
 #[derive(Clone, Debug)]
 pub struct ObjectInfo {
@@ -57,7 +57,7 @@ impl ObjectInfo {
 
     pub fn get_property(
         &self,
-        factory: &mut ::vm::vm::Factory,
+        factory: &mut Factory,
         key: Value,
     ) -> Result<Property, error::RuntimeError> {
         // Annoying

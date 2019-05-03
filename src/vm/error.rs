@@ -1,8 +1,8 @@
 use super::super::builtins;
 use crate::lexer;
 use ansi_term::Colour;
+use vm::factory::Factory;
 use vm::jsvalue::value::Value;
-use vm::vm::Factory;
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum RuntimeError {

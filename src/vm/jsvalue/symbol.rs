@@ -1,4 +1,5 @@
 use super::value::Value;
+use vm::factory::Factory;
 
 #[derive(Debug, Clone)]
 pub struct SymbolInfo {
@@ -25,7 +26,7 @@ impl GlobalSymbolRegistry {
         Self { list: vec![] }
     }
 
-    pub fn key_for(&mut self, factory: &mut ::vm::vm::Factory, sym: Value) -> Value {
+    pub fn key_for(&mut self, factory: &mut Factory, sym: Value) -> Value {
         if let Some((key, _)) = self.list.iter().find(|(_, sym_)| sym == *sym_) {
             return factory.string(key.to_owned());
         }

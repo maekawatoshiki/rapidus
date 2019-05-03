@@ -3,7 +3,7 @@ use rustc_hash::FxHashMap;
 use vm::{
     frame,
     jsvalue::{
-        object::{DataProperty, ObjectInfo, ObjectKind2, Property},
+        object::{ObjectInfo, ObjectKind2},
         value::Value,
     },
     vm,

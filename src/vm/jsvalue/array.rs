@@ -1,7 +1,5 @@
-// use super::super::frame::LexicalEnvironmentRef;
 use super::value::*;
-// use builtin::BuiltinFuncTy2;
-// use bytecode_gen::ByteCode;
+use vm::jsvalue::object::Property;
 
 #[derive(Clone, Debug)]
 pub struct ArrayObjectInfo {

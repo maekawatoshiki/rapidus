@@ -6,16 +6,20 @@ use super::{
     error::*,
     frame,
     jsvalue::function::{DestinationKind, ThisMode},
+    jsvalue::object::Property,
     jsvalue::prototype::ObjectPrototypes,
     jsvalue::symbol::GlobalSymbolRegistry,
-    jsvalue::value::*,
+    jsvalue::value::{
+        AccessorProperty, BoxedValue, DataProperty, FunctionObjectKind, FunctionParameter,
+        ObjectInfo, ObjectKind2, UserFunctionInfo, Value,
+    },
 };
-use builtin::BuiltinFuncTy2;
 use bytecode_gen::show_inst2;
 use bytecode_gen::ByteCode;
 use bytecode_gen::VMInst;
 use gc;
 use rustc_hash::FxHashMap;
+use vm::factory::Factory;
 
 // New VM
 
@@ -30,12 +34,6 @@ pub struct VM2 {
     pub stack: Vec<BoxedValue>,
     pub saved_frame: Vec<frame::Frame>,
     pub to_source_map: FxHashMap<usize, codegen::ToSourcePos>,
-}
-
-#[derive(Debug)]
-pub struct Factory {
-    pub memory_allocator: gc::MemoryAllocator,
-    pub object_prototypes: ObjectPrototypes,
 }
 
 macro_rules! gc_lock {
@@ -647,27 +645,13 @@ impl VM2 {
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, id, usize);
                     self.create_object(id)?;
-                    self.factory.memory_allocator.mark(
-                        self.global_environment,
-                        &self.factory.object_prototypes,
-                        &self.constant_table,
-                        &self.stack,
-                        &cur_frame,
-                        &self.saved_frame,
-                    );
+                    self.gc_mark(&cur_frame);
                 }
                 VMInst::CREATE_ARRAY => {
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, len, usize);
                     self.create_array(len)?;
-                    self.factory.memory_allocator.mark(
-                        self.global_environment,
-                        &self.factory.object_prototypes,
-                        &self.constant_table,
-                        &self.stack,
-                        &cur_frame,
-                        &self.saved_frame,
-                    );
+                    self.gc_mark(&cur_frame);
                 }
                 VMInst::DOUBLE => {
                     cur_frame.pc += 1;
@@ -737,14 +721,7 @@ impl VM2 {
                     let escape = cur_frame.escape;
                     self.unwind_frame_saving_stack_top(&mut cur_frame);
                     // TODO: GC schedule
-                    self.factory.memory_allocator.mark(
-                        self.global_environment,
-                        &self.factory.object_prototypes,
-                        &self.constant_table,
-                        &self.stack,
-                        &cur_frame,
-                        &self.saved_frame,
-                    );
+                    self.gc_mark(&cur_frame);
                     if escape {
                         break;
                     }
@@ -1077,84 +1054,16 @@ impl VM2 {
     }
 }
 
-impl Factory {
-    pub fn string(&mut self, body: String) -> Value {
-        Value::String(
-            self.memory_allocator
-                .alloc(std::ffi::CString::new(body).unwrap()),
-        )
-    }
-
-    pub fn object(&mut self, property: FxHashMap<String, Property>) -> Value {
-        Value::Object(self.memory_allocator.alloc(ObjectInfo {
-            kind: ObjectKind2::Ordinary,
-            prototype: self.object_prototypes.object,
-            property,
-            sym_property: FxHashMap::default(),
-        }))
-    }
-
-    pub fn function(&mut self, name: Option<String>, info: UserFunctionInfo) -> Value {
-        let name_prop = self.string(name.clone().unwrap_or("".to_string()));
-        let prototype = self.object(FxHashMap::default());
-
-        let f = Value::Object(self.memory_allocator.alloc(ObjectInfo {
-            prototype: self.object_prototypes.function,
-            property: make_property_map!(
-                length    => false, false, true : Value::Number(info.params.len() as f64), /* TODO: rest param */
-                name      => false, false, true : name_prop,
-                prototype => true , false, false: prototype
-            ),
-            kind: ObjectKind2::Function(FunctionObjectInfo {
-                name: name,
-                kind: FunctionObjectKind::User(info)
-            }),
-            sym_property: FxHashMap::default(),
-        }));
-
-        f.get_property_by_str_key("prototype")
-            .get_object_info()
-            .property
-            .insert("constructor".to_string(), Property::new_data_simple(f));
-
-        f
-    }
-
-    pub fn builtin_function(&mut self, name: String, func: BuiltinFuncTy2) -> Value {
-        let name_prop = self.string(name.clone());
-        Value::Object(self.memory_allocator.alloc(ObjectInfo {
-            kind: ObjectKind2::Function(FunctionObjectInfo {
-                name: Some(name),
-                kind: FunctionObjectKind::Builtin(func),
-            }),
-            prototype: self.object_prototypes.function,
-            property: make_property_map!(
-                length => false, false, true : Value::Number(0.0),
-                name   => false, false, true : name_prop
-            ),
-            sym_property: FxHashMap::default(),
-        }))
-    }
-
-    pub fn array(&mut self, elems: Vec<Property>) -> Value {
-        Value::Object(self.memory_allocator.alloc(ObjectInfo {
-            kind: ObjectKind2::Array(ArrayObjectInfo { elems }),
-            prototype: self.object_prototypes.array,
-            property: make_property_map!(),
-            sym_property: FxHashMap::default(),
-        }))
-    }
-
-    pub fn symbol(&mut self, description: Option<String>) -> Value {
-        Value::Object(self.memory_allocator.alloc(ObjectInfo {
-            kind: ObjectKind2::Symbol(SymbolInfo {
-                id: ::id::get_unique_id(),
-                description,
-            }),
-            prototype: self.object_prototypes.symbol,
-            property: make_property_map!(),
-            sym_property: FxHashMap::default(),
-        }))
+impl VM2 {
+    fn gc_mark(&mut self, cur_frame: &frame::Frame) {
+        self.factory.memory_allocator.mark(
+            self.global_environment,
+            &self.factory.object_prototypes,
+            &self.constant_table,
+            &self.stack,
+            cur_frame,
+            &self.saved_frame,
+        );
     }
 }
 
