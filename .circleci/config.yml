@@ -3,7 +3,7 @@ version: 2
 jobs:
   build:
     docker:
-      - image: ubuntu:16.04
+      - image: ragnaroek/kcov:v31
 
     working_directory: /opt/rapidus
 
@@ -25,22 +25,22 @@ jobs:
             chmod -R a+w $RUSTUP_HOME $CARGO_HOME;
             rm rustup-init
             source ~/.cargo/env
-      - run: 
+      - run:
           name: Install llvm-6.0 and so on
           command: |
             apt-get install clang-6.0 llvm-6.0 llvm-6.0-dev opt libedit-dev build-essential make -y
             # ln -s /usr/bin/clang-6.0 /usr/bin/clang; 
             # ln -s /usr/bin/clang++-6.0 /usr/bin/clang++; 
             ln -s /usr/bin/llvm-config-6.0 /usr/bin/llvm-config;
-      - run:
-          name: Setting up kcov
-          command: |
-            git clone https://github.com/SimonKagstrom/kcov
-            cd kcov
-            git checkout 9db5fa58986c2eae39e82580f15ba6fadb2dc906
-            cmake .
-            make -j
-            make install
+      #- run:
+      #    name: Setting up kcov
+      #    command: |
+      #      git clone https://github.com/SimonKagstrom/kcov
+      #      cd kcov
+      #      git checkout 9db5fa58986c2eae39e82580f15ba6fadb2dc906
+      #      cmake .
+      #      make -j
+      #      make install
       - run:
           name: Test
           command: |
