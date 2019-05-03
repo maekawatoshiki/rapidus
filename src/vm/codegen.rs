@@ -862,6 +862,7 @@ impl<'a> CodeGenerator<'a> {
             &BinOp::Shl => self.bytecode_generator.append_shl(iseq),
             &BinOp::Shr => self.bytecode_generator.append_shr(iseq),
             &BinOp::ZFShr => self.bytecode_generator.append_zfshr(iseq),
+            &BinOp::Exp => self.bytecode_generator.append_exp(iseq),
             _ => unimplemented!(),
         }
 

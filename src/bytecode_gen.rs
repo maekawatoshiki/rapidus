@@ -124,6 +124,9 @@ impl<'a> ByteCodeGenerator {
     pub fn append_rem(&self, iseq: &mut ByteCode) {
         iseq.push(VMInst::REM);
     }
+    pub fn append_exp(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::EXP);
+    }
     pub fn append_lt(&self, iseq: &mut ByteCode) {
         iseq.push(VMInst::LT);
     }
@@ -532,6 +535,7 @@ pub fn show_inst2(code: &ByteCode, i: usize, const_table: &constant::ConstantTab
             }
             VMInst::RETURN_SUB => format!("ReturnSub"),
             VMInst::TYPEOF => format!("Typeof"),
+            VMInst::EXP => format!("Exp"),
             _ => unreachable!("sorry. need to implement more opcodes"),
         }
     );
@@ -610,6 +614,7 @@ pub mod VMInst {
     pub const RETURN_SUB: u8 = 0x44;
     pub const TYPEOF: u8 = 0x45;
     pub const PUSH_NULL: u8 = 0x46;
+    pub const EXP: u8 = 0x47;
 
     pub fn get_inst_size(inst: u8) -> Option<usize> {
         match inst {
@@ -619,7 +624,7 @@ pub mod VMInst {
             | RETURN_TRY | DECL_VAR | LOOP_START | JMP | SET_VALUE | GET_VALUE | CALL | JMP_SUB
             | CALL_METHOD | PUSH_ENV | DECL_LET | DECL_CONST => Some(5),
             PUSH_INT8 => Some(2),
-            PUSH_FALSE | END | PUSH_TRUE | PUSH_THIS | ADD | SUB | MUL | DIV | REM | LT
+            PUSH_FALSE | END | PUSH_TRUE | PUSH_THIS | ADD | SUB | MUL | DIV | REM | LT | EXP
             | PUSH_ARGUMENTS | NEG | POSI | GT | LE | GE | EQ | NE | GET_MEMBER | RETURN | SNE
             | ZFSHR | POP | DOUBLE | AND | COND_OP | OR | SEQ | SET_MEMBER | LNOT
             | UPDATE_PARENT_SCOPE | PUSH_UNDEFINED | LAND | SHR | SHL | XOR | LOR | NOT => Some(1),

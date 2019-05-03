@@ -8,6 +8,7 @@ pub use super::symbol::*;
 use builtin::BuiltinFuncTy2;
 use gc::MemoryAllocator;
 pub use rustc_hash::FxHashMap;
+use std::f64::NAN;
 use std::ffi::CString;
 use vm::factory::Factory;
 use vm::jsvalue::object::Property;
@@ -632,29 +633,33 @@ impl Value {
     pub fn sub(self, val: Value) -> Self {
         match (self, val) {
             (Value::Number(x), Value::Number(y)) => Value::Number(x - y),
-            _ => Value::undefined(),
+            _ => Value::Number(NAN),
         }
     }
 
     pub fn mul(self, val: Value) -> Self {
         match (self, val) {
             (Value::Number(x), Value::Number(y)) => Value::Number(x * y),
-            _ => Value::undefined(),
+            _ => Value::Number(NAN),
         }
     }
 
     pub fn div(self, val: Value) -> Self {
         match (self, val) {
             (Value::Number(x), Value::Number(y)) => Value::Number(x / y),
-            _ => Value::undefined(),
+            _ => Value::Number(NAN),
         }
     }
 
     pub fn rem(self, val: Value) -> Self {
         match (self, val) {
             (Value::Number(x), Value::Number(y)) => Value::Number((x as i64 % y as i64) as f64),
-            _ => Value::undefined(),
+            _ => Value::Number(NAN),
         }
+    }
+
+    pub fn exp(self, factory: &mut Factory, val: Value) -> Self {
+        Value::Number(self.to_number(factory).powf(val.to_number(factory)))
     }
 
     pub fn and(self, factory: &mut Factory, val: Value) -> Self {
