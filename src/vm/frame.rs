@@ -266,7 +266,7 @@ impl LexicalEnvironment {
             }
         };
 
-        if let Some(outer) = self.get_outer() {
+        if let Some(outer) = self.outer {
             outer.get_value(name)
         } else {
             Err(RuntimeError::Reference(format!(
@@ -292,7 +292,7 @@ impl LexicalEnvironment {
             }
         };
 
-        if let Some(outer) = self.get_outer() {
+        if let Some(mut outer) = self.outer {
             outer.set_value(name, val)
         } else {
             Err(RuntimeError::Reference(format!(
@@ -313,11 +313,6 @@ impl LexicalEnvironment {
             }
         };
         return Ok(());
-    }
-
-    pub fn get_outer(&self) -> Option<&mut LexicalEnvironment> {
-        self.outer
-            .and_then(|outer| Some(unsafe { &mut *outer.as_ptr() }))
     }
 
     pub fn get_global_object(&self) -> Value {
