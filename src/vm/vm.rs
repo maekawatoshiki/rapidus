@@ -927,7 +927,9 @@ impl VM2 {
                         record.insert(
                             name.clone(),
                             if *rest_param {
-                                self.array(
+                                Value::array(
+                                    &mut self.memory_allocator,
+                                    &self.object_prototypes,
                                     (*args)
                                         .get(i..)
                                         .unwrap_or(&vec![])
