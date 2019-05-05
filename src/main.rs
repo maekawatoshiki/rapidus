@@ -317,4 +317,9 @@ mod tests {
     fn new_call_member() {
         assert_file("new_call_member")
     }
+
+    #[test]
+    fn assert() {
+        assert_file("assert")
+    }
 }

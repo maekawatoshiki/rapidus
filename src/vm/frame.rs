@@ -196,7 +196,9 @@ impl LexicalEnvironment {
         memory_allocator: &mut gc::MemoryAllocator,
         object_prototypes: &ObjectPrototypes,
     ) -> Self {
+        use builtin::deep_seq;
         use builtin::parse_float;
+        use builtin::require;
         use builtins;
 
         let log = Value::builtin_function(
@@ -210,6 +212,18 @@ impl LexicalEnvironment {
             object_prototypes,
             "parseFloat".to_string(),
             parse_float,
+        );
+        let require = Value::builtin_function(
+            memory_allocator,
+            object_prototypes,
+            "require".to_string(),
+            require,
+        );
+        let deep_seq = Value::builtin_function(
+            memory_allocator,
+            object_prototypes,
+            "__assert_deep_seq".to_string(),
+            deep_seq,
         );
         let console = make_normal_object!(memory_allocator, object_prototypes,
             log => true, false, true: log
@@ -227,6 +241,8 @@ impl LexicalEnvironment {
                 undefined  => false,false,false: Value::undefined(),
                 NaN        => false,false,false: Value::Number(::std::f64::NAN),
                 Infinity   => false,false,false: Value::Number(::std::f64::INFINITY),
+                require    => true, false, true: require,
+                __assert_deep_seq    => true, false, true: deep_seq,
                 parseFloat => true, false, true: parse_float,
                 console    => true, false, true: console,
                 Object     => true, false, true: object_constructor,
