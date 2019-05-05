@@ -807,7 +807,11 @@ impl Value {
     }
 
     // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-strict-equality-comparison
-    pub fn strict_eq(self, val: Value) -> Self {
+    pub fn strict_eq(self, val: Value) -> Value {
+        Value::bool(self.strict_eq_bool(val))
+    }
+
+    pub fn strict_eq_bool(self, val: Value) -> bool {
         fn get_obj_ptr(val: Value) -> u64 {
             match val {
                 Value::Object(obj) => obj as u64,
@@ -816,19 +820,19 @@ impl Value {
         }
 
         if !self.is_same_type_as(&val) {
-            return Value::bool(false);
+            return false;
         }
 
         if self == Value::undefined() || self == Value::null() {
-            return Value::bool(true);
+            return true;
         }
 
         match self {
-            Value::Number(_) => Value::bool(self.into_number() == val.into_number()),
-            Value::String(_) => Value::bool(self.into_str() == val.into_str()),
-            Value::Bool(_) => Value::bool(self.into_bool() == val.into_bool()),
-            Value::Object(_) => Value::bool(get_obj_ptr(self) == get_obj_ptr(val)),
-            _ => Value::bool(false),
+            Value::Number(_) => self.into_number() == val.into_number(),
+            Value::String(_) => self.into_str() == val.into_str(),
+            Value::Bool(_) => self.into_bool() == val.into_bool(),
+            Value::Object(_) => get_obj_ptr(self) == get_obj_ptr(val),
+            _ => false,
         }
     }
 
