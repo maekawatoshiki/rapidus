@@ -489,6 +489,13 @@ impl VM2 {
                     let lhs: Value = self.stack.pop().unwrap().into();
                     self.stack.push(lhs.rem(rhs).into());
                 }
+                VMInst::EXP => {
+                    cur_frame.pc += 1;
+                    let rhs: Value = self.stack.pop().unwrap().into();
+                    let lhs: Value = self.stack.pop().unwrap().into();
+                    self.stack
+                        .push(lhs.exp(&mut self.memory_allocator, rhs).into());
+                }
                 VMInst::EQ => {
                     cur_frame.pc += 1;
                     let rhs: Value = self.stack.pop().unwrap().into();

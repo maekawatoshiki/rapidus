@@ -852,6 +852,7 @@ impl<'a> CodeGenerator<'a> {
             &BinOp::Mul => self.bytecode_generator.append_mul(iseq),
             &BinOp::Div => self.bytecode_generator.append_div(iseq),
             &BinOp::Rem => self.bytecode_generator.append_rem(iseq),
+            &BinOp::Exp => self.bytecode_generator.append_exp(iseq),
             &BinOp::Eq => self.bytecode_generator.append_eq(iseq),
             &BinOp::Ne => self.bytecode_generator.append_ne(iseq),
             &BinOp::SEq => self.bytecode_generator.append_seq(iseq),

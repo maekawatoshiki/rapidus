@@ -746,6 +746,10 @@ impl Value {
         }
     }
 
+    pub fn exp(self, allocator: &mut gc::MemoryAllocator, val: Value) -> Self {
+        Value::Number(self.to_number(allocator).powf(val.to_number(allocator)))
+    }
+
     pub fn and(self, allocator: &mut gc::MemoryAllocator, val: Value) -> Self {
         Value::Number((self.to_int32(allocator) & val.to_int32(allocator)) as f64)
     }
