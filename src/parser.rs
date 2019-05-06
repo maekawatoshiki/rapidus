@@ -62,20 +62,20 @@ impl Parser {
     }
 
     /// display syntax error message.
-    pub fn handle_error(&self, err: Error) {
+    pub fn handle_error(&self, err: &Error) {
         match err {
             Error::NormalEOF => unreachable!(),
             Error::Expect(pos, msg)
             | Error::General(pos, msg)
             | Error::UnexpectedToken(pos, msg) => {
-                self.show_error_at(pos, msg.as_str());
+                self.show_error_at(*pos, msg.as_str());
             }
             Error::UnexpectedEOF(msg) => {
                 self.show_error_at(self.lexer.pos, format!("unexpected EOF. {}", msg).as_str())
             }
-            Error::InvalidToken(pos) => self.show_error_at(pos, "Invalid token."),
+            Error::InvalidToken(pos) => self.show_error_at(*pos, "Invalid token."),
             Error::UnsupportedFeature(pos) => {
-                self.show_error_at(pos, "Unsupported feature.");
+                self.show_error_at(*pos, "Unsupported feature.");
             }
         }
     }

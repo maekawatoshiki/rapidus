@@ -67,7 +67,7 @@ fn main() {
     let node = match parser.parse_all() {
         Ok(ok) => ok,
         Err(err) => {
-            parser.handle_error(err);
+            parser.handle_error(&err);
             return;
         }
     };
@@ -85,6 +85,7 @@ fn main() {
 
     println!("CodeGenerator generated:");
     bytecode_gen::show2(&iseq, &vm.constant_table);
+    println!("{:?}", vm.to_source_map);
 
     println!("Result:");
     if let Err(e) = vm.run_global(global_info, iseq) {
@@ -139,7 +140,7 @@ fn repl() {
                     }
 
                     if let Err(e) = vm.run(global_frame.clone().unwrap()) {
-                        e.show_error_message(None);
+                        e.show_error_message(Some(&parser.lexer));
                         break;
                     }
 
@@ -161,7 +162,7 @@ fn repl() {
                     Err(_) => break,
                 },
                 Err(e) => {
-                    parser.handle_error(e);
+                    parser.handle_error(&e);
                     break;
                 }
             }
@@ -171,7 +172,7 @@ fn repl() {
 
 #[cfg(test)]
 mod tests {
-    use rapidus::test::{assert_file, execute_script, test_code, test_file};
+    use rapidus::test::{assert_file, execute_script, runtime_error, test_code, test_file};
 
     #[test]
     fn vm_test() {
@@ -321,5 +322,30 @@ mod tests {
     #[test]
     fn assert() {
         assert_file("assert")
+    }
+
+    #[test]
+    fn runtime_error1() {
+        runtime_error("let a = {}; a.b.c");
+    }
+
+    #[test]
+    fn runtime_error2() {
+        runtime_error("let a = {}; a.b.c = 5");
+    }
+
+    #[test]
+    fn runtime_error3() {
+        runtime_error("let a = {}; a(5)");
+    }
+
+    #[test]
+    fn runtime_error4() {
+        runtime_error("let a = {}; a.b(5)");
+    }
+
+    #[test]
+    fn runtime_error5() {
+        runtime_error("let a = {}; a(5)");
     }
 }

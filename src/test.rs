@@ -44,6 +44,23 @@ pub fn test_code(code: String, answer: String) {
     compare_scripts(code, answer);
 }
 
+/// Execute the given code, and normally terminates only when an runtime error is returned.
+/// ### Panic
+/// Panic if the code returned a parse error, or terminated without error.
+pub fn runtime_error(text: &str) -> String {
+    let mut vm = vm::vm::VM2::new();
+
+    let mut parser = parser::Parser::new(text.to_string());
+    let node = parser.parse_all().unwrap();
+    let mut iseq = vec![];
+
+    let func_info = vm.compile(&node, &mut iseq, true).unwrap();
+    match vm.run_global(func_info, iseq) {
+        Ok(()) => panic!(),
+        Err(err) => return format!("{:?}", err),
+    };
+}
+
 /// Execute the given code.
 /// ### Panic
 /// Panic if the given code returned Err.
