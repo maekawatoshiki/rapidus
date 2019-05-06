@@ -252,81 +252,83 @@ impl VM2 {
 
         let mut subroutine_stack: Vec<SubroutineKind> = vec![];
 
-        macro_rules! exception {
-            () => {{
-                let mut exception_found = false;
-                let mut outer_break = false;
+        loop {
+            let current_inst_pc = cur_frame.pc;
 
-                let node_pos = self
-                    .to_source_map
-                    .get(&cur_frame.id)
-                    .unwrap()
-                    .get_node_pos(cur_frame.pc);
+            macro_rules! exception {
+                () => {{
+                    let mut exception_found = false;
+                    let mut outer_break = false;
 
-                loop {
-                    for exception in &cur_frame.exception_table {
-                        let in_range =
-                            exception.start <= cur_frame.pc && cur_frame.pc < exception.end;
-                        if !in_range {
-                            continue;
-                        }
-                        match exception.dst_kind {
-                            DestinationKind::Catch => cur_frame.pc = exception.end,
-                            DestinationKind::Finally => {
-                                subroutine_stack.push(SubroutineKind::Throw);
-                                cur_frame.pc = exception.end
+                    let node_pos = self
+                        .to_source_map
+                        .get(&cur_frame.id)
+                        .unwrap()
+                        .get_node_pos(current_inst_pc);
+
+                    loop {
+                        for exception in &cur_frame.exception_table {
+                            let in_range =
+                                exception.start <= cur_frame.pc && cur_frame.pc < exception.end;
+                            if !in_range {
+                                continue;
                             }
+                            match exception.dst_kind {
+                                DestinationKind::Catch => cur_frame.pc = exception.end,
+                                DestinationKind::Finally => {
+                                    subroutine_stack.push(SubroutineKind::Throw);
+                                    cur_frame.pc = exception.end
+                                }
+                            }
+                            exception_found = true;
+                            outer_break = true;
+                            break;
                         }
-                        exception_found = true;
-                        outer_break = true;
-                        break;
-                    }
 
-                    if outer_break {
-                        break;
-                    }
+                        if outer_break {
+                            break;
+                        }
 
-                    if self.saved_frame.len() == 0 {
-                        break;
+                        if self.saved_frame.len() == 0 {
+                            break;
+                        }
+
+                        if !exception_found {
+                            self.unwind_frame_saving_stack_top(&mut cur_frame);
+                        }
                     }
 
                     if !exception_found {
-                        self.unwind_frame_saving_stack_top(&mut cur_frame);
+                        let val: Value = self.stack.pop().unwrap().into();
+                        return Err(RuntimeError::Exception2(val, node_pos));
                     }
-                }
+                }};
+            }
 
-                if !exception_found {
-                    let val: Value = self.stack.pop().unwrap().into();
-                    return Err(RuntimeError::Exception2(val, node_pos));
-                }
-            }};
-        }
+            macro_rules! type_error {
+                ($msg:expr) => {{
+                    let val =
+                        RuntimeError::Type($msg.to_string()).to_value2(&mut self.memory_allocator);
+                    self.stack.push(val.into());
+                    exception!();
+                    continue;
+                }};
+            }
 
-        macro_rules! type_error {
-            ($msg:expr) => {{
-                let val =
-                    RuntimeError::Type($msg.to_string()).to_value2(&mut self.memory_allocator);
-                self.stack.push(val.into());
-                exception!();
-                continue;
-            }};
-        }
-
-        macro_rules! etry {
-            ($val:expr) => {{
-                match $val {
-                    Ok(ok) => ok,
-                    Err(err) => {
-                        let val = err.to_value2(&mut self.memory_allocator);
-                        self.stack.push(val.into());
-                        exception!();
-                        continue;
+            macro_rules! etry {
+                ($val:expr) => {{
+                    match $val {
+                        Ok(ok) => ok,
+                        Err(err) => {
+                            let val = err.to_value2(&mut self.memory_allocator);
+                            self.stack.push(val.into());
+                            exception!();
+                            continue;
+                        }
                     }
-                }
-            }};
-        }
+                }};
+            }
 
-        loop {
             match cur_frame.bytecode[cur_frame.pc] {
                 // TODO: Macro for bin ops?
                 VMInst::ADD => {

@@ -251,6 +251,13 @@ impl Value {
         }
     }
 
+    pub fn is_null(&self) -> bool {
+        match self {
+            Value::Other(NULL) => true,
+            _ => false,
+        }
+    }
+
     pub fn is_object(&self) -> bool {
         match self {
             Value::Object(_) => true,
@@ -399,6 +406,13 @@ impl Value {
                     key,
                 );
             }
+            Value::Other(_) => {
+                return Err(error::RuntimeError::Type(format!(
+                    "TypeError: Cannot read property '{}' of {}",
+                    key.to_string(),
+                    self.to_string()
+                )));
+            }
             // TODO: Number
             _ => {}
         }
@@ -428,6 +442,11 @@ impl Value {
     ) -> Result<Option<Value>, error::RuntimeError> {
         match self {
             Value::Object(obj_info) => unsafe { &mut **obj_info }.set_property(allocator, key, val),
+            Value::Other(_) => Err(error::RuntimeError::Type(format!(
+                "TypeError: Cannot set property '{}' of {}",
+                key.to_string(),
+                self.to_string()
+            ))),
             _ => Ok(None),
         }
     }
@@ -578,6 +597,7 @@ impl Value {
             Value::Bool(1) => "true".to_string(),
             Value::String(s) => unsafe { &**s }.to_str().unwrap().to_string(),
             Value::Other(UNDEFINED) => "undefined".to_string(),
+            Value::Other(NULL) => "null".to_string(),
             Value::Number(n) => {
                 if n.is_nan() {
                     "NaN".to_string()
