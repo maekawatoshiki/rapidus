@@ -33,6 +33,8 @@ pub struct CodeGenerator<'a> {
     pub object_prototypes: &'a prototype::ObjectPrototypes,
     pub function_stack: Vec<FunctionInfo>,
     pub to_source_map: FxHashMap<usize, ToSourcePos>,
+    /// A position in the bytecode of the current node.
+    pub node_pos: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -80,6 +82,7 @@ impl<'a> CodeGenerator<'a> {
             memory_allocator,
             function_stack: vec![FunctionInfo::new(None) /* = global */],
             to_source_map: FxHashMap::default(),
+            node_pos: 0,
         }
     }
 
@@ -104,6 +107,7 @@ impl<'a> CodeGenerator<'a> {
 
 impl<'a> CodeGenerator<'a> {
     fn visit(&mut self, node: &Node, iseq: &mut ByteCode, use_value: bool) -> CodeGenResult {
+        self.node_pos = node.pos;
         match node.base {
             NodeBase::StatementList(ref node_list) => {
                 self.visit_statement_list(node_list, iseq, use_value)?
@@ -148,30 +152,21 @@ impl<'a> CodeGenerator<'a> {
                 self.visit_binary_op(&*lhs, &*rhs, op, iseq, use_value)?
             }
             NodeBase::Assign(ref dst, ref src) => {
-                self.current_function()
-                    .to_source_pos
-                    .append(iseq.len(), node.pos);
                 self.visit_assign(&*dst, &*src, iseq, use_value)?
             }
             NodeBase::Call(ref callee, ref args) => {
                 self.visit_call(&*callee, args, iseq, use_value)?
             }
-            NodeBase::Throw(ref val) => {
-                self.current_function()
-                    .to_source_pos
-                    .append(iseq.len(), node.pos);
-                self.visit_throw(val, iseq)?
-            }
+            NodeBase::Throw(ref val) => self.visit_throw(val, iseq)?,
             NodeBase::Return(ref val) => self.visit_return(val, iseq)?,
             NodeBase::New(ref expr) => self.visit_new(&*expr, iseq, use_value)?,
             NodeBase::Object(ref properties) => self.visit_object_literal(properties, iseq)?,
             NodeBase::Array(ref elems) => self.visit_array_literal(elems, iseq)?,
             NodeBase::Identifier(ref name) => {
-                if use_value {
-                    self.current_function()
-                        .to_source_pos
-                        .append(iseq.len(), node.pos);
-                    self.bytecode_generator.append_get_value(name, iseq)
+                self.save_source_pos(iseq);
+                self.bytecode_generator.append_get_value(name, iseq);
+                if !use_value {
+                    self.bytecode_generator.append_pop(iseq);
                 }
             }
             // NodeBase::Undefined => {
@@ -483,6 +478,7 @@ impl<'a> CodeGenerator<'a> {
             self.current_function().level.push(Level::Block {
                 names: vec![param_name.clone()],
             });
+            self.save_source_pos(iseq);
             self.bytecode_generator.append_set_value(&param_name, iseq);
 
             self.visit(catch, iseq, false)?;
@@ -695,6 +691,7 @@ impl<'a> CodeGenerator<'a> {
 
         if let &Some(ref init) = init {
             self.visit(&*init, iseq, true)?;
+            self.save_source_pos(iseq);
             self.bytecode_generator.append_set_value(name, iseq);
             // is_initialized = true;
         }
@@ -718,14 +715,15 @@ impl<'a> CodeGenerator<'a> {
         iseq: &mut ByteCode,
         use_value: bool,
     ) -> CodeGenResult {
-        if !use_value {
-            return Ok(());
-        }
-
         self.visit(parent, iseq, true)?;
         let property = Value::string(self.memory_allocator, member.clone());
         self.bytecode_generator.append_push_const(property, iseq);
+        self.save_source_pos(iseq);
         self.bytecode_generator.append_get_member(iseq);
+
+        if !use_value {
+            self.bytecode_generator.append_pop(iseq);
+        }
 
         Ok(())
     }
@@ -737,13 +735,14 @@ impl<'a> CodeGenerator<'a> {
         iseq: &mut ByteCode,
         use_value: bool,
     ) -> CodeGenResult {
-        if !use_value {
-            return Ok(());
-        }
-
         self.visit(parent, iseq, true)?;
         self.visit(index, iseq, true)?;
+        self.save_source_pos(iseq);
         self.bytecode_generator.append_get_member(iseq);
+
+        if !use_value {
+            self.bytecode_generator.append_pop(iseq);
+        }
 
         Ok(())
     }
@@ -809,10 +808,6 @@ impl<'a> CodeGenerator<'a> {
         iseq: &mut ByteCode,
         use_value: bool,
     ) -> CodeGenResult {
-        if !use_value {
-            return Ok(());
-        }
-
         match op {
             &BinOp::LAnd => {
                 self.visit(lhs, iseq, true)?;
@@ -831,6 +826,9 @@ impl<'a> CodeGenerator<'a> {
                     (pos - lhs_cond_pos) as i32 - 5,
                     &mut iseq[lhs_cond_pos as usize + 1..lhs_cond_pos as usize + 5],
                 );
+                if !use_value {
+                    self.bytecode_generator.append_pop(iseq);
+                }
 
                 return Ok(());
             }
@@ -838,6 +836,9 @@ impl<'a> CodeGenerator<'a> {
             &BinOp::Comma => {
                 self.visit(lhs, iseq, false)?;
                 self.visit(rhs, iseq, true)?;
+                if !use_value {
+                    self.bytecode_generator.append_pop(iseq);
+                }
                 return Ok(());
             }
             _ => {}
@@ -868,6 +869,10 @@ impl<'a> CodeGenerator<'a> {
             &BinOp::Shr => self.bytecode_generator.append_shr(iseq),
             &BinOp::ZFShr => self.bytecode_generator.append_zfshr(iseq),
             _ => unimplemented!(),
+        }
+
+        if !use_value {
+            self.bytecode_generator.append_pop(iseq);
         }
 
         Ok(())
@@ -909,11 +914,13 @@ impl<'a> CodeGenerator<'a> {
                     iseq,
                 );
                 self.visit(&*parent, iseq, true)?;
+                self.save_source_pos(iseq);
                 self.bytecode_generator
                     .append_call_method(args.len() as u32, iseq);
             }
             _ => {
                 self.visit(callee, iseq, true)?;
+                self.save_source_pos(iseq);
                 self.bytecode_generator.append_call(args.len() as u32, iseq);
             }
         }
@@ -934,6 +941,7 @@ impl<'a> CodeGenerator<'a> {
             self.unwind_finally(iseq);
         }
 
+        self.save_source_pos(iseq);
         self.bytecode_generator.append_throw(iseq);
         Ok(())
     }
@@ -973,6 +981,7 @@ impl<'a> CodeGenerator<'a> {
                 self.visit(parent, iseq, true)?;
                 let property = Value::string(self.memory_allocator, property_name.clone());
                 self.bytecode_generator.append_push_const(property, iseq);
+                self.save_source_pos(iseq);
                 self.bytecode_generator.append_get_member(iseq);
             }
             _ => {
@@ -1000,6 +1009,7 @@ impl<'a> CodeGenerator<'a> {
         for (i, property) in properties.iter().enumerate() {
             match property {
                 PropertyDefinition::IdentifierReference(name) => {
+                    self.save_source_pos(iseq);
                     self.bytecode_generator.append_get_value(name, iseq);
                     self.bytecode_generator.append_push_const(
                         Value::string(self.memory_allocator, name.clone()),
@@ -1058,20 +1068,28 @@ impl<'a> CodeGenerator<'a> {
     fn assign_stack_top_to(&mut self, dst: &Node, iseq: &mut ByteCode) -> CodeGenResult {
         match dst.base {
             NodeBase::Identifier(ref name) => {
+                self.save_source_pos(iseq);
                 self.bytecode_generator.append_set_value(name, iseq);
             }
             NodeBase::Member(ref parent, ref property) => {
                 self.visit(&*parent, iseq, true)?;
                 let property = Value::string(self.memory_allocator, property.clone());
                 self.bytecode_generator.append_push_const(property, iseq);
+                self.save_source_pos(iseq);
                 self.bytecode_generator.append_set_member(iseq);
             }
             NodeBase::Index(ref parent, ref index) => {
                 self.visit(&*parent, iseq, true)?;
                 self.visit(&*index, iseq, true)?;
+                self.save_source_pos(iseq);
                 self.bytecode_generator.append_set_member(iseq);
             }
-            _ => unimplemented!(),
+            _ => {
+                return Err(Error::new_general_error(
+                    "Reference error: Invalid left-hand side in assignment.".to_string(),
+                    dst.pos,
+                ));
+            }
         }
 
         Ok(())
@@ -1079,6 +1097,14 @@ impl<'a> CodeGenerator<'a> {
 
     fn current_function(&mut self) -> &mut FunctionInfo {
         self.function_stack.last_mut().unwrap()
+    }
+
+    /// Save the position in bytecode corresponds to the current node.
+    fn save_source_pos(&mut self, iseq: &mut ByteCode) {
+        let node_pos = self.node_pos;
+        self.current_function()
+            .to_source_pos
+            .append(iseq.len(), node_pos);
     }
 
     fn unwind_try_or_catch(&mut self, iseq: &mut ByteCode) {
@@ -1333,7 +1359,7 @@ impl ToSourcePos {
 
     pub fn get_node_pos(&self, bytecode_offset: usize) -> Option<usize> {
         for (bp, np) in &self.table {
-            if *bp < bytecode_offset {
+            if *bp == bytecode_offset {
                 return Some(*np);
             }
         }

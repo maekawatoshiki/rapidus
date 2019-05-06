@@ -380,7 +380,7 @@ pub fn show2(code: &ByteCode, const_table: &constant::ConstantTable) {
 
 pub fn show_inst2(code: &ByteCode, i: usize, const_table: &constant::ConstantTable) {
     print!(
-        "{:04x} {:<25}",
+        "{:05} {:<25}",
         i,
         match code[i] {
             VMInst::END => format!("End"),

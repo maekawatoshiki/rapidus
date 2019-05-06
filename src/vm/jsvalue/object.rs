@@ -98,9 +98,13 @@ impl ObjectInfo {
 
         match self.property.get(key.to_string().as_str()) {
             Some(prop) => Ok(*prop),
-            None => self
-                .prototype
-                .get_property(allocator, object_prototypes, key),
+            None => {
+                let proto = self.prototype;
+                if proto.is_null() {
+                    return Ok(Property::new_data_simple(Value::undefined()));
+                };
+                proto.get_property(allocator, object_prototypes, key)
+            }
         }
     }
 
