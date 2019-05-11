@@ -46,6 +46,11 @@ pub enum EnvironmentRecord {
     Declarative(FxHashMap<String, Value>),
     Object(Value),
     Global(Value),
+    Module {
+        this: Value,
+        record: FxHashMap<String, Value>,
+        // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-module-environment-records
+    },
     Function {
         this: Value,
         record: FxHashMap<String, Value>,
@@ -258,6 +263,7 @@ impl LexicalEnvironment {
     pub fn get_value(&self, name: &String) -> Result<Value, RuntimeError> {
         match self.record {
             EnvironmentRecord::Function { ref record, .. }
+            | EnvironmentRecord::Module { ref record, .. }
             | EnvironmentRecord::Declarative(ref record) => match record.get(name) {
                 Some(binding) if binding == &Value::uninitialized() => {
                     return Err(RuntimeError::Reference(format!(
@@ -295,6 +301,7 @@ impl LexicalEnvironment {
     pub fn set_value(&mut self, name: String, val: Value) -> VMResult {
         match self.record {
             EnvironmentRecord::Function { ref mut record, .. }
+            | EnvironmentRecord::Module { ref mut record, .. }
             | EnvironmentRecord::Declarative(ref mut record) => match record.get_mut(&name) {
                 Some(binding) => {
                     *binding = val;
@@ -321,6 +328,7 @@ impl LexicalEnvironment {
     pub fn set_own_value(&mut self, name: String, val: Value) -> VMResult {
         match self.record {
             EnvironmentRecord::Function { ref mut record, .. }
+            | EnvironmentRecord::Module { ref mut record, .. }
             | EnvironmentRecord::Declarative(ref mut record) => {
                 record.insert(name, val);
             }

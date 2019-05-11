@@ -98,7 +98,24 @@ pub fn require(vm: &mut VM2, args: &[Value], _cur_frame: &Frame) -> Result<(), R
             }
         }
     };
+    let script = try!(std::fs::read_to_string(file_name.clone())
+        .map_err(|ioerr| RuntimeError::General(format!("require(): \"{}\" {}", file_name, ioerr))));
+
+    use parser::Parser;
+    let mut parser = Parser::new(script.clone());
+    let node = try!(parser.parse_all().map_err(|parse_err| {
+        parser.handle_error(&parse_err);
+        RuntimeError::General(format!("Error in parsing module \"{}\"", file_name))
+    }));
+
+    let mut iseq = vec![];
+    use vm::codegen::Error;
+    let _global_info = try!(vm.compile(&node, &mut iseq, true).map_err(|codegen_err| {
+        let Error { msg, token_pos, .. } = codegen_err;
+        parser.show_error_at(token_pos, msg.as_str());
+        RuntimeError::General(format!("Error in parsing module \"{}\"", file_name))
+    }));
     vm.stack
-        .push(Value::string(&mut vm.memory_allocator, file_name).into());
+        .push(Value::string(&mut vm.memory_allocator, script).into());
     Ok(())
 }
