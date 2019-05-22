@@ -1,4 +1,4 @@
-use vm::{error::RuntimeError, frame::Frame, jsvalue::value::*, vm::VM2};
+use crate::vm::{error::RuntimeError, frame::Frame, jsvalue::value::*, vm::VM2};
 
 pub fn string_prototype_split(
     vm: &mut VM2,

@@ -2,6 +2,7 @@
 name = "rapidus"
 version = "0.1.1"
 authors = ["uint256_t <maekawatoshiki@github.com>"]
+edition = "2018"
 
 [dependencies]
 clap = "*"

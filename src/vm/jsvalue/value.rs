@@ -5,9 +5,9 @@ pub use super::function::*;
 pub use super::object::*;
 pub use super::prototype::*;
 pub use super::symbol::*;
-use builtin::BuiltinFuncTy2;
-use gc;
-use id::get_unique_id;
+use crate::builtin::BuiltinFuncTy2;
+use crate::gc;
+use crate::id::get_unique_id;
 pub use rustc_hash::FxHashMap;
 use std::ffi::CString;
 
@@ -267,7 +267,7 @@ impl Value {
 
     pub fn is_function_object(&self) -> bool {
         match self {
-            Value::Object(info) => match unsafe { &**info }.kind {
+            Value::Object(info) => match ObjectRef(*info).kind {
                 ObjectKind2::Function(_) => true,
                 _ => false,
             },
@@ -277,7 +277,7 @@ impl Value {
 
     pub fn is_array_object(&self) -> bool {
         match self {
-            Value::Object(info) => match unsafe { &**info }.kind {
+            Value::Object(info) => match ObjectRef(*info).kind {
                 ObjectKind2::Array(_) => true,
                 _ => false,
             },
@@ -301,7 +301,7 @@ impl Value {
 
     pub fn is_symbol(&self) -> bool {
         match self {
-            Value::Object(info) => match unsafe { &**info }.kind {
+            Value::Object(info) => match ObjectRef(*info).kind {
                 ObjectKind2::Symbol(_) => true,
                 _ => false,
             },
@@ -342,14 +342,14 @@ impl Value {
 impl Value {
     pub fn has_own_property(&self, key: &str) -> bool {
         match self {
-            Value::Object(obj_info) => unsafe { &**obj_info }.has_own_property(key),
+            Value::Object(obj_info) => ObjectRef(*obj_info).has_own_property(key),
             _ => false,
         }
     }
 
     pub fn get_prototype(&self) -> Value {
         match self {
-            Value::Object(info) => unsafe { &**info }.get_prototype(),
+            Value::Object(info) => ObjectRef(*info).get_prototype(),
             _ => Value::undefined(),
         }
     }
@@ -363,7 +363,7 @@ impl Value {
 
     pub fn get_property_by_str_key(&self, key: &str) -> Value {
         match self {
-            Value::Object(obj_info) => unsafe { &**obj_info }.get_property_by_str_key(key),
+            Value::Object(obj_info) => ObjectRef(*obj_info).get_property_by_str_key(key),
             _ => Value::undefined(),
         }
     }
@@ -384,11 +384,9 @@ impl Value {
                 Value::Number(idx) if is_integer(idx) => Ok(Property::new_data_simple(
                     Value::string(allocator, s.chars().nth(idx as usize).unwrap().to_string()),
                 )),
-                Value::String(x) if unsafe { &*x }.to_str().unwrap() == "length" => {
-                    Ok(Property::new_data_simple(Value::Number(
-                        s.chars().fold(0, |x, c| x + c.len_utf16()) as f64,
-                    )))
-                }
+                Value::String(x) if cstrp_to_str(x) == "length" => Ok(Property::new_data_simple(
+                    Value::Number(s.chars().fold(0, |x, c| x + c.len_utf16()) as f64),
+                )),
                 key => object_prototypes.string.get_object_info().get_property(
                     allocator,
                     object_prototypes,
@@ -399,12 +397,7 @@ impl Value {
 
         match self {
             Value::String(s) => {
-                return string_get_property(
-                    allocator,
-                    object_prototypes,
-                    unsafe { &**s }.to_str().unwrap(),
-                    key,
-                );
+                return string_get_property(allocator, object_prototypes, cstrp_to_str(*s), key);
             }
             Value::Other(_) => {
                 return Err(error::RuntimeError::Type(format!(
@@ -419,7 +412,7 @@ impl Value {
 
         match self {
             Value::Object(obj_info) => {
-                unsafe { &**obj_info }.get_property(allocator, object_prototypes, key)
+                ObjectRef(*obj_info).get_property(allocator, object_prototypes, key)
             }
             _ => Ok(Property::new_data_simple(Value::undefined())),
         }
@@ -427,9 +420,7 @@ impl Value {
 
     pub fn set_property_by_string_key(&self, key: String, val: Value) {
         match self {
-            Value::Object(obj_info) => {
-                unsafe { &mut **obj_info }.set_property_by_string_key(key, val)
-            }
+            Value::Object(obj_info) => ObjectRef(*obj_info).set_property_by_string_key(key, val),
             _ => {}
         }
     }
@@ -441,7 +432,7 @@ impl Value {
         val: Value,
     ) -> Result<Option<Value>, error::RuntimeError> {
         match self {
-            Value::Object(obj_info) => unsafe { &mut **obj_info }.set_property(allocator, key, val),
+            Value::Object(obj_info) => ObjectRef(*obj_info).set_property(allocator, key, val),
             Value::Other(_) => Err(error::RuntimeError::Type(format!(
                 "TypeError: Cannot set property '{}' of {}",
                 key.to_string(),
@@ -465,20 +456,20 @@ impl Value {
 
     pub fn set_function_outer_environment(&mut self, env: LexicalEnvironmentRef) {
         match self {
-            Value::Object(obj) => {
-                let obj = unsafe { &mut **obj };
-                match obj.kind {
-                    ObjectKind2::Function(ref mut info) => info.set_outer_environment(env),
-                    _ => panic!(),
-                }
-            }
+            Value::Object(obj) => match ObjectRef(*obj).kind {
+                ObjectKind2::Function(ref mut info) => info.set_outer_environment(env),
+                _ => panic!(),
+            },
             _ => panic!(),
         }
     }
 
     pub fn copy_object(&self, memory_allocator: &mut gc::MemoryAllocator) -> Value {
         match self {
-            Value::Object(obj) => Value::Object(memory_allocator.alloc(unsafe { &**obj }.clone())),
+            Value::Object(obj) => {
+                let obj = (*ObjectRef(*obj)).clone();
+                Value::Object(memory_allocator.alloc(obj))
+            }
             e => *e,
         }
     }
@@ -488,7 +479,7 @@ impl Value {
             Value::Object(obj) => {
                 let obj = unsafe { &**obj };
                 match obj.kind {
-                    ObjectKind2::Function(ref info) => return info,
+                    ObjectKind2::Function(ref info) => &info,
                     _ => panic!(),
                 }
             }
@@ -509,9 +500,9 @@ impl Value {
         }
     }
 
-    pub fn get_object_info(&self) -> &mut ObjectInfo {
+    pub fn get_object_info(&self) -> ObjectRef {
         match self {
-            Value::Object(obj) => unsafe { &mut **obj },
+            Value::Object(obj) => ObjectRef(*obj),
             _ => panic!(),
         }
     }
@@ -535,7 +526,7 @@ impl Value {
 
     pub fn into_str(self) -> &'static str {
         match self {
-            Value::String(s) => unsafe { &*s }.to_str().unwrap(),
+            Value::String(s) => cstrp_to_str(s),
             _ => panic!(),
         }
     }
@@ -571,7 +562,7 @@ impl Value {
             Value::Bool(1) => 1.0,
             Value::Number(n) => *n,
             Value::String(s) => {
-                let s = unsafe { &**s }.to_str().unwrap();
+                let s = cstrp_to_str(*s);
                 if s == "Infinity" || s == "-Infinity" {
                     ::std::f64::INFINITY
                 } else if s.len() == 0 {
@@ -595,7 +586,7 @@ impl Value {
         match self {
             Value::Bool(0) => "false".to_string(),
             Value::Bool(1) => "true".to_string(),
-            Value::String(s) => unsafe { &**s }.to_str().unwrap().to_string(),
+            Value::String(s) => cstrp_to_str(*s).to_string(),
             Value::Other(UNDEFINED) => "undefined".to_string(),
             Value::Other(NULL) => "null".to_string(),
             Value::Number(n) => {
@@ -608,7 +599,7 @@ impl Value {
                 }
             }
             Value::Object(info) => {
-                let info = unsafe { &**info };
+                let info = ObjectRef(*info);
                 match info.kind {
                     ObjectKind2::Ordinary => "[object Object]".to_string(),
                     ObjectKind2::Array(ref info) => info.join(None),
@@ -630,7 +621,7 @@ impl Value {
                     true
                 }
             }
-            Value::String(s) => unsafe { &**s }.to_str().unwrap().len() != 0,
+            Value::String(s) => cstrp_to_str(*s).len() != 0,
             _ => true,
         }
     }
@@ -720,17 +711,17 @@ impl Value {
         match (lprim, rprim) {
             (Value::Number(x), Value::Number(y)) => Value::Number(x + y),
             (Value::String(x), Value::String(y)) => {
-                let x = unsafe { &*x }.to_str().unwrap();
-                let y = unsafe { &*y }.to_str().unwrap();
+                let x = cstrp_to_str(x);
+                let y = cstrp_to_str(y);
                 let cat = format!("{}{}", x, y);
                 Value::string(allocator, cat)
             }
             (Value::String(x), _) => {
-                let x = unsafe { &*x }.to_str().unwrap();
+                let x = cstrp_to_str(x);
                 Value::string(allocator, format!("{}{}", x, rprim.to_string()))
             }
             (_, Value::String(y)) => {
-                let y = unsafe { &*y }.to_str().unwrap();
+                let y = cstrp_to_str(y);
                 Value::string(allocator, format!("{}{}", lprim.to_string(), y))
             }
             (x, y) => Value::Number(x.to_number(allocator) + y.to_number(allocator)),
@@ -937,7 +928,7 @@ impl Value {
             Value::Number(_) => "number",
             Value::String(_) => "string",
             Value::Object(info) => {
-                let info = unsafe { &**info };
+                let info = ObjectRef(*info);
                 match info.kind {
                     ObjectKind2::Function(_) => "function",
                     ObjectKind2::Array(_) => "object",
@@ -1006,15 +997,15 @@ impl Value {
                 }
             }
             Value::String(s) => {
-                let s = unsafe { &**s };
+                let s = cstrp_to_str(*s);
                 if nest {
-                    format!("'{}'", s.to_str().unwrap())
+                    format!("'{}'", s)
                 } else {
-                    s.to_str().unwrap().to_string()
+                    s.to_string()
                 }
             }
             Value::Object(obj_info) => {
-                let obj_info = unsafe { &**obj_info };
+                let obj_info = ObjectRef(*obj_info);
                 match obj_info.kind {
                     ObjectKind2::Ordinary => {
                         let mut sorted_key_val =

@@ -1,5 +1,5 @@
-use parser::Error;
-use token::{convert_reserved_keyword, Kind, Symbol, Token};
+use crate::parser::Error;
+use crate::token::{convert_reserved_keyword, Kind, Symbol, Token};
 
 use std::collections::VecDeque;
 
@@ -772,7 +772,7 @@ fn string() {
 
 #[test]
 fn keyword() {
-    use token::Keyword;
+    use crate::token::Keyword;
 
     let mut lexer = Lexer::new(
         "break case catch continue debugger default \
@@ -909,7 +909,7 @@ fn symbol() {
     );
     assert_eq!(lexer.next().unwrap().kind, Kind::Symbol(Symbol::AssignLOr,));
     assert_eq!(lexer.next().unwrap().kind, Kind::Symbol(Symbol::Hash,));
-    use token::get_string_for_symbol;
+    use crate::token::get_string_for_symbol;
     assert_eq!(
         format!(
             "{}{}{}{}{}{}{}{}{}",

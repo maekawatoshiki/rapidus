@@ -1,4 +1,4 @@
-use vm::{error::RuntimeError, frame::Frame, jsvalue::value::*, vm::VM2};
+use crate::vm::{error::RuntimeError, frame::Frame, jsvalue::value::*, vm::VM2};
 
 pub type BuiltinFuncTy2 = fn(&mut VM2, &[Value], &Frame) -> Result<(), RuntimeError>;
 
@@ -27,8 +27,8 @@ pub fn deep_seq(vm: &mut VM2, args: &[Value], _cur_frame: &Frame) -> Result<(), 
 fn deep_seq_bool(lval: &Value, rval: &Value) -> bool {
     match (*lval, *rval) {
         (Value::Object(l_info), Value::Object(r_info)) => {
-            let lobj_info = unsafe { &*l_info };
-            let robj_info = unsafe { &*r_info };
+            let lobj_info = ObjectRef(l_info);
+            let robj_info = ObjectRef(r_info);
             // sort and compare properties
             let mut l_sorted_propmap = (&lobj_info.property)
                 .iter()
@@ -98,19 +98,19 @@ pub fn require(vm: &mut VM2, args: &[Value], _cur_frame: &Frame) -> Result<(), R
             }
         }
     };
-    let script = try!(std::fs::read_to_string(file_name.clone())
+    let script = r#try!(std::fs::read_to_string(file_name.clone())
         .map_err(|ioerr| RuntimeError::General(format!("require(): \"{}\" {}", file_name, ioerr))));
 
-    use parser::Parser;
+    use crate::parser::Parser;
     let mut parser = Parser::new(script.clone());
-    let node = try!(parser.parse_all().map_err(|parse_err| {
+    let node = r#try!(parser.parse_all().map_err(|parse_err| {
         parser.handle_error(&parse_err);
         RuntimeError::General(format!("Error in parsing module \"{}\"", file_name))
     }));
 
     let mut iseq = vec![];
-    use vm::codegen::Error;
-    let _global_info = try!(vm.compile(&node, &mut iseq, true).map_err(|codegen_err| {
+    use crate::vm::codegen::Error;
+    let _global_info = r#try!(vm.compile(&node, &mut iseq, true).map_err(|codegen_err| {
         let Error { msg, token_pos, .. } = codegen_err;
         parser.show_error_at(token_pos, msg.as_str());
         RuntimeError::General(format!("Error in parsing module \"{}\"", file_name))

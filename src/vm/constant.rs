@@ -1,5 +1,5 @@
+use crate::vm::jsvalue::value::Value;
 use rustc_hash::FxHashMap;
-use vm::jsvalue::value::Value;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Constant {

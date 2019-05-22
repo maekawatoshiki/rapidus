@@ -16,6 +16,22 @@ pub struct ObjectInfo {
     pub sym_property: FxHashMap<usize, Property>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct ObjectRef(pub *mut ObjectInfo);
+
+impl std::ops::Deref for ObjectRef {
+    type Target = ObjectInfo;
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*self.0 }
+    }
+}
+
+impl std::ops::DerefMut for ObjectRef {
+    fn deref_mut(&mut self) -> &mut ObjectInfo {
+        unsafe { &mut *self.0 }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum ObjectKind2 {
     Function(FunctionObjectInfo),

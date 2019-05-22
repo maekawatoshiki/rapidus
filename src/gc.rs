@@ -1,13 +1,13 @@
-use rustc_hash::{FxHashMap, FxHashSet};
-use std::hash::{Hash, Hasher};
-use std::mem;
-use vm::{
+use crate::vm::{
     constant, frame,
     jsvalue::{
         function, object, prototype,
         value::{BoxedValue, Value},
     },
 };
+use rustc_hash::{FxHashMap, FxHashSet};
+use std::hash::{Hash, Hasher};
+use std::mem;
 
 pub type RawPointer = *mut u8;
 pub type MarkMap = FxHashMap<GcTargetKey, MarkState>;
@@ -211,8 +211,8 @@ impl MemoryAllocator {
 }
 
 pub trait GcTarget {
-    fn initial_trace(&self, &mut MarkSet);
-    fn trace(&self, &mut MemoryAllocator, &mut MarkSet);
+    fn initial_trace(&self, markset: &mut MarkSet);
+    fn trace(&self, allocator: &mut MemoryAllocator, makeset: &mut MarkSet);
     fn free(&self) -> usize;
 }
 

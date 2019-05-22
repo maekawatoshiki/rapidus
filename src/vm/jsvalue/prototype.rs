@@ -3,7 +3,7 @@ use super::super::super::builtins;
 use super::super::super::builtins::{array, function};
 use super::super::super::id::get_unique_id;
 use super::{function::ThisMode, value::*};
-use gc::MemoryAllocator;
+use crate::gc::MemoryAllocator;
 use rustc_hash::FxHashMap;
 
 #[derive(Debug, Clone)]
@@ -53,7 +53,7 @@ impl ObjectPrototypes {
                 function::function_prototype_call,
             );
 
-            let info = function_prototype.get_object_info();
+            let mut info = function_prototype.get_object_info();
             info.prototype = object_prototype;
             info.property = make_property_map!(call: function_prototype_call);
 

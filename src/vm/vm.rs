@@ -10,10 +10,8 @@ use super::{
     jsvalue::symbol::GlobalSymbolRegistry,
     jsvalue::value::*,
 };
-use bytecode_gen::show_inst2;
-use bytecode_gen::ByteCode;
-use bytecode_gen::VMInst;
-use gc;
+use crate::bytecode_gen::{show_inst2, ByteCode, VMInst};
+use crate::gc;
 use rustc_hash::FxHashMap;
 
 // New VM

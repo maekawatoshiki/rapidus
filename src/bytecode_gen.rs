@@ -1,5 +1,5 @@
-use vm::constant;
-use vm::jsvalue::value::Value;
+use crate::vm::constant;
+use crate::vm::jsvalue::value::Value;
 
 pub type ByteCode = Vec<u8>;
 

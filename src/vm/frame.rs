@@ -1,16 +1,16 @@
 #![macro_use]
 
-use bytecode_gen::ByteCode;
-use gc;
+use crate::bytecode_gen::ByteCode;
+use crate::gc;
+use crate::vm::codegen::FunctionInfo;
+use crate::vm::error::RuntimeError;
+use crate::vm::jsvalue::function::Exception;
+use crate::vm::jsvalue::object::{DataProperty, ObjectInfo, ObjectKind2, Property};
+use crate::vm::jsvalue::prototype::ObjectPrototypes;
+use crate::vm::jsvalue::value::Value;
+use crate::vm::vm::VMResult;
 use rustc_hash::FxHashMap;
 use std::ops::{Deref, DerefMut};
-use vm::codegen::FunctionInfo;
-use vm::error::RuntimeError;
-use vm::jsvalue::function::Exception;
-use vm::jsvalue::object::{DataProperty, ObjectInfo, ObjectKind2, Property};
-use vm::jsvalue::prototype::ObjectPrototypes;
-use vm::jsvalue::value::Value;
-use vm::vm::VMResult;
 
 #[derive(Debug, Clone, Copy)]
 pub struct LexicalEnvironmentRef(pub *mut LexicalEnvironment);
@@ -121,7 +121,7 @@ impl Frame {
         let name = val.as_function().name.clone().unwrap();
         val.set_function_outer_environment(self.execution_context.lexical_environment);
         self.lex_env_mut().set_own_value(name, val).unwrap();
-        use gc::GcTarget;
+        use crate::gc::GcTarget;
         self.execution_context
             .initial_trace(&mut memory_allocator.roots);
     }
@@ -201,10 +201,8 @@ impl LexicalEnvironment {
         memory_allocator: &mut gc::MemoryAllocator,
         object_prototypes: &ObjectPrototypes,
     ) -> Self {
-        use builtin::deep_seq;
-        use builtin::parse_float;
-        use builtin::require;
-        use builtins;
+        use crate::builtin::{deep_seq, parse_float, require};
+        use crate::builtins;
 
         let log = Value::builtin_function(
             memory_allocator,

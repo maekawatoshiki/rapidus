@@ -1,7 +1,5 @@
-use gc::MemoryAllocator;
-use rand::random;
-use rustc_hash::FxHashMap;
-use vm::{
+use crate::gc::MemoryAllocator;
+use crate::vm::{
     frame,
     jsvalue::prototype::ObjectPrototypes,
     jsvalue::{
@@ -10,6 +8,8 @@ use vm::{
     },
     vm,
 };
+use rand::random;
+use rustc_hash::FxHashMap;
 
 pub fn math(memory_allocator: &mut MemoryAllocator, object_prototypes: &ObjectPrototypes) -> Value {
     let math_random = Value::builtin_function(

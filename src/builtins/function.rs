@@ -1,5 +1,5 @@
-use gc;
-use vm::{frame, jsvalue, jsvalue::value::Value, vm};
+use crate::gc;
+use crate::vm::{frame, jsvalue, jsvalue::value::Value, vm};
 
 pub fn function(
     memory_allocator: &mut gc::MemoryAllocator,

@@ -1,5 +1,5 @@
-use gc;
-use vm::{
+use crate::gc;
+use crate::vm::{
     error::RuntimeError,
     frame::Frame,
     jsvalue::{object::Property, prototype::ObjectPrototypes, value::Value},

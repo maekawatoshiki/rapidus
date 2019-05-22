@@ -1,8 +1,8 @@
-use parser;
+use crate::parser;
+use crate::vm;
+use crate::vm::jsvalue::value::Value;
 use std::fs::OpenOptions;
 use std::io::Read;
-use vm;
-use vm::jsvalue::value::Value;
 
 /// Load the file ("test/{file_name}.js"), execute the script,
 /// and compare returned value and the given answer.

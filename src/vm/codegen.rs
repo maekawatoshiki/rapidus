@@ -1,15 +1,15 @@
+use crate::bytecode_gen::{ByteCode, ByteCodeGenerator, VMInst};
+use crate::gc::MemoryAllocator;
 use crate::id::get_unique_id;
-use bytecode_gen::{ByteCode, ByteCodeGenerator, VMInst};
-use gc::MemoryAllocator;
-use node::{
+use crate::node::{
     BinOp, FormalParameter, FormalParameters, MethodDefinitionKind, Node, NodeBase,
     PropertyDefinition, UnaryOp, VarKind,
 };
+use crate::vm::constant::{ConstantTable, SpecialProperties, SpecialPropertyKind};
+use crate::vm::jsvalue::function::{DestinationKind, Exception, ThisMode, UserFunctionInfo};
+use crate::vm::jsvalue::value::Value;
+use crate::vm::jsvalue::{prototype, value};
 use rustc_hash::FxHashMap;
-use vm::constant::{ConstantTable, SpecialProperties, SpecialPropertyKind};
-use vm::jsvalue::function::{DestinationKind, Exception, ThisMode, UserFunctionInfo};
-use vm::jsvalue::value::Value;
-use vm::jsvalue::{prototype, value};
 
 pub type CodeGenResult = Result<(), Error>;
 
@@ -124,8 +124,8 @@ impl<'a> CodeGenerator<'a> {
             }
             NodeBase::Break(ref name) => self.visit_break(name, iseq)?,
             NodeBase::Continue(ref name) => self.visit_continue(name, iseq)?,
-            NodeBase::Try(ref try, ref catch, ref param, ref finally) => {
-                self.visit_try(&*try, &*catch, &*param, &*finally, iseq)?
+            NodeBase::Try(ref try_clause, ref catch, ref param, ref finally) => {
+                self.visit_try(&*try_clause, &*catch, &*param, &*finally, iseq)?
             }
             NodeBase::FunctionDecl(ref name, ref params, ref body) => {
                 self.visit_function_decl(name, params, &*body)?
@@ -417,7 +417,7 @@ impl<'a> CodeGenerator<'a> {
 
     pub fn visit_try(
         &mut self,
-        try: &Node,
+        try_clause: &Node,
         catch: &Node,
         param: &Node,
         finally: &Node,
@@ -435,7 +435,7 @@ impl<'a> CodeGenerator<'a> {
                 .level
                 .push(Level::new_try_or_catch_level());
 
-            self.visit(try, iseq, false)?;
+            self.visit(try_clause, iseq, false)?;
 
             let try_ = self.current_function().level.pop().unwrap();
 

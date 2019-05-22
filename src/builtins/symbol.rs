@@ -1,5 +1,5 @@
-use gc::MemoryAllocator;
-use vm::{
+use crate::gc::MemoryAllocator;
+use crate::vm::{
     error::RuntimeError,
     frame,
     jsvalue::value::*,
