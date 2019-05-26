@@ -165,7 +165,7 @@ fn repl(is_trace: bool) {
                 }
                 Err(parser::Error::UnexpectedEOF(_)) => match rl.readline("... ") {
                     Ok(line) => {
-                        rl.add_history_entry(line.as_ref());
+                        rl.add_history_entry(line.clone());
                         lines += line.as_str();
                         lines += "\n";
                         continue;
