@@ -16,7 +16,7 @@ pub struct ObjectInfo {
     pub sym_property: FxHashMap<usize, Property>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct ObjectRef(pub *mut ObjectInfo);
 
 impl std::ops::Deref for ObjectRef {

@@ -1,5 +1,4 @@
 extern crate rapidus;
-use rapidus::bytecode_gen;
 use rapidus::parser;
 use rapidus::{vm, vm::frame, vm::jsvalue::value::Value, vm::vm::VM2};
 
@@ -39,11 +38,10 @@ fn main() {
         )
         .arg(Arg::with_name("file").help("Input file name").index(1));
     let app_matches = app.clone().get_matches();
-
     let file_name = match app_matches.value_of("file") {
         Some(file_name) => file_name,
         None => {
-            repl();
+            repl(app_matches.is_present("trace"));
             return;
         }
     };
@@ -63,7 +61,6 @@ fn main() {
 
     let mut parser = parser::Parser::new(file_body);
 
-    println!("Parser:");
     let node = match parser.parse_all() {
         Ok(ok) => ok,
         Err(err) => {
@@ -71,7 +68,6 @@ fn main() {
             return;
         }
     };
-    println!("{:?}", node);
 
     let mut vm = VM2::new();
     let mut iseq = vec![];
@@ -83,11 +79,6 @@ fn main() {
         }
     };
 
-    println!("CodeGenerator generated:");
-    bytecode_gen::show2(&iseq, &vm.constant_table);
-    println!("{:?}", vm.to_source_map);
-
-    println!("Result:");
     if let Err(e) = vm.run_global(global_info, iseq) {
         e.show_error_message(Some(&parser.lexer));
     }
@@ -98,9 +89,12 @@ fn main() {
     }
 }
 
-fn repl() {
+fn repl(is_trace: bool) {
     let mut rl = rustyline::Editor::<()>::new();
     let mut vm = VM2::new();
+    if is_trace {
+        vm = vm.trace();
+    }
     let mut global_frame: Option<frame::Frame> = None;
 
     loop {
@@ -322,6 +316,11 @@ mod tests {
     #[test]
     fn assert() {
         assert_file("assert")
+    }
+
+    #[test]
+    fn fibo() {
+        assert_file("fibo")
     }
 
     #[test]

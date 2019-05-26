@@ -93,6 +93,32 @@ macro_rules! make_normal_object {
     } };
 }
 
+impl std::fmt::Display for Value {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Value::Number(number) => write!(f, "{:?}", number),
+            Value::Bool(0) => write!(f, "false"),
+            Value::Bool(1) => write!(f, "true"),
+            Value::Bool(u) => write!(f, "Bool({})", u),
+            Value::String(cstr) => write!(f, "{:?}", cstrp_to_str(*cstr)),
+            Value::Other(UNINITIALIZED) => write!(f, "UNINITIALIZED"),
+            Value::Other(EMPTY) => write!(f, "UNINITIALIZED"),
+            Value::Other(NULL) => write!(f, "NULL"),
+            Value::Other(UNDEFINED) => write!(f, "UNDEFINED"),
+            Value::Other(i) => write!(f, "Other({})", i),
+            Value::Object(ref info) => {
+                let info = ObjectRef(*info);
+                match info.kind {
+                    ObjectKind2::Ordinary => write!(f, "Object"),
+                    ObjectKind2::Function(_) => write!(f, "Function"),
+                    ObjectKind2::Array(_) => write!(f, "Array"),
+                    ObjectKind2::Symbol(_) => write!(f, "Symbol"),
+                }
+            }
+        }
+    }
+}
+
 impl Value {
     pub const fn null() -> Self {
         Value::Other(NULL)

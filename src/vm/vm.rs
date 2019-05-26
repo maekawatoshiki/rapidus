@@ -1,5 +1,7 @@
-use super::super::node::Node;
-use super::{
+use crate::bytecode_gen::{show_inst, ByteCode, VMInst};
+use crate::gc;
+use crate::node::Node;
+use crate::vm::{
     codegen,
     codegen::CodeGenerator,
     constant,
@@ -10,8 +12,6 @@ use super::{
     jsvalue::symbol::GlobalSymbolRegistry,
     jsvalue::value::*,
 };
-use crate::bytecode_gen::{show_inst2, ByteCode, VMInst};
-use crate::gc;
 use rustc_hash::FxHashMap;
 
 // New VM
@@ -27,6 +27,7 @@ pub struct VM2 {
     pub stack: Vec<BoxedValue>,
     pub saved_frame: Vec<frame::Frame>,
     pub to_source_map: FxHashMap<usize, codegen::ToSourcePos>,
+    is_trace: bool,
 }
 
 macro_rules! gc_lock {
@@ -56,7 +57,13 @@ impl VM2 {
             stack: vec![],
             saved_frame: vec![],
             to_source_map: FxHashMap::default(),
+            is_trace: false,
         }
+    }
+
+    pub fn trace(mut self) -> Self {
+        self.is_trace = true;
+        self
     }
 
     pub fn compile(
@@ -249,6 +256,7 @@ impl VM2 {
         }
 
         let mut subroutine_stack: Vec<SubroutineKind> = vec![];
+        let is_trace = self.is_trace;
 
         loop {
             let current_inst_pc = cur_frame.pc;
@@ -325,6 +333,22 @@ impl VM2 {
                         }
                     }
                 }};
+            }
+
+            if is_trace {
+                crate::bytecode_gen::show_inst(
+                    &cur_frame.bytecode,
+                    current_inst_pc,
+                    &self.constant_table,
+                );
+                match self.stack.last() {
+                    None => {
+                        println!("<empty>");
+                    }
+                    Some(val) => {
+                        println!("{:10}", (*val).into(): Value);
+                    }
+                }
             }
 
             match cur_frame.bytecode[cur_frame.pc] {
@@ -557,6 +581,9 @@ impl VM2 {
                     for _ in 0..argc {
                         args.push(self.stack.pop().unwrap().into());
                     }
+                    if is_trace {
+                        println!("--> call constructor")
+                    };
                     self.enter_constructor(callee, &args, &mut cur_frame)?;
                 }
                 VMInst::CALL => {
@@ -567,6 +594,9 @@ impl VM2 {
                     for _ in 0..argc {
                         args.push(self.stack.pop().unwrap().into());
                     }
+                    if is_trace {
+                        println!("--> call function")
+                    };
                     etry!(self.enter_function(callee, &args, cur_frame.this, &mut cur_frame, false))
                 }
                 VMInst::CALL_METHOD => {
@@ -585,6 +615,9 @@ impl VM2 {
                     )) {
                         Property::Data(DataProperty { val, .. }) => val,
                         _ => type_error!("Not a function"),
+                    };
+                    if is_trace {
+                        println!("--> call function")
                     };
                     etry!(self.enter_function(callee, &args, parent, &mut cur_frame, false))
                 }
@@ -690,6 +723,9 @@ impl VM2 {
                     cur_frame.pc += 1;
                     let escape = cur_frame.escape;
                     self.unwind_frame_saving_stack_top(&mut cur_frame);
+                    if is_trace {
+                        println!("<-- return")
+                    };
                     // TODO: GC schedule
                     self.memory_allocator.mark(
                         self.global_environment,
@@ -714,7 +750,7 @@ impl VM2 {
                 VMInst::END => break,
                 _ => {
                     print!("Not yet implemented VMInst: ");
-                    show_inst2(&cur_frame.bytecode, cur_frame.pc, &self.constant_table);
+                    show_inst(&cur_frame.bytecode, cur_frame.pc, &self.constant_table);
                     println!();
                     unimplemented!();
                 }
