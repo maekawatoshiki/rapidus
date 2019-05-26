@@ -91,6 +91,7 @@ fn main() {
     if is_debug {
         println!("Codegen:");
         rapidus::bytecode_gen::show_inst_seq(&iseq, &vm.constant_table);
+        println!("{:?}", vm.to_source_map);
     };
 
     if let Err(e) = vm.run_global(global_info, iseq) {

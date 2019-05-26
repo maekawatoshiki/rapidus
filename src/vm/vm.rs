@@ -286,6 +286,7 @@ impl VM {
                                     cur_frame.pc = exception.end
                                 }
                             }
+
                             exception_found = true;
                             outer_break = true;
                             break;

@@ -432,6 +432,13 @@ impl Value {
                     self.to_string()
                 )));
             }
+            Value::Other(_) => {
+                return Err(error::RuntimeError::Type(format!(
+                    "TypeError: Cannot read property '{}' of {}",
+                    key.to_string(),
+                    self.to_string()
+                )));
+            }
             // TODO: Number
             _ => {}
         }
