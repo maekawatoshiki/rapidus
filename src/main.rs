@@ -123,7 +123,7 @@ fn repl(is_trace: bool) {
             break;
         };
 
-        rl.add_history_entry(line.as_ref());
+        rl.add_history_entry(line.clone());
 
         let mut lines = line + "\n";
 
