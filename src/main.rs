@@ -38,10 +38,12 @@ fn main() {
         )
         .arg(Arg::with_name("file").help("Input file name").index(1));
     let app_matches = app.clone().get_matches();
+    let is_debug = app_matches.is_present("debug");
+    let is_trace = app_matches.is_present("trace");
     let file_name = match app_matches.value_of("file") {
         Some(file_name) => file_name,
         None => {
-            repl(app_matches.is_present("trace"));
+            repl(is_trace);
             return;
         }
     };
@@ -68,8 +70,15 @@ fn main() {
             return;
         }
     };
+    if is_debug {
+        println!("Parser:");
+        println!("{:?}", node);
+    };
 
     let mut vm = VM::new();
+    if is_trace {
+        vm = vm.trace();
+    }
     let mut iseq = vec![];
     let global_info = match vm.compile(&node, &mut iseq, false) {
         Ok(ok) => ok,
@@ -79,13 +88,20 @@ fn main() {
         }
     };
 
+    if is_debug {
+        println!("Codegen:");
+        rapidus::bytecode_gen::show_inst_seq(&iseq, &vm.constant_table);
+    };
+
     if let Err(e) = vm.run_global(global_info, iseq) {
         e.show_error_message(Some(&parser.lexer));
     }
 
-    for (i, val_boxed) in vm.stack.iter().enumerate() {
-        let val: Value = (*val_boxed).into();
-        println!("stack remaining: [{}]: {:?}", i, val);
+    if is_debug {
+        for (i, val_boxed) in vm.stack.iter().enumerate() {
+            let val: Value = (*val_boxed).into();
+            println!("stack remaining: [{}]: {:?}", i, val);
+        }
     }
 }
 
