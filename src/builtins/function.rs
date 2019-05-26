@@ -18,7 +18,7 @@ pub fn function(
 }
 
 pub fn function_constructor(
-    vm: &mut vm::VM2,
+    vm: &mut vm::VM,
     _args: &[Value],
     _cur_frame: &frame::Frame,
 ) -> vm::VMResult {
@@ -27,7 +27,7 @@ pub fn function_constructor(
 }
 
 pub fn function_prototype_call(
-    vm: &mut vm::VM2,
+    vm: &mut vm::VM,
     args: &[Value],
     cur_frame: &frame::Frame,
 ) -> vm::VMResult {

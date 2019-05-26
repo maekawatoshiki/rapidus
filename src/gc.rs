@@ -396,7 +396,7 @@ impl GcTarget for object::Property {
     }
 }
 
-impl GcTarget for object::ObjectKind2 {
+impl GcTarget for object::ObjectKind {
     fn initial_trace(&self, markset: &mut MarkSet) {
         fn trace_user_function_info(
             markset: &mut MarkSet,
@@ -412,19 +412,19 @@ impl GcTarget for object::ObjectKind2 {
         }
 
         match self {
-            object::ObjectKind2::Function(func_info) => match func_info.kind {
+            object::ObjectKind::Function(func_info) => match func_info.kind {
                 function::FunctionObjectKind::User(ref user_func_info) => {
                     trace_user_function_info(markset, user_func_info)
                 }
                 function::FunctionObjectKind::Builtin(_) => {}
             },
-            object::ObjectKind2::Array(ary_info) => {
+            object::ObjectKind::Array(ary_info) => {
                 for elem in &ary_info.elems {
                     elem.initial_trace(markset)
                 }
             }
-            object::ObjectKind2::Symbol(_) => {}
-            object::ObjectKind2::Ordinary => {}
+            object::ObjectKind::Symbol(_) => {}
+            object::ObjectKind::Ordinary => {}
         }
     }
 
@@ -444,24 +444,24 @@ impl GcTarget for object::ObjectKind2 {
         }
 
         match self {
-            object::ObjectKind2::Function(func_info) => match func_info.kind {
+            object::ObjectKind::Function(func_info) => match func_info.kind {
                 function::FunctionObjectKind::User(ref user_func_info) => {
                     trace_user_function_info(allocator, markset, user_func_info)
                 }
                 function::FunctionObjectKind::Builtin(_) => {}
             },
-            object::ObjectKind2::Array(ary_info) => {
+            object::ObjectKind::Array(ary_info) => {
                 for elem in &ary_info.elems {
                     elem.trace(allocator, markset)
                 }
             }
-            object::ObjectKind2::Symbol(_) => {}
-            object::ObjectKind2::Ordinary => {}
+            object::ObjectKind::Symbol(_) => {}
+            object::ObjectKind::Ordinary => {}
         }
     }
 
     fn free(&self) -> usize {
-        mem::size_of::<object::ObjectKind2>()
+        mem::size_of::<object::ObjectKind>()
     }
 }
 

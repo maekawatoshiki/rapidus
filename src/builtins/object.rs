@@ -19,7 +19,7 @@ pub fn object(
 }
 
 pub fn object_constructor(
-    vm: &mut vm::VM2,
+    vm: &mut vm::VM,
     args: &[Value],
     _cur_frame: &frame::Frame,
 ) -> vm::VMResult {

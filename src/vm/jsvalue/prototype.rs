@@ -18,7 +18,7 @@ pub struct ObjectPrototypes {
 impl ObjectPrototypes {
     pub fn new(memory_allocator: &mut MemoryAllocator) -> Self {
         let object_prototype = Value::Object(memory_allocator.alloc(ObjectInfo {
-            kind: ObjectKind2::Ordinary,
+            kind: ObjectKind::Ordinary,
             prototype: Value::null(),
             property: make_property_map!(),
             sym_property: FxHashMap::default(),
@@ -26,7 +26,7 @@ impl ObjectPrototypes {
 
         let function_prototype = {
             let function_prototype = Value::Object(memory_allocator.alloc(ObjectInfo {
-                kind: ObjectKind2::Function(FunctionObjectInfo {
+                kind: ObjectKind::Function(FunctionObjectInfo {
                     name: None,
                     kind: FunctionObjectKind::User(UserFunctionInfo {
                         id: get_unique_id(),
@@ -76,7 +76,7 @@ impl ObjectPrototypes {
             );
 
             Value::Object(memory_allocator.alloc(ObjectInfo {
-                kind: ObjectKind2::Ordinary,
+                kind: ObjectKind::Ordinary,
                 prototype: object_prototype,
                 property: make_property_map!(indexOf: index_of, split: split),
                 sym_property: FxHashMap::default(),
@@ -99,7 +99,7 @@ impl ObjectPrototypes {
             );
 
             Value::Object(memory_allocator.alloc(ObjectInfo {
-                kind: ObjectKind2::Array(ArrayObjectInfo { elems: vec![] }),
+                kind: ObjectKind::Array(ArrayObjectInfo { elems: vec![] }),
                 prototype: object_prototype,
                 property: make_property_map!(
                     length => false, false, true : Value::Number(0.0),
@@ -112,7 +112,7 @@ impl ObjectPrototypes {
 
         let symbol_prototype = {
             Value::Object(memory_allocator.alloc(ObjectInfo {
-                kind: ObjectKind2::Ordinary,
+                kind: ObjectKind::Ordinary,
                 prototype: object_prototype,
                 // TODO: https://tc39.github.io/ecma262/#sec-properties-of-the-symbol-prototype-object
                 property: make_property_map!(),

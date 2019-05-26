@@ -5,7 +5,7 @@ use crate::gc;
 use crate::vm::codegen::FunctionInfo;
 use crate::vm::error::RuntimeError;
 use crate::vm::jsvalue::function::Exception;
-use crate::vm::jsvalue::object::{DataProperty, ObjectInfo, ObjectKind2, Property};
+use crate::vm::jsvalue::object::{DataProperty, ObjectInfo, ObjectKind, Property};
 use crate::vm::jsvalue::prototype::ObjectPrototypes;
 use crate::vm::jsvalue::value::Value;
 use crate::vm::vm::VMResult;

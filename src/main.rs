@@ -1,6 +1,6 @@
 extern crate rapidus;
 use rapidus::parser;
-use rapidus::{vm, vm::frame, vm::jsvalue::value::Value, vm::vm::VM2};
+use rapidus::{vm, vm::frame, vm::jsvalue::value::Value, vm::vm::VM};
 
 extern crate libc;
 
@@ -69,7 +69,7 @@ fn main() {
         }
     };
 
-    let mut vm = VM2::new();
+    let mut vm = VM::new();
     let mut iseq = vec![];
     let global_info = match vm.compile(&node, &mut iseq, false) {
         Ok(ok) => ok,
@@ -91,7 +91,7 @@ fn main() {
 
 fn repl(is_trace: bool) {
     let mut rl = rustyline::Editor::<()>::new();
-    let mut vm = VM2::new();
+    let mut vm = VM::new();
     if is_trace {
         vm = vm.trace();
     }

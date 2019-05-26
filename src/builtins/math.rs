@@ -3,7 +3,7 @@ use crate::vm::{
     frame,
     jsvalue::prototype::ObjectPrototypes,
     jsvalue::{
-        object::{DataProperty, ObjectInfo, ObjectKind2, Property},
+        object::{DataProperty, ObjectInfo, ObjectKind, Property},
         value::Value,
     },
     vm,
@@ -24,7 +24,7 @@ pub fn math(memory_allocator: &mut MemoryAllocator, object_prototypes: &ObjectPr
     )
 }
 
-pub fn math_random(vm: &mut vm::VM2, _args: &[Value], _cur_frame: &frame::Frame) -> vm::VMResult {
+pub fn math_random(vm: &mut vm::VM, _args: &[Value], _cur_frame: &frame::Frame) -> vm::VMResult {
     vm.stack.push(Value::Number(random::<f64>()).into());
     Ok(())
 }

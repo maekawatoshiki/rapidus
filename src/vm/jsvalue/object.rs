@@ -7,7 +7,7 @@ pub use rustc_hash::FxHashMap;
 #[derive(Clone, Debug)]
 pub struct ObjectInfo {
     /// Kind
-    pub kind: ObjectKind2,
+    pub kind: ObjectKind,
     /// Internal slot \[\[Prototype\]\]
     pub prototype: Value,
     /// Properties
@@ -33,7 +33,7 @@ impl std::ops::DerefMut for ObjectRef {
 }
 
 #[derive(Clone, Debug)]
-pub enum ObjectKind2 {
+pub enum ObjectKind {
     Function(FunctionObjectInfo),
     Array(ArrayObjectInfo),
     Symbol(SymbolInfo),
@@ -94,7 +94,7 @@ impl ObjectInfo {
         }
 
         match self.kind {
-            ObjectKind2::Array(ref info) => {
+            ObjectKind::Array(ref info) => {
                 if let Some(idx) = key.is_array_index() {
                     return Ok(info.get_element(idx));
                 }
@@ -155,7 +155,7 @@ impl ObjectInfo {
         }
 
         match self.kind {
-            ObjectKind2::Array(ref mut info) => {
+            ObjectKind::Array(ref mut info) => {
                 if let Some(idx) = key.is_array_index() {
                     return Ok(info.set_element(idx, val_));
                 }

@@ -74,7 +74,7 @@ macro_rules! make_normal_object {
     ($memory_allocator:expr, $object_prototypes:expr) => { {
         Value::Object($memory_allocator.alloc(
             ObjectInfo {
-                kind: ObjectKind2::Ordinary,
+                kind: ObjectKind::Ordinary,
                 prototype: $object_prototypes.object,
                 property: FxHashMap::default(),
                 sym_property: FxHashMap::default()
@@ -84,7 +84,7 @@ macro_rules! make_normal_object {
     ($memory_allocator:expr, $object_prototypes:expr, $($property_name:ident => $x:ident, $y:ident, $z:ident : $val:expr),*) => { {
         Value::Object($memory_allocator.alloc(
             ObjectInfo {
-                kind: ObjectKind2::Ordinary,
+                kind: ObjectKind::Ordinary,
                 prototype: $object_prototypes.object,
                 property: make_property_map_sub!($($property_name, $val, $x, $y, $z),* ),
                 sym_property: FxHashMap::default()
@@ -109,10 +109,10 @@ impl std::fmt::Display for Value {
             Value::Object(ref info) => {
                 let info = ObjectRef(*info);
                 match info.kind {
-                    ObjectKind2::Ordinary => write!(f, "Object"),
-                    ObjectKind2::Function(_) => write!(f, "Function"),
-                    ObjectKind2::Array(_) => write!(f, "Array"),
-                    ObjectKind2::Symbol(_) => write!(f, "Symbol"),
+                    ObjectKind::Ordinary => write!(f, "Object"),
+                    ObjectKind::Function(_) => write!(f, "Function"),
+                    ObjectKind::Array(_) => write!(f, "Array"),
+                    ObjectKind::Symbol(_) => write!(f, "Symbol"),
                 }
             }
         }
@@ -151,7 +151,7 @@ impl Value {
         property: FxHashMap<String, Property>,
     ) -> Self {
         Value::Object(memory_allocator.alloc(ObjectInfo {
-            kind: ObjectKind2::Ordinary,
+            kind: ObjectKind::Ordinary,
             prototype: object_prototypes.object,
             property,
             sym_property: FxHashMap::default(),
@@ -166,7 +166,7 @@ impl Value {
     ) -> Self {
         let name_prop = Value::string(memory_allocator, name.clone());
         Value::Object(memory_allocator.alloc(ObjectInfo {
-            kind: ObjectKind2::Function(FunctionObjectInfo {
+            kind: ObjectKind::Function(FunctionObjectInfo {
                 name: Some(name),
                 kind: FunctionObjectKind::Builtin(func),
             }),
@@ -187,7 +187,7 @@ impl Value {
     ) -> Self {
         let name_prop = Value::string(memory_allocator, name.clone());
         Value::Object(memory_allocator.alloc(ObjectInfo {
-            kind: ObjectKind2::Function(FunctionObjectInfo {
+            kind: ObjectKind::Function(FunctionObjectInfo {
                 name: Some(name),
                 kind: FunctionObjectKind::Builtin(func),
             }),
@@ -224,7 +224,7 @@ impl Value {
                 name      => false, false, true : name_prop,
                 prototype => true , false, false: prototype
             ),
-            kind: ObjectKind2::Function(FunctionObjectInfo {
+            kind: ObjectKind::Function(FunctionObjectInfo {
                 name: name,
                 kind: FunctionObjectKind::User(info)
             }),
@@ -245,7 +245,7 @@ impl Value {
         elems: Vec<Property>,
     ) -> Self {
         Value::Object(memory_allocator.alloc(ObjectInfo {
-            kind: ObjectKind2::Array(ArrayObjectInfo { elems }),
+            kind: ObjectKind::Array(ArrayObjectInfo { elems }),
             prototype: object_prototypes.array,
             property: make_property_map!(),
             sym_property: FxHashMap::default(),
@@ -258,7 +258,7 @@ impl Value {
         description: Option<String>,
     ) -> Self {
         Value::Object(memory_allocator.alloc(ObjectInfo {
-            kind: ObjectKind2::Symbol(SymbolInfo {
+            kind: ObjectKind::Symbol(SymbolInfo {
                 id: get_unique_id(),
                 description,
             }),
@@ -294,7 +294,7 @@ impl Value {
     pub fn is_function_object(&self) -> bool {
         match self {
             Value::Object(info) => match ObjectRef(*info).kind {
-                ObjectKind2::Function(_) => true,
+                ObjectKind::Function(_) => true,
                 _ => false,
             },
             _ => false,
@@ -304,7 +304,7 @@ impl Value {
     pub fn is_array_object(&self) -> bool {
         match self {
             Value::Object(info) => match ObjectRef(*info).kind {
-                ObjectKind2::Array(_) => true,
+                ObjectKind::Array(_) => true,
                 _ => false,
             },
             _ => false,
@@ -328,7 +328,7 @@ impl Value {
     pub fn is_symbol(&self) -> bool {
         match self {
             Value::Object(info) => match ObjectRef(*info).kind {
-                ObjectKind2::Symbol(_) => true,
+                ObjectKind::Symbol(_) => true,
                 _ => false,
             },
             _ => false,
@@ -483,7 +483,7 @@ impl Value {
     pub fn set_function_outer_environment(&mut self, env: LexicalEnvironmentRef) {
         match self {
             Value::Object(obj) => match ObjectRef(*obj).kind {
-                ObjectKind2::Function(ref mut info) => info.set_outer_environment(env),
+                ObjectKind::Function(ref mut info) => info.set_outer_environment(env),
                 _ => panic!(),
             },
             _ => panic!(),
@@ -505,7 +505,7 @@ impl Value {
             Value::Object(obj) => {
                 let obj = unsafe { &**obj };
                 match obj.kind {
-                    ObjectKind2::Function(ref info) => &info,
+                    ObjectKind::Function(ref info) => &info,
                     _ => panic!(),
                 }
             }
@@ -518,7 +518,7 @@ impl Value {
             Value::Object(obj) => {
                 let obj = unsafe { &mut **obj };
                 match obj.kind {
-                    ObjectKind2::Array(ref mut info) => return info,
+                    ObjectKind::Array(ref mut info) => return info,
                     _ => panic!(),
                 }
             }
@@ -536,7 +536,7 @@ impl Value {
     pub fn get_symbol_info(&self) -> &mut SymbolInfo {
         match self {
             Value::Object(info) => match unsafe { &mut **info }.kind {
-                ObjectKind2::Symbol(ref mut info) => info,
+                ObjectKind::Symbol(ref mut info) => info,
                 _ => panic!(),
             },
             _ => panic!(),
@@ -627,8 +627,8 @@ impl Value {
             Value::Object(info) => {
                 let info = ObjectRef(*info);
                 match info.kind {
-                    ObjectKind2::Ordinary => "[object Object]".to_string(),
-                    ObjectKind2::Array(ref info) => info.join(None),
+                    ObjectKind::Ordinary => "[object Object]".to_string(),
+                    ObjectKind::Array(ref info) => info.join(None),
                     _ => "[unimplemented]".to_string(), // TODO
                 }
             }
@@ -717,10 +717,10 @@ impl Value {
             Value::Object(info) => {
                 let info = unsafe { &*info };
                 match info.kind {
-                    ObjectKind2::Ordinary => Some(self),
-                    ObjectKind2::Function(_) => None,
-                    ObjectKind2::Array(_) => None,
-                    ObjectKind2::Symbol(_) => Some(self), // TODO
+                    ObjectKind::Ordinary => Some(self),
+                    ObjectKind::Function(_) => None,
+                    ObjectKind::Array(_) => None,
+                    ObjectKind::Symbol(_) => Some(self), // TODO
                 }
             }
             Value::String(_) => Some(self), // TODO
@@ -956,10 +956,10 @@ impl Value {
             Value::Object(info) => {
                 let info = ObjectRef(*info);
                 match info.kind {
-                    ObjectKind2::Function(_) => "function",
-                    ObjectKind2::Array(_) => "object",
-                    ObjectKind2::Symbol(_) => "symbol",
-                    ObjectKind2::Ordinary => "object",
+                    ObjectKind::Function(_) => "function",
+                    ObjectKind::Array(_) => "object",
+                    ObjectKind::Symbol(_) => "symbol",
+                    ObjectKind::Ordinary => "object",
                 }
             }
             _ => panic!(),
@@ -1033,7 +1033,7 @@ impl Value {
             Value::Object(obj_info) => {
                 let obj_info = ObjectRef(*obj_info);
                 match obj_info.kind {
-                    ObjectKind2::Ordinary => {
+                    ObjectKind::Ordinary => {
                         let mut sorted_key_val =
                             (&obj_info.property)
                                 .iter()
@@ -1043,18 +1043,18 @@ impl Value {
 
                         format!("{{ {} }}", property_string(sorted_key_val))
                     }
-                    ObjectKind2::Symbol(ref info) => format!(
+                    ObjectKind::Symbol(ref info) => format!(
                         "Symbol({})",
                         info.description.as_ref().unwrap_or(&"".to_string())
                     ),
-                    ObjectKind2::Function(ref func_info) => {
+                    ObjectKind::Function(ref func_info) => {
                         if let Some(ref name) = func_info.name {
                             format!("[Function: {}]", name)
                         } else {
                             "[Function]".to_string()
                         }
                     }
-                    ObjectKind2::Array(ref ary_info) => {
+                    ObjectKind::Array(ref ary_info) => {
                         let mut string = "[ ".to_string();
 
                         let mut sorted_key_val =

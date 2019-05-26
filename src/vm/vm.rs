@@ -18,7 +18,7 @@ use rustc_hash::FxHashMap;
 
 pub type VMResult = Result<(), RuntimeError>;
 
-pub struct VM2 {
+pub struct VM {
     pub global_environment: frame::LexicalEnvironmentRef,
     pub memory_allocator: gc::MemoryAllocator,
     pub object_prototypes: ObjectPrototypes,
@@ -39,7 +39,7 @@ macro_rules! gc_lock {
     } }
 }
 
-impl VM2 {
+impl VM {
     pub fn new() -> Self {
         let mut memory_allocator = gc::MemoryAllocator::new();
         let object_prototypes = ObjectPrototypes::new(&mut memory_allocator);
@@ -48,7 +48,7 @@ impl VM2 {
             &object_prototypes,
         );
         let global_environment = frame::LexicalEnvironmentRef(memory_allocator.alloc(global_env));
-        VM2 {
+        VM {
             global_environment,
             memory_allocator,
             object_prototypes,
@@ -246,7 +246,7 @@ macro_rules! read_int32 {
     };
 }
 
-impl VM2 {
+impl VM {
     pub fn run(&mut self, mut cur_frame: frame::Frame) -> VMResult {
         #[derive(Debug, Clone)]
         enum SubroutineKind {
@@ -866,7 +866,7 @@ impl VM2 {
         cur_frame: &mut frame::Frame,
     ) -> VMResult {
         let this = Value::Object(self.memory_allocator.alloc(ObjectInfo {
-            kind: ObjectKind2::Ordinary,
+            kind: ObjectKind::Ordinary,
             prototype: callee.get_property_by_str_key("prototype"),
             property: FxHashMap::default(),
             sym_property: FxHashMap::default(),
@@ -907,7 +907,7 @@ impl VM2 {
         outer: Option<frame::LexicalEnvironmentRef>,
     ) -> frame::LexicalEnvironmentRef
     where
-        F: Fn(&mut VM2, &mut FxHashMap<String, Value>),
+        F: Fn(&mut VM, &mut FxHashMap<String, Value>),
     {
         let env = frame::LexicalEnvironment {
             record: frame::EnvironmentRecord::Declarative({
