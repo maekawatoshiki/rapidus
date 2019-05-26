@@ -26,3 +26,6 @@ assert(3 <= 3, true)
 assert(3 <= 4, true)
 assert(3 >= 3, true)
 assert(3 >= 4, false)
+let a = 13
+assert(a == 13 ? true : false, true)
+assert(a != 7 ? true : false, true)

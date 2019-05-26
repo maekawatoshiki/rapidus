@@ -206,6 +206,9 @@ impl<'a> CodeGenerator<'a> {
                         .append_push_const(Value::empty(), iseq)
                 }
             }
+            NodeBase::TernaryOp(ref condition, ref then_clause, ref else_clause) => {
+                self.visit_ternary_op(&*condition, &*then_clause, &*else_clause, iseq, use_value)?
+            }
             ref e => unimplemented!("{:?}", e),
         }
 
@@ -874,6 +877,41 @@ impl<'a> CodeGenerator<'a> {
         if !use_value {
             self.bytecode_generator.append_pop(iseq);
         }
+
+        Ok(())
+    }
+
+    fn visit_ternary_op(
+        &mut self,
+        cond: &Node,
+        then_exp: &Node,
+        else_exp: &Node,
+        iseq: &mut ByteCode,
+        use_value: bool,
+    ) -> CodeGenResult {
+        self.visit(cond, iseq, use_value)?;
+
+        let cond_pos = iseq.len() as isize;
+        self.bytecode_generator.append_jmp_if_false(0, iseq);
+
+        self.visit(then_exp, iseq, use_value)?;
+
+        let then_end_pos = iseq.len() as isize;
+        self.bytecode_generator.append_jmp(0, iseq);
+
+        let pos = iseq.len() as isize;
+        self.bytecode_generator.replace_int32(
+            (pos - cond_pos) as i32 - 5,
+            &mut iseq[cond_pos as usize + 1..cond_pos as usize + 5],
+        );
+
+        self.visit(else_exp, iseq, use_value)?;
+
+        let pos = iseq.len() as isize;
+        self.bytecode_generator.replace_int32(
+            (pos - then_end_pos) as i32 - 5,
+            &mut iseq[then_end_pos as usize + 1..then_end_pos as usize + 5],
+        );
 
         Ok(())
     }
