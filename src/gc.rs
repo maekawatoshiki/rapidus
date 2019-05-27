@@ -1,13 +1,13 @@
-use rustc_hash::{FxHashMap, FxHashSet};
-use std::hash::{Hash, Hasher};
-use std::mem;
-use vm::{
+use crate::vm::{
     constant, frame,
     jsvalue::{
         function, object, prototype,
         value::{BoxedValue, Value},
     },
 };
+use rustc_hash::{FxHashMap, FxHashSet};
+use std::hash::{Hash, Hasher};
+use std::mem;
 
 pub type RawPointer = *mut u8;
 pub type MarkMap = FxHashMap<GcTargetKey, MarkState>;
@@ -211,8 +211,8 @@ impl MemoryAllocator {
 }
 
 pub trait GcTarget {
-    fn initial_trace(&self, &mut MarkSet);
-    fn trace(&self, &mut MemoryAllocator, &mut MarkSet);
+    fn initial_trace(&self, markset: &mut MarkSet);
+    fn trace(&self, allocator: &mut MemoryAllocator, makeset: &mut MarkSet);
     fn free(&self) -> usize;
 }
 
@@ -262,7 +262,8 @@ impl GcTarget for frame::LexicalEnvironment {
         fn trace_record(record: &frame::EnvironmentRecord, markset: &mut MarkSet) {
             match record {
                 frame::EnvironmentRecord::Declarative(record)
-                | frame::EnvironmentRecord::Function { record, .. } => {
+                | frame::EnvironmentRecord::Function { record, .. }
+                | frame::EnvironmentRecord::Module { record, .. } => {
                     for (_, val) in record {
                         val.initial_trace(markset);
                     }
@@ -288,7 +289,8 @@ impl GcTarget for frame::LexicalEnvironment {
         ) {
             match record {
                 frame::EnvironmentRecord::Declarative(record)
-                | frame::EnvironmentRecord::Function { record, .. } => {
+                | frame::EnvironmentRecord::Function { record, .. }
+                | frame::EnvironmentRecord::Module { record, .. } => {
                     for (_, val) in record {
                         val.trace(allocator, markset);
                     }
@@ -394,7 +396,7 @@ impl GcTarget for object::Property {
     }
 }
 
-impl GcTarget for object::ObjectKind2 {
+impl GcTarget for object::ObjectKind {
     fn initial_trace(&self, markset: &mut MarkSet) {
         fn trace_user_function_info(
             markset: &mut MarkSet,
@@ -410,19 +412,19 @@ impl GcTarget for object::ObjectKind2 {
         }
 
         match self {
-            object::ObjectKind2::Function(func_info) => match func_info.kind {
+            object::ObjectKind::Function(func_info) => match func_info.kind {
                 function::FunctionObjectKind::User(ref user_func_info) => {
                     trace_user_function_info(markset, user_func_info)
                 }
                 function::FunctionObjectKind::Builtin(_) => {}
             },
-            object::ObjectKind2::Array(ary_info) => {
+            object::ObjectKind::Array(ary_info) => {
                 for elem in &ary_info.elems {
                     elem.initial_trace(markset)
                 }
             }
-            object::ObjectKind2::Symbol(_) => {}
-            object::ObjectKind2::Ordinary => {}
+            object::ObjectKind::Symbol(_) => {}
+            object::ObjectKind::Ordinary => {}
         }
     }
 
@@ -442,24 +444,24 @@ impl GcTarget for object::ObjectKind2 {
         }
 
         match self {
-            object::ObjectKind2::Function(func_info) => match func_info.kind {
+            object::ObjectKind::Function(func_info) => match func_info.kind {
                 function::FunctionObjectKind::User(ref user_func_info) => {
                     trace_user_function_info(allocator, markset, user_func_info)
                 }
                 function::FunctionObjectKind::Builtin(_) => {}
             },
-            object::ObjectKind2::Array(ary_info) => {
+            object::ObjectKind::Array(ary_info) => {
                 for elem in &ary_info.elems {
                     elem.trace(allocator, markset)
                 }
             }
-            object::ObjectKind2::Symbol(_) => {}
-            object::ObjectKind2::Ordinary => {}
+            object::ObjectKind::Symbol(_) => {}
+            object::ObjectKind::Ordinary => {}
         }
     }
 
     fn free(&self) -> usize {
-        mem::size_of::<object::ObjectKind2>()
+        mem::size_of::<object::ObjectKind>()
     }
 }
 

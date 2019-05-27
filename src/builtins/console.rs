@@ -1,6 +1,6 @@
-use vm::{error::RuntimeError, frame::Frame, jsvalue::value::*, vm::VM2};
+use crate::vm::{error::RuntimeError, frame::Frame, jsvalue::value::*, vm::VM};
 
-pub fn console_log(vm: &mut VM2, args: &[Value], _cur_frame: &Frame) -> Result<(), RuntimeError> {
+pub fn console_log(vm: &mut VM, args: &[Value], _cur_frame: &Frame) -> Result<(), RuntimeError> {
     let args_len = args.len();
 
     for i in 0..args_len {
@@ -65,7 +65,7 @@ pub fn debug_print(val: &Value, nest: bool) {
         Value::Number(n) if n.is_infinite() => print!("Infinity"),
         Value::Number(n) => print!("{}", *n),
         Value::String(ref s) => {
-            let s = unsafe { &**s }.to_str().unwrap();
+            let s = cstrp_to_str(*s);
             if nest {
                 print!("'{}'", s)
             } else {
@@ -73,10 +73,10 @@ pub fn debug_print(val: &Value, nest: bool) {
             }
         }
         Value::Object(obj_info) => {
-            let obj_info = unsafe { &**obj_info };
+            let obj_info = ObjectRef(*obj_info);
 
             match obj_info.kind {
-                ObjectKind2::Ordinary => {
+                ObjectKind::Ordinary => {
                     print!("{{ ");
 
                     let mut sorted_key_val = (&obj_info.property)
@@ -88,18 +88,18 @@ pub fn debug_print(val: &Value, nest: bool) {
 
                     print!("}}");
                 }
-                ObjectKind2::Symbol(ref info) => print!(
+                ObjectKind::Symbol(ref info) => print!(
                     "Symbol({})",
                     info.description.as_ref().unwrap_or(&"".to_string())
                 ),
-                ObjectKind2::Function(ref func_info) => {
+                ObjectKind::Function(ref func_info) => {
                     if let Some(ref name) = func_info.name {
                         print!("[Function: {}]", name);
                     } else {
                         print!("[Function]");
                     }
                 }
-                ObjectKind2::Array(ref ary_info) => {
+                ObjectKind::Array(ref ary_info) => {
                     print!("[ ");
 
                     let mut sorted_key_val = (&obj_info.property)

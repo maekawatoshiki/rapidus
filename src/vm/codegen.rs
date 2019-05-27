@@ -1,15 +1,15 @@
+use crate::bytecode_gen::{ByteCode, ByteCodeGenerator, VMInst};
+use crate::gc::MemoryAllocator;
 use crate::id::get_unique_id;
-use bytecode_gen::{ByteCode, ByteCodeGenerator, VMInst};
-use gc::MemoryAllocator;
-use node::{
+use crate::node::{
     BinOp, FormalParameter, FormalParameters, MethodDefinitionKind, Node, NodeBase,
     PropertyDefinition, UnaryOp, VarKind,
 };
+use crate::vm::constant::{ConstantTable, SpecialProperties, SpecialPropertyKind};
+use crate::vm::jsvalue::function::{DestinationKind, Exception, ThisMode, UserFunctionInfo};
+use crate::vm::jsvalue::value::Value;
+use crate::vm::jsvalue::{prototype, value};
 use rustc_hash::FxHashMap;
-use vm::constant::{ConstantTable, SpecialProperties, SpecialPropertyKind};
-use vm::jsvalue::function::{DestinationKind, Exception, ThisMode, UserFunctionInfo};
-use vm::jsvalue::value::Value;
-use vm::jsvalue::{prototype, value};
 
 pub type CodeGenResult = Result<(), Error>;
 
@@ -124,8 +124,8 @@ impl<'a> CodeGenerator<'a> {
             }
             NodeBase::Break(ref name) => self.visit_break(name, iseq)?,
             NodeBase::Continue(ref name) => self.visit_continue(name, iseq)?,
-            NodeBase::Try(ref try, ref catch, ref param, ref finally) => {
-                self.visit_try(&*try, &*catch, &*param, &*finally, iseq)?
+            NodeBase::Try(ref try_clause, ref catch, ref param, ref finally) => {
+                self.visit_try(&*try_clause, &*catch, &*param, &*finally, iseq)?
             }
             NodeBase::FunctionDecl(ref name, ref params, ref body) => {
                 self.visit_function_decl(name, params, &*body)?
@@ -205,6 +205,9 @@ impl<'a> CodeGenerator<'a> {
                     self.bytecode_generator
                         .append_push_const(Value::empty(), iseq)
                 }
+            }
+            NodeBase::TernaryOp(ref condition, ref then_clause, ref else_clause) => {
+                self.visit_ternary_op(&*condition, &*then_clause, &*else_clause, iseq, use_value)?
             }
             ref e => unimplemented!("{:?}", e),
         }
@@ -417,7 +420,7 @@ impl<'a> CodeGenerator<'a> {
 
     pub fn visit_try(
         &mut self,
-        try: &Node,
+        try_clause: &Node,
         catch: &Node,
         param: &Node,
         finally: &Node,
@@ -435,7 +438,7 @@ impl<'a> CodeGenerator<'a> {
                 .level
                 .push(Level::new_try_or_catch_level());
 
-            self.visit(try, iseq, false)?;
+            self.visit(try_clause, iseq, false)?;
 
             let try_ = self.current_function().level.pop().unwrap();
 
@@ -874,6 +877,41 @@ impl<'a> CodeGenerator<'a> {
         if !use_value {
             self.bytecode_generator.append_pop(iseq);
         }
+
+        Ok(())
+    }
+
+    fn visit_ternary_op(
+        &mut self,
+        cond: &Node,
+        then_exp: &Node,
+        else_exp: &Node,
+        iseq: &mut ByteCode,
+        use_value: bool,
+    ) -> CodeGenResult {
+        self.visit(cond, iseq, use_value)?;
+
+        let cond_pos = iseq.len() as isize;
+        self.bytecode_generator.append_jmp_if_false(0, iseq);
+
+        self.visit(then_exp, iseq, use_value)?;
+
+        let then_end_pos = iseq.len() as isize;
+        self.bytecode_generator.append_jmp(0, iseq);
+
+        let pos = iseq.len() as isize;
+        self.bytecode_generator.replace_int32(
+            (pos - cond_pos) as i32 - 5,
+            &mut iseq[cond_pos as usize + 1..cond_pos as usize + 5],
+        );
+
+        self.visit(else_exp, iseq, use_value)?;
+
+        let pos = iseq.len() as isize;
+        self.bytecode_generator.replace_int32(
+            (pos - then_end_pos) as i32 - 5,
+            &mut iseq[then_end_pos as usize + 1..then_end_pos as usize + 5],
+        );
 
         Ok(())
     }

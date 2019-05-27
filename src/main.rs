@@ -1,7 +1,6 @@
 extern crate rapidus;
-use rapidus::bytecode_gen;
 use rapidus::parser;
-use rapidus::{vm, vm::frame, vm::jsvalue::value::Value, vm::vm::VM2};
+use rapidus::{vm, vm::frame, vm::jsvalue::value::Value, vm::vm::VM};
 
 extern crate libc;
 
@@ -39,11 +38,12 @@ fn main() {
         )
         .arg(Arg::with_name("file").help("Input file name").index(1));
     let app_matches = app.clone().get_matches();
-
+    let is_debug = app_matches.is_present("debug");
+    let is_trace = app_matches.is_present("trace");
     let file_name = match app_matches.value_of("file") {
         Some(file_name) => file_name,
         None => {
-            repl();
+            repl(is_trace);
             return;
         }
     };
@@ -63,7 +63,6 @@ fn main() {
 
     let mut parser = parser::Parser::new(file_body);
 
-    println!("Parser:");
     let node = match parser.parse_all() {
         Ok(ok) => ok,
         Err(err) => {
@@ -71,9 +70,15 @@ fn main() {
             return;
         }
     };
-    println!("{:?}", node);
+    if is_debug {
+        println!("Parser:");
+        println!("{:?}", node);
+    };
 
-    let mut vm = VM2::new();
+    let mut vm = VM::new();
+    if is_trace {
+        vm = vm.trace();
+    }
     let mut iseq = vec![];
     let global_info = match vm.compile(&node, &mut iseq, false) {
         Ok(ok) => ok,
@@ -83,24 +88,30 @@ fn main() {
         }
     };
 
-    println!("CodeGenerator generated:");
-    bytecode_gen::show2(&iseq, &vm.constant_table);
-    println!("{:?}", vm.to_source_map);
+    if is_debug {
+        println!("Codegen:");
+        rapidus::bytecode_gen::show_inst_seq(&iseq, &vm.constant_table);
+        println!("{:?}", vm.to_source_map);
+    };
 
-    println!("Result:");
     if let Err(e) = vm.run_global(global_info, iseq) {
         e.show_error_message(Some(&parser.lexer));
     }
 
-    for (i, val_boxed) in vm.stack.iter().enumerate() {
-        let val: Value = (*val_boxed).into();
-        println!("stack remaining: [{}]: {:?}", i, val);
+    if is_debug {
+        for (i, val_boxed) in vm.stack.iter().enumerate() {
+            let val: Value = (*val_boxed).into();
+            println!("stack remaining: [{}]: {:?}", i, val);
+        }
     }
 }
 
-fn repl() {
+fn repl(is_trace: bool) {
     let mut rl = rustyline::Editor::<()>::new();
-    let mut vm = VM2::new();
+    let mut vm = VM::new();
+    if is_trace {
+        vm = vm.trace();
+    }
     let mut global_frame: Option<frame::Frame> = None;
 
     loop {
@@ -112,7 +123,7 @@ fn repl() {
             break;
         };
 
-        rl.add_history_entry(line.as_ref());
+        rl.add_history_entry(line.clone());
 
         let mut lines = line + "\n";
 
@@ -154,7 +165,7 @@ fn repl() {
                 }
                 Err(parser::Error::UnexpectedEOF(_)) => match rl.readline("... ") {
                     Ok(line) => {
-                        rl.add_history_entry(line.as_ref());
+                        rl.add_history_entry(line.clone());
                         lines += line.as_str();
                         lines += "\n";
                         continue;
@@ -322,6 +333,11 @@ mod tests {
     #[test]
     fn assert() {
         assert_file("assert")
+    }
+
+    #[test]
+    fn fibo() {
+        assert_file("fibo")
     }
 
     #[test]

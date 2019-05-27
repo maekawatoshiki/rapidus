@@ -1,6 +1,6 @@
-use gc;
+use crate::gc;
+use crate::vm::{frame, jsvalue::value::*, vm};
 use rustc_hash::FxHashMap;
-use vm::{frame, jsvalue::value::*, vm};
 
 pub fn object(
     memory_allocator: &mut gc::MemoryAllocator,
@@ -19,7 +19,7 @@ pub fn object(
 }
 
 pub fn object_constructor(
-    vm: &mut vm::VM2,
+    vm: &mut vm::VM,
     args: &[Value],
     _cur_frame: &frame::Frame,
 ) -> vm::VMResult {

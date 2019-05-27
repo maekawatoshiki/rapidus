@@ -1,16 +1,16 @@
 #![macro_use]
 
-use bytecode_gen::ByteCode;
-use gc;
+use crate::bytecode_gen::ByteCode;
+use crate::gc;
+use crate::vm::codegen::FunctionInfo;
+use crate::vm::error::RuntimeError;
+use crate::vm::jsvalue::function::Exception;
+use crate::vm::jsvalue::object::{DataProperty, ObjectInfo, ObjectKind, Property};
+use crate::vm::jsvalue::prototype::ObjectPrototypes;
+use crate::vm::jsvalue::value::Value;
+use crate::vm::vm::VMResult;
 use rustc_hash::FxHashMap;
 use std::ops::{Deref, DerefMut};
-use vm::codegen::FunctionInfo;
-use vm::error::RuntimeError;
-use vm::jsvalue::function::Exception;
-use vm::jsvalue::object::{DataProperty, ObjectInfo, ObjectKind2, Property};
-use vm::jsvalue::prototype::ObjectPrototypes;
-use vm::jsvalue::value::Value;
-use vm::vm::VMResult;
 
 #[derive(Debug, Clone, Copy)]
 pub struct LexicalEnvironmentRef(pub *mut LexicalEnvironment);
@@ -46,6 +46,11 @@ pub enum EnvironmentRecord {
     Declarative(FxHashMap<String, Value>),
     Object(Value),
     Global(Value),
+    Module {
+        this: Value,
+        record: FxHashMap<String, Value>,
+        // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-module-environment-records
+    },
     Function {
         this: Value,
         record: FxHashMap<String, Value>,
@@ -116,7 +121,7 @@ impl Frame {
         let name = val.as_function().name.clone().unwrap();
         val.set_function_outer_environment(self.execution_context.lexical_environment);
         self.lex_env_mut().set_own_value(name, val).unwrap();
-        use gc::GcTarget;
+        use crate::gc::GcTarget;
         self.execution_context
             .initial_trace(&mut memory_allocator.roots);
     }
@@ -196,10 +201,8 @@ impl LexicalEnvironment {
         memory_allocator: &mut gc::MemoryAllocator,
         object_prototypes: &ObjectPrototypes,
     ) -> Self {
-        use builtin::deep_seq;
-        use builtin::parse_float;
-        use builtin::require;
-        use builtins;
+        use crate::builtin::{deep_seq, parse_float, require};
+        use crate::builtins;
 
         let log = Value::builtin_function(
             memory_allocator,
@@ -258,6 +261,7 @@ impl LexicalEnvironment {
     pub fn get_value(&self, name: &String) -> Result<Value, RuntimeError> {
         match self.record {
             EnvironmentRecord::Function { ref record, .. }
+            | EnvironmentRecord::Module { ref record, .. }
             | EnvironmentRecord::Declarative(ref record) => match record.get(name) {
                 Some(binding) if binding == &Value::uninitialized() => {
                     return Err(RuntimeError::Reference(format!(
@@ -295,6 +299,7 @@ impl LexicalEnvironment {
     pub fn set_value(&mut self, name: String, val: Value) -> VMResult {
         match self.record {
             EnvironmentRecord::Function { ref mut record, .. }
+            | EnvironmentRecord::Module { ref mut record, .. }
             | EnvironmentRecord::Declarative(ref mut record) => match record.get_mut(&name) {
                 Some(binding) => {
                     *binding = val;
@@ -321,6 +326,7 @@ impl LexicalEnvironment {
     pub fn set_own_value(&mut self, name: String, val: Value) -> VMResult {
         match self.record {
             EnvironmentRecord::Function { ref mut record, .. }
+            | EnvironmentRecord::Module { ref mut record, .. }
             | EnvironmentRecord::Declarative(ref mut record) => {
                 record.insert(name, val);
             }

@@ -1,5 +1,7 @@
-use super::super::node::Node;
-use super::{
+use crate::bytecode_gen::{show_inst, ByteCode, VMInst};
+use crate::gc;
+use crate::node::Node;
+use crate::vm::{
     codegen,
     codegen::CodeGenerator,
     constant,
@@ -10,17 +12,13 @@ use super::{
     jsvalue::symbol::GlobalSymbolRegistry,
     jsvalue::value::*,
 };
-use bytecode_gen::show_inst2;
-use bytecode_gen::ByteCode;
-use bytecode_gen::VMInst;
-use gc;
 use rustc_hash::FxHashMap;
 
 // New VM
 
 pub type VMResult = Result<(), RuntimeError>;
 
-pub struct VM2 {
+pub struct VM {
     pub global_environment: frame::LexicalEnvironmentRef,
     pub memory_allocator: gc::MemoryAllocator,
     pub object_prototypes: ObjectPrototypes,
@@ -29,6 +27,7 @@ pub struct VM2 {
     pub stack: Vec<BoxedValue>,
     pub saved_frame: Vec<frame::Frame>,
     pub to_source_map: FxHashMap<usize, codegen::ToSourcePos>,
+    is_trace: bool,
 }
 
 macro_rules! gc_lock {
@@ -40,7 +39,7 @@ macro_rules! gc_lock {
     } }
 }
 
-impl VM2 {
+impl VM {
     pub fn new() -> Self {
         let mut memory_allocator = gc::MemoryAllocator::new();
         let object_prototypes = ObjectPrototypes::new(&mut memory_allocator);
@@ -49,7 +48,7 @@ impl VM2 {
             &object_prototypes,
         );
         let global_environment = frame::LexicalEnvironmentRef(memory_allocator.alloc(global_env));
-        VM2 {
+        VM {
             global_environment,
             memory_allocator,
             object_prototypes,
@@ -58,7 +57,13 @@ impl VM2 {
             stack: vec![],
             saved_frame: vec![],
             to_source_map: FxHashMap::default(),
+            is_trace: false,
         }
+    }
+
+    pub fn trace(mut self) -> Self {
+        self.is_trace = true;
+        self
     }
 
     pub fn compile(
@@ -241,7 +246,7 @@ macro_rules! read_int32 {
     };
 }
 
-impl VM2 {
+impl VM {
     pub fn run(&mut self, mut cur_frame: frame::Frame) -> VMResult {
         #[derive(Debug, Clone)]
         enum SubroutineKind {
@@ -251,6 +256,7 @@ impl VM2 {
         }
 
         let mut subroutine_stack: Vec<SubroutineKind> = vec![];
+        let is_trace = self.is_trace;
 
         loop {
             let current_inst_pc = cur_frame.pc;
@@ -280,6 +286,7 @@ impl VM2 {
                                     cur_frame.pc = exception.end
                                 }
                             }
+
                             exception_found = true;
                             outer_break = true;
                             break;
@@ -327,6 +334,22 @@ impl VM2 {
                         }
                     }
                 }};
+            }
+
+            if is_trace {
+                crate::bytecode_gen::show_inst(
+                    &cur_frame.bytecode,
+                    current_inst_pc,
+                    &self.constant_table,
+                );
+                match self.stack.last() {
+                    None => {
+                        println!("<empty>");
+                    }
+                    Some(val) => {
+                        println!("{:10}", (*val).into(): Value);
+                    }
+                }
             }
 
             match cur_frame.bytecode[cur_frame.pc] {
@@ -559,6 +582,9 @@ impl VM2 {
                     for _ in 0..argc {
                         args.push(self.stack.pop().unwrap().into());
                     }
+                    if is_trace {
+                        println!("--> call constructor")
+                    };
                     self.enter_constructor(callee, &args, &mut cur_frame)?;
                 }
                 VMInst::CALL => {
@@ -569,6 +595,9 @@ impl VM2 {
                     for _ in 0..argc {
                         args.push(self.stack.pop().unwrap().into());
                     }
+                    if is_trace {
+                        println!("--> call function")
+                    };
                     etry!(self.enter_function(callee, &args, cur_frame.this, &mut cur_frame, false))
                 }
                 VMInst::CALL_METHOD => {
@@ -587,6 +616,9 @@ impl VM2 {
                     )) {
                         Property::Data(DataProperty { val, .. }) => val,
                         _ => type_error!("Not a function"),
+                    };
+                    if is_trace {
+                        println!("--> call function")
                     };
                     etry!(self.enter_function(callee, &args, parent, &mut cur_frame, false))
                 }
@@ -692,6 +724,9 @@ impl VM2 {
                     cur_frame.pc += 1;
                     let escape = cur_frame.escape;
                     self.unwind_frame_saving_stack_top(&mut cur_frame);
+                    if is_trace {
+                        println!("<-- return")
+                    };
                     // TODO: GC schedule
                     self.memory_allocator.mark(
                         self.global_environment,
@@ -716,7 +751,7 @@ impl VM2 {
                 VMInst::END => break,
                 _ => {
                     print!("Not yet implemented VMInst: ");
-                    show_inst2(&cur_frame.bytecode, cur_frame.pc, &self.constant_table);
+                    show_inst(&cur_frame.bytecode, cur_frame.pc, &self.constant_table);
                     println!();
                     unimplemented!();
                 }
@@ -832,7 +867,7 @@ impl VM2 {
         cur_frame: &mut frame::Frame,
     ) -> VMResult {
         let this = Value::Object(self.memory_allocator.alloc(ObjectInfo {
-            kind: ObjectKind2::Ordinary,
+            kind: ObjectKind::Ordinary,
             prototype: callee.get_property_by_str_key("prototype"),
             property: FxHashMap::default(),
             sym_property: FxHashMap::default(),
@@ -873,7 +908,7 @@ impl VM2 {
         outer: Option<frame::LexicalEnvironmentRef>,
     ) -> frame::LexicalEnvironmentRef
     where
-        F: Fn(&mut VM2, &mut FxHashMap<String, Value>),
+        F: Fn(&mut VM, &mut FxHashMap<String, Value>),
     {
         let env = frame::LexicalEnvironment {
             record: frame::EnvironmentRecord::Declarative({

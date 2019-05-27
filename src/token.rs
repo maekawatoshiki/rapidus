@@ -1,4 +1,4 @@
-use node::BinOp;
+use crate::node::BinOp;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Token {

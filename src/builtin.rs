@@ -1,15 +1,15 @@
-use vm::{error::RuntimeError, frame::Frame, jsvalue::value::*, vm::VM2};
+use crate::vm::{error::RuntimeError, frame::Frame, jsvalue::value::*, vm::VM};
 
-pub type BuiltinFuncTy2 = fn(&mut VM2, &[Value], &Frame) -> Result<(), RuntimeError>;
+pub type BuiltinFuncTy2 = fn(&mut VM, &[Value], &Frame) -> Result<(), RuntimeError>;
 
-pub fn parse_float(vm: &mut VM2, args: &[Value], _cur_frame: &Frame) -> Result<(), RuntimeError> {
+pub fn parse_float(vm: &mut VM, args: &[Value], _cur_frame: &Frame) -> Result<(), RuntimeError> {
     let string = args.get(0).unwrap_or(&Value::undefined()).to_string();
     vm.stack
         .push(Value::Number(string.parse::<f64>().unwrap_or(::std::f64::NAN)).into());
     Ok(())
 }
 
-pub fn deep_seq(vm: &mut VM2, args: &[Value], _cur_frame: &Frame) -> Result<(), RuntimeError> {
+pub fn deep_seq(vm: &mut VM, args: &[Value], _cur_frame: &Frame) -> Result<(), RuntimeError> {
     if args.len() != 2 {
         return Err(RuntimeError::General(
             "__assert_deep_seq():Two arguments are needed.".to_string(),
@@ -27,8 +27,8 @@ pub fn deep_seq(vm: &mut VM2, args: &[Value], _cur_frame: &Frame) -> Result<(), 
 fn deep_seq_bool(lval: &Value, rval: &Value) -> bool {
     match (*lval, *rval) {
         (Value::Object(l_info), Value::Object(r_info)) => {
-            let lobj_info = unsafe { &*l_info };
-            let robj_info = unsafe { &*r_info };
+            let lobj_info = ObjectRef(l_info);
+            let robj_info = ObjectRef(r_info);
             // sort and compare properties
             let mut l_sorted_propmap = (&lobj_info.property)
                 .iter()
@@ -57,8 +57,8 @@ fn deep_seq_bool(lval: &Value, rval: &Value) -> bool {
                 }
             }
             match (&lobj_info.kind, &robj_info.kind) {
-                (ObjectKind2::Ordinary, ObjectKind2::Ordinary) => true,
-                (ObjectKind2::Array(l_info), ObjectKind2::Array(r_info)) => {
+                (ObjectKind::Ordinary, ObjectKind::Ordinary) => true,
+                (ObjectKind::Array(l_info), ObjectKind::Array(r_info)) => {
                     let l_elems = &*l_info.elems;
                     let r_elems = &*r_info.elems;
                     if l_elems.len() != r_elems.len() {
@@ -84,7 +84,7 @@ fn deep_seq_bool(lval: &Value, rval: &Value) -> bool {
     }
 }
 
-pub fn require(vm: &mut VM2, args: &[Value], _cur_frame: &Frame) -> Result<(), RuntimeError> {
+pub fn require(vm: &mut VM, args: &[Value], _cur_frame: &Frame) -> Result<(), RuntimeError> {
     let file_name = {
         let val = args.get(0).ok_or(RuntimeError::General(
             "require():One argument is needed.".to_string(),
@@ -98,7 +98,24 @@ pub fn require(vm: &mut VM2, args: &[Value], _cur_frame: &Frame) -> Result<(), R
             }
         }
     };
+    let script = r#try!(std::fs::read_to_string(file_name.clone())
+        .map_err(|ioerr| RuntimeError::General(format!("require(): \"{}\" {}", file_name, ioerr))));
+
+    use crate::parser::Parser;
+    let mut parser = Parser::new(script.clone());
+    let node = r#try!(parser.parse_all().map_err(|parse_err| {
+        parser.handle_error(&parse_err);
+        RuntimeError::General(format!("Error in parsing module \"{}\"", file_name))
+    }));
+
+    let mut iseq = vec![];
+    use crate::vm::codegen::Error;
+    let _global_info = r#try!(vm.compile(&node, &mut iseq, true).map_err(|codegen_err| {
+        let Error { msg, token_pos, .. } = codegen_err;
+        parser.show_error_at(token_pos, msg.as_str());
+        RuntimeError::General(format!("Error in parsing module \"{}\"", file_name))
+    }));
     vm.stack
-        .push(Value::string(&mut vm.memory_allocator, file_name).into());
+        .push(Value::string(&mut vm.memory_allocator, script).into());
     Ok(())
 }

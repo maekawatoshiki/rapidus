@@ -1,9 +1,9 @@
-use gc::MemoryAllocator;
-use vm::{
+use crate::gc::MemoryAllocator;
+use crate::vm::{
     error::RuntimeError,
     frame,
     jsvalue::value::*,
-    vm::{VMResult, VM2},
+    vm::{VMResult, VM},
 };
 
 pub fn symbol(
@@ -42,7 +42,7 @@ pub fn symbol(
     obj
 }
 
-pub fn symbol_constructor(vm: &mut VM2, args: &[Value], _cur_frame: &frame::Frame) -> VMResult {
+pub fn symbol_constructor(vm: &mut VM, args: &[Value], _cur_frame: &frame::Frame) -> VMResult {
     let symbol = Value::symbol(
         &mut vm.memory_allocator,
         &vm.object_prototypes,
@@ -52,7 +52,7 @@ pub fn symbol_constructor(vm: &mut VM2, args: &[Value], _cur_frame: &frame::Fram
     Ok(())
 }
 
-pub fn symbol_for(vm: &mut VM2, args: &[Value], _cur_frame: &frame::Frame) -> VMResult {
+pub fn symbol_for(vm: &mut VM, args: &[Value], _cur_frame: &frame::Frame) -> VMResult {
     let sym = vm.global_symbol_registry.for_(
         &mut vm.memory_allocator,
         &vm.object_prototypes,
@@ -62,7 +62,7 @@ pub fn symbol_for(vm: &mut VM2, args: &[Value], _cur_frame: &frame::Frame) -> VM
     Ok(())
 }
 
-pub fn symbol_key_for(vm: &mut VM2, args: &[Value], _cur_frame: &frame::Frame) -> VMResult {
+pub fn symbol_key_for(vm: &mut VM, args: &[Value], _cur_frame: &frame::Frame) -> VMResult {
     let sym = args.get(0).map(|x| *x).unwrap_or(Value::undefined());
 
     if !sym.is_symbol() {

@@ -1,5 +1,5 @@
-use vm::constant;
-use vm::jsvalue::value::Value;
+use crate::vm::constant;
+use crate::vm::jsvalue::value::Value;
 
 pub type ByteCode = Vec<u8>;
 
@@ -365,10 +365,10 @@ pub fn read_int32(iseq: &ByteCode, pc: usize) -> i32 {
         + (iseq[pc as usize + 0] as u32)) as i32
 }
 
-pub fn show2(code: &ByteCode, const_table: &constant::ConstantTable) {
+pub fn show_inst_seq(code: &ByteCode, const_table: &constant::ConstantTable) {
     let mut i = 0;
     while i < code.len() {
-        show_inst2(code, i, const_table);
+        show_inst(code, i, const_table);
         println!();
         i += if let Some(size) = VMInst::get_inst_size(code[i]) {
             size
@@ -378,7 +378,7 @@ pub fn show2(code: &ByteCode, const_table: &constant::ConstantTable) {
     }
 }
 
-pub fn show_inst2(code: &ByteCode, i: usize, const_table: &constant::ConstantTable) {
+pub fn show_inst(code: &ByteCode, i: usize, const_table: &constant::ConstantTable) {
     print!(
         "{:05} {:<25}",
         i,
@@ -443,16 +443,16 @@ pub fn show_inst2(code: &ByteCode, i: usize, const_table: &constant::ConstantTab
             VMInst::SET_MEMBER => format!("SetMember"),
             VMInst::JMP_IF_FALSE => {
                 let int32 = read_int32(code, i + 1);
-                format!("JmpIfFalse {:04x}", i as i32 + int32 + 5)
+                format!("JmpIfFalse {:05}", i as i32 + int32 + 5)
             }
             VMInst::JMP => {
                 let int32 = read_int32(code, i + 1);
-                format!("Jmp {:04x}", i as i32 + int32 + 5)
+                format!("Jmp {:05}", i as i32 + int32 + 5)
             }
             VMInst::JMP_UNWIND => {
                 let dest = read_int32(code, i + 1);
                 let pop = read_int32(code, i + 5);
-                format!("JmpUnwind {:04x} {}", i as i32 + dest + 5, pop)
+                format!("JmpUnwind {:05} {}", i as i32 + dest + 5, pop)
             }
             VMInst::CALL => {
                 let int32 = read_int32(code, i + 1);
@@ -513,12 +513,12 @@ pub fn show_inst2(code: &ByteCode, i: usize, const_table: &constant::ConstantTab
             VMInst::SET_OUTER_ENV => format!("SetOuterEnv"),
             VMInst::JMP_SUB => {
                 let int32 = read_int32(code, i + 1);
-                format!("JmpSub {:04x}", i as i32 + int32 + 5)
+                format!("JmpSub {:05}", i as i32 + int32 + 5)
             }
             VMInst::RETURN_SUB => format!("ReturnSub"),
             VMInst::TYPEOF => format!("Typeof"),
             VMInst::EXP => format!("Exp"),
-            _ => unreachable!("sorry. need to implement more opcodes"),
+            _ => panic!("Unimplemented instruction is show_inst()."),
         }
     );
 }
@@ -535,6 +535,7 @@ pub mod VMInst {
     pub const PUSH_FALSE: u8 = 0x07;
     pub const PUSH_TRUE: u8 = 0x08;
     pub const PUSH_CONST: u8 = 0x09;
+    pub const PUSH_NULL: u8 = 0x46;
     pub const PUSH_THIS: u8 = 0x0a;
     pub const PUSH_ARGUMENTS: u8 = 0x0b;
     pub const PUSH_UNDEFINED: u8 = 0x0c;
@@ -564,7 +565,9 @@ pub mod VMInst {
     pub const SET_MEMBER: u8 = 0x24;
     pub const JMP_IF_FALSE: u8 = 0x25;
     pub const JMP: u8 = 0x26;
+    pub const JMP_UNWIND: u8 = 0x3e;
     pub const CALL: u8 = 0x27;
+    pub const CALL_METHOD: u8 = 0x41;
     pub const RETURN: u8 = 0x28;
     pub const DOUBLE: u8 = 0x29;
     pub const POP: u8 = 0x2a;
@@ -574,6 +577,10 @@ pub mod VMInst {
     pub const GET_VALUE: u8 = 0x2e;
     pub const SET_VALUE: u8 = 0x2f;
     pub const DECL_VAR: u8 = 0x30;
+    pub const DECL_CONST: u8 = 0x3b;
+    pub const DECL_LET: u8 = 0x3c;
+    pub const PUSH_ENV: u8 = 0x3f;
+    pub const POP_ENV: u8 = 0x40;
     pub const COND_OP: u8 = 0x31;
     pub const LOOP_START: u8 = 0x32;
     pub const THROW: u8 = 0x33;
@@ -584,18 +591,11 @@ pub mod VMInst {
     pub const RETURN_TRY: u8 = 0x38;
     pub const PUSH_SCOPE: u8 = 0x39;
     pub const POP_SCOPE: u8 = 0x3a;
-    pub const DECL_CONST: u8 = 0x3b;
-    pub const DECL_LET: u8 = 0x3c;
     pub const NOT: u8 = 0x3d;
-    pub const JMP_UNWIND: u8 = 0x3e;
-    pub const PUSH_ENV: u8 = 0x3f;
-    pub const POP_ENV: u8 = 0x40;
-    pub const CALL_METHOD: u8 = 0x41;
     pub const SET_OUTER_ENV: u8 = 0x42;
     pub const JMP_SUB: u8 = 0x43;
     pub const RETURN_SUB: u8 = 0x44;
     pub const TYPEOF: u8 = 0x45;
-    pub const PUSH_NULL: u8 = 0x46;
     pub const EXP: u8 = 0x47;
 
     pub fn get_inst_size(inst: u8) -> Option<usize> {

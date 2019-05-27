@@ -1,9 +1,9 @@
-pub use lexer;
-use node::{
+pub use crate::lexer;
+use crate::node::{
     BinOp, FormalParameter, FormalParameters, MethodDefinitionKind, Node, NodeBase,
     PropertyDefinition, UnaryOp, VarKind,
 };
-use token::{get_string_for_symbol, Keyword, Kind, Symbol, Token};
+use crate::token::{get_string_for_symbol, Keyword, Kind, Symbol, Token};
 
 use ansi_term::Colour;
 
@@ -1235,7 +1235,7 @@ impl Parser {
     fn read_try_statement(&mut self) -> Result<Node, Error> {
         let pos_try = self.lexer.get_prev_pos();
         skip_symbol_or_error!(self.lexer, Symbol::OpeningBrace);
-        let try = self.read_block_statement()?;
+        let try_clause = self.read_block_statement()?;
         let is_catch = self
             .lexer
             .next_if_skip_lineterminator(Kind::Keyword(Keyword::Catch))
@@ -1277,7 +1277,7 @@ impl Parser {
 
         Ok(Node::new(
             NodeBase::Try(
-                Box::new(try),
+                Box::new(try_clause),
                 Box::new(catch),
                 Box::new(param),
                 Box::new(finally),
@@ -1621,7 +1621,7 @@ fn object() {
 
 #[test]
 fn simple_expr_5arith() {
-    use node::BinOp;
+    use crate::node::BinOp;
 
     let mut parser = Parser::new("31 + 26 / 3 - 1 * 20 % 3".to_string());
     assert_eq!(
@@ -1741,7 +1741,7 @@ fn simple_expr_rel() {
 
 #[test]
 fn simple_expr_cond() {
-    use node::BinOp;
+    use crate::node::BinOp;
 
     let mut parser = Parser::new("n == 1 ? 2 : max".to_string());
     assert_eq!(
@@ -1769,7 +1769,7 @@ fn simple_expr_cond() {
 
 #[test]
 fn simple_expr_logical_or() {
-    use node::BinOp;
+    use crate::node::BinOp;
 
     for (input, op) in [("1 || 0", BinOp::LOr), ("1 && 0", BinOp::LAnd)].iter() {
         let mut parser = Parser::new(input.to_string());
@@ -1792,7 +1792,7 @@ fn simple_expr_logical_or() {
 
 #[test]
 fn simple_expr_bitwise_and() {
-    use node::BinOp;
+    use crate::node::BinOp;
 
     for (input, op) in [
         ("1 & 3", BinOp::And),
@@ -1821,7 +1821,7 @@ fn simple_expr_bitwise_and() {
 
 #[test]
 fn simple_expr_shift() {
-    use node::BinOp;
+    use crate::node::BinOp;
 
     for (input, op) in [
         ("1 << 2", BinOp::Shl),
@@ -2206,7 +2206,7 @@ fn return_() {
 
 #[test]
 fn if_() {
-    use node::BinOp;
+    use crate::node::BinOp;
 
     let mut parser = Parser::new(
         "if (x <= 2) 

@@ -1,8 +1,8 @@
-use parser;
+use crate::parser;
+use crate::vm;
+use crate::vm::jsvalue::value::Value;
 use std::fs::OpenOptions;
 use std::io::Read;
-use vm;
-use vm::jsvalue::value::Value;
 
 /// Load the file ("test/{file_name}.js"), execute the script,
 /// and compare returned value and the given answer.
@@ -48,7 +48,7 @@ pub fn test_code(code: String, answer: String) {
 /// ### Panic
 /// Panic if the code returned a parse error, or terminated without error.
 pub fn runtime_error(text: &str) -> String {
-    let mut vm = vm::vm::VM2::new();
+    let mut vm = vm::vm::VM::new();
 
     let mut parser = parser::Parser::new(text.to_string());
     let node = parser.parse_all().unwrap();
@@ -65,7 +65,7 @@ pub fn runtime_error(text: &str) -> String {
 /// ### Panic
 /// Panic if the given code returned Err.
 pub fn execute_script(text: String) -> String {
-    let mut vm = vm::vm::VM2::new();
+    let mut vm = vm::vm::VM::new();
 
     let mut parser = parser::Parser::new(text);
     let node = parser.parse_all().unwrap();

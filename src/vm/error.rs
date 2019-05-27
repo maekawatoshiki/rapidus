@@ -1,8 +1,8 @@
 use super::super::builtins;
+use crate::gc::MemoryAllocator;
 use crate::lexer;
+use crate::vm::jsvalue::value::Value;
 use ansi_term::Colour;
-use gc::MemoryAllocator;
-use vm::jsvalue::value::Value;
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum RuntimeError {

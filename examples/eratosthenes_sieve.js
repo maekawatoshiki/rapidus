@@ -1,4 +1,4 @@
-let sieve = [], max = 10000
+let sieve = [], max = 1000
 sieve.push(false)
 for (let i = 1; i < max; ++i)
   sieve.push(true)

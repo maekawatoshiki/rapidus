@@ -1,7 +1,7 @@
-use vm::{error::RuntimeError, frame::Frame, jsvalue::value::*, vm::VM2};
+use crate::vm::{error::RuntimeError, frame::Frame, jsvalue::value::*, vm::VM};
 
 pub fn string_prototype_split(
-    vm: &mut VM2,
+    vm: &mut VM,
     args: &[Value],
     cur_frame: &Frame,
 ) -> Result<(), RuntimeError> {
@@ -29,7 +29,7 @@ pub fn string_prototype_split(
 }
 
 pub fn string_prototype_index_of(
-    vm: &mut VM2,
+    vm: &mut VM,
     args: &[Value],
     cur_frame: &Frame,
 ) -> Result<(), RuntimeError> {

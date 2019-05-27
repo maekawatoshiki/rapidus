@@ -1,15 +1,15 @@
-use gc::MemoryAllocator;
-use rand::random;
-use rustc_hash::FxHashMap;
-use vm::{
+use crate::gc::MemoryAllocator;
+use crate::vm::{
     frame,
     jsvalue::prototype::ObjectPrototypes,
     jsvalue::{
-        object::{DataProperty, ObjectInfo, ObjectKind2, Property},
+        object::{DataProperty, ObjectInfo, ObjectKind, Property},
         value::Value,
     },
     vm,
 };
+use rand::random;
+use rustc_hash::FxHashMap;
 
 pub fn math(memory_allocator: &mut MemoryAllocator, object_prototypes: &ObjectPrototypes) -> Value {
     let math_random = Value::builtin_function(
@@ -24,7 +24,7 @@ pub fn math(memory_allocator: &mut MemoryAllocator, object_prototypes: &ObjectPr
     )
 }
 
-pub fn math_random(vm: &mut vm::VM2, _args: &[Value], _cur_frame: &frame::Frame) -> vm::VMResult {
+pub fn math_random(vm: &mut vm::VM, _args: &[Value], _cur_frame: &frame::Frame) -> vm::VMResult {
     vm.stack.push(Value::Number(random::<f64>()).into());
     Ok(())
 }

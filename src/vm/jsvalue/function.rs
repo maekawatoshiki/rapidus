@@ -1,7 +1,7 @@
 use super::super::frame::LexicalEnvironmentRef;
 use super::value::*;
-use builtin::BuiltinFuncTy2;
-use bytecode_gen::ByteCode;
+use crate::builtin::BuiltinFuncTy2;
+use crate::bytecode_gen::ByteCode;
 
 #[derive(Clone, Debug)]
 pub struct FunctionObjectInfo {

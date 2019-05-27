@@ -1,9 +1,9 @@
-use gc;
-use vm::{
+use crate::gc;
+use crate::vm::{
     error::RuntimeError,
     frame::Frame,
     jsvalue::{object::Property, prototype::ObjectPrototypes, value::Value},
-    vm::{VMResult, VM2},
+    vm::{VMResult, VM},
 };
 
 pub fn array(
@@ -22,12 +22,12 @@ pub fn array(
     ary
 }
 
-pub fn array_constructor(vm: &mut VM2, _args: &[Value], _cur_frame: &Frame) -> VMResult {
+pub fn array_constructor(vm: &mut VM, _args: &[Value], _cur_frame: &Frame) -> VMResult {
     vm.stack.push(Value::undefined().into());
     Ok(())
 }
 
-pub fn array_prototype_push(vm: &mut VM2, args: &[Value], cur_frame: &Frame) -> VMResult {
+pub fn array_prototype_push(vm: &mut VM, args: &[Value], cur_frame: &Frame) -> VMResult {
     if !cur_frame.this.is_array_object() {
         return Err(RuntimeError::Unknown);
     }
@@ -44,7 +44,7 @@ pub fn array_prototype_push(vm: &mut VM2, args: &[Value], cur_frame: &Frame) -> 
     Ok(())
 }
 
-pub fn array_prototype_map(vm: &mut VM2, args: &[Value], cur_frame: &Frame) -> VMResult {
+pub fn array_prototype_map(vm: &mut VM, args: &[Value], cur_frame: &Frame) -> VMResult {
     if !cur_frame.this.is_array_object() {
         return Err(RuntimeError::Unknown);
     }
