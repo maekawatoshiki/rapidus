@@ -6,9 +6,8 @@ use crate::vm::codegen::FunctionInfo;
 use crate::vm::error::RuntimeError;
 use crate::vm::jsvalue::function::Exception;
 use crate::vm::jsvalue::object::{DataProperty, ObjectInfo, ObjectKind, Property};
-use crate::vm::jsvalue::prototype::ObjectPrototypes;
 use crate::vm::jsvalue::value::Value;
-use crate::vm::vm::VMResult;
+use crate::vm::vm::{Factory, VMResult};
 use rustc_hash::FxHashMap;
 use std::ops::{Deref, DerefMut};
 
@@ -197,50 +196,27 @@ impl LexicalEnvironment {
         }
     }
 
-    pub fn new_global_initialized(
-        memory_allocator: &mut gc::MemoryAllocator,
-        object_prototypes: &ObjectPrototypes,
-    ) -> Self {
+    pub fn new_global_initialized(mut factory: &mut Factory) -> Self {
         use crate::builtin::{deep_seq, parse_float, require};
         use crate::builtins;
 
-        let log = Value::builtin_function(
-            memory_allocator,
-            object_prototypes,
-            "log".to_string(),
-            builtins::console::console_log,
-        );
-        let parse_float = Value::builtin_function(
-            memory_allocator,
-            object_prototypes,
-            "parseFloat".to_string(),
-            parse_float,
-        );
-        let require = Value::builtin_function(
-            memory_allocator,
-            object_prototypes,
-            "require".to_string(),
-            require,
-        );
-        let deep_seq = Value::builtin_function(
-            memory_allocator,
-            object_prototypes,
-            "__assert_deep_seq".to_string(),
-            deep_seq,
-        );
-        let console = make_normal_object!(memory_allocator, object_prototypes,
+        let log = factory.builtin_function("log".to_string(), builtins::console::console_log);
+        let parse_float = factory.builtin_function("parseFloat".to_string(), parse_float);
+        let require = factory.builtin_function("require".to_string(), require);
+        let deep_seq = factory.builtin_function("__assert_deep_seq".to_string(), deep_seq);
+        let console = make_normal_object!(factory,
             log => true, false, true: log
         );
-        let object_constructor = builtins::object::object(memory_allocator, object_prototypes);
-        let function_constructor =
-            builtins::function::function(memory_allocator, object_prototypes);
-        let array_constructor = builtins::array::array(memory_allocator, object_prototypes);
-        let symbol_constructor = builtins::symbol::symbol(memory_allocator, object_prototypes);
-        let math_object = builtins::math::math(memory_allocator, object_prototypes);
+        let object_constructor =
+            builtins::object::object(&mut factory.memory_allocator, &factory.object_prototypes);
+        let function_constructor = builtins::function::function(&mut factory);
+        let array_constructor = builtins::array::array(&mut factory);
+        let symbol_constructor =
+            builtins::symbol::symbol(&mut factory.memory_allocator, &factory.object_prototypes);
+        let math_object = builtins::math::math(&mut factory);
         LexicalEnvironment {
             record: EnvironmentRecord::Global(make_normal_object!(
-                memory_allocator,
-                object_prototypes,
+                factory,
                 undefined  => false,false,false: Value::undefined(),
                 NaN        => false,false,false: Value::Number(::std::f64::NAN),
                 Infinity   => false,false,false: Value::Number(::std::f64::INFINITY),

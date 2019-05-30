@@ -1,30 +1,23 @@
-use crate::gc::MemoryAllocator;
 use crate::vm::{
     frame,
-    jsvalue::prototype::ObjectPrototypes,
     jsvalue::{
         object::{DataProperty, ObjectInfo, ObjectKind, Property},
         value::Value,
     },
-    vm,
+    vm::{Factory, VMResult, VM},
 };
 use rand::random;
 use rustc_hash::FxHashMap;
 
-pub fn math(memory_allocator: &mut MemoryAllocator, object_prototypes: &ObjectPrototypes) -> Value {
-    let math_random = Value::builtin_function(
-        memory_allocator,
-        object_prototypes,
-        "random".to_string(),
-        math_random,
-    );
+pub fn math(factory: &mut Factory) -> Value {
+    let math_random = factory.builtin_function("random".to_string(), math_random);
 
-    make_normal_object!(memory_allocator, object_prototypes,
+    make_normal_object!(factory,
         random => true, false, true: math_random
     )
 }
 
-pub fn math_random(vm: &mut vm::VM, _args: &[Value], _cur_frame: &frame::Frame) -> vm::VMResult {
+pub fn math_random(vm: &mut VM, _args: &[Value], _cur_frame: &frame::Frame) -> VMResult {
     vm.stack.push(Value::Number(random::<f64>()).into());
     Ok(())
 }

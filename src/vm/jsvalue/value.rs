@@ -71,6 +71,16 @@ macro_rules! make_property_map {
 
 #[macro_export]
 macro_rules! make_normal_object {
+    ($factory:expr) => { {
+        Value::Object($factory.alloc(
+            ObjectInfo {
+                kind: ObjectKind::Ordinary,
+                prototype: $factory.object_prototypes.object,
+                property: FxHashMap::default(),
+                sym_property: FxHashMap::default()
+            }
+        ))
+    } };
     ($memory_allocator:expr, $object_prototypes:expr) => { {
         Value::Object($memory_allocator.alloc(
             ObjectInfo {
@@ -86,6 +96,16 @@ macro_rules! make_normal_object {
             ObjectInfo {
                 kind: ObjectKind::Ordinary,
                 prototype: $object_prototypes.object,
+                property: make_property_map_sub!($($property_name, $val, $x, $y, $z),* ),
+                sym_property: FxHashMap::default()
+            }
+            ))
+    } };
+    ($factory:expr, $($property_name:ident => $x:ident, $y:ident, $z:ident : $val:expr),*) => { {
+        Value::Object($factory.alloc(
+            ObjectInfo {
+                kind: ObjectKind::Ordinary,
+                prototype: $factory.object_prototypes.object,
                 property: make_property_map_sub!($($property_name, $val, $x, $y, $z),* ),
                 sym_property: FxHashMap::default()
             }

@@ -50,6 +50,23 @@ impl Factory {
             object_prototypes,
         }
     }
+
+    pub fn alloc<T: gc::GcTarget + 'static>(&mut self, data: T) -> *mut T {
+        self.memory_allocator.alloc(data)
+    }
+
+    pub fn builtin_function(
+        &mut self,
+        name: String,
+        func: crate::builtin::BuiltinFuncTy2,
+    ) -> Value {
+        Value::builtin_function(
+            &mut self.memory_allocator,
+            &self.object_prototypes,
+            name: String,
+            func: crate::builtin::BuiltinFuncTy2,
+        )
+    }
 }
 
 impl VM {
@@ -57,12 +74,8 @@ impl VM {
         let mut memory_allocator = gc::MemoryAllocator::new();
         let object_prototypes = ObjectPrototypes::new(&mut memory_allocator);
         let mut factory = Factory::new(memory_allocator, object_prototypes);
-        let global_env = frame::LexicalEnvironment::new_global_initialized(
-            &mut factory.memory_allocator,
-            &factory.object_prototypes,
-        );
-        let global_environment =
-            frame::LexicalEnvironmentRef(factory.memory_allocator.alloc(global_env));
+        let global_env = frame::LexicalEnvironment::new_global_initialized(&mut factory);
+        let global_environment = frame::LexicalEnvironmentRef(factory.alloc(global_env));
         VM {
             global_environment,
             factory,
@@ -895,7 +908,7 @@ impl VM {
         args: &[Value],
         cur_frame: &mut frame::Frame,
     ) -> VMResult {
-        let this = Value::Object(self.factory.memory_allocator.alloc(ObjectInfo {
+        let this = Value::Object(self.factory.alloc(ObjectInfo {
             kind: ObjectKind::Ordinary,
             prototype: callee.get_property_by_str_key("prototype"),
             property: FxHashMap::default(),
@@ -948,7 +961,7 @@ impl VM {
             outer,
         };
 
-        frame::LexicalEnvironmentRef(self.factory.memory_allocator.alloc(env))
+        frame::LexicalEnvironmentRef(self.factory.alloc(env))
     }
 
     fn create_variable_environment(
@@ -1022,7 +1035,7 @@ impl VM {
             outer,
         };
 
-        frame::LexicalEnvironmentRef(self.factory.memory_allocator.alloc(env))
+        frame::LexicalEnvironmentRef(self.factory.alloc(env))
     }
 
     fn prepare_frame_for_function_invokation(
