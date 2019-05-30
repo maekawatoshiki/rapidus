@@ -93,6 +93,16 @@ impl VM {
         self
     }
 
+    pub fn gc_mark(&mut self, cur_frame: &frame::Frame) {
+        self.factory.memory_allocator.mark(
+            self.global_environment,
+            &self.factory.object_prototypes,
+            &self.constant_table,
+            &self.stack,
+            cur_frame,
+            &self.saved_frame,
+        );
+    }
     pub fn compile(
         &mut self,
         node: &Node,
@@ -673,27 +683,13 @@ impl VM {
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, id, usize);
                     self.create_object(id)?;
-                    self.factory.memory_allocator.mark(
-                        self.global_environment,
-                        &self.factory.object_prototypes,
-                        &self.constant_table,
-                        &self.stack,
-                        &cur_frame,
-                        &self.saved_frame,
-                    );
+                    self.gc_mark(&cur_frame);
                 }
                 VMInst::CREATE_ARRAY => {
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, len, usize);
                     self.create_array(len)?;
-                    self.factory.memory_allocator.mark(
-                        self.global_environment,
-                        &self.factory.object_prototypes,
-                        &self.constant_table,
-                        &self.stack,
-                        &cur_frame,
-                        &self.saved_frame,
-                    );
+                    self.gc_mark(&cur_frame);
                 }
                 VMInst::DOUBLE => {
                     cur_frame.pc += 1;
@@ -766,14 +762,7 @@ impl VM {
                         println!("<-- return")
                     };
                     // TODO: GC schedule
-                    self.factory.memory_allocator.mark(
-                        self.global_environment,
-                        &self.factory.object_prototypes,
-                        &self.constant_table,
-                        &self.stack,
-                        &cur_frame,
-                        &self.saved_frame,
-                    );
+                    self.gc_mark(&cur_frame);
                     if escape {
                         break;
                     }
