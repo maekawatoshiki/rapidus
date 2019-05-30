@@ -25,8 +25,8 @@ pub fn object_constructor(
 ) -> vm::VMResult {
     if args.len() == 0 {
         let empty_obj = Value::object(
-            &mut vm.memory_allocator,
-            &vm.object_prototypes,
+            &mut vm.factory.memory_allocator,
+            &vm.factory.object_prototypes,
             FxHashMap::default(),
         );
         vm.stack.push(empty_obj.into());
@@ -36,8 +36,8 @@ pub fn object_constructor(
     match &args[0] {
         Value::Other(NULL) | Value::Other(UNDEFINED) => {
             let empty_obj = Value::object(
-                &mut vm.memory_allocator,
-                &vm.object_prototypes,
+                &mut vm.factory.memory_allocator,
+                &vm.factory.object_prototypes,
                 FxHashMap::default(),
             );
             vm.stack.push(empty_obj.into());

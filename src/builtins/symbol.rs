@@ -44,8 +44,8 @@ pub fn symbol(
 
 pub fn symbol_constructor(vm: &mut VM, args: &[Value], _cur_frame: &frame::Frame) -> VMResult {
     let symbol = Value::symbol(
-        &mut vm.memory_allocator,
-        &vm.object_prototypes,
+        &mut vm.factory.memory_allocator,
+        &vm.factory.object_prototypes,
         args.get(0).map(|arg| arg.to_string()),
     );
     vm.stack.push(symbol.into());
@@ -54,8 +54,8 @@ pub fn symbol_constructor(vm: &mut VM, args: &[Value], _cur_frame: &frame::Frame
 
 pub fn symbol_for(vm: &mut VM, args: &[Value], _cur_frame: &frame::Frame) -> VMResult {
     let sym = vm.global_symbol_registry.for_(
-        &mut vm.memory_allocator,
-        &vm.object_prototypes,
+        &mut vm.factory.memory_allocator,
+        &vm.factory.object_prototypes,
         args.get(0).unwrap_or(&Value::undefined()).to_string(),
     );
     vm.stack.push(sym.into());
@@ -74,7 +74,7 @@ pub fn symbol_key_for(vm: &mut VM, args: &[Value], _cur_frame: &frame::Frame) ->
 
     let key = vm
         .global_symbol_registry
-        .key_for(&mut vm.memory_allocator, sym);
+        .key_for(&mut vm.factory.memory_allocator, sym);
     vm.stack.push(key.into());
     Ok(())
 }

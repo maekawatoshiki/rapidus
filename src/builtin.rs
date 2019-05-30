@@ -116,6 +116,6 @@ pub fn require(vm: &mut VM, args: &[Value], _cur_frame: &Frame) -> Result<(), Ru
         RuntimeError::General(format!("Error in parsing module \"{}\"", file_name))
     }));
     vm.stack
-        .push(Value::string(&mut vm.memory_allocator, script).into());
+        .push(Value::string(&mut vm.factory.memory_allocator, script).into());
     Ok(())
 }

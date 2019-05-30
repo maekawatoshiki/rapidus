@@ -18,10 +18,14 @@ use rustc_hash::FxHashMap;
 
 pub type VMResult = Result<(), RuntimeError>;
 
-pub struct VM {
-    pub global_environment: frame::LexicalEnvironmentRef,
+pub struct Factory {
     pub memory_allocator: gc::MemoryAllocator,
     pub object_prototypes: ObjectPrototypes,
+}
+
+pub struct VM {
+    pub factory: Factory,
+    pub global_environment: frame::LexicalEnvironmentRef,
     pub constant_table: constant::ConstantTable,
     pub global_symbol_registry: GlobalSymbolRegistry,
     pub stack: Vec<BoxedValue>,
@@ -32,26 +36,36 @@ pub struct VM {
 
 macro_rules! gc_lock {
     ($vm:ident, $targets:expr, $($body:tt)*) => { {
-        for arg in $targets { $vm.memory_allocator.lock(*arg) }
+        for arg in $targets { $vm.factory.memory_allocator.lock(*arg) }
         let ret = { $($body)* };
-        for arg in $targets { $vm.memory_allocator.unlock(*arg) }
+        for arg in $targets { $vm.factory.memory_allocator.unlock(*arg) }
         ret
     } }
+}
+
+impl Factory {
+    pub fn new(memory_allocator: gc::MemoryAllocator, object_prototypes: ObjectPrototypes) -> Self {
+        Factory {
+            memory_allocator,
+            object_prototypes,
+        }
+    }
 }
 
 impl VM {
     pub fn new() -> Self {
         let mut memory_allocator = gc::MemoryAllocator::new();
         let object_prototypes = ObjectPrototypes::new(&mut memory_allocator);
+        let mut factory = Factory::new(memory_allocator, object_prototypes);
         let global_env = frame::LexicalEnvironment::new_global_initialized(
-            &mut memory_allocator,
-            &object_prototypes,
+            &mut factory.memory_allocator,
+            &factory.object_prototypes,
         );
-        let global_environment = frame::LexicalEnvironmentRef(memory_allocator.alloc(global_env));
+        let global_environment =
+            frame::LexicalEnvironmentRef(factory.memory_allocator.alloc(global_env));
         VM {
             global_environment,
-            memory_allocator,
-            object_prototypes,
+            factory,
             constant_table: constant::ConstantTable::new(),
             global_symbol_registry: GlobalSymbolRegistry::new(),
             stack: vec![],
@@ -75,8 +89,8 @@ impl VM {
         let mut code_generator = CodeGenerator::new(
             // &parser,
             &mut self.constant_table,
-            &mut self.memory_allocator,
-            &self.object_prototypes,
+            &mut self.factory.memory_allocator,
+            &self.factory.object_prototypes,
         );
         let res = code_generator.compile(node, iseq, use_value);
         self.to_source_map = code_generator.to_source_map;
@@ -95,7 +109,7 @@ impl VM {
         let mut lex_env = self.create_lexical_environment(&global_info.lex_names, var_env);
 
         for val in global_info.func_decls {
-            let mut val = val.copy_object(&mut self.memory_allocator);
+            let mut val = val.copy_object(&mut self.factory.memory_allocator);
             let name = val.as_function().name.clone().unwrap();
             val.set_function_outer_environment(lex_env);
             lex_env.set_value(name, val).unwrap();
@@ -178,7 +192,11 @@ impl VM {
         key: Value,
         cur_frame: &mut frame::Frame,
     ) -> VMResult {
-        let val = parent.get_property(&mut self.memory_allocator, &self.object_prototypes, key)?;
+        let val = parent.get_property(
+            &mut self.factory.memory_allocator,
+            &self.factory.object_prototypes,
+            key,
+        )?;
         match val {
             Property::Data(DataProperty { val, .. }) => {
                 self.stack.push(val.into());
@@ -200,7 +218,11 @@ impl VM {
         key: Value,
         cur_frame: &frame::Frame,
     ) -> Result<Value, RuntimeError> {
-        let val = parent.get_property(&mut self.memory_allocator, &self.object_prototypes, key)?;
+        let val = parent.get_property(
+            &mut self.factory.memory_allocator,
+            &self.factory.object_prototypes,
+            key,
+        )?;
         match val {
             Property::Data(DataProperty { val, .. }) => Ok(val),
             Property::Accessor(AccessorProperty { get, .. }) => {
@@ -220,7 +242,7 @@ impl VM {
         val: Value,
         cur_frame: &frame::Frame,
     ) -> VMResult {
-        let maybe_setter = parent.set_property(&mut self.memory_allocator, key, val)?;
+        let maybe_setter = parent.set_property(&mut self.factory.memory_allocator, key, val)?;
         if let Some(setter) = maybe_setter {
             self.call_function(setter, &[val], parent, cur_frame)?;
             self.stack.pop().unwrap(); // Pop undefined (setter's return value)
@@ -314,8 +336,8 @@ impl VM {
 
             macro_rules! type_error {
                 ($msg:expr) => {{
-                    let val =
-                        RuntimeError::Type($msg.to_string()).to_value2(&mut self.memory_allocator);
+                    let val = RuntimeError::Type($msg.to_string())
+                        .to_value2(&mut self.factory.memory_allocator);
                     self.stack.push(val.into());
                     exception!();
                     continue;
@@ -327,7 +349,7 @@ impl VM {
                     match $val {
                         Ok(ok) => ok,
                         Err(err) => {
-                            let val = err.to_value2(&mut self.memory_allocator);
+                            let val = err.to_value2(&mut self.factory.memory_allocator);
                             self.stack.push(val.into());
                             exception!();
                             continue;
@@ -359,7 +381,7 @@ impl VM {
                     let rhs: Value = self.stack.pop().unwrap().into();
                     let lhs: Value = self.stack.pop().unwrap().into();
                     self.stack
-                        .push(lhs.add(&mut self.memory_allocator, rhs).into());
+                        .push(lhs.add(&mut self.factory.memory_allocator, rhs).into());
                 }
                 VMInst::SUB => {
                     cur_frame.pc += 1;
@@ -390,14 +412,14 @@ impl VM {
                     let rhs: Value = self.stack.pop().unwrap().into();
                     let lhs: Value = self.stack.pop().unwrap().into();
                     self.stack
-                        .push(lhs.exp(&mut self.memory_allocator, rhs).into());
+                        .push(lhs.exp(&mut self.factory.memory_allocator, rhs).into());
                 }
                 VMInst::EQ => {
                     cur_frame.pc += 1;
                     let rhs: Value = self.stack.pop().unwrap().into();
                     let lhs: Value = self.stack.pop().unwrap().into();
                     self.stack
-                        .push(lhs.eq(&mut self.memory_allocator, rhs).into());
+                        .push(lhs.eq(&mut self.factory.memory_allocator, rhs).into());
                 }
                 VMInst::SEQ => {
                     cur_frame.pc += 1;
@@ -410,7 +432,7 @@ impl VM {
                     let rhs: Value = self.stack.pop().unwrap().into();
                     let lhs: Value = self.stack.pop().unwrap().into();
                     self.stack
-                        .push(lhs.ne(&mut self.memory_allocator, rhs).into());
+                        .push(lhs.ne(&mut self.factory.memory_allocator, rhs).into());
                 }
                 VMInst::SNE => {
                     cur_frame.pc += 1;
@@ -423,75 +445,78 @@ impl VM {
                     let rhs: Value = self.stack.pop().unwrap().into();
                     let lhs: Value = self.stack.pop().unwrap().into();
                     self.stack
-                        .push(lhs.lt(&mut self.memory_allocator, rhs).into());
+                        .push(lhs.lt(&mut self.factory.memory_allocator, rhs).into());
                 }
                 VMInst::LE => {
                     cur_frame.pc += 1;
                     let rhs: Value = self.stack.pop().unwrap().into();
                     let lhs: Value = self.stack.pop().unwrap().into();
                     self.stack
-                        .push(lhs.le(&mut self.memory_allocator, rhs).into());
+                        .push(lhs.le(&mut self.factory.memory_allocator, rhs).into());
                 }
                 VMInst::GT => {
                     cur_frame.pc += 1;
                     let rhs: Value = self.stack.pop().unwrap().into();
                     let lhs: Value = self.stack.pop().unwrap().into();
                     self.stack
-                        .push(rhs.lt(&mut self.memory_allocator, lhs).into());
+                        .push(rhs.lt(&mut self.factory.memory_allocator, lhs).into());
                 }
                 VMInst::GE => {
                     cur_frame.pc += 1;
                     let rhs: Value = self.stack.pop().unwrap().into();
                     let lhs: Value = self.stack.pop().unwrap().into();
                     self.stack
-                        .push(rhs.le(&mut self.memory_allocator, lhs).into());
+                        .push(rhs.le(&mut self.factory.memory_allocator, lhs).into());
                 }
                 VMInst::AND => {
                     cur_frame.pc += 1;
                     let rhs: Value = self.stack.pop().unwrap().into();
                     let lhs: Value = self.stack.pop().unwrap().into();
                     self.stack
-                        .push(rhs.and(&mut self.memory_allocator, lhs).into());
+                        .push(rhs.and(&mut self.factory.memory_allocator, lhs).into());
                 }
                 VMInst::OR => {
                     cur_frame.pc += 1;
                     let rhs: Value = self.stack.pop().unwrap().into();
                     let lhs: Value = self.stack.pop().unwrap().into();
                     self.stack
-                        .push(rhs.or(&mut self.memory_allocator, lhs).into());
+                        .push(rhs.or(&mut self.factory.memory_allocator, lhs).into());
                 }
                 VMInst::XOR => {
                     cur_frame.pc += 1;
                     let rhs: Value = self.stack.pop().unwrap().into();
                     let lhs: Value = self.stack.pop().unwrap().into();
                     self.stack
-                        .push(rhs.xor(&mut self.memory_allocator, lhs).into());
+                        .push(rhs.xor(&mut self.factory.memory_allocator, lhs).into());
                 }
                 VMInst::NOT => {
                     cur_frame.pc += 1;
                     let rhs: Value = self.stack.pop().unwrap().into();
-                    self.stack.push(rhs.not(&mut self.memory_allocator).into());
+                    self.stack
+                        .push(rhs.not(&mut self.factory.memory_allocator).into());
                 }
                 VMInst::SHL => {
                     cur_frame.pc += 1;
                     let rhs: Value = self.stack.pop().unwrap().into();
                     let lhs: Value = self.stack.pop().unwrap().into();
                     self.stack
-                        .push(lhs.shift_l(&mut self.memory_allocator, rhs).into());
+                        .push(lhs.shift_l(&mut self.factory.memory_allocator, rhs).into());
                 }
                 VMInst::SHR => {
                     cur_frame.pc += 1;
                     let rhs: Value = self.stack.pop().unwrap().into();
                     let lhs: Value = self.stack.pop().unwrap().into();
                     self.stack
-                        .push(lhs.shift_r(&mut self.memory_allocator, rhs).into());
+                        .push(lhs.shift_r(&mut self.factory.memory_allocator, rhs).into());
                 }
                 VMInst::ZFSHR => {
                     cur_frame.pc += 1;
                     let rhs: Value = self.stack.pop().unwrap().into();
                     let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack
-                        .push(lhs.z_shift_r(&mut self.memory_allocator, rhs).into());
+                    self.stack.push(
+                        lhs.z_shift_r(&mut self.factory.memory_allocator, rhs)
+                            .into(),
+                    );
                 }
                 VMInst::NEG => {
                     cur_frame.pc += 1;
@@ -502,7 +527,7 @@ impl VM {
                     cur_frame.pc += 1;
                     let val: Value = self.stack.pop().unwrap().into();
                     self.stack
-                        .push(val.positive(&mut self.memory_allocator).into());
+                        .push(val.positive(&mut self.factory.memory_allocator).into());
                 }
                 VMInst::LNOT => {
                     cur_frame.pc += 1;
@@ -610,8 +635,8 @@ impl VM {
                         args.push(self.stack.pop().unwrap().into());
                     }
                     let callee = match etry!(parent.get_property(
-                        &mut self.memory_allocator,
-                        &self.object_prototypes,
+                        &mut self.factory.memory_allocator,
+                        &self.factory.object_prototypes,
                         method
                     )) {
                         Property::Data(DataProperty { val, .. }) => val,
@@ -625,7 +650,7 @@ impl VM {
                 VMInst::SET_OUTER_ENV => {
                     cur_frame.pc += 1;
                     let func_template: Value = self.stack.pop().unwrap().into();
-                    let mut func = func_template.copy_object(&mut self.memory_allocator);
+                    let mut func = func_template.copy_object(&mut self.factory.memory_allocator);
                     func.set_function_outer_environment(
                         cur_frame.execution_context.lexical_environment,
                     );
@@ -635,9 +660,9 @@ impl VM {
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, id, usize);
                     self.create_object(id)?;
-                    self.memory_allocator.mark(
+                    self.factory.memory_allocator.mark(
                         self.global_environment,
-                        &self.object_prototypes,
+                        &self.factory.object_prototypes,
                         &self.constant_table,
                         &self.stack,
                         &cur_frame,
@@ -648,9 +673,9 @@ impl VM {
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, len, usize);
                     self.create_array(len)?;
-                    self.memory_allocator.mark(
+                    self.factory.memory_allocator.mark(
                         self.global_environment,
-                        &self.object_prototypes,
+                        &self.factory.object_prototypes,
                         &self.constant_table,
                         &self.stack,
                         &cur_frame,
@@ -728,9 +753,9 @@ impl VM {
                         println!("<-- return")
                     };
                     // TODO: GC schedule
-                    self.memory_allocator.mark(
+                    self.factory.memory_allocator.mark(
                         self.global_environment,
-                        &self.object_prototypes,
+                        &self.factory.object_prototypes,
                         &self.constant_table,
                         &self.stack,
                         &cur_frame,
@@ -745,7 +770,7 @@ impl VM {
                     let val: Value = self.stack.pop().unwrap().into();
                     let type_str = val.type_of();
                     let type_str_val =
-                        Value::string(&mut self.memory_allocator, type_str.to_string());
+                        Value::string(&mut self.factory.memory_allocator, type_str.to_string());
                     self.stack.push(type_str_val.into());
                 }
                 VMInst::END => break,
@@ -833,8 +858,8 @@ impl VM {
         }
 
         let obj = Value::object(
-            &mut self.memory_allocator,
-            &self.object_prototypes,
+            &mut self.factory.memory_allocator,
+            &self.factory.object_prototypes,
             properties,
         );
         self.stack.push(obj.into());
@@ -854,7 +879,11 @@ impl VM {
             }));
         }
 
-        let ary = Value::array(&mut self.memory_allocator, &self.object_prototypes, elems);
+        let ary = Value::array(
+            &mut self.factory.memory_allocator,
+            &self.factory.object_prototypes,
+            elems,
+        );
         self.stack.push(ary.into());
 
         Ok(())
@@ -866,7 +895,7 @@ impl VM {
         args: &[Value],
         cur_frame: &mut frame::Frame,
     ) -> VMResult {
-        let this = Value::Object(self.memory_allocator.alloc(ObjectInfo {
+        let this = Value::Object(self.factory.memory_allocator.alloc(ObjectInfo {
             kind: ObjectKind::Ordinary,
             prototype: callee.get_property_by_str_key("prototype"),
             property: FxHashMap::default(),
@@ -919,7 +948,7 @@ impl VM {
             outer,
         };
 
-        frame::LexicalEnvironmentRef(self.memory_allocator.alloc(env))
+        frame::LexicalEnvironmentRef(self.factory.memory_allocator.alloc(env))
     }
 
     fn create_variable_environment(
@@ -972,8 +1001,8 @@ impl VM {
                             name.clone(),
                             if *rest_param {
                                 Value::array(
-                                    &mut self.memory_allocator,
-                                    &self.object_prototypes,
+                                    &mut self.factory.memory_allocator,
+                                    &self.factory.object_prototypes,
                                     (*args)
                                         .get(i..)
                                         .unwrap_or(&vec![])
@@ -993,7 +1022,7 @@ impl VM {
             outer,
         };
 
-        frame::LexicalEnvironmentRef(self.memory_allocator.alloc(env))
+        frame::LexicalEnvironmentRef(self.factory.memory_allocator.alloc(env))
     }
 
     fn prepare_frame_for_function_invokation(
@@ -1025,7 +1054,7 @@ impl VM {
         let mut lex_env_ref = self.create_lexical_environment(&user_func.lex_names, var_env_ref);
 
         for func in &user_func.func_decls {
-            let mut func = func.copy_object(&mut self.memory_allocator);
+            let mut func = func.copy_object(&mut self.factory.memory_allocator);
             let name = func.as_function().name.clone().unwrap();
             func.set_function_outer_environment(lex_env_ref);
             lex_env_ref.set_value(name, func)?;
