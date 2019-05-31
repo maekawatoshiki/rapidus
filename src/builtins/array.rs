@@ -6,8 +6,8 @@ use crate::vm::{
 };
 
 pub fn array(factory: &mut Factory) -> Value {
-    let ary = factory.builtin_function("Array".to_string(), array_constructor);
-    ary.set_property_by_string_key("prototype".to_string(), factory.object_prototypes.array);
+    let ary = factory.builtin_function("Array", array_constructor);
+    ary.set_property_by_string_key("prototype", factory.object_prototypes.array);
     ary.get_property_by_str_key("prototype")
         .set_constructor(ary);
     ary

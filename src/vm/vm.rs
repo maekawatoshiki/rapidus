@@ -55,15 +55,16 @@ impl Factory {
         self.memory_allocator.alloc(data)
     }
 
+    /// Generate Value for built-in function.
     pub fn builtin_function(
         &mut self,
-        name: String,
+        name: impl Into<String>,
         func: crate::builtin::BuiltinFuncTy2,
     ) -> Value {
         Value::builtin_function(
             &mut self.memory_allocator,
             &self.object_prototypes,
-            name: String,
+            name.into(): String,
             func: crate::builtin::BuiltinFuncTy2,
         )
     }

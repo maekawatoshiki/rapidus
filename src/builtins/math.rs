@@ -10,7 +10,7 @@ use rand::random;
 use rustc_hash::FxHashMap;
 
 pub fn math(factory: &mut Factory) -> Value {
-    let math_random = factory.builtin_function("random".to_string(), math_random);
+    let math_random = factory.builtin_function("random", math_random);
 
     make_normal_object!(factory,
         random => true, false, true: math_random

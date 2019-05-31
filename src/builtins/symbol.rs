@@ -1,42 +1,21 @@
-use crate::gc::MemoryAllocator;
 use crate::vm::{
     error::RuntimeError,
     frame,
     jsvalue::value::*,
-    vm::{VMResult, VM},
+    vm::{Factory, VMResult, VM},
 };
 
-pub fn symbol(
-    memory_allocator: &mut MemoryAllocator,
-    object_prototypes: &ObjectPrototypes,
-) -> Value {
-    let obj = Value::builtin_function(
-        memory_allocator,
-        object_prototypes,
-        "Symbol".to_string(),
-        symbol_constructor,
-    );
+pub fn symbol(factory: &mut Factory) -> Value {
+    let obj = factory.builtin_function("Symbol", symbol_constructor);
 
     // Symbol.for
-    obj.set_property_by_string_key("for".to_string(), {
-        Value::builtin_function(
-            memory_allocator,
-            object_prototypes,
-            "for".to_string(),
-            symbol_for,
-        )
-    });
+    obj.set_property_by_string_key("for", { factory.builtin_function("for", symbol_for) });
     // Symbol.keyFor
-    obj.set_property_by_string_key("keyFor".to_string(), {
-        Value::builtin_function(
-            memory_allocator,
-            object_prototypes,
-            "keyFor".to_string(),
-            symbol_key_for,
-        )
+    obj.set_property_by_string_key("keyFor", {
+        factory.builtin_function("keyFor", symbol_key_for)
     });
 
-    obj.set_property_by_string_key("prototype".to_string(), object_prototypes.symbol);
+    obj.set_property_by_string_key("prototype", factory.object_prototypes.symbol);
     obj.get_property_by_str_key("prototype")
         .set_constructor(obj);
     obj

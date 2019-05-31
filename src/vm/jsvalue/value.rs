@@ -464,9 +464,11 @@ impl Value {
         }
     }
 
-    pub fn set_property_by_string_key(&self, key: String, val: Value) {
+    pub fn set_property_by_string_key(&self, key: impl Into<String>, val: Value) {
         match self {
-            Value::Object(obj_info) => ObjectRef(*obj_info).set_property_by_string_key(key, val),
+            Value::Object(obj_info) => {
+                ObjectRef(*obj_info).set_property_by_string_key(key.into(), val)
+            }
             _ => {}
         }
     }

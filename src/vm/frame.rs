@@ -200,10 +200,10 @@ impl LexicalEnvironment {
         use crate::builtin::{deep_seq, parse_float, require};
         use crate::builtins;
 
-        let log = factory.builtin_function("log".to_string(), builtins::console::console_log);
-        let parse_float = factory.builtin_function("parseFloat".to_string(), parse_float);
-        let require = factory.builtin_function("require".to_string(), require);
-        let deep_seq = factory.builtin_function("__assert_deep_seq".to_string(), deep_seq);
+        let log = factory.builtin_function("log", builtins::console::console_log);
+        let parse_float = factory.builtin_function("parseFloat", parse_float);
+        let require = factory.builtin_function("require", require);
+        let deep_seq = factory.builtin_function("__assert_deep_seq", deep_seq);
         let console = make_normal_object!(factory,
             log => true, false, true: log
         );
@@ -211,8 +211,7 @@ impl LexicalEnvironment {
             builtins::object::object(&mut factory.memory_allocator, &factory.object_prototypes);
         let function_constructor = builtins::function::function(&mut factory);
         let array_constructor = builtins::array::array(&mut factory);
-        let symbol_constructor =
-            builtins::symbol::symbol(&mut factory.memory_allocator, &factory.object_prototypes);
+        let symbol_constructor = builtins::symbol::symbol(&mut factory);
         let math_object = builtins::math::math(&mut factory);
         LexicalEnvironment {
             record: EnvironmentRecord::Global(make_normal_object!(

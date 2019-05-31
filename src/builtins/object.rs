@@ -12,7 +12,7 @@ pub fn object(
         "Object".to_string(),
         object_constructor,
     );
-    obj.set_property_by_string_key("prototype".to_string(), object_prototypes.object);
+    obj.set_property_by_string_key("prototype", object_prototypes.object);
     obj.get_property_by_str_key("prototype")
         .set_constructor(obj);
     obj
