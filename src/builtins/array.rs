@@ -63,14 +63,7 @@ pub fn array_prototype_map(vm: &mut VM, args: &[Value], cur_frame: &Frame) -> VM
         ));
     }
 
-    vm.stack.push(
-        Value::array(
-            &mut vm.factory.memory_allocator,
-            &vm.factory.object_prototypes,
-            new_ary,
-        )
-        .into(),
-    );
+    vm.stack.push(vm.factory.array(new_ary).into());
 
     Ok(())
 }

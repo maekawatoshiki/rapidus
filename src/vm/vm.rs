@@ -119,6 +119,27 @@ impl Factory {
             sym_property: FxHashMap::default(),
         }))
     }
+
+    pub fn array(&mut self, elems: Vec<Property>) -> Value {
+        Value::Object(self.alloc(ObjectInfo {
+            kind: ObjectKind::Array(ArrayObjectInfo { elems }),
+            prototype: self.object_prototypes.array,
+            property: make_property_map!(),
+            sym_property: FxHashMap::default(),
+        }))
+    }
+
+    pub fn symbol(&mut self, description: Option<String>) -> Value {
+        Value::Object(self.alloc(ObjectInfo {
+            kind: ObjectKind::Symbol(SymbolInfo {
+                id: crate::id::get_unique_id(),
+                description,
+            }),
+            prototype: self.object_prototypes.symbol,
+            property: make_property_map!(),
+            sym_property: FxHashMap::default(),
+        }))
+    }
 }
 
 impl VM {
@@ -398,8 +419,7 @@ impl VM {
 
             macro_rules! type_error {
                 ($msg:expr) => {{
-                    let val = RuntimeError::Type($msg.to_string())
-                        .to_value2(&mut self.factory.memory_allocator);
+                    let val = RuntimeError::Type($msg.to_string()).to_value(&mut self.factory);
                     self.stack.push(val.into());
                     exception!();
                     continue;
@@ -411,7 +431,7 @@ impl VM {
                     match $val {
                         Ok(ok) => ok,
                         Err(err) => {
-                            let val = err.to_value2(&mut self.factory.memory_allocator);
+                            let val = err.to_value(&mut self.factory);
                             self.stack.push(val.into());
                             exception!();
                             continue;
@@ -911,11 +931,7 @@ impl VM {
             }));
         }
 
-        let ary = Value::array(
-            &mut self.factory.memory_allocator,
-            &self.factory.object_prototypes,
-            elems,
-        );
+        let ary = self.factory.array(elems);
         self.stack.push(ary.into());
 
         Ok(())
@@ -1032,9 +1048,7 @@ impl VM {
                         record.insert(
                             name.clone(),
                             if *rest_param {
-                                Value::array(
-                                    &mut self.factory.memory_allocator,
-                                    &self.factory.object_prototypes,
+                                self.factory.array(
                                     (*args)
                                         .get(i..)
                                         .unwrap_or(&vec![])

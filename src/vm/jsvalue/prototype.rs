@@ -16,7 +16,7 @@ pub struct ObjectPrototypes {
 }
 
 impl ObjectPrototypes {
-    pub fn new(mut allocator: &mut MemoryAllocator) -> Self {
+    pub fn new(allocator: &mut MemoryAllocator) -> Self {
         let object_prototype = Value::Object(allocator.alloc(ObjectInfo {
             kind: ObjectKind::Ordinary,
             prototype: Value::null(),
@@ -49,7 +49,7 @@ impl ObjectPrototypes {
             let function_prototype_call = Value::builtin_function_with_proto(
                 allocator,
                 function_prototype,
-                "call".to_string(),
+                "call",
                 function::function_prototype_call,
             );
 
@@ -64,14 +64,14 @@ impl ObjectPrototypes {
             let index_of = Value::builtin_function_with_proto(
                 allocator,
                 function_prototype,
-                "indexOf".to_string(),
+                "indexOf",
                 builtins::string::string_prototype_index_of,
             );
 
             let split = Value::builtin_function_with_proto(
-                &mut allocator,
+                allocator,
                 function_prototype,
-                "split".to_string(),
+                "split",
                 builtins::string::string_prototype_split,
             );
 
@@ -85,16 +85,16 @@ impl ObjectPrototypes {
 
         let array_prototype = {
             let push = Value::builtin_function_with_proto(
-                &mut allocator,
+                allocator,
                 function_prototype,
-                "push".to_string(),
+                "push",
                 array::array_prototype_push,
             );
 
             let map = Value::builtin_function_with_proto(
-                &mut allocator,
+                allocator,
                 function_prototype,
-                "map".to_string(),
+                "map",
                 array::array_prototype_map,
             );
 

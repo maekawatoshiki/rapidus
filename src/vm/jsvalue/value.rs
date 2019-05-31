@@ -7,7 +7,6 @@ pub use super::prototype::*;
 pub use super::symbol::*;
 use crate::builtin::BuiltinFuncTy2;
 use crate::gc;
-use crate::id::get_unique_id;
 use crate::vm::vm::Factory;
 pub use rustc_hash::FxHashMap;
 use std::ffi::CString;
@@ -162,38 +161,17 @@ impl Value {
         Value::Bool(if x { 1 } else { 0 })
     }
 
-    pub fn string(memory_allocator: &mut gc::MemoryAllocator, body: String) -> Self {
+    fn string(memory_allocator: &mut gc::MemoryAllocator, body: String) -> Self {
         Value::String(memory_allocator.alloc(CString::new(body).unwrap()))
     }
 
-    /*
-        pub fn builtin_function(
-            memory_allocator: &mut gc::MemoryAllocator,
-            object_prototypes: &ObjectPrototypes,
-            name: String,
-            func: BuiltinFuncTy2,
-        ) -> Self {
-            let name_prop = Value::string(memory_allocator, name.clone());
-            Value::Object(memory_allocator.alloc(ObjectInfo {
-                kind: ObjectKind::Function(FunctionObjectInfo {
-                    name: Some(name),
-                    kind: FunctionObjectKind::Builtin(func),
-                }),
-                prototype: object_prototypes.function,
-                property: make_property_map!(
-                    length => false, false, true : Value::Number(0.0),
-                    name   => false, false, true : name_prop
-                ),
-                sym_property: FxHashMap::default(),
-            }))
-        }
-    */
     pub fn builtin_function_with_proto(
         memory_allocator: &mut gc::MemoryAllocator,
         proto: Value,
-        name: String,
+        name: impl Into<String>,
         func: BuiltinFuncTy2,
     ) -> Self {
+        let name: String = name.into();
         let name_prop = Value::string(memory_allocator, name.clone());
         Value::Object(memory_allocator.alloc(ObjectInfo {
             kind: ObjectKind::Function(FunctionObjectInfo {
@@ -205,35 +183,6 @@ impl Value {
                 length => false, false, true : Value::Number(0.0),
                 name   => false, false, true : name_prop
             ),
-            sym_property: FxHashMap::default(),
-        }))
-    }
-
-    pub fn array(
-        memory_allocator: &mut gc::MemoryAllocator,
-        object_prototypes: &ObjectPrototypes,
-        elems: Vec<Property>,
-    ) -> Self {
-        Value::Object(memory_allocator.alloc(ObjectInfo {
-            kind: ObjectKind::Array(ArrayObjectInfo { elems }),
-            prototype: object_prototypes.array,
-            property: make_property_map!(),
-            sym_property: FxHashMap::default(),
-        }))
-    }
-
-    pub fn symbol(
-        memory_allocator: &mut gc::MemoryAllocator,
-        object_prototypes: &ObjectPrototypes,
-        description: Option<String>,
-    ) -> Self {
-        Value::Object(memory_allocator.alloc(ObjectInfo {
-            kind: ObjectKind::Symbol(SymbolInfo {
-                id: get_unique_id(),
-                description,
-            }),
-            prototype: object_prototypes.symbol,
-            property: make_property_map!(),
             sym_property: FxHashMap::default(),
         }))
     }
