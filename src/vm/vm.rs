@@ -18,6 +18,7 @@ use rustc_hash::FxHashMap;
 
 pub type VMResult = Result<(), RuntimeError>;
 
+#[derive(Debug)]
 pub struct Factory {
     pub memory_allocator: gc::MemoryAllocator,
     pub object_prototypes: ObjectPrototypes,
@@ -55,18 +56,68 @@ impl Factory {
         self.memory_allocator.alloc(data)
     }
 
-    /// Generate Value for built-in function.
+    /// Generate Value for a string.
+    pub fn string(&mut self, body: impl Into<String>) -> Value {
+        Value::String(self.alloc(std::ffi::CString::new(body.into()).unwrap()))
+    }
+
+    /// Generate Value for an object.
+    pub fn object(&mut self, property: FxHashMap<String, Property>) -> Value {
+        Value::Object(self.alloc(ObjectInfo {
+            kind: ObjectKind::Ordinary,
+            prototype: self.object_prototypes.object,
+            property,
+            sym_property: FxHashMap::default(),
+        }))
+    }
+
+    /// Generate Value for a JS function.
+    pub fn function(&mut self, name: Option<String>, info: UserFunctionInfo) -> Value {
+        let name_prop = self.string(name.clone().unwrap_or("".to_string()));
+        let prototype = self.object(FxHashMap::default());
+
+        let f = Value::Object(self.alloc(ObjectInfo {
+            prototype: self.object_prototypes.function,
+            property: make_property_map!(
+                length    => false, false, true : Value::Number(info.params.len() as f64), /* TODO: rest param */
+                name      => false, false, true : name_prop,
+                prototype => true , false, false: prototype
+            ),
+            kind: ObjectKind::Function(FunctionObjectInfo {
+                name: name,
+                kind: FunctionObjectKind::User(info)
+            }),
+            sym_property: FxHashMap::default(),
+        }));
+
+        f.get_property_by_str_key("prototype")
+            .get_object_info()
+            .property
+            .insert("constructor".to_string(), Property::new_data_simple(f));
+
+        f
+    }
+
+    /// Generate Value for a built-in (native) function.
     pub fn builtin_function(
         &mut self,
         name: impl Into<String>,
         func: crate::builtin::BuiltinFuncTy2,
     ) -> Value {
-        Value::builtin_function(
-            &mut self.memory_allocator,
-            &self.object_prototypes,
-            name.into(): String,
-            func: crate::builtin::BuiltinFuncTy2,
-        )
+        let name: String = name.into();
+        let name_prop = self.string(name.clone());
+        Value::Object(self.alloc(ObjectInfo {
+            kind: ObjectKind::Function(FunctionObjectInfo {
+                name: Some(name),
+                kind: FunctionObjectKind::Builtin(func),
+            }),
+            prototype: self.object_prototypes.function,
+            property: make_property_map!(
+                length => false, false, true : Value::Number(0.0),
+                name   => false, false, true : name_prop
+            ),
+            sym_property: FxHashMap::default(),
+        }))
     }
 }
 
@@ -110,12 +161,7 @@ impl VM {
         iseq: &mut ByteCode,
         use_value: bool,
     ) -> Result<codegen::FunctionInfo, codegen::Error> {
-        let mut code_generator = CodeGenerator::new(
-            // &parser,
-            &mut self.constant_table,
-            &mut self.factory.memory_allocator,
-            &self.factory.object_prototypes,
-        );
+        let mut code_generator = CodeGenerator::new(&mut self.constant_table, &mut self.factory);
         let res = code_generator.compile(node, iseq, use_value);
         self.to_source_map = code_generator.to_source_map;
         res
@@ -216,11 +262,7 @@ impl VM {
         key: Value,
         cur_frame: &mut frame::Frame,
     ) -> VMResult {
-        let val = parent.get_property(
-            &mut self.factory.memory_allocator,
-            &self.factory.object_prototypes,
-            key,
-        )?;
+        let val = parent.get_property(&mut self.factory, key)?;
         match val {
             Property::Data(DataProperty { val, .. }) => {
                 self.stack.push(val.into());
@@ -242,11 +284,7 @@ impl VM {
         key: Value,
         cur_frame: &frame::Frame,
     ) -> Result<Value, RuntimeError> {
-        let val = parent.get_property(
-            &mut self.factory.memory_allocator,
-            &self.factory.object_prototypes,
-            key,
-        )?;
+        let val = parent.get_property(&mut self.factory, key)?;
         match val {
             Property::Data(DataProperty { val, .. }) => Ok(val),
             Property::Accessor(AccessorProperty { get, .. }) => {
@@ -658,11 +696,7 @@ impl VM {
                     for _ in 0..argc {
                         args.push(self.stack.pop().unwrap().into());
                     }
-                    let callee = match etry!(parent.get_property(
-                        &mut self.factory.memory_allocator,
-                        &self.factory.object_prototypes,
-                        method
-                    )) {
+                    let callee = match etry!(parent.get_property(&mut self.factory, method)) {
                         Property::Data(DataProperty { val, .. }) => val,
                         _ => type_error!("Not a function"),
                     };
@@ -772,8 +806,7 @@ impl VM {
                     cur_frame.pc += 1;
                     let val: Value = self.stack.pop().unwrap().into();
                     let type_str = val.type_of();
-                    let type_str_val =
-                        Value::string(&mut self.factory.memory_allocator, type_str.to_string());
+                    let type_str_val = self.factory.string(type_str.to_string());
                     self.stack.push(type_str_val.into());
                 }
                 VMInst::END => break,
@@ -860,11 +893,7 @@ impl VM {
             }
         }
 
-        let obj = Value::object(
-            &mut self.factory.memory_allocator,
-            &self.factory.object_prototypes,
-            properties,
-        );
+        let obj = self.factory.object(properties);
         self.stack.push(obj.into());
 
         Ok(())

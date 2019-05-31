@@ -196,7 +196,7 @@ impl LexicalEnvironment {
         }
     }
 
-    pub fn new_global_initialized(mut factory: &mut Factory) -> Self {
+    pub fn new_global_initialized(factory: &mut Factory) -> Self {
         use crate::builtin::{deep_seq, parse_float, require};
         use crate::builtins;
 
@@ -207,12 +207,11 @@ impl LexicalEnvironment {
         let console = make_normal_object!(factory,
             log => true, false, true: log
         );
-        let object_constructor =
-            builtins::object::object(&mut factory.memory_allocator, &factory.object_prototypes);
-        let function_constructor = builtins::function::function(&mut factory);
-        let array_constructor = builtins::array::array(&mut factory);
-        let symbol_constructor = builtins::symbol::symbol(&mut factory);
-        let math_object = builtins::math::math(&mut factory);
+        let object_constructor = builtins::object::object(factory);
+        let function_constructor = builtins::function::function(factory);
+        let array_constructor = builtins::array::array(factory);
+        let symbol_constructor = builtins::symbol::symbol(factory);
+        let math_object = builtins::math::math(factory);
         LexicalEnvironment {
             record: EnvironmentRecord::Global(make_normal_object!(
                 factory,

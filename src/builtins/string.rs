@@ -21,12 +21,7 @@ pub fn string_prototype_split(
         .split(separator.as_str())
         .collect::<Vec<&str>>()
         .iter()
-        .map(|s| {
-            Property::new_data_simple(Value::string(
-                &mut vm.factory.memory_allocator,
-                s.to_string(),
-            ))
-        })
+        .map(|s| Property::new_data_simple(vm.factory.string(s.to_string())))
         .collect::<Vec<Property>>();
     let ary = Value::array(
         &mut vm.factory.memory_allocator,

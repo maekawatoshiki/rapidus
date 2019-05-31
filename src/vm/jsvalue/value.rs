@@ -8,6 +8,7 @@ pub use super::symbol::*;
 use crate::builtin::BuiltinFuncTy2;
 use crate::gc;
 use crate::id::get_unique_id;
+use crate::vm::vm::Factory;
 pub use rustc_hash::FxHashMap;
 use std::ffi::CString;
 
@@ -165,40 +166,28 @@ impl Value {
         Value::String(memory_allocator.alloc(CString::new(body).unwrap()))
     }
 
-    pub fn object(
-        memory_allocator: &mut gc::MemoryAllocator,
-        object_prototypes: &ObjectPrototypes,
-        property: FxHashMap<String, Property>,
-    ) -> Self {
-        Value::Object(memory_allocator.alloc(ObjectInfo {
-            kind: ObjectKind::Ordinary,
-            prototype: object_prototypes.object,
-            property,
-            sym_property: FxHashMap::default(),
-        }))
-    }
-
-    pub fn builtin_function(
-        memory_allocator: &mut gc::MemoryAllocator,
-        object_prototypes: &ObjectPrototypes,
-        name: String,
-        func: BuiltinFuncTy2,
-    ) -> Self {
-        let name_prop = Value::string(memory_allocator, name.clone());
-        Value::Object(memory_allocator.alloc(ObjectInfo {
-            kind: ObjectKind::Function(FunctionObjectInfo {
-                name: Some(name),
-                kind: FunctionObjectKind::Builtin(func),
-            }),
-            prototype: object_prototypes.function,
-            property: make_property_map!(
-                length => false, false, true : Value::Number(0.0),
-                name   => false, false, true : name_prop
-            ),
-            sym_property: FxHashMap::default(),
-        }))
-    }
-
+    /*
+        pub fn builtin_function(
+            memory_allocator: &mut gc::MemoryAllocator,
+            object_prototypes: &ObjectPrototypes,
+            name: String,
+            func: BuiltinFuncTy2,
+        ) -> Self {
+            let name_prop = Value::string(memory_allocator, name.clone());
+            Value::Object(memory_allocator.alloc(ObjectInfo {
+                kind: ObjectKind::Function(FunctionObjectInfo {
+                    name: Some(name),
+                    kind: FunctionObjectKind::Builtin(func),
+                }),
+                prototype: object_prototypes.function,
+                property: make_property_map!(
+                    length => false, false, true : Value::Number(0.0),
+                    name   => false, false, true : name_prop
+                ),
+                sym_property: FxHashMap::default(),
+            }))
+        }
+    */
     pub fn builtin_function_with_proto(
         memory_allocator: &mut gc::MemoryAllocator,
         proto: Value,
@@ -218,45 +207,6 @@ impl Value {
             ),
             sym_property: FxHashMap::default(),
         }))
-    }
-
-    pub fn function(
-        memory_allocator: &mut gc::MemoryAllocator,
-        object_prototypes: &ObjectPrototypes,
-        // TODO: Too many arguments, I think.
-        name: Option<String>,
-        info: UserFunctionInfo,
-        // params: Vec<FunctionParameter>,
-        // var_names: Vec<String>,
-        // lex_names: Vec<String>,
-        // func_decls: Vec<Value>,
-        // constructor: bool,
-        // code: ByteCode,
-        // exception_table: Vec<Exception>,
-    ) -> Self {
-        let name_prop = Value::string(memory_allocator, name.clone().unwrap_or("".to_string()));
-        let prototype = Value::object(memory_allocator, object_prototypes, FxHashMap::default());
-
-        let f = Value::Object(memory_allocator.alloc(ObjectInfo {
-            prototype: object_prototypes.function,
-            property: make_property_map!(
-                length    => false, false, true : Value::Number(info.params.len() as f64), /* TODO: rest param */
-                name      => false, false, true : name_prop,
-                prototype => true , false, false: prototype
-            ),
-            kind: ObjectKind::Function(FunctionObjectInfo {
-                name: name,
-                kind: FunctionObjectKind::User(info)
-            }),
-            sym_property: FxHashMap::default(),
-        }));
-
-        f.get_property_by_str_key("prototype")
-            .get_object_info()
-            .property
-            .insert("constructor".to_string(), Property::new_data_simple(f));
-
-        f
     }
 
     pub fn array(
@@ -416,34 +366,32 @@ impl Value {
 
     pub fn get_property(
         &self,
-        allocator: &mut gc::MemoryAllocator,
-        object_prototypes: &ObjectPrototypes,
+        factory: &mut Factory,
         key: Value,
     ) -> Result<Property, error::RuntimeError> {
         fn string_get_property(
-            allocator: &mut gc::MemoryAllocator,
-            object_prototypes: &ObjectPrototypes,
+            factory: &mut Factory,
             s: &str,
             key: Value,
         ) -> Result<Property, error::RuntimeError> {
             match key {
                 Value::Number(idx) if is_integer(idx) => Ok(Property::new_data_simple(
-                    Value::string(allocator, s.chars().nth(idx as usize).unwrap().to_string()),
+                    factory.string(s.chars().nth(idx as usize).unwrap().to_string()),
                 )),
                 Value::String(x) if cstrp_to_str(x) == "length" => Ok(Property::new_data_simple(
                     Value::Number(s.chars().fold(0, |x, c| x + c.len_utf16()) as f64),
                 )),
-                key => object_prototypes.string.get_object_info().get_property(
-                    allocator,
-                    object_prototypes,
-                    key,
-                ),
+                key => factory
+                    .object_prototypes
+                    .string
+                    .get_object_info()
+                    .get_property(factory, key),
             }
         }
 
         match self {
             Value::String(s) => {
-                return string_get_property(allocator, object_prototypes, cstrp_to_str(*s), key);
+                return string_get_property(factory, cstrp_to_str(*s), key);
             }
             Value::Other(_) => {
                 return Err(error::RuntimeError::Type(format!(
@@ -457,9 +405,7 @@ impl Value {
         }
 
         match self {
-            Value::Object(obj_info) => {
-                ObjectRef(*obj_info).get_property(allocator, object_prototypes, key)
-            }
+            Value::Object(obj_info) => ObjectRef(*obj_info).get_property(factory, key),
             _ => Ok(Property::new_data_simple(Value::undefined())),
         }
     }

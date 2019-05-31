@@ -1,7 +1,7 @@
 use super::super::super::gc::MemoryAllocator;
 use super::super::error;
-use super::prototype::ObjectPrototypes;
 use super::value::*;
+use crate::vm::vm::Factory;
 pub use rustc_hash::FxHashMap;
 
 #[derive(Clone, Debug)]
@@ -74,8 +74,7 @@ impl ObjectInfo {
 
     pub fn get_property(
         &self,
-        allocator: &mut MemoryAllocator,
-        object_prototypes: &ObjectPrototypes,
+        factory: &mut Factory,
         key: Value,
     ) -> Result<Property, error::RuntimeError> {
         // Annoying
@@ -87,9 +86,7 @@ impl ObjectInfo {
             let id = key.get_symbol_info().id;
             return match self.sym_property.get(&id) {
                 Some(prop) => Ok(*prop),
-                None => self
-                    .prototype
-                    .get_property(allocator, object_prototypes, key),
+                None => self.prototype.get_property(factory, key),
             };
         }
 
@@ -99,7 +96,9 @@ impl ObjectInfo {
                     return Ok(info.get_element(idx));
                 }
 
-                if let Some(idx) = key.is_canonical_numeric_index_string(allocator) {
+                if let Some(idx) =
+                    key.is_canonical_numeric_index_string(&mut factory.memory_allocator)
+                {
                     return Ok(info.get_element(idx));
                 }
 
@@ -119,7 +118,7 @@ impl ObjectInfo {
                 if proto.is_null() {
                     return Ok(Property::new_data_simple(Value::undefined()));
                 };
-                proto.get_property(allocator, object_prototypes, key)
+                proto.get_property(factory, key)
             }
         }
     }
