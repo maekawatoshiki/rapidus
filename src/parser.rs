@@ -50,13 +50,13 @@ impl Parser {
     }
 
     /// display error position in the source code.
-    pub fn show_error_at(&self, pos: usize, msg: &str) {
+    pub fn show_error_at(&self, pos: usize, msg: impl Into<String>) {
         let (source_at_err_point, _pos, line) = self.lexer.get_code_around_err_point(pos);
         eprintln!(
             "{}: line {}: {}\n{}",
             Colour::Red.bold().paint("SyntaxError"),
             line,
-            msg,
+            msg.into(): String,
             source_at_err_point,
         );
     }
@@ -68,10 +68,10 @@ impl Parser {
             Error::Expect(pos, msg)
             | Error::General(pos, msg)
             | Error::UnexpectedToken(pos, msg) => {
-                self.show_error_at(*pos, msg.as_str());
+                self.show_error_at(*pos, msg.clone());
             }
             Error::UnexpectedEOF(msg) => {
-                self.show_error_at(self.lexer.pos, format!("unexpected EOF. {}", msg).as_str())
+                self.show_error_at(self.lexer.pos, format!("unexpected EOF. {}", msg))
             }
             Error::InvalidToken(pos) => self.show_error_at(*pos, "Invalid token."),
             Error::UnsupportedFeature(pos) => {

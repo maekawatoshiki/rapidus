@@ -5,7 +5,7 @@ pub use super::function::*;
 pub use super::object::*;
 pub use super::prototype::*;
 pub use super::symbol::*;
-use crate::builtin::BuiltinFuncTy2;
+use crate::builtin::BuiltinFuncTy;
 use crate::gc;
 use crate::vm::vm::Factory;
 pub use rustc_hash::FxHashMap;
@@ -169,7 +169,7 @@ impl Value {
         memory_allocator: &mut gc::MemoryAllocator,
         proto: Value,
         name: impl Into<String>,
-        func: BuiltinFuncTy2,
+        func: BuiltinFuncTy,
     ) -> Self {
         let name: String = name.into();
         let name_prop = Value::string(memory_allocator, name.clone());

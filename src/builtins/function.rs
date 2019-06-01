@@ -12,13 +12,23 @@ pub fn function(factory: &mut Factory) -> Value {
     func
 }
 
-pub fn function_constructor(vm: &mut VM, _args: &[Value], _cur_frame: &frame::Frame) -> VMResult {
+pub fn function_constructor(
+    vm: &mut VM,
+    _args: &[Value],
+    _this: Value,
+    _cur_frame: &mut frame::Frame,
+) -> VMResult {
     vm.stack.push(Value::undefined().into());
     Ok(())
 }
 
-pub fn function_prototype_call(vm: &mut VM, args: &[Value], cur_frame: &frame::Frame) -> VMResult {
+pub fn function_prototype_call(
+    vm: &mut VM,
+    args: &[Value],
+    this: Value,
+    cur_frame: &mut frame::Frame,
+) -> VMResult {
     let this_arg = *args.get(0).unwrap_or(&Value::undefined());
-    let func = cur_frame.this;
+    let func = this;
     vm.call_function(func, args.get(1..).unwrap_or(&[]), this_arg, cur_frame)
 }

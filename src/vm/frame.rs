@@ -172,15 +172,6 @@ impl ExecutionContext {
     }
 }
 
-#[macro_export]
-macro_rules! make_global_env {
-    ($($property_name:ident : $val:expr),*) => { {
-        let mut record = FxHashMap::default();
-        $( record.insert((stringify!($property_name)).to_string(), $val); )*
-        record
-    } };
-}
-
 impl LexicalEnvironment {
     pub fn new_declarative(outer: Option<LexicalEnvironmentRef>) -> Self {
         LexicalEnvironment {

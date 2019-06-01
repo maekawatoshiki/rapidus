@@ -54,7 +54,7 @@ pub fn runtime_error(text: &str) -> String {
     let node = parser.parse_all().unwrap();
     let mut iseq = vec![];
 
-    let func_info = vm.compile(&node, &mut iseq, true).unwrap();
+    let func_info = vm.compile(&node, &mut iseq, true, 0).unwrap();
     match vm.run_global(func_info, iseq) {
         Ok(()) => panic!(),
         Err(err) => return format!("{:?}", err),
@@ -71,7 +71,7 @@ pub fn execute_script(text: String) -> String {
     let node = parser.parse_all().unwrap();
     let mut iseq = vec![];
 
-    let func_info = vm.compile(&node, &mut iseq, true).unwrap();
+    let func_info = vm.compile(&node, &mut iseq, true, 0).unwrap();
     vm.run_global(func_info, iseq).unwrap();
     let val: Value = vm.stack.pop().unwrap_or(Value::undefined().into()).into();
     val.debug_string(true)

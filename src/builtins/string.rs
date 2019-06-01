@@ -3,14 +3,13 @@ use crate::vm::{error::RuntimeError, frame::Frame, jsvalue::value::*, vm::VM};
 pub fn string_prototype_split(
     vm: &mut VM,
     args: &[Value],
-    cur_frame: &Frame,
+    this: Value,
+    _cur_frame: &mut Frame,
 ) -> Result<(), RuntimeError> {
-    let string = cur_frame.this.into_str();
+    let string = this.into_str();
     let separator_ = args.get(0).map(|x| *x).unwrap_or(Value::undefined());
     if separator_.is_undefined() {
-        let ary = vm
-            .factory
-            .array(vec![Property::new_data_simple(cur_frame.this)]);
+        let ary = vm.factory.array(vec![Property::new_data_simple(this)]);
         vm.stack.push(ary.into());
         return Ok(());
     }
@@ -29,9 +28,10 @@ pub fn string_prototype_split(
 pub fn string_prototype_index_of(
     vm: &mut VM,
     args: &[Value],
-    cur_frame: &Frame,
+    this: Value,
+    _cur_frame: &mut Frame,
 ) -> Result<(), RuntimeError> {
-    let string = cur_frame.this.into_str();
+    let string = this.into_str();
     let search_string = args.get(0).unwrap_or(&Value::undefined()).to_string();
     let position = args.get(1).unwrap_or(&Value::Number(0.0)).into_number() as usize;
     let found_pos = string[position..]

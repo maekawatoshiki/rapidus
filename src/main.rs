@@ -80,10 +80,10 @@ fn main() {
         vm = vm.trace();
     }
     let mut iseq = vec![];
-    let global_info = match vm.compile(&node, &mut iseq, false) {
+    let global_info = match vm.compile(&node, &mut iseq, false, 0) {
         Ok(ok) => ok,
         Err(vm::codegen::Error { msg, token_pos, .. }) => {
-            parser.show_error_at(token_pos, msg.as_str());
+            parser.show_error_at(token_pos, msg);
             return;
         }
     };
@@ -133,10 +133,10 @@ fn repl(is_trace: bool) {
                 Ok(node) => {
                     // compile and execute
                     let mut iseq = vec![];
-                    let global_info = match vm.compile(&node, &mut iseq, true) {
+                    let global_info = match vm.compile(&node, &mut iseq, true, 0) {
                         Ok(ok) => ok,
                         Err(vm::codegen::Error { msg, token_pos, .. }) => {
-                            parser.show_error_at(token_pos, msg.as_str());
+                            parser.show_error_at(token_pos, msg);
                             break;
                         }
                     };
@@ -145,7 +145,10 @@ fn repl(is_trace: bool) {
                         Some(ref mut frame) => {
                             frame.bytecode = iseq;
                             frame.exception_table = global_info.exception_table.clone();
-                            frame.append_from_function_info(&mut vm.factory.memory_allocator, &global_info)
+                            frame.append_from_function_info(
+                                &mut vm.factory.memory_allocator,
+                                &global_info,
+                            )
                         }
                         None => global_frame = Some(vm.create_global_frame(global_info, iseq)),
                     }

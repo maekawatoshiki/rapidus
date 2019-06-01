@@ -1,6 +1,6 @@
 use super::super::frame::LexicalEnvironmentRef;
 use super::value::*;
-use crate::builtin::BuiltinFuncTy2;
+use crate::builtin::BuiltinFuncTy;
 use crate::bytecode_gen::ByteCode;
 
 #[derive(Clone, Debug)]
@@ -12,7 +12,7 @@ pub struct FunctionObjectInfo {
 #[derive(Clone)]
 pub enum FunctionObjectKind {
     User(UserFunctionInfo),
-    Builtin(BuiltinFuncTy2),
+    Builtin(BuiltinFuncTy),
 }
 
 #[derive(Clone, Debug)]

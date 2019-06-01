@@ -85,13 +85,15 @@ impl<'a> CodeGenerator<'a> {
         node: &Node,
         iseq: &mut ByteCode,
         use_value: bool,
+        // id of the function.
+        id: usize,
     ) -> Result<FunctionInfo, Error> {
         self.visit(node, iseq, use_value)?;
-        self.bytecode_generator.append_end(iseq);
+        self.bytecode_generator.append_return(iseq);
 
         let global_info = self.function_stack.pop().unwrap();
         self.to_source_map
-            .insert(0, global_info.to_source_pos.clone());
+            .insert(id, global_info.to_source_pos.clone());
 
         Ok(global_info)
     }

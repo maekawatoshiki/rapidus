@@ -17,7 +17,12 @@ pub fn math(factory: &mut Factory) -> Value {
     )
 }
 
-pub fn math_random(vm: &mut VM, _args: &[Value], _cur_frame: &frame::Frame) -> VMResult {
+pub fn math_random(
+    vm: &mut VM,
+    _args: &[Value],
+    _this: Value,
+    _cur_frame: &mut frame::Frame,
+) -> VMResult {
     vm.stack.push(Value::Number(random::<f64>()).into());
     Ok(())
 }

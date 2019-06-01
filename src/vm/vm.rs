@@ -102,7 +102,7 @@ impl Factory {
     pub fn builtin_function(
         &mut self,
         name: impl Into<String>,
-        func: crate::builtin::BuiltinFuncTy2,
+        func: crate::builtin::BuiltinFuncTy,
     ) -> Value {
         let name: String = name.into();
         let name_prop = self.string(name.clone());
@@ -181,9 +181,10 @@ impl VM {
         node: &Node,
         iseq: &mut ByteCode,
         use_value: bool,
+        id: usize,
     ) -> Result<codegen::FunctionInfo, codegen::Error> {
         let mut code_generator = CodeGenerator::new(&mut self.constant_table, &mut self.factory);
-        let res = code_generator.compile(node, iseq, use_value);
+        let res = code_generator.compile(node, iseq, use_value, id);
         self.to_source_map = code_generator.to_source_map;
         res
     }
@@ -236,7 +237,7 @@ impl VM {
         callee: Value,
         args: &[Value],
         this: Value,
-        cur_frame: &frame::Frame,
+        cur_frame: &mut frame::Frame,
     ) -> VMResult {
         if !callee.is_function_object() {
             return Err(RuntimeError::Type("Not a function".to_string()));
@@ -245,11 +246,9 @@ impl VM {
         let info = callee.as_function();
 
         match info.kind {
-            FunctionObjectKind::Builtin(func) => gc_lock!(
-                self,
-                args,
-                func(self, args, &frame::Frame::new_empty_with_this(this, false))
-            ),
+            FunctionObjectKind::Builtin(func) => {
+                gc_lock!(self, args, func(self, args, this, cur_frame))
+            }
             FunctionObjectKind::User(ref user_func) => {
                 self.call_user_function(user_func, args, this, cur_frame, false)
             }
@@ -303,7 +302,7 @@ impl VM {
         &mut self,
         parent: Value,
         key: Value,
-        cur_frame: &frame::Frame,
+        cur_frame: &mut frame::Frame,
     ) -> Result<Value, RuntimeError> {
         let val = parent.get_property(&mut self.factory, key)?;
         match val {
@@ -323,7 +322,7 @@ impl VM {
         parent: Value,
         key: Value,
         val: Value,
-        cur_frame: &frame::Frame,
+        cur_frame: &mut frame::Frame,
     ) -> VMResult {
         let maybe_setter = parent.set_property(&mut self.factory.memory_allocator, key, val)?;
         if let Some(setter) = maybe_setter {
@@ -664,7 +663,7 @@ impl VM {
                     let property: Value = self.stack.pop().unwrap().into();
                     let parent: Value = self.stack.pop().unwrap().into();
                     let val: Value = self.stack.pop().unwrap().into();
-                    etry!(self.set_property(parent, property, val, &cur_frame))
+                    etry!(self.set_property(parent, property, val, &mut cur_frame))
                 }
                 VMInst::SET_VALUE => {
                     cur_frame.pc += 1;
@@ -676,9 +675,8 @@ impl VM {
                 VMInst::GET_VALUE => {
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, name_id, usize);
-                    let val = etry!(cur_frame
-                        .lex_env()
-                        .get_value(self.constant_table.get(name_id).as_string()));
+                    let string = self.constant_table.get(name_id).as_string();
+                    let val = etry!(cur_frame.lex_env().get_value(string));
                     self.stack.push(val.into());
                 }
                 VMInst::CONSTRUCT => {
@@ -689,9 +687,6 @@ impl VM {
                     for _ in 0..argc {
                         args.push(self.stack.pop().unwrap().into());
                     }
-                    if is_trace {
-                        println!("--> call constructor")
-                    };
                     self.enter_constructor(callee, &args, &mut cur_frame)?;
                 }
                 VMInst::CALL => {
@@ -702,9 +697,6 @@ impl VM {
                     for _ in 0..argc {
                         args.push(self.stack.pop().unwrap().into());
                     }
-                    if is_trace {
-                        println!("--> call function")
-                    };
                     etry!(self.enter_function(callee, &args, cur_frame.this, &mut cur_frame, false))
                 }
                 VMInst::CALL_METHOD => {
@@ -719,9 +711,6 @@ impl VM {
                     let callee = match etry!(parent.get_property(&mut self.factory, method)) {
                         Property::Data(DataProperty { val, .. }) => val,
                         _ => type_error!("Not a function"),
-                    };
-                    if is_trace {
-                        println!("--> call function")
                     };
                     etry!(self.enter_function(callee, &args, parent, &mut cur_frame, false))
                 }
@@ -812,6 +801,9 @@ impl VM {
                 VMInst::RETURN => {
                     cur_frame.pc += 1;
                     let escape = cur_frame.escape;
+                    if self.saved_frame.len() == 0 {
+                        break;
+                    };
                     self.unwind_frame_saving_stack_top(&mut cur_frame);
                     if is_trace {
                         println!("<-- return")
@@ -966,17 +958,28 @@ impl VM {
         }
 
         let info = callee.as_function();
-
-        match info.kind {
+        let is_trace = self.is_trace;
+        if is_trace {
+            println!("--> call function")
+        };
+        let ret = match info.kind {
             FunctionObjectKind::Builtin(func) => gc_lock!(
                 self,
                 args,
-                func(self, args, &frame::Frame::new_empty_with_this(this, false))
+                func(
+                    self, args, this,
+                    cur_frame,
+                    //&mut frame::Frame::new_empty_with_this(this, false)
+                )
             ),
             FunctionObjectKind::User(ref user_func) => {
                 self.enter_user_function(user_func.clone(), args, this, cur_frame, constructor_call)
             }
-        }
+        };
+        if is_trace {
+            println!("<-- return")
+        };
+        ret
     }
 
     fn create_declarative_environment<F>(
@@ -1071,7 +1074,13 @@ impl VM {
         frame::LexicalEnvironmentRef(self.factory.alloc(env))
     }
 
-    fn prepare_frame_for_function_invokation(
+    /// Prepare a new frame before invoking function.
+    /// 1. save current frame to the frame stack.
+    /// 2. set `this`.
+    /// 3. create a new function environment.
+    /// 4. prepare function objects defined inner the function, and register them to the lexical environment.
+    /// 5. generate a new frame, and return it.
+    pub fn prepare_frame_for_function_invokation(
         &mut self,
         user_func: &UserFunctionInfo,
         args: &[Value],
