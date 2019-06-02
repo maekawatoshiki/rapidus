@@ -32,7 +32,7 @@ pub struct VM {
     pub stack: Vec<BoxedValue>,
     pub saved_frame: Vec<frame::Frame>,
     pub to_source_map: FxHashMap<usize, codegen::ToSourcePos>,
-    is_trace: bool,
+    pub is_trace: bool,
 }
 
 macro_rules! gc_lock {
@@ -218,7 +218,6 @@ impl VM {
             iseq,
             global_info.exception_table,
             global_env_ref.get_global_object(),
-            false,
         );
 
         frame
@@ -264,13 +263,8 @@ impl VM {
         constructor_call: bool,
     ) -> VMResult {
         let frame = self
-            .prepare_frame_for_function_invokation(
-                user_func,
-                args,
-                this,
-                cur_frame,
-                constructor_call,
-            )?
+            .prepare_frame_for_function_invokation(user_func, args, this, cur_frame)?
+            .constructor_call(constructor_call)
             .escape();
 
         self.run(frame)
@@ -411,7 +405,7 @@ impl VM {
 
                     if !exception_found {
                         let val: Value = self.stack.pop().unwrap().into();
-                        return Err(RuntimeError::Exception2(val, node_pos));
+                        return Err(RuntimeError::Exception(val, node_pos));
                     }
                 }};
             }
@@ -676,7 +670,7 @@ impl VM {
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, name_id, usize);
                     let string = self.constant_table.get(name_id).as_string();
-                    let val = etry!(cur_frame.lex_env().get_value(string));
+                    let val = etry!(cur_frame.lex_env().get_value(string.clone()));
                     self.stack.push(val.into());
                 }
                 VMInst::CONSTRUCT => {
@@ -805,14 +799,14 @@ impl VM {
                         break;
                     };
                     self.unwind_frame_saving_stack_top(&mut cur_frame);
-                    if is_trace {
-                        println!("<-- return")
-                    };
                     // TODO: GC schedule
                     self.gc_mark(&cur_frame);
                     if escape {
                         break;
                     }
+                    if is_trace {
+                        println!("<-- return")
+                    };
                 }
                 VMInst::TYPEOF => {
                     cur_frame.pc += 1;
@@ -839,11 +833,20 @@ impl VM {
         let ret_val: Value = ret_val_boxed.into();
         let frame = self.saved_frame.pop().unwrap();
         self.stack.truncate(frame.saved_stack_len);
-        if cur_frame.constructor_call && !ret_val.is_object() {
-            self.stack.push(cur_frame.this.into());
+        let return_value = if cur_frame.module_call {
+            cur_frame
+                .lex_env()
+                .get_value("module")
+                .unwrap()
+                .get_object_info()
+                .get_property_by_str_key("exports")
+                .into()
+        } else if cur_frame.constructor_call && !ret_val.is_object() {
+            cur_frame.this.into()
         } else {
-            self.stack.push(ret_val_boxed);
-        }
+            ret_val_boxed
+        };
+        self.stack.push(return_value);
         *cur_frame = frame;
     }
 
@@ -958,10 +961,6 @@ impl VM {
         }
 
         let info = callee.as_function();
-        let is_trace = self.is_trace;
-        if is_trace {
-            println!("--> call function")
-        };
         let ret = match info.kind {
             FunctionObjectKind::Builtin(func) => gc_lock!(
                 self,
@@ -973,11 +972,11 @@ impl VM {
                 )
             ),
             FunctionObjectKind::User(ref user_func) => {
+                if self.is_trace {
+                    println!("--> call function");
+                };
                 self.enter_user_function(user_func.clone(), args, this, cur_frame, constructor_call)
             }
-        };
-        if is_trace {
-            println!("<-- return")
         };
         ret
     }
@@ -1086,7 +1085,6 @@ impl VM {
         args: &[Value],
         this: Value,
         cur_frame: &frame::Frame,
-        constructor_call: bool,
     ) -> Result<frame::Frame, RuntimeError> {
         self.saved_frame
             .push(cur_frame.clone().saved_stack_len(self.stack.len()));
@@ -1123,14 +1121,10 @@ impl VM {
 
         let user_func = user_func.clone();
 
-        Ok(frame::Frame::new(
-            exec_ctx,
-            user_func.code,
-            user_func.exception_table,
-            this,
-            constructor_call,
+        Ok(
+            frame::Frame::new(exec_ctx, user_func.code, user_func.exception_table, this)
+                .id(user_func.id),
         )
-        .id(user_func.id))
     }
 
     fn enter_user_function(
@@ -1145,13 +1139,9 @@ impl VM {
             return Err(RuntimeError::Type("Not a constructor".to_string()));
         }
 
-        let frame = self.prepare_frame_for_function_invokation(
-            &user_func,
-            args,
-            this,
-            cur_frame,
-            constructor_call,
-        )?;
+        let frame = self
+            .prepare_frame_for_function_invokation(&user_func, args, this, cur_frame)?
+            .constructor_call(constructor_call);
 
         *cur_frame = frame;
 

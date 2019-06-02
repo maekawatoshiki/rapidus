@@ -90,6 +90,7 @@ fn deep_seq_bool(lval: &Value, rval: &Value) -> bool {
 }
 
 pub fn require(vm: &mut VM, args: &[Value], _this: Value, cur_frame: &mut Frame) -> VMResult {
+    use std::path::Path;
     let file_name = {
         let val = args.get(0).ok_or(RuntimeError::General(
             "require():One argument is needed.".to_string(),
@@ -103,11 +104,16 @@ pub fn require(vm: &mut VM, args: &[Value], _this: Value, cur_frame: &mut Frame)
             }
         }
     };
-    let script = r#try!(std::fs::read_to_string(file_name.clone())
+    let path = Path::new(&file_name);
+    let absolute_path = r#try!(path
+        .canonicalize()
+        .map_err(|ioerr| RuntimeError::General(format!("require(): \"{}\" {}", file_name, ioerr))));
+    let absolute_path = absolute_path.to_str().unwrap_or("<failed to convert>");
+    let script = r#try!(std::fs::read_to_string(absolute_path)
         .map_err(|ioerr| RuntimeError::General(format!("require(): \"{}\" {}", file_name, ioerr))));
 
     use crate::parser::Parser;
-    let mut parser = Parser::new(script.clone());
+    let mut parser = Parser::new(script);
     let node = r#try!(parser.parse_all().map_err(|parse_err| {
         parser.handle_error(&parse_err);
         RuntimeError::General(format!("Error in parsing module \"{}\"", file_name))
@@ -137,16 +143,28 @@ pub fn require(vm: &mut VM, args: &[Value], _this: Value, cur_frame: &mut Frame)
         outer: Some(vm.global_environment),
     };
 
-    let frame = vm.prepare_frame_for_function_invokation(
-        &user_func_info,
-        args: &[Value],
-        Value::undefined(),
-        cur_frame,
-        false,
-    )?;
+    let mut frame = vm
+        .prepare_frame_for_function_invokation(
+            &user_func_info,
+            args: &[Value],
+            Value::undefined(),
+            cur_frame,
+        )?
+        .module_call(true);
+
+    let empty_object = make_normal_object!(vm.factory);
+    let id_object = vm.factory.string(absolute_path);
+    let module = make_normal_object!(
+        vm.factory,
+        id       => false, false, false: id_object,
+        exports  => true,  false, false: empty_object
+    );
+    frame.lex_env_mut().set_own_value("module", module)?;
 
     *cur_frame = frame;
-
+    if vm.is_trace {
+        println!("--> call module")
+    };
     //vm.stack.push(vm.factory.string("module").into());
 
     Ok(())

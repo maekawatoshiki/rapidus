@@ -10,7 +10,7 @@ pub enum RuntimeError {
     Type(String),
     Reference(String),
     General(String),
-    Exception2(Value, Option<usize>),
+    Exception(Value, Option<usize>),
     Unimplemented,
 }
 
@@ -18,7 +18,7 @@ impl RuntimeError {
     /// convert RuntimeError -> Value
     pub fn to_value(self, factory: &mut Factory) -> Value {
         match self {
-            RuntimeError::Exception2(v, _) => v,
+            RuntimeError::Exception(v, _) => v,
             RuntimeError::Type(s) => factory.string(s),
             RuntimeError::General(s) => factory.string(s),
             RuntimeError::Reference(s) => factory.string(format!("Reference error: {}", s)),
@@ -34,7 +34,7 @@ impl RuntimeError {
             RuntimeError::Reference(msg) | RuntimeError::Type(msg) | RuntimeError::General(msg) => {
                 runtime_error(msg.as_str())
             }
-            RuntimeError::Exception2(val, node_pos) => {
+            RuntimeError::Exception(val, node_pos) => {
                 runtime_error("Uncaught Exception");
                 if let (Some(pos), Some(lexer)) = (node_pos, lexer) {
                     let (msg, _, line) = lexer.get_code_around_err_point(*pos);

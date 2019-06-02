@@ -23,7 +23,11 @@ pub struct Frame {
     pub bytecode: ByteCode,
     pub exception_table: Vec<Exception>,
     pub this: Value,
+    /// If true, calling JS function as a constructor.
     pub constructor_call: bool,
+    /// If true, calling JS function as a module.
+    pub module_call: bool,
+    /// If true, calling JS function from native function.
     pub escape: bool,
 }
 
@@ -63,7 +67,6 @@ impl Frame {
         bytecode: ByteCode,
         exception_table: Vec<Exception>,
         this: Value,
-        constructor_call: bool,
     ) -> Self {
         Frame {
             id: 0,
@@ -73,12 +76,13 @@ impl Frame {
             bytecode,
             exception_table,
             this,
-            constructor_call,
+            constructor_call: false,
+            module_call: false,
             escape: false,
         }
     }
 
-    pub fn new_empty_with_this(this: Value, constructor_call: bool) -> Self {
+    pub fn new_empty_with_this(this: Value) -> Self {
         Frame {
             id: 0,
             execution_context: ExecutionContext::new_empty(),
@@ -87,7 +91,8 @@ impl Frame {
             bytecode: vec![],
             exception_table: vec![],
             this,
-            constructor_call,
+            constructor_call: false,
+            module_call: false,
             escape: false,
         }
     }
@@ -102,6 +107,16 @@ impl Frame {
 
     pub fn escape(mut self) -> Self {
         self.escape = true;
+        self
+    }
+
+    pub fn constructor_call(mut self, is_constructor: bool) -> Self {
+        self.constructor_call = is_constructor;
+        self
+    }
+
+    pub fn module_call(mut self, is_module: bool) -> Self {
+        self.module_call = is_module;
         self
     }
 
@@ -223,11 +238,12 @@ impl LexicalEnvironment {
         }
     }
 
-    pub fn get_value(&self, name: &String) -> Result<Value, RuntimeError> {
+    pub fn get_value(&self, name: impl Into<String>) -> Result<Value, RuntimeError> {
+        let name = name.into();
         match self.record {
             EnvironmentRecord::Function { ref record, .. }
             | EnvironmentRecord::Module { ref record, .. }
-            | EnvironmentRecord::Declarative(ref record) => match record.get(name) {
+            | EnvironmentRecord::Declarative(ref record) => match record.get(&name) {
                 Some(binding) if binding == &Value::uninitialized() => {
                     return Err(RuntimeError::Reference(format!(
                         "'{}' is not defined",
@@ -288,12 +304,12 @@ impl LexicalEnvironment {
         }
     }
 
-    pub fn set_own_value(&mut self, name: String, val: Value) -> VMResult {
+    pub fn set_own_value(&mut self, name: impl Into<String>, val: Value) -> VMResult {
         match self.record {
             EnvironmentRecord::Function { ref mut record, .. }
             | EnvironmentRecord::Module { ref mut record, .. }
             | EnvironmentRecord::Declarative(ref mut record) => {
-                record.insert(name, val);
+                record.insert(name.into(), val);
             }
             EnvironmentRecord::Global(obj) | EnvironmentRecord::Object(obj) => {
                 obj.set_property_by_string_key(name, val);
