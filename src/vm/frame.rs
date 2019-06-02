@@ -175,8 +175,8 @@ impl Frame {
         RuntimeError::new(ErrorKind::Reference(msg.into()), self)
     }
 
-    pub fn error_exception(&self, val: Value, node_pos: impl Into<Option<usize>>) -> RuntimeError {
-        RuntimeError::new(ErrorKind::Exception(val, node_pos.into()), self)
+    pub fn error_exception(&self, val: Value) -> RuntimeError {
+        RuntimeError::new(ErrorKind::Exception(val), self)
     }
 
     pub fn error_unknown(&self) -> RuntimeError {

@@ -1,5 +1,3 @@
-use super::super::builtins;
-use crate::parser::ScriptInfo;
 use crate::vm::frame::Frame;
 use crate::vm::jsvalue::value::Value;
 use crate::vm::vm::Factory;
@@ -8,12 +6,12 @@ use ansi_term::Colour;
 #[derive(Clone, PartialEq, Debug)]
 pub struct RuntimeError {
     /// A type of the error.
-    kind: ErrorKind,
+    pub kind: ErrorKind,
     /// Program counter where the error raised.
-    inst_pc: usize,
+    pub inst_pc: usize,
     /// Function id where the error raised.
-    func_id: usize,
-    module_func_id: usize,
+    pub func_id: usize,
+    pub module_func_id: usize,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -22,7 +20,7 @@ pub enum ErrorKind {
     Type(String),
     Reference(String),
     General(String),
-    Exception(Value, Option<usize>),
+    Exception(Value),
     Unimplemented,
 }
 
@@ -64,7 +62,7 @@ impl RuntimeError {
     pub fn to_value(self, factory: &mut Factory) -> Value {
         let err_obj = make_normal_object!(factory);
         match self.kind {
-            ErrorKind::Exception(v, _) => v,
+            ErrorKind::Exception(v) => v,
             ErrorKind::Type(s) => {
                 let v = factory.string(format!("Type error: {}", s));
                 err_obj.set_property_by_string_key("message", v);
@@ -83,47 +81,6 @@ impl RuntimeError {
             ErrorKind::Unimplemented => factory.string("Unimplemented"),
             ErrorKind::Unknown => factory.string("Unknown"),
         }
-    }
-
-    pub fn show_error_message(&self, parse_info: &ScriptInfo) {
-        match &self.kind {
-            ErrorKind::Unknown => runtime_error("UnknownError"),
-            ErrorKind::Unimplemented => runtime_error("Unimplemented feature"),
-            ErrorKind::Reference(msg) => runtime_error(format!("ReferenceError: {}", msg)),
-            ErrorKind::Type(msg) => runtime_error(format!("TypeError: {}", msg)),
-            ErrorKind::General(msg) => runtime_error(format!("Error: {}", msg)),
-            ErrorKind::Exception(ref val, ref node_pos) => {
-                runtime_error("Uncaught Exception");
-                if let Some(pos) = node_pos {
-                    let (msg, _, line) = RuntimeError::get_code_around_err_point(parse_info, *pos);
-                    println!("line: {}", line);
-                    println!("{}", msg);
-                }
-                builtins::console::debug_print(val, false);
-                println!();
-            }
-        }
-    }
-
-    pub fn get_code_around_err_point(info: &ScriptInfo, pos: usize) -> (String, usize, usize) {
-        let code = info.code.as_bytes();
-        let iter = info.pos_line_list.iter();
-        let (start_pos, line) = iter.take_while(|x| x.0 <= pos).last().unwrap();
-
-        let mut iter = info.pos_line_list.iter();
-        let end_pos = match iter
-            .find(|x| x.0 > pos)
-            .unwrap_or(info.pos_line_list.last().unwrap())
-            .0
-        {
-            x if x == 0 => 0,
-            x => x - 1,
-        };
-        let surrounding_code = String::from_utf8(code[*start_pos..end_pos].to_vec())
-            .unwrap()
-            .to_string();
-        let err_point = format!("{}{}", " ".repeat(pos - start_pos), "^",);
-        (surrounding_code + "\n" + err_point.as_str(), pos, *line)
     }
 }
 

@@ -129,6 +129,7 @@ pub fn require(vm: &mut VM, args: &[Value], _this: Value, cur_frame: &mut Frame)
     vm.script_info.push((id, script_info));
     let user_func_info = UserFunctionInfo {
         id,
+        module_func_id: id,
         params: vec![],
         var_names: global_info.var_names,
         lex_names: global_info.lex_names,
@@ -147,8 +148,7 @@ pub fn require(vm: &mut VM, args: &[Value], _this: Value, cur_frame: &mut Frame)
             Value::undefined(),
             cur_frame,
         )?
-        .module_call(true)
-        .module_func_id(id);
+        .module_call(true);
 
     let empty_object = make_normal_object!(vm.factory);
     let id_object = vm.factory.string(absolute_path);

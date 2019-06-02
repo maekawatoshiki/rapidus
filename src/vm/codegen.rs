@@ -34,6 +34,7 @@ pub struct CodeGenerator<'a> {
     pub to_source_map: FxHashMap<usize, ToSourcePos>,
     /// A position in the bytecode of the current node.
     pub node_pos: usize,
+    pub module_func_id: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -46,12 +47,14 @@ pub struct FunctionInfo {
     pub level: Vec<Level>,
     pub exception_table: Vec<Exception>,
     pub to_source_pos: ToSourcePos,
+    pub module_func_id: usize,
 }
 
 #[derive(Debug, Clone)]
 /// Table of correspondence of an instruction pointer and char position on script.
 pub struct ToSourcePos {
     table: Vec<(usize, usize)>,
+    module_func_id: usize,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -71,13 +74,18 @@ pub enum Level {
 }
 
 impl<'a> CodeGenerator<'a> {
-    pub fn new(constant_table: &'a mut ConstantTable, factory: &'a mut Factory) -> Self {
+    pub fn new(
+        constant_table: &'a mut ConstantTable,
+        factory: &'a mut Factory,
+        module_func_id: usize,
+    ) -> Self {
         CodeGenerator {
             bytecode_generator: ByteCodeGenerator::new(constant_table),
             factory,
-            function_stack: vec![FunctionInfo::new(None) /* = global */],
+            function_stack: vec![FunctionInfo::new(None, module_func_id) /* = global */],
             to_source_map: FxHashMap::default(),
             node_pos: 0,
+            module_func_id,
         }
     }
 
@@ -603,7 +611,8 @@ impl<'a> CodeGenerator<'a> {
         body: &Node,
         arrow_function: bool,
     ) -> Result<Value, Error> {
-        self.function_stack.push(FunctionInfo::new(name));
+        self.function_stack
+            .push(FunctionInfo::new(name, self.module_func_id));
 
         let mut func_iseq = vec![];
 
@@ -638,6 +647,7 @@ impl<'a> CodeGenerator<'a> {
             function_info.name,
             UserFunctionInfo {
                 id,
+                module_func_id: self.module_func_id,
                 params,
                 var_names: function_info.var_names,
                 lex_names: function_info.lex_names,
@@ -1190,7 +1200,7 @@ impl Error {
 // FunctionInfo
 
 impl FunctionInfo {
-    pub fn new(name: Option<String>) -> Self {
+    pub fn new(name: Option<String>, module_func_id: usize) -> Self {
         FunctionInfo {
             name,
             var_names: vec![],
@@ -1199,7 +1209,8 @@ impl FunctionInfo {
             param_names: vec![],
             level: vec![Level::Function],
             exception_table: vec![],
-            to_source_pos: ToSourcePos::new(),
+            to_source_pos: ToSourcePos::new(module_func_id),
+            module_func_id,
         }
     }
 
@@ -1374,8 +1385,11 @@ impl Level {
 }
 
 impl ToSourcePos {
-    pub fn new() -> Self {
-        Self { table: vec![] }
+    pub fn new(module_func_id: usize) -> Self {
+        Self {
+            module_func_id,
+            table: vec![],
+        }
     }
 
     pub fn append(&mut self, bp: usize, np: usize) {

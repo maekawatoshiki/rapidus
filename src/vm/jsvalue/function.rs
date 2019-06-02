@@ -20,6 +20,9 @@ pub struct UserFunctionInfo {
     /// Unique id for many purposes
     pub id: usize,
 
+    /// Module id
+    pub module_func_id: usize,
+
     /// Internal slot \[\[FormalParameters\]\]
     pub params: Vec<FunctionParameter>,
 

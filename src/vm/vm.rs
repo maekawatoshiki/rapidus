@@ -1,3 +1,4 @@
+use crate::builtins::console::debug_print;
 use crate::bytecode_gen::{show_inst, ByteCode, VMInst};
 use crate::gc;
 use crate::node::Node;
@@ -187,7 +188,8 @@ impl VM {
         use_value: bool,
         id: usize,
     ) -> Result<codegen::FunctionInfo, codegen::Error> {
-        let mut code_generator = CodeGenerator::new(&mut self.constant_table, &mut self.factory);
+        let mut code_generator =
+            CodeGenerator::new(&mut self.constant_table, &mut self.factory, id);
         let res = code_generator.compile(node, iseq, use_value, id);
         for (id, list) in code_generator.to_source_map {
             self.to_source_map.insert(id, list);
@@ -333,6 +335,62 @@ impl VM {
     }
 }
 
+impl VM {
+    pub fn show_error_message(&self, error: RuntimeError) {
+        let pos_in_script = self
+            .to_source_map
+            .get(&error.func_id)
+            .unwrap()
+            .get_node_pos(error.inst_pc);
+        let module_func_id = error.module_func_id;
+        let info = &self
+            .script_info
+            .iter()
+            .find(|info| info.0 == module_func_id)
+            .unwrap()
+            .1;
+        println!("{:?}", info.file_name);
+        match &error.kind {
+            ErrorKind::Unknown => runtime_error("UnknownError"),
+            ErrorKind::Unimplemented => runtime_error("Unimplemented feature"),
+            ErrorKind::Reference(msg) => runtime_error(format!("ReferenceError: {}", msg)),
+            ErrorKind::Type(msg) => runtime_error(format!("TypeError: {}", msg)),
+            ErrorKind::General(msg) => runtime_error(format!("Error: {}", msg)),
+            ErrorKind::Exception(ref val) => {
+                runtime_error("Uncaught Exception");
+                if let Some(pos) = pos_in_script {
+                    let (msg, _, line) = get_code_around_err_point(info, pos);
+                    println!("line: {}", line);
+                    println!("{}", msg);
+                }
+                debug_print(val, false);
+                println!();
+            }
+        }
+
+        pub fn get_code_around_err_point(info: &ScriptInfo, pos: usize) -> (String, usize, usize) {
+            let code = info.code.as_bytes();
+            let iter = info.pos_line_list.iter();
+            let (start_pos, line) = iter.take_while(|x| x.0 <= pos).last().unwrap();
+
+            let mut iter = info.pos_line_list.iter();
+            let end_pos = match iter
+                .find(|x| x.0 > pos)
+                .unwrap_or(info.pos_line_list.last().unwrap())
+                .0
+            {
+                x if x == 0 => 0,
+                x => x - 1,
+            };
+            let surrounding_code = String::from_utf8(code[*start_pos..end_pos].to_vec())
+                .unwrap()
+                .to_string();
+            let err_point = format!("{}{}", " ".repeat(pos - start_pos), "^",);
+            (surrounding_code + "\n" + err_point.as_str(), pos, *line)
+        }
+    }
+}
+
 macro_rules! read_int8 {
     ($iseq:expr, $pc:expr, $var:ident, $ty:ty) => {
         let $var = $iseq[$pc] as $ty;
@@ -365,7 +423,8 @@ impl VM {
             subroutine_stack: &mut Vec<SubroutineKind>,
         ) -> VMResult {
             let mut trycatch_found = false;
-
+            //TODO: too expensive!
+            let old_frame = cur_frame.clone();
             loop {
                 for exception in &cur_frame.exception_table {
                     let in_range = exception.start <= cur_frame.pc && cur_frame.pc < exception.end;
@@ -395,16 +454,10 @@ impl VM {
             }
 
             if !trycatch_found {
-                let node_pos = vm
-                    .to_source_map
-                    .get(&cur_frame.func_id)
-                    .unwrap()
-                    .get_node_pos(cur_frame.current_inst_pc);
-
                 let val: Value = vm.stack.pop().unwrap().into();
                 let err_obj = make_normal_object!(vm.factory);
                 err_obj.set_property_by_string_key("value", val);
-                return Err(cur_frame.error_exception(err_obj, node_pos));
+                return Err(old_frame.error_exception(err_obj));
             } else {
                 Ok(())
             }
@@ -430,7 +483,8 @@ impl VM {
                     match $val {
                         Ok(ok) => ok,
                         Err(err) => {
-                            let val = err.error_add_info(&cur_frame).to_value(&mut self.factory);
+                            let err = err.error_add_info(&cur_frame);
+                            let val = err.to_value(&mut self.factory);
                             self.stack.push(val.into());
                             handle_exception(self, &mut cur_frame, &mut subroutine_stack)?;
                             continue;
@@ -444,6 +498,8 @@ impl VM {
                     &cur_frame.bytecode,
                     cur_frame.current_inst_pc,
                     &self.constant_table,
+                    cur_frame.func_id,
+                    cur_frame.module_func_id,
                 );
                 match self.stack.last() {
                     None => {
@@ -826,7 +882,13 @@ impl VM {
                 VMInst::END => break,
                 _ => {
                     print!("Not yet implemented VMInst: ");
-                    show_inst(&cur_frame.bytecode, cur_frame.pc, &self.constant_table);
+                    show_inst(
+                        &cur_frame.bytecode,
+                        cur_frame.pc,
+                        &self.constant_table,
+                        cur_frame.func_id,
+                        cur_frame.module_func_id,
+                    );
                     println!();
                     unimplemented!();
                 }
@@ -1088,7 +1150,6 @@ impl VM {
         this: Value,
         cur_frame: &frame::Frame,
     ) -> Result<frame::Frame, RuntimeError> {
-        let module_func_id = cur_frame.module_func_id;
         self.saved_frame
             .push(cur_frame.clone().saved_stack_len(self.stack.len()));
 
@@ -1127,7 +1188,7 @@ impl VM {
         Ok(
             frame::Frame::new(exec_ctx, user_func.code, user_func.exception_table, this)
                 .func_id(user_func.id)
-                .module_func_id(module_func_id),
+                .module_func_id(user_func.module_func_id),
         )
     }
 

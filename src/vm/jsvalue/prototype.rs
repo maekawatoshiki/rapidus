@@ -30,6 +30,7 @@ impl ObjectPrototypes {
                     name: None,
                     kind: FunctionObjectKind::User(UserFunctionInfo {
                         id: get_unique_id(),
+                        module_func_id: 0,
                         params: vec![],
                         var_names: vec![],
                         lex_names: vec![],

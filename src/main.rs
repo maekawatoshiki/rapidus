@@ -113,9 +113,7 @@ fn main() {
     let script_info = parser.into_script_info();
     vm.script_info.push((0, script_info));
     if let Err(e) = vm.run_global(global_info, iseq) {
-        let script_info = &vm.script_info.get(0).unwrap().1;
-        println!("{}", script_info.file_name);
-        e.show_error_message(script_info);
+        vm.show_error_message(e);
     }
 
     if is_debug {
@@ -174,7 +172,7 @@ fn repl(is_trace: bool) {
                     }
 
                     if let Err(e) = vm.run(global_frame.clone().unwrap()) {
-                        e.show_error_message(&parser.into_script_info());
+                        vm.show_error_message(e);
                         break;
                     }
 
