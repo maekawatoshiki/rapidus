@@ -373,8 +373,7 @@ impl VM {
             cur_frame: &mut frame::Frame,
             state: &mut State,
         ) -> VMResult {
-            let mut exception_found = false;
-            let mut outer_break = false;
+            let mut trycatch_found = false;
 
             loop {
                 for exception in &cur_frame.exception_table {
@@ -390,25 +389,21 @@ impl VM {
                         }
                     }
 
-                    exception_found = true;
-                    outer_break = true;
+                    trycatch_found = true;
                     break;
                 }
 
-                if outer_break {
+                if trycatch_found {
                     break;
                 }
 
                 if vm.saved_frame.len() == 0 {
                     break;
                 }
-
-                if !exception_found {
-                    vm.unwind_frame_saving_stack_top(cur_frame);
-                }
+                vm.unwind_frame_saving_stack_top(cur_frame);
             }
 
-            if !exception_found {
+            if !trycatch_found {
                 let node_pos = vm
                     .to_source_map
                     .get(&cur_frame.id)

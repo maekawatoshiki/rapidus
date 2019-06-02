@@ -1,5 +1,2 @@
-let assert = require('assert.js')
-let obj1 = { a: 1, b: 2 }
-let obj2 = { a: 1, b: 3 }
-
-assert.deepStrictEqual(obj1, obj2)
+let a = [1, 2, 3, [4, 5], 5]
+a(400)

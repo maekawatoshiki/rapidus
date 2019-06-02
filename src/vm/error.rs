@@ -57,7 +57,7 @@ impl RuntimeError {
     pub fn to_value(self, factory: &mut Factory) -> Value {
         match self.kind {
             ErrorKind::Exception(v, _) => v,
-            ErrorKind::Type(s) => factory.string(s),
+            ErrorKind::Type(s) => factory.string(format!("Type error: {}", s)),
             ErrorKind::General(s) => factory.string(s),
             ErrorKind::Reference(s) => factory.string(format!("Reference error: {}", s)),
             ErrorKind::Unimplemented => factory.string("Unimplemented"),
@@ -67,11 +67,11 @@ impl RuntimeError {
 
     pub fn show_error_message(&self, lexer: Option<&lexer::Lexer>) {
         match &self.kind {
-            ErrorKind::Unknown => runtime_error("unknown error occurred"),
-            ErrorKind::Unimplemented => runtime_error("unimplemented feature"),
-            ErrorKind::Reference(msg) | ErrorKind::Type(msg) | ErrorKind::General(msg) => {
-                runtime_error(msg.as_str())
-            }
+            ErrorKind::Unknown => runtime_error("UnknownError"),
+            ErrorKind::Unimplemented => runtime_error("Unimplemented feature"),
+            ErrorKind::Reference(msg) => runtime_error(format!("ReferenceError: {}", msg)),
+            ErrorKind::Type(msg) => runtime_error(format!("TypeError: {}", msg)),
+            ErrorKind::General(msg) => runtime_error(format!("Error: {}", msg)),
             ErrorKind::Exception(ref val, ref node_pos) => {
                 runtime_error("Uncaught Exception");
                 if let (Some(pos), Some(lexer)) = (node_pos, lexer) {
@@ -86,6 +86,10 @@ impl RuntimeError {
     }
 }
 
-pub fn runtime_error(msg: &str) {
-    eprintln!("{}: {}", Colour::Red.bold().paint("runtime error"), msg,);
+pub fn runtime_error(msg: impl Into<String>) {
+    eprintln!(
+        "{}: {}",
+        Colour::Red.bold().paint("runtime error"),
+        msg.into(),
+    );
 }
