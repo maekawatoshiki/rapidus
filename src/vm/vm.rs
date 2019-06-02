@@ -353,68 +353,86 @@ impl VM {
             Return,
         }
 
-        let mut subroutine_stack: Vec<SubroutineKind> = vec![];
+        #[derive(Debug, Clone)]
+        struct State {
+            pub subroutine_stack: Vec<SubroutineKind>,
+            pub current_inst_pc: usize,
+        }
+
+        impl State {
+            pub fn new() -> State {
+                State {
+                    subroutine_stack: vec![],
+                    current_inst_pc: 0,
+                }
+            }
+        }
+
+        fn handle_exception(
+            vm: &mut VM,
+            cur_frame: &mut frame::Frame,
+            state: &mut State,
+        ) -> VMResult {
+            let mut exception_found = false;
+            let mut outer_break = false;
+
+            loop {
+                for exception in &cur_frame.exception_table {
+                    let in_range = exception.start <= cur_frame.pc && cur_frame.pc < exception.end;
+                    if !in_range {
+                        continue;
+                    }
+                    match exception.dst_kind {
+                        DestinationKind::Catch => cur_frame.pc = exception.end,
+                        DestinationKind::Finally => {
+                            state.subroutine_stack.push(SubroutineKind::Throw);
+                            cur_frame.pc = exception.end
+                        }
+                    }
+
+                    exception_found = true;
+                    outer_break = true;
+                    break;
+                }
+
+                if outer_break {
+                    break;
+                }
+
+                if vm.saved_frame.len() == 0 {
+                    break;
+                }
+
+                if !exception_found {
+                    vm.unwind_frame_saving_stack_top(cur_frame);
+                }
+            }
+
+            if !exception_found {
+                let node_pos = vm
+                    .to_source_map
+                    .get(&cur_frame.id)
+                    .unwrap()
+                    .get_node_pos(state.current_inst_pc);
+
+                let val: Value = vm.stack.pop().unwrap().into();
+                return Err(RuntimeError::exception(val, node_pos));
+            } else {
+                Ok(())
+            }
+        }
+
+        let mut state = State::new();
         let is_trace = self.is_trace;
 
         loop {
-            let current_inst_pc = cur_frame.pc;
-
-            macro_rules! exception {
-                () => {{
-                    let mut exception_found = false;
-                    let mut outer_break = false;
-
-                    loop {
-                        for exception in &cur_frame.exception_table {
-                            let in_range =
-                                exception.start <= cur_frame.pc && cur_frame.pc < exception.end;
-                            if !in_range {
-                                continue;
-                            }
-                            match exception.dst_kind {
-                                DestinationKind::Catch => cur_frame.pc = exception.end,
-                                DestinationKind::Finally => {
-                                    subroutine_stack.push(SubroutineKind::Throw);
-                                    cur_frame.pc = exception.end
-                                }
-                            }
-
-                            exception_found = true;
-                            outer_break = true;
-                            break;
-                        }
-
-                        if outer_break {
-                            break;
-                        }
-
-                        if self.saved_frame.len() == 0 {
-                            break;
-                        }
-
-                        if !exception_found {
-                            self.unwind_frame_saving_stack_top(&mut cur_frame);
-                        }
-                    }
-
-                    if !exception_found {
-                        let node_pos = self
-                            .to_source_map
-                            .get(&cur_frame.id)
-                            .unwrap()
-                            .get_node_pos(current_inst_pc);
-
-                        let val: Value = self.stack.pop().unwrap().into();
-                        return Err(RuntimeError::exception(val, node_pos));
-                    }
-                }};
-            }
+            state.current_inst_pc = cur_frame.pc;
 
             macro_rules! type_error {
                 ($msg:expr) => {{
                     let val = RuntimeError::typeerr($msg).to_value(&mut self.factory);
                     self.stack.push(val.into());
-                    exception!();
+                    handle_exception(self, &mut cur_frame, &mut state)?;
                     continue;
                 }};
             }
@@ -426,7 +444,7 @@ impl VM {
                         Err(err) => {
                             let val = err.to_value(&mut self.factory);
                             self.stack.push(val.into());
-                            exception!();
+                            handle_exception(self, &mut cur_frame, &mut state)?;
                             continue;
                         }
                     }
@@ -436,7 +454,7 @@ impl VM {
             if is_trace {
                 crate::bytecode_gen::show_inst(
                     &cur_frame.bytecode,
-                    current_inst_pc,
+                    state.current_inst_pc,
                     &self.constant_table,
                 );
                 match self.stack.last() {
@@ -769,20 +787,24 @@ impl VM {
                 VMInst::JMP_SUB => {
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, dst, i32);
-                    subroutine_stack.push(SubroutineKind::Ordinary(cur_frame.pc));
+                    state
+                        .subroutine_stack
+                        .push(SubroutineKind::Ordinary(cur_frame.pc));
                     cur_frame.pc = (cur_frame.pc as isize + dst as isize) as usize;
                 }
                 VMInst::RETURN_TRY => {
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, dst, i32);
                     cur_frame.pc = (cur_frame.pc as isize + dst as isize) as usize;
-                    subroutine_stack.push(SubroutineKind::Return);
+                    state.subroutine_stack.push(SubroutineKind::Return);
                 }
                 VMInst::RETURN_SUB => {
                     cur_frame.pc += 1;
-                    match subroutine_stack.pop().unwrap() {
+                    match state.subroutine_stack.pop().unwrap() {
                         SubroutineKind::Ordinary(pos) => cur_frame.pc = pos,
-                        SubroutineKind::Throw => exception!(),
+                        SubroutineKind::Throw => {
+                            handle_exception(self, &mut cur_frame, &mut state)?
+                        }
                         SubroutineKind::Return => {
                             self.unwind_frame_saving_stack_top(&mut cur_frame);
                         }
@@ -790,7 +812,7 @@ impl VM {
                 }
                 VMInst::THROW => {
                     cur_frame.pc += 1;
-                    exception!();
+                    handle_exception(self, &mut cur_frame, &mut state)?;
                 }
                 VMInst::RETURN => {
                     cur_frame.pc += 1;
