@@ -1,5 +1,4 @@
 use crate::vm::{
-    error::RuntimeError,
     frame::Frame,
     jsvalue::{object::Property, value::Value},
     vm::{Factory, VMResult, VM},
@@ -27,10 +26,10 @@ pub fn array_prototype_push(
     vm: &mut VM,
     args: &[Value],
     this: Value,
-    _cur_frame: &mut Frame,
+    cur_frame: &mut Frame,
 ) -> VMResult {
     if !this.is_array_object() {
-        return Err(RuntimeError::unknown());
+        return Err(cur_frame.error_unknown());
     }
 
     let ary_info = this.as_array_mut();
@@ -52,7 +51,7 @@ pub fn array_prototype_map(
     cur_frame: &mut Frame,
 ) -> VMResult {
     if !this.is_array_object() {
-        return Err(RuntimeError::unknown());
+        return Err(cur_frame.error_unknown());
     }
 
     let ary_info = this.as_array_mut();

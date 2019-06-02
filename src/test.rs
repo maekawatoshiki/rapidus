@@ -50,7 +50,7 @@ pub fn test_code(code: String, answer: String) {
 pub fn runtime_error(text: &str) -> String {
     let mut vm = vm::vm::VM::new();
 
-    let mut parser = parser::Parser::new(text.to_string());
+    let mut parser = parser::Parser::new("test", text);
     let node = parser.parse_all().unwrap();
     let mut iseq = vec![];
 
@@ -67,7 +67,7 @@ pub fn runtime_error(text: &str) -> String {
 pub fn execute_script(text: String) -> String {
     let mut vm = vm::vm::VM::new();
 
-    let mut parser = parser::Parser::new(text);
+    let mut parser = parser::Parser::new("test", text);
     let node = parser.parse_all().unwrap();
     let mut iseq = vec![];
 

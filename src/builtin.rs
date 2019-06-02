@@ -1,5 +1,4 @@
 use crate::vm::{
-    error::RuntimeError,
     frame::Frame,
     jsvalue::value::*,
     vm::{VMResult, VM},
@@ -14,11 +13,9 @@ pub fn parse_float(vm: &mut VM, args: &[Value], _this: Value, _cur_frame: &mut F
     Ok(())
 }
 
-pub fn deep_seq(vm: &mut VM, args: &[Value], _this: Value, _cur_frame: &mut Frame) -> VMResult {
+pub fn deep_seq(vm: &mut VM, args: &[Value], _this: Value, cur_frame: &mut Frame) -> VMResult {
     if args.len() != 2 {
-        return Err(RuntimeError::general(
-            "__assert_deep_seq():Two arguments are needed.",
-        ));
+        return Err(cur_frame.error_general("__assert_deep_seq():Two arguments are needed."));
     };
     let lval = args.get(0).unwrap();
     let rval = args.get(1).unwrap();
@@ -94,29 +91,28 @@ pub fn require(vm: &mut VM, args: &[Value], _this: Value, cur_frame: &mut Frame)
     let file_name = {
         let val = args
             .get(0)
-            .ok_or(RuntimeError::general("require():One argument is needed."))?;
+            .ok_or(cur_frame.error_general("require():One argument is needed."))?;
         match val {
             Value::String(_) => val.to_string(),
             _ => {
-                return Err(RuntimeError::typeerr(
-                    "require():An argument should be string.",
-                ));
+                return Err(cur_frame.error_type("require():An argument should be string."));
             }
         }
     };
     let path = Path::new(&file_name);
-    let absolute_path = r#try!(path
-        .canonicalize()
-        .map_err(|ioerr| RuntimeError::general(format!("require(): \"{}\" {}", file_name, ioerr))));
+    let absolute_path = r#try!(path.canonicalize().map_err(
+        |ioerr| cur_frame.error_general(format!("require(): \"{}\" {}", file_name, ioerr))
+    ));
     let absolute_path = absolute_path.to_str().unwrap_or("<failed to convert>");
-    let script = r#try!(std::fs::read_to_string(absolute_path)
-        .map_err(|ioerr| RuntimeError::general(format!("require(): \"{}\" {}", file_name, ioerr))));
+    let script = r#try!(std::fs::read_to_string(absolute_path).map_err(
+        |ioerr| cur_frame.error_general(format!("require(): \"{}\" {}", file_name, ioerr))
+    ));
 
     use crate::parser::Parser;
-    let mut parser = Parser::new(script);
+    let mut parser = Parser::new(absolute_path.to_string(), script);
     let node = r#try!(parser.parse_all().map_err(|parse_err| {
         parser.handle_error(&parse_err);
-        RuntimeError::general(format!("Error in parsing module \"{}\"", file_name))
+        cur_frame.error_general(format!("Error in parsing module \"{}\"", file_name))
     }));
 
     let mut iseq = vec![];
@@ -127,9 +123,10 @@ pub fn require(vm: &mut VM, args: &[Value], _this: Value, cur_frame: &mut Frame)
         .map_err(|codegen_err| {
             let Error { msg, token_pos, .. } = codegen_err;
             parser.show_error_at(token_pos, msg);
-            RuntimeError::general(format!("Error in parsing module \"{}\"", file_name))
+            cur_frame.error_general(format!("Error in parsing module \"{}\"", file_name))
         }));
-
+    let script_info = parser.into_script_info();
+    vm.script_info.push((id, script_info));
     let user_func_info = UserFunctionInfo {
         id,
         params: vec![],
@@ -150,7 +147,8 @@ pub fn require(vm: &mut VM, args: &[Value], _this: Value, cur_frame: &mut Frame)
             Value::undefined(),
             cur_frame,
         )?
-        .module_call(true);
+        .module_call(true)
+        .module_func_id(id);
 
     let empty_object = make_normal_object!(vm.factory);
     let id_object = vm.factory.string(absolute_path);
@@ -161,10 +159,12 @@ pub fn require(vm: &mut VM, args: &[Value], _this: Value, cur_frame: &mut Frame)
     );
     frame.lex_env_mut().set_own_value("module", module)?;
 
-    *cur_frame = frame;
     if vm.is_trace {
-        println!("--> call module")
+        println!("--> call module {}", &frame.module_func_id)
     };
+
+    *cur_frame = frame;
+
     //vm.stack.push(vm.factory.string("module").into());
 
     Ok(())

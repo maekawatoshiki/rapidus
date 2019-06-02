@@ -1,5 +1,4 @@
 use crate::vm::{
-    error::RuntimeError,
     frame,
     jsvalue::value::*,
     vm::{Factory, VMResult, VM},
@@ -50,15 +49,12 @@ pub fn symbol_key_for(
     vm: &mut VM,
     args: &[Value],
     _this: Value,
-    _cur_frame: &mut frame::Frame,
+    cur_frame: &mut frame::Frame,
 ) -> VMResult {
     let sym = args.get(0).map(|x| *x).unwrap_or(Value::undefined());
 
     if !sym.is_symbol() {
-        return Err(RuntimeError::typeerr(format!(
-            "{} is not symbol",
-            sym.debug_string(true)
-        )));
+        return Err(cur_frame.error_type(format!("{} is not symbol", sym.debug_string(true))));
     }
 
     let key = vm.global_symbol_registry.key_for(&mut vm.factory, sym);

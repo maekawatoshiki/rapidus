@@ -49,6 +49,7 @@ pub struct FunctionInfo {
 }
 
 #[derive(Debug, Clone)]
+/// Table of correspondence of an instruction pointer and char position on script.
 pub struct ToSourcePos {
     table: Vec<(usize, usize)>,
 }

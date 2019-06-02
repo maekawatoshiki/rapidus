@@ -73,11 +73,11 @@ macro_rules! make_property_map {
 macro_rules! make_normal_object {
     ($factory:expr) => { {
         Value::Object($factory.alloc(
-            ObjectInfo {
-                kind: ObjectKind::Ordinary,
+            crate::vm::jsvalue::object::ObjectInfo {
+                kind: crate::vm::jsvalue::object::ObjectKind::Ordinary,
                 prototype: $factory.object_prototypes.object,
-                property: FxHashMap::default(),
-                sym_property: FxHashMap::default()
+                property: rustc_hash::FxHashMap::default(),
+                sym_property: rustc_hash::FxHashMap::default()
             }
         ))
     } };

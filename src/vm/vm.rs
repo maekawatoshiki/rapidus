@@ -1,6 +1,7 @@
 use crate::bytecode_gen::{show_inst, ByteCode, VMInst};
 use crate::gc;
 use crate::node::Node;
+use crate::parser::ScriptInfo;
 use crate::vm::{
     codegen,
     codegen::CodeGenerator,
@@ -33,6 +34,8 @@ pub struct VM {
     pub saved_frame: Vec<frame::Frame>,
     pub to_source_map: FxHashMap<usize, codegen::ToSourcePos>,
     pub is_trace: bool,
+    ///func_id, script_info
+    pub script_info: Vec<(usize, ScriptInfo)>,
 }
 
 macro_rules! gc_lock {
@@ -158,6 +161,7 @@ impl VM {
             saved_frame: vec![],
             to_source_map: FxHashMap::default(),
             is_trace: false,
+            script_info: vec![],
         }
     }
 
@@ -185,7 +189,9 @@ impl VM {
     ) -> Result<codegen::FunctionInfo, codegen::Error> {
         let mut code_generator = CodeGenerator::new(&mut self.constant_table, &mut self.factory);
         let res = code_generator.compile(node, iseq, use_value, id);
-        self.to_source_map = code_generator.to_source_map;
+        for (id, list) in code_generator.to_source_map {
+            self.to_source_map.insert(id, list);
+        }
         res
     }
 
@@ -239,7 +245,7 @@ impl VM {
         cur_frame: &mut frame::Frame,
     ) -> VMResult {
         if !callee.is_function_object() {
-            return Err(RuntimeError::typeerr("Not a function"));
+            return Err(cur_frame.error_type("Not a function"));
         }
 
         let info = callee.as_function();
@@ -353,25 +359,10 @@ impl VM {
             Return,
         }
 
-        #[derive(Debug, Clone)]
-        struct State {
-            pub subroutine_stack: Vec<SubroutineKind>,
-            pub current_inst_pc: usize,
-        }
-
-        impl State {
-            pub fn new() -> State {
-                State {
-                    subroutine_stack: vec![],
-                    current_inst_pc: 0,
-                }
-            }
-        }
-
         fn handle_exception(
             vm: &mut VM,
             cur_frame: &mut frame::Frame,
-            state: &mut State,
+            subroutine_stack: &mut Vec<SubroutineKind>,
         ) -> VMResult {
             let mut trycatch_found = false;
 
@@ -384,7 +375,7 @@ impl VM {
                     match exception.dst_kind {
                         DestinationKind::Catch => cur_frame.pc = exception.end,
                         DestinationKind::Finally => {
-                            state.subroutine_stack.push(SubroutineKind::Throw);
+                            subroutine_stack.push(SubroutineKind::Throw);
                             cur_frame.pc = exception.end
                         }
                     }
@@ -406,28 +397,30 @@ impl VM {
             if !trycatch_found {
                 let node_pos = vm
                     .to_source_map
-                    .get(&cur_frame.id)
+                    .get(&cur_frame.func_id)
                     .unwrap()
-                    .get_node_pos(state.current_inst_pc);
+                    .get_node_pos(cur_frame.current_inst_pc);
 
                 let val: Value = vm.stack.pop().unwrap().into();
-                return Err(RuntimeError::exception(val, node_pos));
+                let err_obj = make_normal_object!(vm.factory);
+                err_obj.set_property_by_string_key("value", val);
+                return Err(cur_frame.error_exception(err_obj, node_pos));
             } else {
                 Ok(())
             }
         }
 
-        let mut state = State::new();
+        let mut subroutine_stack: Vec<SubroutineKind> = vec![];
         let is_trace = self.is_trace;
 
         loop {
-            state.current_inst_pc = cur_frame.pc;
+            cur_frame.current_inst_pc = cur_frame.pc;
 
             macro_rules! type_error {
                 ($msg:expr) => {{
-                    let val = RuntimeError::typeerr($msg).to_value(&mut self.factory);
+                    let val = cur_frame.error_type($msg).to_value(&mut self.factory);
                     self.stack.push(val.into());
-                    handle_exception(self, &mut cur_frame, &mut state)?;
+                    handle_exception(self, &mut cur_frame, &mut subroutine_stack)?;
                     continue;
                 }};
             }
@@ -437,9 +430,9 @@ impl VM {
                     match $val {
                         Ok(ok) => ok,
                         Err(err) => {
-                            let val = err.to_value(&mut self.factory);
+                            let val = err.error_add_info(&cur_frame).to_value(&mut self.factory);
                             self.stack.push(val.into());
-                            handle_exception(self, &mut cur_frame, &mut state)?;
+                            handle_exception(self, &mut cur_frame, &mut subroutine_stack)?;
                             continue;
                         }
                     }
@@ -449,7 +442,7 @@ impl VM {
             if is_trace {
                 crate::bytecode_gen::show_inst(
                     &cur_frame.bytecode,
-                    state.current_inst_pc,
+                    cur_frame.current_inst_pc,
                     &self.constant_table,
                 );
                 match self.stack.last() {
@@ -782,23 +775,21 @@ impl VM {
                 VMInst::JMP_SUB => {
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, dst, i32);
-                    state
-                        .subroutine_stack
-                        .push(SubroutineKind::Ordinary(cur_frame.pc));
+                    subroutine_stack.push(SubroutineKind::Ordinary(cur_frame.pc));
                     cur_frame.pc = (cur_frame.pc as isize + dst as isize) as usize;
                 }
                 VMInst::RETURN_TRY => {
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, dst, i32);
                     cur_frame.pc = (cur_frame.pc as isize + dst as isize) as usize;
-                    state.subroutine_stack.push(SubroutineKind::Return);
+                    subroutine_stack.push(SubroutineKind::Return);
                 }
                 VMInst::RETURN_SUB => {
                     cur_frame.pc += 1;
-                    match state.subroutine_stack.pop().unwrap() {
+                    match subroutine_stack.pop().unwrap() {
                         SubroutineKind::Ordinary(pos) => cur_frame.pc = pos,
                         SubroutineKind::Throw => {
-                            handle_exception(self, &mut cur_frame, &mut state)?
+                            handle_exception(self, &mut cur_frame, &mut subroutine_stack)?
                         }
                         SubroutineKind::Return => {
                             self.unwind_frame_saving_stack_top(&mut cur_frame);
@@ -807,7 +798,7 @@ impl VM {
                 }
                 VMInst::THROW => {
                     cur_frame.pc += 1;
-                    handle_exception(self, &mut cur_frame, &mut state)?;
+                    handle_exception(self, &mut cur_frame, &mut subroutine_stack)?;
                 }
                 VMInst::RETURN => {
                     cur_frame.pc += 1;
@@ -974,20 +965,14 @@ impl VM {
         constructor_call: bool,
     ) -> VMResult {
         if !callee.is_function_object() {
-            return Err(RuntimeError::typeerr("Not a function"));
+            return Err(cur_frame.error_type("Not a function"));
         }
 
         let info = callee.as_function();
         let ret = match info.kind {
-            FunctionObjectKind::Builtin(func) => gc_lock!(
-                self,
-                args,
-                func(
-                    self, args, this,
-                    cur_frame,
-                    //&mut frame::Frame::new_empty_with_this(this, false)
-                )
-            ),
+            FunctionObjectKind::Builtin(func) => {
+                gc_lock!(self, args, func(self, args, this, cur_frame,))
+            }
             FunctionObjectKind::User(ref user_func) => {
                 if self.is_trace {
                     println!("--> call function");
@@ -1103,6 +1088,7 @@ impl VM {
         this: Value,
         cur_frame: &frame::Frame,
     ) -> Result<frame::Frame, RuntimeError> {
+        let module_func_id = cur_frame.module_func_id;
         self.saved_frame
             .push(cur_frame.clone().saved_stack_len(self.stack.len()));
 
@@ -1140,7 +1126,8 @@ impl VM {
 
         Ok(
             frame::Frame::new(exec_ctx, user_func.code, user_func.exception_table, this)
-                .id(user_func.id),
+                .func_id(user_func.id)
+                .module_func_id(module_func_id),
         )
     }
 
@@ -1153,7 +1140,7 @@ impl VM {
         constructor_call: bool,
     ) -> VMResult {
         if !user_func.constructible && constructor_call {
-            return Err(RuntimeError::typeerr("Not a constructor"));
+            return Err(cur_frame.error_type("Not a constructor"));
         }
 
         let frame = self

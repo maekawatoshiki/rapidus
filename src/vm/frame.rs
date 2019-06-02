@@ -3,6 +3,7 @@
 use crate::bytecode_gen::ByteCode;
 use crate::gc;
 use crate::vm::codegen::FunctionInfo;
+use crate::vm::error::ErrorKind;
 use crate::vm::error::RuntimeError;
 use crate::vm::jsvalue::function::Exception;
 use crate::vm::jsvalue::object::{DataProperty, ObjectInfo, ObjectKind, Property};
@@ -16,9 +17,11 @@ pub struct LexicalEnvironmentRef(pub *mut LexicalEnvironment);
 
 #[derive(Debug, Clone)]
 pub struct Frame {
-    pub id: usize, // 0 => global scope, n => function id
+    pub func_id: usize, // 0 => global scope, n => function id
+    pub module_func_id: usize,
     pub execution_context: ExecutionContext,
     pub pc: usize,
+    pub current_inst_pc: usize,
     pub saved_stack_len: usize,
     pub bytecode: ByteCode,
     pub exception_table: Vec<Exception>,
@@ -69,27 +72,14 @@ impl Frame {
         this: Value,
     ) -> Self {
         Frame {
-            id: 0,
+            func_id: 0,
+            module_func_id: 0,
             execution_context,
             pc: 0,
+            current_inst_pc: 0,
             saved_stack_len: 0,
             bytecode,
             exception_table,
-            this,
-            constructor_call: false,
-            module_call: false,
-            escape: false,
-        }
-    }
-
-    pub fn new_empty_with_this(this: Value) -> Self {
-        Frame {
-            id: 0,
-            execution_context: ExecutionContext::new_empty(),
-            pc: 0,
-            saved_stack_len: 0,
-            bytecode: vec![],
-            exception_table: vec![],
             this,
             constructor_call: false,
             module_call: false,
@@ -125,8 +115,13 @@ impl Frame {
         self
     }
 
-    pub fn id(mut self, id: usize) -> Self {
-        self.id = id;
+    pub fn func_id(mut self, id: usize) -> Self {
+        self.func_id = id;
+        self
+    }
+
+    pub fn module_func_id(mut self, id: usize) -> Self {
+        self.module_func_id = id;
         self
     }
 
@@ -166,6 +161,26 @@ impl Frame {
         for name in &info.lex_names {
             self.append_variable_to_lex_env(name.clone())
         }
+    }
+
+    pub fn error_general(&self, msg: impl Into<String>) -> RuntimeError {
+        RuntimeError::new(ErrorKind::General(msg.into()), self)
+    }
+
+    pub fn error_type(&self, msg: impl Into<String>) -> RuntimeError {
+        RuntimeError::new(ErrorKind::Type(msg.into()), self)
+    }
+
+    pub fn error_reference(&self, msg: impl Into<String>) -> RuntimeError {
+        RuntimeError::new(ErrorKind::Reference(msg.into()), self)
+    }
+
+    pub fn error_exception(&self, val: Value, node_pos: impl Into<Option<usize>>) -> RuntimeError {
+        RuntimeError::new(ErrorKind::Exception(val, node_pos.into()), self)
+    }
+
+    pub fn error_unknown(&self) -> RuntimeError {
+        RuntimeError::new(ErrorKind::Unknown, self)
     }
 }
 

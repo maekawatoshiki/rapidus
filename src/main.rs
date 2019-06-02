@@ -1,6 +1,8 @@
 extern crate rapidus;
+use ansi_term::Colour;
 use rapidus::parser;
 use rapidus::{vm, vm::frame, vm::jsvalue::value::Value, vm::vm::VM};
+use std::path::Path;
 
 extern crate libc;
 
@@ -48,20 +50,35 @@ fn main() {
         }
     };
 
+    let path = Path::new(&file_name);
+    let absolute_path = match path.canonicalize() {
+        Ok(path) => path,
+        Err(ioerr) => {
+            eprintln!(
+                "{} Can not find file \"{}\" \n{}",
+                Colour::Red.bold().paint("Error: "),
+                file_name,
+                ioerr
+            );
+            return;
+        }
+    };
+    //let absolute_path = absolute_path.to_str().unwrap();
+
     let mut file_body = String::new();
 
-    match OpenOptions::new().read(true).open(file_name) {
+    match OpenOptions::new().read(true).open(&absolute_path) {
         Ok(mut ok) => ok
             .read_to_string(&mut file_body)
             .ok()
             .expect("cannot read file"),
         Err(e) => {
-            println!("error: {}", e);
+            println!("Error: {}", e);
             return;
         }
     };
 
-    let mut parser = parser::Parser::new(file_body);
+    let mut parser = parser::Parser::new(absolute_path.to_string_lossy(), file_body);
 
     let node = match parser.parse_all() {
         Ok(ok) => ok,
@@ -91,11 +108,14 @@ fn main() {
     if is_debug {
         println!("Codegen:");
         rapidus::bytecode_gen::show_inst_seq(&iseq, &vm.constant_table);
-        println!("{:?}", vm.to_source_map);
     };
 
+    let script_info = parser.into_script_info();
+    vm.script_info.push((0, script_info));
     if let Err(e) = vm.run_global(global_info, iseq) {
-        e.show_error_message(Some(&parser.lexer));
+        let script_info = &vm.script_info.get(0).unwrap().1;
+        println!("{}", script_info.file_name);
+        e.show_error_message(script_info);
     }
 
     if is_debug {
@@ -128,7 +148,7 @@ fn repl(is_trace: bool) {
         let mut lines = line + "\n";
 
         loop {
-            parser = parser::Parser::new(lines.clone());
+            parser = parser::Parser::new("REPL", lines.clone());
             match parser.parse_all() {
                 Ok(node) => {
                     // compile and execute
@@ -154,7 +174,7 @@ fn repl(is_trace: bool) {
                     }
 
                     if let Err(e) = vm.run(global_frame.clone().unwrap()) {
-                        e.show_error_message(Some(&parser.lexer));
+                        e.show_error_message(&parser.into_script_info());
                         break;
                     }
 
