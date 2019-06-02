@@ -30,7 +30,7 @@ pub fn array_prototype_push(
     _cur_frame: &mut Frame,
 ) -> VMResult {
     if !this.is_array_object() {
-        return Err(RuntimeError::Unknown);
+        return Err(RuntimeError::unknown());
     }
 
     let ary_info = this.as_array_mut();
@@ -52,7 +52,7 @@ pub fn array_prototype_map(
     cur_frame: &mut Frame,
 ) -> VMResult {
     if !this.is_array_object() {
-        return Err(RuntimeError::Unknown);
+        return Err(RuntimeError::unknown());
     }
 
     let ary_info = this.as_array_mut();

@@ -239,7 +239,7 @@ impl VM {
         cur_frame: &mut frame::Frame,
     ) -> VMResult {
         if !callee.is_function_object() {
-            return Err(RuntimeError::Type("Not a function".to_string()));
+            return Err(RuntimeError::typeerr("Not a function"));
         }
 
         let info = callee.as_function();
@@ -364,12 +364,6 @@ impl VM {
                     let mut exception_found = false;
                     let mut outer_break = false;
 
-                    let node_pos = self
-                        .to_source_map
-                        .get(&cur_frame.id)
-                        .unwrap()
-                        .get_node_pos(current_inst_pc);
-
                     loop {
                         for exception in &cur_frame.exception_table {
                             let in_range =
@@ -404,15 +398,21 @@ impl VM {
                     }
 
                     if !exception_found {
+                        let node_pos = self
+                            .to_source_map
+                            .get(&cur_frame.id)
+                            .unwrap()
+                            .get_node_pos(current_inst_pc);
+
                         let val: Value = self.stack.pop().unwrap().into();
-                        return Err(RuntimeError::Exception(val, node_pos));
+                        return Err(RuntimeError::exception(val, node_pos));
                     }
                 }};
             }
 
             macro_rules! type_error {
                 ($msg:expr) => {{
-                    let val = RuntimeError::Type($msg.to_string()).to_value(&mut self.factory);
+                    let val = RuntimeError::typeerr($msg).to_value(&mut self.factory);
                     self.stack.push(val.into());
                     exception!();
                     continue;
@@ -957,7 +957,7 @@ impl VM {
         constructor_call: bool,
     ) -> VMResult {
         if !callee.is_function_object() {
-            return Err(RuntimeError::Type("Not a function".to_string()));
+            return Err(RuntimeError::typeerr("Not a function"));
         }
 
         let info = callee.as_function();
@@ -1136,7 +1136,7 @@ impl VM {
         constructor_call: bool,
     ) -> VMResult {
         if !user_func.constructible && constructor_call {
-            return Err(RuntimeError::Type("Not a constructor".to_string()));
+            return Err(RuntimeError::typeerr("Not a constructor"));
         }
 
         let frame = self

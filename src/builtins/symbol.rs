@@ -55,7 +55,7 @@ pub fn symbol_key_for(
     let sym = args.get(0).map(|x| *x).unwrap_or(Value::undefined());
 
     if !sym.is_symbol() {
-        return Err(RuntimeError::Type(format!(
+        return Err(RuntimeError::typeerr(format!(
             "{} is not symbol",
             sym.debug_string(true)
         )));

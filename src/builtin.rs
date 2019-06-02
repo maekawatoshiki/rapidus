@@ -16,8 +16,8 @@ pub fn parse_float(vm: &mut VM, args: &[Value], _this: Value, _cur_frame: &mut F
 
 pub fn deep_seq(vm: &mut VM, args: &[Value], _this: Value, _cur_frame: &mut Frame) -> VMResult {
     if args.len() != 2 {
-        return Err(RuntimeError::General(
-            "__assert_deep_seq():Two arguments are needed.".to_string(),
+        return Err(RuntimeError::general(
+            "__assert_deep_seq():Two arguments are needed.",
         ));
     };
     let lval = args.get(0).unwrap();
@@ -92,14 +92,14 @@ fn deep_seq_bool(lval: &Value, rval: &Value) -> bool {
 pub fn require(vm: &mut VM, args: &[Value], _this: Value, cur_frame: &mut Frame) -> VMResult {
     use std::path::Path;
     let file_name = {
-        let val = args.get(0).ok_or(RuntimeError::General(
-            "require():One argument is needed.".to_string(),
-        ))?;
+        let val = args
+            .get(0)
+            .ok_or(RuntimeError::general("require():One argument is needed."))?;
         match val {
             Value::String(_) => val.to_string(),
             _ => {
-                return Err(RuntimeError::Type(
-                    "require():An argument should be string.".to_string(),
+                return Err(RuntimeError::typeerr(
+                    "require():An argument should be string.",
                 ));
             }
         }
@@ -107,16 +107,16 @@ pub fn require(vm: &mut VM, args: &[Value], _this: Value, cur_frame: &mut Frame)
     let path = Path::new(&file_name);
     let absolute_path = r#try!(path
         .canonicalize()
-        .map_err(|ioerr| RuntimeError::General(format!("require(): \"{}\" {}", file_name, ioerr))));
+        .map_err(|ioerr| RuntimeError::general(format!("require(): \"{}\" {}", file_name, ioerr))));
     let absolute_path = absolute_path.to_str().unwrap_or("<failed to convert>");
     let script = r#try!(std::fs::read_to_string(absolute_path)
-        .map_err(|ioerr| RuntimeError::General(format!("require(): \"{}\" {}", file_name, ioerr))));
+        .map_err(|ioerr| RuntimeError::general(format!("require(): \"{}\" {}", file_name, ioerr))));
 
     use crate::parser::Parser;
     let mut parser = Parser::new(script);
     let node = r#try!(parser.parse_all().map_err(|parse_err| {
         parser.handle_error(&parse_err);
-        RuntimeError::General(format!("Error in parsing module \"{}\"", file_name))
+        RuntimeError::general(format!("Error in parsing module \"{}\"", file_name))
     }));
 
     let mut iseq = vec![];
@@ -127,7 +127,7 @@ pub fn require(vm: &mut VM, args: &[Value], _this: Value, cur_frame: &mut Frame)
         .map_err(|codegen_err| {
             let Error { msg, token_pos, .. } = codegen_err;
             parser.show_error_at(token_pos, msg);
-            RuntimeError::General(format!("Error in parsing module \"{}\"", file_name))
+            RuntimeError::general(format!("Error in parsing module \"{}\"", file_name))
         }));
 
     let user_func_info = UserFunctionInfo {

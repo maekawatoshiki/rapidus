@@ -343,7 +343,7 @@ impl Value {
                 return string_get_property(factory, cstrp_to_str(*s), key);
             }
             Value::Other(_) => {
-                return Err(error::RuntimeError::Type(format!(
+                return Err(error::RuntimeError::typeerr(format!(
                     "TypeError: Cannot read property '{}' of {}",
                     key.to_string(),
                     self.to_string()
@@ -376,7 +376,7 @@ impl Value {
     ) -> Result<Option<Value>, error::RuntimeError> {
         match self {
             Value::Object(obj_info) => ObjectRef(*obj_info).set_property(allocator, key, val),
-            Value::Other(_) => Err(error::RuntimeError::Type(format!(
+            Value::Other(_) => Err(error::RuntimeError::typeerr(format!(
                 "TypeError: Cannot set property '{}' of {}",
                 key.to_string(),
                 self.to_string()

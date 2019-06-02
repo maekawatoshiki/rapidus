@@ -245,7 +245,7 @@ impl LexicalEnvironment {
             | EnvironmentRecord::Module { ref record, .. }
             | EnvironmentRecord::Declarative(ref record) => match record.get(&name) {
                 Some(binding) if binding == &Value::uninitialized() => {
-                    return Err(RuntimeError::Reference(format!(
+                    return Err(RuntimeError::reference(format!(
                         "'{}' is not defined",
                         name
                     )));
@@ -257,7 +257,7 @@ impl LexicalEnvironment {
                 if obj.has_own_property(name.as_str()) {
                     let val = obj.get_property_by_str_key(name.as_str());
                     if val == Value::uninitialized() {
-                        return Err(RuntimeError::Reference(format!(
+                        return Err(RuntimeError::reference(format!(
                             "'{}' is not defined",
                             name
                         )));
@@ -270,7 +270,7 @@ impl LexicalEnvironment {
         if let Some(outer) = self.outer {
             outer.get_value(name)
         } else {
-            Err(RuntimeError::Reference(format!(
+            Err(RuntimeError::reference(format!(
                 "'{}' is not defined",
                 name
             )))
@@ -297,7 +297,7 @@ impl LexicalEnvironment {
         if let Some(mut outer) = self.outer {
             outer.set_value(name, val)
         } else {
-            Err(RuntimeError::Reference(format!(
+            Err(RuntimeError::reference(format!(
                 "Assignment to undeclared identifier '{}'",
                 name
             )))
