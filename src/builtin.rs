@@ -87,7 +87,6 @@ fn deep_seq_bool(lval: &Value, rval: &Value) -> bool {
 }
 
 pub fn require(vm: &mut VM, args: &[Value], _this: Value, cur_frame: &mut Frame) -> VMResult {
-    use std::path::Path;
     let file_name = {
         let val = args
             .get(0)
@@ -99,17 +98,12 @@ pub fn require(vm: &mut VM, args: &[Value], _this: Value, cur_frame: &mut Frame)
             }
         }
     };
-    let path = Path::new(&file_name);
-    let absolute_path = r#try!(path.canonicalize().map_err(
-        |ioerr| cur_frame.error_general(format!("require(): \"{}\" {}", file_name, ioerr))
-    ));
-    let absolute_path = absolute_path.to_str().unwrap_or("<failed to convert>");
-    let script = r#try!(std::fs::read_to_string(absolute_path).map_err(
-        |ioerr| cur_frame.error_general(format!("require(): \"{}\" {}", file_name, ioerr))
-    ));
 
     use crate::parser::Parser;
-    let mut parser = Parser::new(absolute_path.to_string(), script);
+    let mut parser = Parser::load_module(file_name.clone())
+        .map_err(|e| return cur_frame.error_general(format!("{:?}", e)))?;
+    let absolute_path = parser.file_name.clone();
+
     let node = r#try!(parser.parse_all().map_err(|parse_err| {
         parser.handle_error(&parse_err);
         cur_frame.error_general(format!("Error in parsing module \"{}\"", file_name))
@@ -160,7 +154,11 @@ pub fn require(vm: &mut VM, args: &[Value], _this: Value, cur_frame: &mut Frame)
     frame.lex_env_mut().set_own_value("module", module)?;
 
     if vm.is_trace {
-        println!("--> call module {}", &frame.module_func_id)
+        println!("--> call module");
+        println!(
+            "  module_id:{} func_id:{}",
+            frame.module_func_id, frame.func_id
+        );
     };
 
     *cur_frame = frame;

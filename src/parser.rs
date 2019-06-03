@@ -4,6 +4,9 @@ use crate::node::{
     PropertyDefinition, UnaryOp, VarKind,
 };
 use crate::token::{get_string_for_symbol, Keyword, Kind, Symbol, Token};
+use std::fs::OpenOptions;
+use std::io::Read;
+use std::path::Path;
 
 use ansi_term::Colour;
 
@@ -45,7 +48,9 @@ pub struct Parser {
 
 #[derive(Clone, Debug)]
 pub struct ScriptInfo {
+    /// File name with Absolute path.
     pub file_name: String,
+    /// Script text.
     pub code: String,
     pub pos_line_list: Vec<(usize, usize)>,
 }
@@ -58,6 +63,38 @@ impl Parser {
         }
     }
 
+    /// Load file and generate Parser from the file.
+    pub fn load_module(file_name: impl Into<String>) -> Result<Parser, Error> {
+        let file_name = file_name.into();
+        let path = Path::new(&file_name);
+        let absolute_path = match path.canonicalize() {
+            Ok(path) => path,
+            Err(ioerr) => {
+                let msg = format!("{}", ioerr);
+                println!("Error: Cannot find module file. '{}'", &file_name);
+                println!("{}", msg);
+                return Err(Error::General(0, msg));
+            }
+        };
+
+        let mut file_body = String::new();
+
+        match OpenOptions::new().read(true).open(&absolute_path) {
+            Ok(mut ok) => ok
+                .read_to_string(&mut file_body)
+                .ok()
+                .expect("cannot read file"),
+            Err(ioerr) => {
+                let msg = format!("{}", ioerr);
+                println!("Error: Cannot find module file. '{}'", &file_name);
+                println!("{}", msg);
+                return Err(Error::General(0, msg));
+            }
+        };
+
+        Ok(Parser::new(absolute_path.to_string_lossy(), file_body))
+    }
+
     pub fn into_script_info(self) -> ScriptInfo {
         ScriptInfo {
             file_name: self.file_name,
@@ -66,7 +103,7 @@ impl Parser {
         }
     }
 
-    /// display error position in the source code.
+    /// Display error position in the source code.
     pub fn show_error_at(&self, pos: usize, msg: impl Into<String>) {
         let (source_at_err_point, _pos, line) = self.lexer.get_code_around_err_point(pos);
         eprintln!(
@@ -78,7 +115,7 @@ impl Parser {
         );
     }
 
-    /// display syntax error message.
+    /// Display syntax error message.
     pub fn handle_error(&self, err: &Error) {
         match err {
             Error::NormalEOF => unreachable!(),

@@ -1,8 +1,6 @@
 extern crate rapidus;
-use ansi_term::Colour;
 use rapidus::parser;
 use rapidus::{vm, vm::frame, vm::jsvalue::value::Value, vm::vm::VM};
-use std::path::Path;
 
 extern crate libc;
 
@@ -10,16 +8,6 @@ extern crate rustyline;
 
 extern crate clap;
 use clap::{App, Arg};
-
-// extern crate nix;
-// use nix::sys::wait::*;
-// use nix::unistd::*;
-
-// extern crate ansi_term;
-// use ansi_term::Colour;
-
-use std::fs::OpenOptions;
-use std::io::prelude::*;
 
 const VERSION_STR: &'static str = env!("CARGO_PKG_VERSION");
 
@@ -50,35 +38,10 @@ fn main() {
         }
     };
 
-    let path = Path::new(&file_name);
-    let absolute_path = match path.canonicalize() {
-        Ok(path) => path,
-        Err(ioerr) => {
-            eprintln!(
-                "{} Can not find file \"{}\" \n{}",
-                Colour::Red.bold().paint("Error: "),
-                file_name,
-                ioerr
-            );
-            return;
-        }
+    let mut parser = match parser::Parser::load_module(file_name.clone()) {
+        Ok(ok) => ok,
+        Err(_) => return,
     };
-    //let absolute_path = absolute_path.to_str().unwrap();
-
-    let mut file_body = String::new();
-
-    match OpenOptions::new().read(true).open(&absolute_path) {
-        Ok(mut ok) => ok
-            .read_to_string(&mut file_body)
-            .ok()
-            .expect("cannot read file"),
-        Err(e) => {
-            println!("Error: {}", e);
-            return;
-        }
-    };
-
-    let mut parser = parser::Parser::new(absolute_path.to_string_lossy(), file_body);
 
     let node = match parser.parse_all() {
         Ok(ok) => ok,
@@ -171,6 +134,8 @@ fn repl(is_trace: bool) {
                         None => global_frame = Some(vm.create_global_frame(global_info, iseq)),
                     }
 
+                    let script_info = parser.into_script_info();
+                    vm.script_info = vec![(0, script_info)];
                     if let Err(e) = vm.run(global_frame.clone().unwrap()) {
                         vm.show_error_message(e);
                         break;

@@ -368,7 +368,7 @@ pub fn read_int32(iseq: &ByteCode, pc: usize) -> i32 {
 pub fn show_inst_seq(code: &ByteCode, const_table: &constant::ConstantTable) {
     let mut i = 0;
     while i < code.len() {
-        show_inst(code, i, const_table, 0, 0);
+        show_inst(code, i, const_table);
         println!();
         i += if let Some(size) = VMInst::get_inst_size(code[i]) {
             size
@@ -378,18 +378,10 @@ pub fn show_inst_seq(code: &ByteCode, const_table: &constant::ConstantTable) {
     }
 }
 
-pub fn show_inst(
-    code: &ByteCode,
-    i: usize,
-    const_table: &constant::ConstantTable,
-    func_id: usize,
-    module_id: usize,
-) {
+pub fn show_inst(code: &ByteCode, i: usize, const_table: &constant::ConstantTable) {
     print!(
-        "{:05} {:02} {:02} {:<25}",
+        "{:05} {:<25}",
         i,
-        module_id,
-        func_id,
         match code[i] {
             VMInst::END => format!("End"),
             VMInst::CREATE_CONTEXT => format!("CreateContext"),
@@ -419,7 +411,7 @@ pub fn show_inst(
                 let int32 = read_int32(code, i + 1);
                 let value = const_table.get(int32 as usize).as_value();
                 // TODO: Implement 'format' for 'value'
-                format!("PushConst {:?}", value)
+                format!("PushConst {}", value)
             }
             VMInst::PUSH_NULL => format!("PushNull"),
             VMInst::PUSH_THIS => format!("PushThis"),

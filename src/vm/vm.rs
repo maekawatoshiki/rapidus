@@ -33,9 +33,10 @@ pub struct VM {
     pub global_symbol_registry: GlobalSymbolRegistry,
     pub stack: Vec<BoxedValue>,
     pub saved_frame: Vec<frame::Frame>,
+    ///func_id, ToSourcePos
     pub to_source_map: FxHashMap<usize, codegen::ToSourcePos>,
     pub is_trace: bool,
-    ///func_id, script_info
+    ///(func_id, script_info)
     pub script_info: Vec<(usize, ScriptInfo)>,
 }
 
@@ -337,18 +338,22 @@ impl VM {
 
 impl VM {
     pub fn show_error_message(&self, error: RuntimeError) {
+        println!("showerrormeg");
         let pos_in_script = self
             .to_source_map
             .get(&error.func_id)
             .unwrap()
             .get_node_pos(error.inst_pc);
+        println!("{:?}", pos_in_script);
         let module_func_id = error.module_func_id;
+        println!("{:?}", module_func_id);
         let info = &self
             .script_info
             .iter()
             .find(|info| info.0 == module_func_id)
             .unwrap()
             .1;
+        println!("{:?}", info);
         println!("{:?}", info.file_name);
         match &error.kind {
             ErrorKind::Unknown => runtime_error("UnknownError"),
@@ -498,8 +503,6 @@ impl VM {
                     &cur_frame.bytecode,
                     cur_frame.current_inst_pc,
                     &self.constant_table,
-                    cur_frame.func_id,
-                    cur_frame.module_func_id,
                 );
                 match self.stack.last() {
                     None => {
@@ -869,7 +872,11 @@ impl VM {
                         break;
                     }
                     if is_trace {
-                        println!("<-- return")
+                        println!("<-- return");
+                        println!(
+                            "  module_id:{} func_id:{}",
+                            cur_frame.module_func_id, cur_frame.func_id
+                        );
                     };
                 }
                 VMInst::TYPEOF => {
@@ -882,13 +889,7 @@ impl VM {
                 VMInst::END => break,
                 _ => {
                     print!("Not yet implemented VMInst: ");
-                    show_inst(
-                        &cur_frame.bytecode,
-                        cur_frame.pc,
-                        &self.constant_table,
-                        cur_frame.func_id,
-                        cur_frame.module_func_id,
-                    );
+                    show_inst(&cur_frame.bytecode, cur_frame.pc, &self.constant_table);
                     println!();
                     unimplemented!();
                 }
@@ -1037,7 +1038,11 @@ impl VM {
             }
             FunctionObjectKind::User(ref user_func) => {
                 if self.is_trace {
-                    println!("--> call function");
+                    println!("--> call function",);
+                    println!(
+                        "  module_id:{} func_id:{}",
+                        user_func.module_func_id, user_func.id
+                    );
                 };
                 self.enter_user_function(user_func.clone(), args, this, cur_frame, constructor_call)
             }
