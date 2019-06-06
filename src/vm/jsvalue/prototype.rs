@@ -16,8 +16,8 @@ pub struct ObjectPrototypes {
 }
 
 impl ObjectPrototypes {
-    pub fn new(memory_allocator: &mut MemoryAllocator) -> Self {
-        let object_prototype = Value::Object(memory_allocator.alloc(ObjectInfo {
+    pub fn new(allocator: &mut MemoryAllocator) -> Self {
+        let object_prototype = Value::Object(allocator.alloc(ObjectInfo {
             kind: ObjectKind::Ordinary,
             prototype: Value::null(),
             property: make_property_map!(),
@@ -25,7 +25,7 @@ impl ObjectPrototypes {
         }));
 
         let function_prototype = {
-            let function_prototype = Value::Object(memory_allocator.alloc(ObjectInfo {
+            let function_prototype = Value::Object(allocator.alloc(ObjectInfo {
                 kind: ObjectKind::Function(FunctionObjectInfo {
                     name: None,
                     kind: FunctionObjectKind::User(UserFunctionInfo {
@@ -47,9 +47,9 @@ impl ObjectPrototypes {
             }));
 
             let function_prototype_call = Value::builtin_function_with_proto(
-                memory_allocator,
+                allocator,
                 function_prototype,
-                "call".to_string(),
+                "call",
                 function::function_prototype_call,
             );
 
@@ -62,20 +62,20 @@ impl ObjectPrototypes {
 
         let string_prototype = {
             let index_of = Value::builtin_function_with_proto(
-                memory_allocator,
+                allocator,
                 function_prototype,
-                "indexOf".to_string(),
+                "indexOf",
                 builtins::string::string_prototype_index_of,
             );
 
             let split = Value::builtin_function_with_proto(
-                memory_allocator,
+                allocator,
                 function_prototype,
-                "split".to_string(),
+                "split",
                 builtins::string::string_prototype_split,
             );
 
-            Value::Object(memory_allocator.alloc(ObjectInfo {
+            Value::Object(allocator.alloc(ObjectInfo {
                 kind: ObjectKind::Ordinary,
                 prototype: object_prototype,
                 property: make_property_map!(indexOf: index_of, split: split),
@@ -85,20 +85,20 @@ impl ObjectPrototypes {
 
         let array_prototype = {
             let push = Value::builtin_function_with_proto(
-                memory_allocator,
+                allocator,
                 function_prototype,
-                "push".to_string(),
+                "push",
                 array::array_prototype_push,
             );
 
             let map = Value::builtin_function_with_proto(
-                memory_allocator,
+                allocator,
                 function_prototype,
-                "map".to_string(),
+                "map",
                 array::array_prototype_map,
             );
 
-            Value::Object(memory_allocator.alloc(ObjectInfo {
+            Value::Object(allocator.alloc(ObjectInfo {
                 kind: ObjectKind::Array(ArrayObjectInfo { elems: vec![] }),
                 prototype: object_prototype,
                 property: make_property_map!(
@@ -111,7 +111,7 @@ impl ObjectPrototypes {
         };
 
         let symbol_prototype = {
-            Value::Object(memory_allocator.alloc(ObjectInfo {
+            Value::Object(allocator.alloc(ObjectInfo {
                 kind: ObjectKind::Ordinary,
                 prototype: object_prototype,
                 // TODO: https://tc39.github.io/ecma262/#sec-properties-of-the-symbol-prototype-object

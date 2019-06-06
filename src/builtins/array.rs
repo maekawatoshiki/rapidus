@@ -1,22 +1,13 @@
-use crate::gc;
 use crate::vm::{
     error::RuntimeError,
     frame::Frame,
-    jsvalue::{object::Property, prototype::ObjectPrototypes, value::Value},
-    vm::{VMResult, VM},
+    jsvalue::{object::Property, value::Value},
+    vm::{Factory, VMResult, VM},
 };
 
-pub fn array(
-    memory_allocator: &mut gc::MemoryAllocator,
-    object_prototypes: &ObjectPrototypes,
-) -> Value {
-    let ary = Value::builtin_function(
-        memory_allocator,
-        object_prototypes,
-        "Array".to_string(),
-        array_constructor,
-    );
-    ary.set_property_by_string_key("prototype".to_string(), object_prototypes.array);
+pub fn array(factory: &mut Factory) -> Value {
+    let ary = factory.builtin_function("Array", array_constructor);
+    ary.set_property_by_string_key("prototype", factory.object_prototypes.array);
     ary.get_property_by_str_key("prototype")
         .set_constructor(ary);
     ary
@@ -72,8 +63,7 @@ pub fn array_prototype_map(vm: &mut VM, args: &[Value], cur_frame: &Frame) -> VM
         ));
     }
 
-    vm.stack
-        .push(Value::array(&mut vm.memory_allocator, &vm.object_prototypes, new_ary).into());
+    vm.stack.push(vm.factory.array(new_ary).into());
 
     Ok(())
 }

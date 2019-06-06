@@ -1,5 +1,4 @@
 use crate::bytecode_gen::{ByteCode, ByteCodeGenerator, VMInst};
-use crate::gc::MemoryAllocator;
 use crate::id::get_unique_id;
 use crate::node::{
     BinOp, FormalParameter, FormalParameters, MethodDefinitionKind, Node, NodeBase,
@@ -7,8 +6,9 @@ use crate::node::{
 };
 use crate::vm::constant::{ConstantTable, SpecialProperties, SpecialPropertyKind};
 use crate::vm::jsvalue::function::{DestinationKind, Exception, ThisMode, UserFunctionInfo};
+use crate::vm::jsvalue::value;
 use crate::vm::jsvalue::value::Value;
-use crate::vm::jsvalue::{prototype, value};
+use crate::vm::vm::Factory;
 use rustc_hash::FxHashMap;
 
 pub type CodeGenResult = Result<(), Error>;
@@ -29,8 +29,7 @@ pub enum ErrorKind {
 #[derive(Debug)]
 pub struct CodeGenerator<'a> {
     pub bytecode_generator: ByteCodeGenerator<'a>,
-    pub memory_allocator: &'a mut MemoryAllocator,
-    pub object_prototypes: &'a prototype::ObjectPrototypes,
+    pub factory: &'a mut Factory,
     pub function_stack: Vec<FunctionInfo>,
     pub to_source_map: FxHashMap<usize, ToSourcePos>,
     /// A position in the bytecode of the current node.
@@ -71,15 +70,10 @@ pub enum Level {
 }
 
 impl<'a> CodeGenerator<'a> {
-    pub fn new(
-        constant_table: &'a mut ConstantTable,
-        memory_allocator: &'a mut MemoryAllocator,
-        object_prototypes: &'a prototype::ObjectPrototypes,
-    ) -> Self {
+    pub fn new(constant_table: &'a mut ConstantTable, factory: &'a mut Factory) -> Self {
         CodeGenerator {
             bytecode_generator: ByteCodeGenerator::new(constant_table),
-            object_prototypes,
-            memory_allocator,
+            factory,
             function_stack: vec![FunctionInfo::new(None) /* = global */],
             to_source_map: FxHashMap::default(),
             node_pos: 0,
@@ -187,7 +181,7 @@ impl<'a> CodeGenerator<'a> {
             NodeBase::String(ref s) => {
                 if use_value {
                     self.bytecode_generator
-                        .append_push_const(Value::string(self.memory_allocator, s.clone()), iseq)
+                        .append_push_const(self.factory.string(s.clone()), iseq)
                 }
             }
             NodeBase::Number(n) => {
@@ -637,9 +631,7 @@ impl<'a> CodeGenerator<'a> {
 
         self.to_source_map.insert(id, function_info.to_source_pos);
 
-        Ok(Value::function(
-            self.memory_allocator,
-            self.object_prototypes,
+        Ok(self.factory.function(
             function_info.name,
             UserFunctionInfo {
                 id,
@@ -719,7 +711,7 @@ impl<'a> CodeGenerator<'a> {
         use_value: bool,
     ) -> CodeGenResult {
         self.visit(parent, iseq, true)?;
-        let property = Value::string(self.memory_allocator, member.clone());
+        let property = self.factory.string(member.clone());
         self.bytecode_generator.append_push_const(property, iseq);
         self.save_source_pos(iseq);
         self.bytecode_generator.append_get_member(iseq);
@@ -947,10 +939,8 @@ impl<'a> CodeGenerator<'a> {
 
         match callee.base {
             NodeBase::Member(ref parent, ref property_name) => {
-                self.bytecode_generator.append_push_const(
-                    Value::string(self.memory_allocator, property_name.clone()),
-                    iseq,
-                );
+                self.bytecode_generator
+                    .append_push_const(self.factory.string(property_name.clone()), iseq);
                 self.visit(&*parent, iseq, true)?;
                 self.save_source_pos(iseq);
                 self.bytecode_generator
@@ -1017,7 +1007,7 @@ impl<'a> CodeGenerator<'a> {
         match callee.base {
             NodeBase::Member(ref parent, ref property_name) => {
                 self.visit(parent, iseq, true)?;
-                let property = Value::string(self.memory_allocator, property_name.clone());
+                let property = self.factory.string(property_name.clone());
                 self.bytecode_generator.append_push_const(property, iseq);
                 self.save_source_pos(iseq);
                 self.bytecode_generator.append_get_member(iseq);
@@ -1049,17 +1039,13 @@ impl<'a> CodeGenerator<'a> {
                 PropertyDefinition::IdentifierReference(name) => {
                     self.save_source_pos(iseq);
                     self.bytecode_generator.append_get_value(name, iseq);
-                    self.bytecode_generator.append_push_const(
-                        Value::string(self.memory_allocator, name.clone()),
-                        iseq,
-                    );
+                    self.bytecode_generator
+                        .append_push_const(self.factory.string(name.clone()), iseq);
                 }
                 PropertyDefinition::Property(name, node) => {
                     self.visit(&node, iseq, true)?;
-                    self.bytecode_generator.append_push_const(
-                        Value::string(self.memory_allocator, name.clone()),
-                        iseq,
-                    );
+                    self.bytecode_generator
+                        .append_push_const(self.factory.string(name.clone()), iseq);
                 }
                 PropertyDefinition::MethodDefinition(kind, name, node) => {
                     match kind {
@@ -1072,10 +1058,8 @@ impl<'a> CodeGenerator<'a> {
                         }
                     };
                     self.visit(&node, iseq, true)?;
-                    self.bytecode_generator.append_push_const(
-                        Value::string(self.memory_allocator, name.clone()),
-                        iseq,
-                    );
+                    self.bytecode_generator
+                        .append_push_const(self.factory.string(name.clone()), iseq);
                 }
             }
         }
@@ -1111,7 +1095,7 @@ impl<'a> CodeGenerator<'a> {
             }
             NodeBase::Member(ref parent, ref property) => {
                 self.visit(&*parent, iseq, true)?;
-                let property = Value::string(self.memory_allocator, property.clone());
+                let property = self.factory.string(property.clone());
                 self.bytecode_generator.append_push_const(property, iseq);
                 self.save_source_pos(iseq);
                 self.bytecode_generator.append_set_member(iseq);

@@ -8,11 +8,9 @@ pub fn string_prototype_split(
     let string = cur_frame.this.into_str();
     let separator_ = args.get(0).map(|x| *x).unwrap_or(Value::undefined());
     if separator_.is_undefined() {
-        let ary = Value::array(
-            &mut vm.memory_allocator,
-            &vm.object_prototypes,
-            vec![Property::new_data_simple(cur_frame.this)],
-        );
+        let ary = vm
+            .factory
+            .array(vec![Property::new_data_simple(cur_frame.this)]);
         vm.stack.push(ary.into());
         return Ok(());
     }
@@ -21,9 +19,9 @@ pub fn string_prototype_split(
         .split(separator.as_str())
         .collect::<Vec<&str>>()
         .iter()
-        .map(|s| Property::new_data_simple(Value::string(&mut vm.memory_allocator, s.to_string())))
+        .map(|s| Property::new_data_simple(vm.factory.string(s.to_string())))
         .collect::<Vec<Property>>();
-    let ary = Value::array(&mut vm.memory_allocator, &vm.object_prototypes, elems);
+    let ary = vm.factory.array(elems);
     vm.stack.push(ary.into());
     Ok(())
 }
