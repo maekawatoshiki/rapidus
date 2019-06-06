@@ -3,3 +3,4 @@ module.exports.deepStrictEqual = function(x, y) {
   //57 + x(100)
   if (!__assert_deep_seq(x, y)) throw 100
 }
+console.log(x)

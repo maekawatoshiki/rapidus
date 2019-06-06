@@ -338,23 +338,18 @@ impl VM {
 
 impl VM {
     pub fn show_error_message(&self, error: RuntimeError) {
-        println!("showerrormeg");
         let pos_in_script = self
             .to_source_map
             .get(&error.func_id)
             .unwrap()
             .get_node_pos(error.inst_pc);
-        println!("{:?}", pos_in_script);
         let module_func_id = error.module_func_id;
-        println!("{:?}", module_func_id);
         let info = &self
             .script_info
             .iter()
             .find(|info| info.0 == module_func_id)
             .unwrap()
             .1;
-        println!("{:?}", info);
-        println!("{:?}", info.file_name);
         match &error.kind {
             ErrorKind::Unknown => runtime_error("UnknownError"),
             ErrorKind::Unimplemented => runtime_error("Unimplemented feature"),
