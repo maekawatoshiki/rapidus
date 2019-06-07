@@ -1,13 +1,9 @@
 use crate::vm::{
     frame,
-    jsvalue::{
-        object::{DataProperty, ObjectInfo, ObjectKind, Property},
-        value::Value,
-    },
+    jsvalue::value::Value,
     vm::{Factory, VMResult, VM},
 };
 use rand::random;
-use rustc_hash::FxHashMap;
 
 pub fn math(factory: &mut Factory) -> Value {
     let math_random = factory.builtin_function("random", math_random);

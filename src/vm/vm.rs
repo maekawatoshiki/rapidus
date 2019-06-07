@@ -351,19 +351,7 @@ impl VM {
 }
 
 impl VM {
-    pub fn show_error_message(&self, error: RuntimeError) {
-        let pos_in_script = self
-            .to_source_map
-            .get(&error.func_id)
-            .unwrap()
-            .get_node_pos(error.inst_pc);
-        let module_func_id = error.module_func_id;
-        let info = &self
-            .script_info
-            .iter()
-            .find(|info| info.0 == module_func_id)
-            .unwrap()
-            .1;
+    pub fn show_error_message(&self, error: RuntimeError, show_location: bool) {
         match &error.kind {
             ErrorKind::Unknown => runtime_error("UnknownError"),
             ErrorKind::Unimplemented => runtime_error("Unimplemented feature"),
@@ -372,10 +360,24 @@ impl VM {
             ErrorKind::General(msg) => runtime_error(format!("Error: {}", msg)),
             ErrorKind::Exception(ref val) => {
                 runtime_error("Uncaught Exception");
-                if let Some(pos) = pos_in_script {
-                    let (msg, _, line) = get_code_around_err_point(info, pos);
-                    println!("line: {}", line);
-                    println!("{}", msg);
+                if show_location {
+                    let pos_in_script = self
+                        .to_source_map
+                        .get(&error.func_id)
+                        .unwrap()
+                        .get_node_pos(error.inst_pc);
+                    let module_func_id = error.module_func_id;
+                    let info = &self
+                        .script_info
+                        .iter()
+                        .find(|info| info.0 == module_func_id)
+                        .unwrap()
+                        .1;
+                    if let Some(pos) = pos_in_script {
+                        let (msg, _, line) = get_code_around_err_point(info, pos);
+                        println!("line: {}", line);
+                        println!("{}", msg);
+                    }
                 }
                 debug_print(val, false);
                 println!();

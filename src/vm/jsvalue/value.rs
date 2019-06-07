@@ -44,10 +44,10 @@ macro_rules! make_property_map_sub {
          $configurable:ident
     ),*) => { {
         #[allow(unused_mut)]
-        let mut record = FxHashMap::default();
+        let mut record = rustc_hash::FxHashMap::default();
         $( record.insert(
             (stringify!($property_name)).to_string(),
-            Property::Data(DataProperty {
+            crate::vm::jsvalue::object::Property::Data(crate::vm::jsvalue::object::DataProperty {
                 val: $val,
                 writable: $writable,
                 enumerable: $enumerable,
@@ -103,11 +103,11 @@ macro_rules! make_normal_object {
     } };
     ($factory:expr, $($property_name:ident => $x:ident, $y:ident, $z:ident : $val:expr),*) => { {
         Value::Object($factory.alloc(
-            ObjectInfo {
-                kind: ObjectKind::Ordinary,
+            crate::vm::jsvalue::object::ObjectInfo {
+                kind: crate::vm::jsvalue::object::ObjectKind::Ordinary,
                 prototype: $factory.object_prototypes.object,
                 property: make_property_map_sub!($($property_name, $val, $x, $y, $z),* ),
-                sym_property: FxHashMap::default()
+                sym_property: rustc_hash::FxHashMap::default()
             }
             ))
     } };

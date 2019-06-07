@@ -6,7 +6,6 @@ use crate::vm::codegen::FunctionInfo;
 use crate::vm::error::ErrorKind;
 use crate::vm::error::RuntimeError;
 use crate::vm::jsvalue::function::Exception;
-use crate::vm::jsvalue::object::{DataProperty, ObjectInfo, ObjectKind, Property};
 use crate::vm::jsvalue::value::Value;
 use crate::vm::vm::{Factory, VMResult};
 use rustc_hash::FxHashMap;
@@ -232,6 +231,7 @@ impl LexicalEnvironment {
         let function_constructor = builtins::function::function(factory);
         let array_constructor = builtins::array::array(factory);
         let symbol_constructor = builtins::symbol::symbol(factory);
+        let error_constructor = builtins::error::error(factory);
         let math_object = builtins::math::math(factory);
         LexicalEnvironment {
             record: EnvironmentRecord::Global(make_normal_object!(
@@ -247,6 +247,7 @@ impl LexicalEnvironment {
                 Function   => true, false, true: function_constructor,
                 Array      => true, false, true: array_constructor,
                 Symbol     => true, false, true: symbol_constructor,
+                Error      => true, false, true: error_constructor,
                 Math       => true, false, true: math_object
             )),
             outer: None,

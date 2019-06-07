@@ -76,7 +76,7 @@ fn main() {
     let script_info = parser.into_script_info();
     vm.script_info.push((0, script_info));
     if let Err(e) = vm.run_global(global_info, iseq) {
-        vm.show_error_message(e);
+        vm.show_error_message(e, true);
     }
 
     if is_debug {
@@ -137,7 +137,7 @@ fn repl(is_trace: bool) {
                     let script_info = parser.into_script_info();
                     vm.script_info = vec![(0, script_info)];
                     if let Err(e) = vm.run(global_frame.clone().unwrap()) {
-                        vm.show_error_message(e);
+                        vm.show_error_message(e, false);
                         break;
                     }
 
