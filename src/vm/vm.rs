@@ -471,9 +471,7 @@ impl VM {
 
             if !trycatch_found {
                 let val: Value = vm.stack.pop().unwrap().into();
-                let err_obj = make_normal_object!(vm.factory);
-                err_obj.set_property_by_string_key("value", val);
-                return Err(old_frame.error_exception(err_obj));
+                return Err(old_frame.error_exception(val));
             } else {
                 Ok(())
             }
