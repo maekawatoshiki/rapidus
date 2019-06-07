@@ -5,20 +5,43 @@ use crate::vm::{
 };
 
 pub fn array(factory: &mut Factory) -> Value {
-    let ary = factory.builtin_function("Array", array_constructor);
-    ary.set_property_by_string_key("prototype", factory.object_prototypes.array);
-    ary.get_property_by_str_key("prototype")
-        .set_constructor(ary);
-    ary
+    factory.generate_builtin_constructor(
+        "Array",
+        array_constructor,
+        factory.object_prototypes.array,
+    )
 }
 
 pub fn array_constructor(
     vm: &mut VM,
-    _args: &[Value],
+    args: &[Value],
     _this: Value,
     _cur_frame: &mut Frame,
 ) -> VMResult {
-    vm.stack.push(Value::undefined().into());
+    let arg_length = args.len();
+    let props = {
+        match arg_length {
+            0 => vec![],
+            1 => {
+                let len = args[0];
+                if len.is_number() {
+                    let len = len.to_uint32(&mut vm.factory.memory_allocator) as usize;
+                    vec![Property::new_data_simple(Value::empty()); len]
+                } else {
+                    vec![Property::new_data_simple(args[0])]
+                }
+            }
+            _ => {
+                let mut ary = vec![];
+                for i in 0..arg_length {
+                    ary.push(Property::new_data_simple(args[i]));
+                }
+                ary
+            }
+        }
+    };
+    let val = vm.factory.array(props);
+    vm.stack.push(val.into());
     Ok(())
 }
 

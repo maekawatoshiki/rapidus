@@ -6,11 +6,11 @@ use crate::vm::{
 use rustc_hash::FxHashMap;
 
 pub fn object(factory: &mut Factory) -> Value {
-    let obj = factory.builtin_function("Object", object_constructor);
-    obj.set_property_by_string_key("prototype", factory.object_prototypes.object);
-    obj.get_property_by_str_key("prototype")
-        .set_constructor(obj);
-    obj
+    factory.generate_builtin_constructor(
+        "Object",
+        object_constructor,
+        factory.object_prototypes.object,
+    )
 }
 
 pub fn object_constructor(

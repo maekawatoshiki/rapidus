@@ -5,7 +5,11 @@ use crate::vm::{
 };
 
 pub fn symbol(factory: &mut Factory) -> Value {
-    let obj = factory.builtin_function("Symbol", symbol_constructor);
+    let obj = factory.generate_builtin_constructor(
+        "Symbol",
+        symbol_constructor,
+        factory.object_prototypes.symbol,
+    );
 
     // Symbol.for
     obj.set_property_by_string_key("for", { factory.builtin_function("for", symbol_for) });
@@ -13,10 +17,6 @@ pub fn symbol(factory: &mut Factory) -> Value {
     obj.set_property_by_string_key("keyFor", {
         factory.builtin_function("keyFor", symbol_key_for)
     });
-
-    obj.set_property_by_string_key("prototype", factory.object_prototypes.symbol);
-    obj.get_property_by_str_key("prototype")
-        .set_constructor(obj);
     obj
 }
 

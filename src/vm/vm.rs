@@ -1,3 +1,4 @@
+use crate::builtin::BuiltinFuncTy;
 use crate::builtins::console::debug_print;
 use crate::bytecode_gen::{show_inst, ByteCode, VMInst};
 use crate::gc;
@@ -144,6 +145,19 @@ impl Factory {
             property: make_property_map!(),
             sym_property: FxHashMap::default(),
         }))
+    }
+
+    pub fn generate_builtin_constructor(
+        &mut self,
+        constructor_name: impl Into<String>,
+        constructor_func: BuiltinFuncTy,
+        prototype: Value,
+    ) -> Value {
+        let ary = self.builtin_function(constructor_name, constructor_func);
+        ary.set_property_by_string_key("prototype", prototype);
+        ary.get_property_by_str_key("prototype")
+            .set_constructor(ary);
+        ary
     }
 }
 

@@ -1,9 +1,9 @@
 #![macro_use]
-use super::super::super::builtins;
-use super::super::super::builtins::{array, function};
-use super::super::super::id::get_unique_id;
 use super::{function::ThisMode, value::*};
+use crate::builtins;
+use crate::builtins::{array, function};
 use crate::gc::MemoryAllocator;
+use crate::id::get_unique_id;
 use rustc_hash::FxHashMap;
 
 #[derive(Debug, Clone)]
@@ -13,6 +13,7 @@ pub struct ObjectPrototypes {
     pub string: Value,
     pub array: Value,
     pub symbol: Value,
+    pub error: Value,
 }
 
 impl ObjectPrototypes {
@@ -121,12 +122,23 @@ impl ObjectPrototypes {
             }))
         };
 
+        let error_prototype = {
+            Value::Object(allocator.alloc(ObjectInfo {
+                kind: ObjectKind::Ordinary,
+                prototype: object_prototype,
+                // TODO: https://tc39.github.io/ecma262/#sec-properties-of-the-error-prototype-object
+                property: make_property_map!(),
+                sym_property: FxHashMap::default(),
+            }))
+        };
+
         ObjectPrototypes {
             object: object_prototype,
             function: function_prototype,
             string: string_prototype,
             array: array_prototype,
             symbol: symbol_prototype,
+            error: error_prototype,
         }
     }
 }

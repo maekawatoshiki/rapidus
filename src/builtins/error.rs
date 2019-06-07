@@ -1,3 +1,27 @@
+use crate::vm::{
+    frame::Frame,
+    jsvalue::value::Value,
+    vm::{Factory, VMResult, VM},
+};
+
+pub fn error(factory: &mut Factory) -> Value {
+    factory.generate_builtin_constructor(
+        "Error",
+        error_constructor,
+        factory.object_prototypes.error,
+    )
+}
+
+pub fn error_constructor(
+    vm: &mut VM,
+    _args: &[Value],
+    _this: Value,
+    _cur_frame: &mut Frame,
+) -> VMResult {
+    vm.stack.push(Value::undefined().into());
+    Ok(())
+}
+
 // use vm::value::{CallObjectRef, Property, Value};
 // use vm::{error::RuntimeError, vm::VM};
 //

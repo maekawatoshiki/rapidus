@@ -5,11 +5,11 @@ use crate::vm::{
 };
 
 pub fn function(factory: &mut Factory) -> Value {
-    let func = factory.builtin_function("Function", function_constructor);
-    func.set_property_by_string_key("prototype", factory.object_prototypes.function);
-    func.get_property_by_str_key("prototype")
-        .set_constructor(func);
-    func
+    factory.generate_builtin_constructor(
+        "Function",
+        function_constructor,
+        factory.object_prototypes.function,
+    )
 }
 
 pub fn function_constructor(
