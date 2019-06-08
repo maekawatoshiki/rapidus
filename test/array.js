@@ -16,7 +16,8 @@ assert(new Array(), [])
 assert(new Array(1, 'd', { a: 9 }), [1, 'd', { a: 9 }])
 assert(new Array(3).length, 3)
 
-let c = [1, 2, 3]
+let c = [1, 2]
+c[2] = 3
 assert(c.join(), '1,2,3')
 assert(c.join(undefined), '1,2,3')
 assert(c.join('_'), '1_2_3')
