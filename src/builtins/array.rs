@@ -45,6 +45,29 @@ pub fn array_constructor(
     Ok(())
 }
 
+pub fn array_prototype_join(
+    vm: &mut VM,
+    args: &[Value],
+    this: Value,
+    cur_frame: &mut Frame,
+) -> VMResult {
+    if !this.is_array_object() {
+        return Err(cur_frame.error_unknown());
+    }
+
+    let ary_info = this.as_array_mut();
+    let seperator = match args.len() {
+        0 => None,
+        1 if args[0].is_undefined() => None,
+        _ => Some(args[0].to_string()),
+    };
+    let result = ary_info.join(seperator);
+
+    vm.stack.push(vm.factory.string(result).into());
+
+    Ok(())
+}
+
 pub fn array_prototype_push(
     vm: &mut VM,
     args: &[Value],

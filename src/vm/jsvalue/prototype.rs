@@ -100,11 +100,19 @@ impl ObjectPrototypes {
                 array::array_prototype_map,
             );
 
+            let join = Value::builtin_function_with_proto(
+                allocator,
+                function_prototype,
+                "join",
+                array::array_prototype_join,
+            );
+
             Value::Object(allocator.alloc(ObjectInfo {
                 kind: ObjectKind::Array(ArrayObjectInfo { elems: vec![] }),
                 prototype: object_prototype,
                 property: make_property_map!(
                     length => false, false, true : Value::Number(0.0),
+                    join   => true,  false, true : join,
                     push   => true,  false, true : push,
                     map    => true,  false, true : map
                 ),

@@ -327,6 +327,11 @@ mod tests {
     }
 
     #[test]
+    fn fact() {
+        assert_file("fact")
+    }
+
+    #[test]
     fn runtime_error1() {
         runtime_error("let a = {}; a.b.c");
     }

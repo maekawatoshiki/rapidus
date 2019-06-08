@@ -52,6 +52,7 @@ pub struct ScriptInfo {
     pub file_name: String,
     /// Script text.
     pub code: String,
+    /// A vector of (column_number, line_number).
     pub pos_line_list: Vec<(usize, usize)>,
 }
 
@@ -64,6 +65,8 @@ impl Parser {
     }
 
     /// Load file and generate Parser from the file.
+    /// ## Arguments
+    /// * `file_name` - A module file name.
     pub fn load_module(file_name: impl Into<String>) -> Result<Parser, Error> {
         let file_name = file_name.into();
         let path = Path::new(&file_name);
@@ -103,7 +106,10 @@ impl Parser {
         }
     }
 
-    /// Display error position in the source code.
+    /// Display error position in the source script.
+    /// ## Arguments
+    /// * `pos` - A char position in the source script.
+    /// * `msg` - An error message text.
     pub fn show_error_at(&self, pos: usize, msg: impl Into<String>) {
         let (source_at_err_point, _pos, line) = self.lexer.get_code_around_err_point(pos);
         eprintln!(
@@ -116,6 +122,8 @@ impl Parser {
     }
 
     /// Display syntax error message.
+    /// ## Arguments
+    /// * `err` - parser::Error.
     pub fn handle_error(&self, err: &Error) {
         match err {
             Error::NormalEOF => unreachable!(),
