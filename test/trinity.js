@@ -1,11 +1,9 @@
+let assert = require('./assert.js').deepStrictEqual
 // Simple assert ever
-let assert = (cond) => {
-  if (!cond) throw "err"
-};
 
-assert([] == 0)
-assert('0' == 0)
-assert('\t' == 0)
-assert([] != '0')
-assert('0' != '\t')
-assert('\t' != [])
+assert([] == 0, true)
+assert('0' == 0, true)
+assert('\t' == 0, true)
+assert([] != '0', true)
+assert('0' != '\t', true)
+assert('\t' != [], true)

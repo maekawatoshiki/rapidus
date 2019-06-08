@@ -9,9 +9,10 @@ use std::io::Read;
 /// ### Panic
 /// Panic if the returned value was different from the answer.
 
-pub fn test_file(file_name: &str, answer: String) {
+pub fn test_file(file_name: impl Into<String>, answer: impl Into<String>) {
+    let file_name = file_name.into();
     println!("{}", format!("test/{}.js", file_name));
-    compare_scripts(load_file(file_name), answer);
+    compare_scripts(load_file(file_name), answer.into());
 }
 
 /// Load the file ("test/{file_name}.js"), and execute the script.
@@ -22,11 +23,11 @@ pub fn assert_file(file_name: &str) {
     execute_script(load_file(file_name));
 }
 
-fn load_file(file_name: &str) -> String {
+fn load_file(file_name: impl Into<String>) -> String {
     let mut file_body = String::new();
     match OpenOptions::new()
         .read(true)
-        .open(format!("test/{}.js", file_name))
+        .open(format!("test/{}.js", file_name.into()))
     {
         Ok(mut file) => match file.read_to_string(&mut file_body).ok() {
             Some(x) => x,
@@ -40,8 +41,8 @@ fn load_file(file_name: &str) -> String {
 /// Execute the given code, and compare returned value and the given answer.
 /// ### Panic
 /// Panic if the returned value was different from the answer.
-pub fn test_code(code: String, answer: String) {
-    compare_scripts(code, answer);
+pub fn test_code(code: impl Into<String>, answer: impl Into<String>) {
+    compare_scripts(code.into(), answer.into());
 }
 
 /// Execute the given code, and normally terminates only when an runtime error is returned.

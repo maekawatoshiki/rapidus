@@ -173,20 +173,12 @@ mod tests {
 
     #[test]
     fn vm_test() {
-        // IMPORTANT: these tests should be run in a single thread.
         execute_script("for(var i = 0; i < 4; i++){ i }".to_string());
         // TODO: Following tests should run. Fix them ASAP.
-        // assert_file("trinity".to_string());
-        // assert_file("closure".to_string());
-        // assert_file("fact".to_string());
 
         // assert_file("letconst".to_string());
         // assert_file("nested_block".to_string());
         // assert_file("nested_block2".to_string());
-        // test_file(
-        //     "array".to_string(),
-        //     "'2,3,6,7,3,4,2,3,three1,5,4,1,2,three'".to_string(),
-        // );
         // test_code("'true'*3".to_string(), "'truetruetrue'".to_string());
         // test_code("(100).toString(15)".to_string(), "'6a'".to_string());
         // test_file(
@@ -194,7 +186,6 @@ mod tests {
         //     "[ 0, 0, 0, 1, 0, 2, 1, 0, 2, 0, 3, 0, 3, 1, 4, 1, 4, 2, 0 ]".to_string(),
         // );
 
-        // test_file("trycatch".to_string(), "[ 0, 2, 123, 10110 ]".to_string());
         //test_file(
         //    "qsort".to_string(),
         //    "[ 0, 0, 1, 3, 5, 7, 7, 10, 11, 12, 14, 14, 16, 17, 19 ]".to_string(),
@@ -208,22 +199,16 @@ mod tests {
 
     #[test]
     fn string_test1() {
-        test_code(
-            "'死して屍拾う者なし'[4]".to_string(),
-            "'拾'".to_string(),
-        );
+        test_code("'死して屍拾う者なし'[4]", "'拾'");
     }
 
     #[test]
     fn string_test2() {
-        test_code(
-            "'死して屍拾う者なし'.length".to_string(),
-            "9".to_string(),
-        );
+        test_code("'死して屍拾う者なし'.length", "9");
     }
     #[test]
     fn operator_test() {
-        test_code("+(5>3)+60%7+(3>=5)+!!5+(-6)".to_string(), "0".to_string());
+        test_code("+(5>3)+60%7+(3>=5)+!!5+(-6)", "0");
     }
 
     #[test]
@@ -233,20 +218,17 @@ mod tests {
 
     #[test]
     fn this_test() {
-        test_file("this", "[1,101,124]".to_string());
+        test_file("this", "[1,101,124]");
     }
 
     #[test]
     fn prototype_test() {
-        test_file(
-            "prototypes",
-            "[true,true,true,true,true,true,true,true,true,true]".to_string(),
-        );
+        assert_file("prototypes");
     }
 
     #[test]
     fn accessor_property() {
-        test_file("accessor_property", "[0,123]".to_string())
+        assert_file("accessor_property");
     }
 
     #[test]
@@ -255,8 +237,13 @@ mod tests {
     }
 
     #[test]
+    fn closure() {
+        assert_file("closure");
+    }
+
+    #[test]
     fn trycatch() {
-        test_file("trycatch", "[0,2,123,10110]".to_string());
+        assert_file("trycatch");
     }
 
     #[test]
@@ -286,14 +273,8 @@ mod tests {
 
     #[test]
     fn arrow_function() {
-        test_code(
-            "let f = (x) => { return x * x }; f(5)".to_string(),
-            "25".to_string(),
-        );
-        test_code(
-            "let f = x => { return x * x }; f(6)".to_string(),
-            "36".to_string(),
-        );
+        test_code("let f = (x) => { return x * x }; f(5)", "25");
+        test_code("let f = x => { return x * x }; f(6)", "36");
     }
 
     #[test]
