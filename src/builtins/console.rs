@@ -97,6 +97,10 @@ pub fn debug_print(val: &Value, nest: bool) {
                     "Symbol({})",
                     info.description.as_ref().unwrap_or(&"".to_string())
                 ),
+                ObjectKind::Error(ref _info) => print!(
+                    "Error({})",
+                    obj_info.get_property_by_str_key("message").to_string()
+                ),
                 ObjectKind::Function(ref func_info) => {
                     if let Some(ref name) = func_info.name {
                         print!("[Function: {}]", name);

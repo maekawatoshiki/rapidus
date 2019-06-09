@@ -120,7 +120,9 @@ impl ObjectPrototypes {
 
         let error_prototype = {
             Value::Object(allocator.alloc(ObjectInfo {
-                kind: ObjectKind::Ordinary,
+                kind: ObjectKind::Error(ErrorObjectInfo {
+                    stack_trace: "".to_string(),
+                }),
                 prototype: object_prototype,
                 // TODO: https://tc39.github.io/ecma262/#sec-properties-of-the-error-prototype-object
                 property: make_property_map!(),

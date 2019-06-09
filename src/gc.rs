@@ -424,6 +424,7 @@ impl GcTarget for object::ObjectKind {
                 }
             }
             object::ObjectKind::Symbol(_) => {}
+            object::ObjectKind::Error(_) => {}
             object::ObjectKind::Ordinary => {}
         }
     }
@@ -456,6 +457,7 @@ impl GcTarget for object::ObjectKind {
                 }
             }
             object::ObjectKind::Symbol(_) => {}
+            object::ObjectKind::Error(_) => {}
             object::ObjectKind::Ordinary => {}
         }
     }

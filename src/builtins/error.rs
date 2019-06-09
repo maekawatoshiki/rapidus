@@ -19,15 +19,11 @@ pub fn error_constructor(
     _cur_frame: &mut Frame,
 ) -> VMResult {
     let message = if args.len() == 0 {
-        vm.factory.string("")
+        "".to_string()
     } else {
-        let str = args[0].to_string();
-        vm.factory.string(str)
+        args[0].to_string()
     };
-    let obj = make_normal_object!(
-        vm.factory,
-        message      => true, false, true:     message
-    );
+    let obj = vm.factory.error(message);
     vm.stack.push(obj.into());
     Ok(())
 }

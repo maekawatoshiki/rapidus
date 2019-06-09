@@ -76,7 +76,7 @@ fn main() {
     let script_info = parser.into_script_info();
     vm.script_info.push((0, script_info));
     if let Err(e) = vm.run_global(global_info, iseq) {
-        vm.show_error_message(e, true);
+        vm.show_error_message(e);
     }
 
     if is_debug {
@@ -137,7 +137,12 @@ fn repl(is_trace: bool) {
                     let script_info = parser.into_script_info();
                     vm.script_info = vec![(0, script_info)];
                     if let Err(e) = vm.run(global_frame.clone().unwrap()) {
-                        vm.show_error_message(e, false);
+                        let val = e.to_value(&mut vm.factory);
+                        if val.is_error_object() {
+                            println!("{}", val.get_property_by_str_key("message").to_string());
+                        } else {
+                            println!("Thrown: {}", val.to_string())
+                        };
                         break;
                     }
 

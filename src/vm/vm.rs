@@ -147,6 +147,18 @@ impl Factory {
         }))
     }
 
+    pub fn error(&mut self, message: impl Into<String>) -> Value {
+        let message = self.string(message.into());
+        Value::Object(self.alloc(ObjectInfo {
+            kind: ObjectKind::Error(ErrorObjectInfo::new()),
+            prototype: self.object_prototypes.error,
+            property: make_property_map!(
+                message => true, false, true: message
+            ),
+            sym_property: FxHashMap::default(),
+        }))
+    }
+
     pub fn generate_builtin_constructor(
         &mut self,
         constructor_name: impl Into<String>,
@@ -351,7 +363,7 @@ impl VM {
 }
 
 impl VM {
-    pub fn show_error_message(&self, error: RuntimeError, show_location: bool) {
+    pub fn show_error_message(&self, error: RuntimeError) {
         match &error.kind {
             ErrorKind::Unknown => runtime_error("UnknownError"),
             ErrorKind::Unimplemented => runtime_error("Unimplemented feature"),
@@ -360,24 +372,22 @@ impl VM {
             ErrorKind::General(msg) => runtime_error(format!("Error: {}", msg)),
             ErrorKind::Exception(ref val) => {
                 runtime_error("Uncaught Exception");
-                if show_location {
-                    let pos_in_script = self
-                        .to_source_map
-                        .get(&error.func_id)
-                        .unwrap()
-                        .get_node_pos(error.inst_pc);
-                    let module_func_id = error.module_func_id;
-                    let info = &self
-                        .script_info
-                        .iter()
-                        .find(|info| info.0 == module_func_id)
-                        .unwrap()
-                        .1;
-                    if let Some(pos) = pos_in_script {
-                        let (msg, _, line) = get_code_around_err_point(info, pos);
-                        println!("line: {}", line);
-                        println!("{}", msg);
-                    }
+                let pos_in_script = self
+                    .to_source_map
+                    .get(&error.func_id)
+                    .unwrap()
+                    .get_node_pos(error.inst_pc);
+                let module_func_id = error.module_func_id;
+                let info = &self
+                    .script_info
+                    .iter()
+                    .find(|info| info.0 == module_func_id)
+                    .unwrap()
+                    .1;
+                if let Some(pos) = pos_in_script {
+                    let (msg, _, line) = get_code_around_err_point(info, pos);
+                    println!("line: {}", line);
+                    println!("{}", msg);
                 }
                 debug_print(val, false);
                 println!();
