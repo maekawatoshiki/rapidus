@@ -4,6 +4,9 @@ use crate::node::{
     PropertyDefinition, UnaryOp, VarKind,
 };
 use crate::token::{get_string_for_symbol, Keyword, Kind, Symbol, Token};
+use std::fs::OpenOptions;
+use std::io::Read;
+use std::path::Path;
 
 use ansi_term::Colour;
 
@@ -39,39 +42,98 @@ pub enum Error {
 
 #[derive(Clone, Debug)]
 pub struct Parser {
+    pub file_name: String,
     pub lexer: lexer::Lexer,
 }
 
+#[derive(Clone, Debug)]
+pub struct ScriptInfo {
+    /// File name with Absolute path.
+    pub file_name: String,
+    /// Script text.
+    pub code: String,
+    /// A vector of (column_number, line_number).
+    pub pos_line_list: Vec<(usize, usize)>,
+}
+
 impl Parser {
-    pub fn new(code: String) -> Parser {
+    pub fn new(file_name: impl Into<String>, code: impl Into<String>) -> Parser {
         Parser {
-            lexer: lexer::Lexer::new(code),
+            file_name: file_name.into(),
+            lexer: lexer::Lexer::new(code.into()),
         }
     }
 
-    /// display error position in the source code.
-    pub fn show_error_at(&self, pos: usize, msg: &str) {
+    /// Load file and generate Parser from the file.
+    /// ## Arguments
+    /// * `file_name` - A module file name.
+    pub fn load_module(file_name: impl Into<String>) -> Result<Parser, Error> {
+        let file_name = file_name.into();
+        let path = Path::new(&file_name);
+        let absolute_path = match path.canonicalize() {
+            Ok(path) => path,
+            Err(ioerr) => {
+                let msg = format!("{}", ioerr);
+                println!("Error: Cannot find module file. '{}'", &file_name);
+                println!("{}", msg);
+                return Err(Error::General(0, msg));
+            }
+        };
+
+        let mut file_body = String::new();
+
+        match OpenOptions::new().read(true).open(&absolute_path) {
+            Ok(mut ok) => ok
+                .read_to_string(&mut file_body)
+                .ok()
+                .expect("cannot read file"),
+            Err(ioerr) => {
+                let msg = format!("{}", ioerr);
+                println!("Error: Cannot find module file. '{}'", &file_name);
+                println!("{}", msg);
+                return Err(Error::General(0, msg));
+            }
+        };
+
+        Ok(Parser::new(absolute_path.to_string_lossy(), file_body))
+    }
+
+    pub fn into_script_info(self) -> ScriptInfo {
+        ScriptInfo {
+            file_name: self.file_name,
+            code: self.lexer.code,
+            pos_line_list: self.lexer.pos_line_list,
+        }
+    }
+
+    /// Display error position in the source script.
+    /// ## Arguments
+    /// * `pos` - A char position in the source script.
+    /// * `msg` - An error message text.
+    pub fn show_error_at(&self, pos: usize, msg: impl Into<String>) {
         let (source_at_err_point, _pos, line) = self.lexer.get_code_around_err_point(pos);
         eprintln!(
             "{}: line {}: {}\n{}",
             Colour::Red.bold().paint("SyntaxError"),
             line,
-            msg,
+            msg.into(): String,
             source_at_err_point,
         );
     }
 
-    /// display syntax error message.
+    /// Display syntax error message.
+    /// ## Arguments
+    /// * `err` - parser::Error.
     pub fn handle_error(&self, err: &Error) {
         match err {
             Error::NormalEOF => unreachable!(),
             Error::Expect(pos, msg)
             | Error::General(pos, msg)
             | Error::UnexpectedToken(pos, msg) => {
-                self.show_error_at(*pos, msg.as_str());
+                self.show_error_at(*pos, msg.clone());
             }
             Error::UnexpectedEOF(msg) => {
-                self.show_error_at(self.lexer.pos, format!("unexpected EOF. {}", msg).as_str())
+                self.show_error_at(self.lexer.pos, format!("unexpected EOF. {}", msg))
             }
             Error::InvalidToken(pos) => self.show_error_at(*pos, "Invalid token."),
             Error::UnsupportedFeature(pos) => {
@@ -1477,7 +1539,7 @@ impl Parser {
 
 #[test]
 fn number() {
-    let mut parser = Parser::new("12345".to_string());
+    let mut parser = Parser::new("test", "12345".to_string());
     assert_eq!(
         parser.parse_all().unwrap(),
         Node::new(
@@ -1489,7 +1551,7 @@ fn number() {
 
 #[test]
 fn string() {
-    let mut parser = Parser::new("\"aaa\"".to_string());
+    let mut parser = Parser::new("test", "\"aaa\"".to_string());
     assert_eq!(
         parser.parse_all().unwrap(),
         Node::new(
@@ -1501,7 +1563,7 @@ fn string() {
 
 #[test]
 fn boolean() {
-    let mut parser = Parser::new("true; false".to_string());
+    let mut parser = Parser::new("test", "true; false".to_string());
     assert_eq!(
         parser.parse_all().unwrap(),
         Node::new(
@@ -1516,7 +1578,7 @@ fn boolean() {
 
 #[test]
 fn identifier() {
-    let mut parser = Parser::new("variable".to_string());
+    let mut parser = Parser::new("test", "variable".to_string());
     assert_eq!(
         parser.parse_all().unwrap(),
         Node::new(
@@ -1531,7 +1593,7 @@ fn identifier() {
 
 #[test]
 fn array1() {
-    let mut parser = Parser::new("[1, 2]".to_string());
+    let mut parser = Parser::new("test", "[1, 2]".to_string());
     assert_eq!(
         parser.parse_all().unwrap(),
         Node::new(
@@ -1546,14 +1608,14 @@ fn array1() {
         )
     );
     for input in ["[1,2,"].iter() {
-        let mut parser = Parser::new(input.to_string());
+        let mut parser = Parser::new("test", input.to_string());
         parser.parse_all().expect_err("should be error");
     }
 }
 
 #[test]
 fn array2() {
-    let mut parser = Parser::new("[]".to_string());
+    let mut parser = Parser::new("test", "[]".to_string());
     assert_eq!(
         parser.parse_all().unwrap(),
         Node::new(
@@ -1565,7 +1627,7 @@ fn array2() {
 
 #[test]
 fn array3() {
-    let mut parser = Parser::new("[,,]".to_string());
+    let mut parser = Parser::new("test", "[,,]".to_string());
     assert_eq!(
         parser.parse_all().unwrap(),
         Node::new(
@@ -1583,7 +1645,7 @@ fn array3() {
 
 #[test]
 fn object() {
-    let mut parser = Parser::new("a = {x: 123, 1.2: 456}".to_string());
+    let mut parser = Parser::new("test", "a = {x: 123, 1.2: 456}".to_string());
     assert_eq!(
         parser.parse_all().unwrap(),
         Node::new(
@@ -1610,11 +1672,11 @@ fn object() {
         )
     );
     for input in ["a = {}", "a = {b}"].iter() {
-        let mut parser = Parser::new(input.to_string());
+        let mut parser = Parser::new("test", input.to_string());
         parser.parse_all().unwrap();
     }
     for input in ["a = {b:6 c}", "a = {b:6, 777}"].iter() {
-        let mut parser = Parser::new(input.to_string());
+        let mut parser = Parser::new("test", input.to_string());
         parser.parse_all().expect_err(input);
     }
 }
@@ -1623,7 +1685,7 @@ fn object() {
 fn simple_expr_5arith() {
     use crate::node::BinOp;
 
-    let mut parser = Parser::new("31 + 26 / 3 - 1 * 20 % 3".to_string());
+    let mut parser = Parser::new("test", "31 + 26 / 3 - 1 * 20 % 3".to_string());
     assert_eq!(
         parser.parse_all().unwrap(),
         Node::new(
@@ -1678,7 +1740,7 @@ fn simple_expr_eq() {
     ]
     .iter()
     {
-        let mut parser = Parser::new(input.to_string());
+        let mut parser = Parser::new("test", input.to_string());
         assert_eq!(
             Node::new(
                 NodeBase::StatementList(vec![Node::new(
@@ -1714,7 +1776,7 @@ fn simple_expr_rel() {
     ]
     .iter()
     {
-        let mut parser = Parser::new(input.to_string());
+        let mut parser = Parser::new("test", input.to_string());
         assert_eq!(
             Node::new(
                 NodeBase::StatementList(vec![Node::new(
@@ -1743,7 +1805,7 @@ fn simple_expr_rel() {
 fn simple_expr_cond() {
     use crate::node::BinOp;
 
-    let mut parser = Parser::new("n == 1 ? 2 : max".to_string());
+    let mut parser = Parser::new("test", "n == 1 ? 2 : max".to_string());
     assert_eq!(
         parser.parse_all().unwrap(),
         Node::new(
@@ -1772,7 +1834,7 @@ fn simple_expr_logical_or() {
     use crate::node::BinOp;
 
     for (input, op) in [("1 || 0", BinOp::LOr), ("1 && 0", BinOp::LAnd)].iter() {
-        let mut parser = Parser::new(input.to_string());
+        let mut parser = Parser::new("test", input.to_string());
         assert_eq!(
             parser.parse_all().unwrap(),
             Node::new(
@@ -1801,7 +1863,7 @@ fn simple_expr_bitwise_and() {
     ]
     .iter()
     {
-        let mut parser = Parser::new(input.to_string());
+        let mut parser = Parser::new("test", input.to_string());
         assert_eq!(
             Node::new(
                 NodeBase::StatementList(vec![Node::new(
@@ -1830,7 +1892,7 @@ fn simple_expr_shift() {
     ]
     .iter()
     {
-        let mut parser = Parser::new(input.to_string());
+        let mut parser = Parser::new("test", input.to_string());
         assert_eq!(
             Node::new(
                 NodeBase::StatementList(vec![Node::new(
@@ -1854,7 +1916,7 @@ fn simple_expr_shift() {
 #[test]
 fn simple_expr_exp() {
     for input in ["20**50**70"].iter() {
-        let mut parser = Parser::new(input.to_string());
+        let mut parser = Parser::new("test", input.to_string());
         assert_eq!(
             parser.parse_all().unwrap(),
             Node::new(
@@ -1882,11 +1944,11 @@ fn simple_expr_exp() {
 #[test]
 fn expression_statement() {
     for input in ["1 2 3"].iter() {
-        let mut parser = Parser::new(input.to_string());
+        let mut parser = Parser::new("test", input.to_string());
         parser.parse_all().expect_err("should be error");
     }
     for input in ["for(;false;){} 4"].iter() {
-        let mut parser = Parser::new(input.to_string());
+        let mut parser = Parser::new("test", input.to_string());
         parser.parse_all().unwrap();
     }
 }
@@ -1908,7 +1970,7 @@ fn simple_expr_unary() {
     ]
     .iter()
     {
-        let mut parser = Parser::new(input.to_string());
+        let mut parser = Parser::new("test", input.to_string());
         assert_eq!(
             parser.parse_all().unwrap(),
             Node::new(
@@ -1928,7 +1990,7 @@ fn simple_expr_unary() {
 #[test]
 #[rustfmt::skip]
 fn simple_expr_assign() {
-    let mut parser = Parser::new("v = 1".to_string());
+    let mut parser = Parser::new("test","v = 1".to_string());
     macro_rules! f { ($expr:expr) => {
         assert_eq!(
             Node::new(NodeBase::StatementList(vec![Node::new(NodeBase::Assign(
@@ -1938,26 +2000,26 @@ fn simple_expr_assign() {
         );
     } }
     f!(Node::new(NodeBase::Number(1.0), 4));
-    parser = Parser::new("v += 1".to_string());
+    parser = Parser::new("test","v += 1".to_string());
     f!(Node::new(NodeBase::BinaryOp(Box::new(Node::new(NodeBase::Identifier("v".to_string()), 0)), 
                                     Box::new(Node::new(NodeBase::Number(1.0), 5)), BinOp::Add), 0));
-    parser = Parser::new("v -= 1".to_string());
+    parser = Parser::new("test","v -= 1".to_string());
     f!(Node::new(NodeBase::BinaryOp(Box::new(Node::new(NodeBase::Identifier("v".to_string()), 0)), 
                                     Box::new(Node::new(NodeBase::Number(1.0), 5)), BinOp::Sub), 0));
-    parser = Parser::new("v *= 1".to_string());
+    parser = Parser::new("test","v *= 1".to_string());
     f!(Node::new(NodeBase::BinaryOp(Box::new(Node::new(NodeBase::Identifier("v".to_string()), 0)), 
                                     Box::new(Node::new(NodeBase::Number(1.0), 5)), BinOp::Mul), 0));
-    parser = Parser::new("v /= 1".to_string());
+    parser = Parser::new("test","v /= 1".to_string());
     f!(Node::new(NodeBase::BinaryOp(Box::new(Node::new(NodeBase::Identifier("v".to_string()), 0)), 
                                     Box::new(Node::new(NodeBase::Number(1.0), 5)), BinOp::Div), 0));
-    parser = Parser::new("v %= 1".to_string());
+    parser = Parser::new("test","v %= 1".to_string());
     f!(Node::new(NodeBase::BinaryOp(Box::new(Node::new(NodeBase::Identifier("v".to_string()), 0)), 
                                     Box::new(Node::new(NodeBase::Number(1.0), 5)), BinOp::Rem), 0));
 }
 
 #[test]
 fn simple_expr_new() {
-    let mut parser = Parser::new("new f(1)".to_string());
+    let mut parser = Parser::new("test", "new f(1)".to_string());
     assert_eq!(
         parser.parse_all().unwrap(),
         Node::new(
@@ -1978,7 +2040,7 @@ fn simple_expr_new() {
 
 #[test]
 fn simple_expr_parentheses() {
-    let mut parser = Parser::new("2 * (1 + 3)".to_string());
+    let mut parser = Parser::new("test", "2 * (1 + 3)".to_string());
     assert_eq!(
         parser.parse_all().unwrap(),
         Node::new(
@@ -2011,7 +2073,7 @@ fn call() {
     ]
     .iter()
     {
-        let mut parser = Parser::new(input.to_string());
+        let mut parser = Parser::new("test", input.to_string());
         assert_eq!(
             parser.parse_all().unwrap(),
             Node::new(
@@ -2029,11 +2091,11 @@ fn call() {
         );
     }
     for input in ["f(,)", "f(", "f(1", "f(1,", "f.7", "f[5", "f(1 a)"].iter() {
-        let mut parser = Parser::new(input.to_string());
+        let mut parser = Parser::new("test", input.to_string());
         parser.parse_all().expect_err("should be error");
     }
     for input in ["f[3]()"].iter() {
-        let mut parser = Parser::new(input.to_string());
+        let mut parser = Parser::new("test", input.to_string());
         parser.parse_all().unwrap();
     }
 }
@@ -2070,7 +2132,7 @@ fn member() {
     ]
     .iter()
     {
-        let mut parser = Parser::new(input.to_string());
+        let mut parser = Parser::new("test", input.to_string());
         assert_eq!(
             parser.parse_all().unwrap(),
             Node::new(NodeBase::StatementList(vec![node.clone()]), 0)
@@ -2080,7 +2142,7 @@ fn member() {
 
 #[test]
 fn var_decl() {
-    let mut parser = Parser::new("var a, b = 21".to_string());
+    let mut parser = Parser::new("test", "var a, b = 21".to_string());
     assert_eq!(
         parser.parse_all().unwrap(),
         Node::new(
@@ -2102,14 +2164,14 @@ fn var_decl() {
         )
     );
     for input in ["var 7"].iter() {
-        let mut parser = Parser::new(input.to_string());
+        let mut parser = Parser::new("test", input.to_string());
         parser.parse_all().expect_err("should be error");
     }
 }
 
 #[test]
 fn block() {
-    let mut parser = Parser::new("{ a=1 }".to_string());
+    let mut parser = Parser::new("test", "{ a=1 }".to_string());
     assert_eq!(
         parser.parse_all().unwrap(),
         Node::new(
@@ -2127,14 +2189,14 @@ fn block() {
         )
     );
     for input in ["{", "{ a", "{ a=", "{ a=1", "}", "{ 7z }", "{a=0 8k}"].iter() {
-        let mut parser = Parser::new(input.to_string());
+        let mut parser = Parser::new("test", input.to_string());
         parser.parse_all().expect_err("should be error");
     }
 }
 
 #[test]
 fn break_() {
-    let mut parser = Parser::new("while(1){break}".to_string());
+    let mut parser = Parser::new("test", "while(1){break}".to_string());
     assert_eq!(
         parser.parse_all().unwrap(),
         Node::new(
@@ -2152,14 +2214,14 @@ fn break_() {
         )
     );
     for input in ["while(1){break 7}"].iter() {
-        let mut parser = Parser::new(input.to_string());
+        let mut parser = Parser::new("test", input.to_string());
         parser.parse_all().expect_err("should be error");
     }
 }
 
 #[test]
 fn continue_() {
-    let mut parser = Parser::new("while(1){continue}".to_string());
+    let mut parser = Parser::new("test", "while(1){continue}".to_string());
     assert_eq!(
         parser.parse_all().unwrap(),
         Node::new(
@@ -2177,7 +2239,7 @@ fn continue_() {
         )
     );
     for input in ["while(1){continue 825}"].iter() {
-        let mut parser = Parser::new(input.to_string());
+        let mut parser = Parser::new("test", input.to_string());
         parser.parse_all().expect_err("should be error");
     }
 }
@@ -2196,7 +2258,7 @@ fn return_() {
     ]
     .iter()
     {
-        let mut parser = Parser::new(input.to_string());
+        let mut parser = Parser::new("test", input.to_string());
         assert_eq!(
             parser.parse_all().unwrap(),
             Node::new(NodeBase::StatementList(vec![node.clone()]), 0)
@@ -2209,6 +2271,7 @@ fn if_() {
     use crate::node::BinOp;
 
     let mut parser = Parser::new(
+        "test",
         "if (x <= 2) 
             then_stmt 
         else 
@@ -2237,7 +2300,7 @@ fn if_() {
         )
     );
 
-    parser = Parser::new("if (x <= 2) then_stmt ".to_string());
+    parser = Parser::new("test", "if (x <= 2) then_stmt ".to_string());
     assert_eq!(
         parser.parse_all().unwrap(),
         Node::new(
@@ -2261,14 +2324,14 @@ fn if_() {
     );
 
     for input in ["if(", "if()else", "if(true){} 8j"].iter() {
-        let mut parser = Parser::new(input.to_string());
+        let mut parser = Parser::new("test", input.to_string());
         parser.parse_all().expect_err("should be error");
     }
 }
 
 #[test]
 fn while_() {
-    let mut parser = Parser::new("while (true) { }".to_string());
+    let mut parser = Parser::new("test", "while (true) { }".to_string());
     assert_eq!(
         parser.parse_all().unwrap(),
         Node::new(
@@ -2286,7 +2349,7 @@ fn while_() {
 
 #[test]
 fn for1() {
-    let mut parser = Parser::new("for (;;) { }".to_string());
+    let mut parser = Parser::new("test", "for (;;) { }".to_string());
     assert_eq!(
         parser.parse_all().unwrap(),
         Node::new(
@@ -2317,7 +2380,7 @@ fn for1() {
     ]
     .iter()
     {
-        let mut parser = Parser::new(input.to_string());
+        let mut parser = Parser::new("test", input.to_string());
         parser.parse_all().expect_err("should be error");
     }
 }
@@ -2386,7 +2449,7 @@ fn function_decl() {
     ]
     .iter()
     {
-        let mut parser = Parser::new(input.to_string());
+        let mut parser = Parser::new("test", input.to_string());
         assert_eq!(
             parser.parse_all().unwrap(),
             Node::new(NodeBase::StatementList(vec![node.clone()]), 0)
@@ -2405,11 +2468,11 @@ fn function_decl() {
     ]
     .iter()
     {
-        let mut parser = Parser::new(input.to_string());
+        let mut parser = Parser::new("test", input.to_string());
         parser.parse_all().expect_err(input);
     }
     for input in ["a = function(x,y){b=1}"].iter() {
-        let mut parser = Parser::new(input.to_string());
+        let mut parser = Parser::new("test", input.to_string());
         parser.parse_all().unwrap();
     }
 }
@@ -2486,7 +2549,7 @@ fn arrow_function() {
     ]
     .iter()
     {
-        let mut parser = Parser::new(input.to_string());
+        let mut parser = Parser::new("test", input.to_string());
         assert_eq!(
             parser.parse_all().unwrap(),
             Node::new(NodeBase::StatementList(vec![node.clone()]), 0)
@@ -2500,11 +2563,11 @@ fn arrow_function() {
     ]
     .iter()
     {
-        let mut parser = Parser::new(input.to_string());
+        let mut parser = Parser::new("test", input.to_string());
         parser.parse_all().expect_err(input);
     }
     for input in ["a = (x,y) => x + y", "a = x => x * x"].iter() {
-        let mut parser = Parser::new(input.to_string());
+        let mut parser = Parser::new("test", input.to_string());
         parser.parse_all().unwrap();
     }
 }
@@ -2512,6 +2575,7 @@ fn arrow_function() {
 #[test]
 fn asi1() {
     let mut parser = Parser::new(
+        "test",
         "function f() 
          {
              return 
@@ -2544,6 +2608,7 @@ fn asi1() {
 #[test]
 fn asi2() {
     let mut parser = Parser::new(
+        "test",
         "
         b = a
         ++b
@@ -2575,7 +2640,7 @@ fn asi2() {
 }
 #[test]
 fn throw() {
-    let mut parser = Parser::new("throw 10".to_string());
+    let mut parser = Parser::new("test", "throw 10".to_string());
     assert_eq!(
         parser.parse_all().unwrap(),
         Node::new(
@@ -2595,13 +2660,13 @@ fn throw() {
     ]
     .iter()
     {
-        let mut parser = Parser::new(input.to_string());
+        let mut parser = Parser::new("test", input.to_string());
         parser.parse_all().expect_err("should be error");
     }
 }
 #[test]
 fn try_catch1() {
-    let mut parser = Parser::new("try {} catch(e){} finally{}".to_string());
+    let mut parser = Parser::new("test", "try {} catch(e){} finally{}".to_string());
     assert_eq!(
         parser.parse_all().unwrap(),
         Node::new(
@@ -2618,14 +2683,14 @@ fn try_catch1() {
         )
     );
     for input in ["try {} catch", "try {} catch {}", "try {} catch(7)"].iter() {
-        let mut parser = Parser::new(input.to_string());
+        let mut parser = Parser::new("test", input.to_string());
         parser.parse_all().expect_err("should be error");
     }
 }
 
 #[test]
 fn try_catch2() {
-    let mut parser = Parser::new("try {} catch(e){}".to_string());
+    let mut parser = Parser::new("test", "try {} catch(e){}".to_string());
     assert_eq!(
         parser.parse_all().unwrap(),
         Node::new(
@@ -2645,7 +2710,7 @@ fn try_catch2() {
 
 #[test]
 fn try_catch3() {
-    let mut parser = Parser::new("try {} finally {}".to_string());
+    let mut parser = Parser::new("test", "try {} finally {}".to_string());
     assert_eq!(
         parser.parse_all().unwrap(),
         Node::new(

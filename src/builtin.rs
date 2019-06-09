@@ -1,19 +1,21 @@
-use crate::vm::{error::RuntimeError, frame::Frame, jsvalue::value::*, vm::VM};
+use crate::vm::{
+    frame::Frame,
+    jsvalue::value::*,
+    vm::{VMResult, VM},
+};
 
-pub type BuiltinFuncTy2 = fn(&mut VM, &[Value], &Frame) -> Result<(), RuntimeError>;
+pub type BuiltinFuncTy = fn(&mut VM, &[Value], Value, &mut Frame) -> VMResult;
 
-pub fn parse_float(vm: &mut VM, args: &[Value], _cur_frame: &Frame) -> Result<(), RuntimeError> {
+pub fn parse_float(vm: &mut VM, args: &[Value], _this: Value, _cur_frame: &mut Frame) -> VMResult {
     let string = args.get(0).unwrap_or(&Value::undefined()).to_string();
     vm.stack
         .push(Value::Number(string.parse::<f64>().unwrap_or(::std::f64::NAN)).into());
     Ok(())
 }
 
-pub fn deep_seq(vm: &mut VM, args: &[Value], _cur_frame: &Frame) -> Result<(), RuntimeError> {
+pub fn deep_seq(vm: &mut VM, args: &[Value], _this: Value, cur_frame: &mut Frame) -> VMResult {
     if args.len() != 2 {
-        return Err(RuntimeError::General(
-            "__assert_deep_seq():Two arguments are needed.".to_string(),
-        ));
+        return Err(cur_frame.error_general("__assert_deep_seq():Two arguments are needed."));
     };
     let lval = args.get(0).unwrap();
     let rval = args.get(1).unwrap();
@@ -84,37 +86,84 @@ fn deep_seq_bool(lval: &Value, rval: &Value) -> bool {
     }
 }
 
-pub fn require(vm: &mut VM, args: &[Value], _cur_frame: &Frame) -> Result<(), RuntimeError> {
+pub fn require(vm: &mut VM, args: &[Value], _this: Value, cur_frame: &mut Frame) -> VMResult {
     let file_name = {
-        let val = args.get(0).ok_or(RuntimeError::General(
-            "require():One argument is needed.".to_string(),
-        ))?;
+        let val = args
+            .get(0)
+            .ok_or(cur_frame.error_general("require():One argument is needed."))?;
         match val {
             Value::String(_) => val.to_string(),
             _ => {
-                return Err(RuntimeError::Type(
-                    "require():An argument should be string.".to_string(),
-                ));
+                return Err(cur_frame.error_type("require():An argument should be string."));
             }
         }
     };
-    let script = r#try!(std::fs::read_to_string(file_name.clone())
-        .map_err(|ioerr| RuntimeError::General(format!("require(): \"{}\" {}", file_name, ioerr))));
 
     use crate::parser::Parser;
-    let mut parser = Parser::new(script.clone());
+    let mut parser = Parser::load_module(file_name.clone())
+        .map_err(|e| return cur_frame.error_general(format!("{:?}", e)))?;
+    let absolute_path = parser.file_name.clone();
+
     let node = r#try!(parser.parse_all().map_err(|parse_err| {
         parser.handle_error(&parse_err);
-        RuntimeError::General(format!("Error in parsing module \"{}\"", file_name))
+        cur_frame.error_general(format!("Error in parsing module \"{}\"", file_name))
     }));
 
     let mut iseq = vec![];
+    let id = crate::id::get_unique_id();
     use crate::vm::codegen::Error;
-    let _global_info = r#try!(vm.compile(&node, &mut iseq, true).map_err(|codegen_err| {
-        let Error { msg, token_pos, .. } = codegen_err;
-        parser.show_error_at(token_pos, msg.as_str());
-        RuntimeError::General(format!("Error in parsing module \"{}\"", file_name))
-    }));
-    vm.stack.push(vm.factory.string(script).into());
+    let global_info = r#try!(vm
+        .compile(&node, &mut iseq, true, id)
+        .map_err(|codegen_err| {
+            let Error { msg, token_pos, .. } = codegen_err;
+            parser.show_error_at(token_pos, msg);
+            cur_frame.error_general(format!("Error in parsing module \"{}\"", file_name))
+        }));
+    let script_info = parser.into_script_info();
+    vm.script_info.push((id, script_info));
+    let user_func_info = UserFunctionInfo {
+        id,
+        module_func_id: id,
+        params: vec![],
+        var_names: global_info.var_names,
+        lex_names: global_info.lex_names,
+        func_decls: global_info.func_decls,
+        constructible: false,
+        this_mode: ThisMode::Global,
+        code: iseq,
+        exception_table: global_info.exception_table,
+        outer: Some(vm.global_environment),
+    };
+
+    let mut frame = vm
+        .prepare_frame_for_function_invokation(
+            &user_func_info,
+            args: &[Value],
+            Value::undefined(),
+            cur_frame,
+        )?
+        .module_call(true);
+
+    let empty_object = make_normal_object!(vm.factory);
+    let id_object = vm.factory.string(absolute_path);
+    let module = make_normal_object!(
+        vm.factory,
+        id       => false, false, false: id_object,
+        exports  => true,  false, false: empty_object
+    );
+    frame.lex_env_mut().set_own_value("module", module)?;
+
+    if vm.is_trace {
+        println!("--> call module");
+        println!(
+            "  module_id:{} func_id:{}",
+            frame.module_func_id, frame.func_id
+        );
+    };
+
+    *cur_frame = frame;
+
+    //vm.stack.push(vm.factory.string("module").into());
+
     Ok(())
 }

@@ -1,7 +1,4 @@
-module.exports = {
-  deepStrictEqual: function(x, y) {
-    // JIT in module cause LLVM error.
-    console.log('assert_seq ' + x + ' ' + y)
-    __assert_deep_seq(x, y)
-  }
+module.exports.deepStrictEqual = function(x, y) {
+  console.log('assert_seq ' + x + ' ' + y)
+  if (!__assert_deep_seq(x, y)) throw new Error('assert failed.')
 }

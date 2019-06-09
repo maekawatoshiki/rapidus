@@ -1,6 +1,6 @@
 // use super::super::frame::LexicalEnvironmentRef;
 use super::value::*;
-// use builtin::BuiltinFuncTy2;
+// use builtin::BuiltinFuncTy;
 // use bytecode_gen::ByteCode;
 
 #[derive(Clone, Debug)]

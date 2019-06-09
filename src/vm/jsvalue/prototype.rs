@@ -1,9 +1,9 @@
 #![macro_use]
-use super::super::super::builtins;
-use super::super::super::builtins::{array, function};
-use super::super::super::id::get_unique_id;
 use super::{function::ThisMode, value::*};
+use crate::builtins;
+use crate::builtins::{array, function};
 use crate::gc::MemoryAllocator;
+use crate::id::get_unique_id;
 use rustc_hash::FxHashMap;
 
 #[derive(Debug, Clone)]
@@ -13,6 +13,7 @@ pub struct ObjectPrototypes {
     pub string: Value,
     pub array: Value,
     pub symbol: Value,
+    pub error: Value,
 }
 
 impl ObjectPrototypes {
@@ -30,6 +31,7 @@ impl ObjectPrototypes {
                     name: None,
                     kind: FunctionObjectKind::User(UserFunctionInfo {
                         id: get_unique_id(),
+                        module_func_id: 0,
                         params: vec![],
                         var_names: vec![],
                         lex_names: vec![],
@@ -98,11 +100,19 @@ impl ObjectPrototypes {
                 array::array_prototype_map,
             );
 
+            let join = Value::builtin_function_with_proto(
+                allocator,
+                function_prototype,
+                "join",
+                array::array_prototype_join,
+            );
+
             Value::Object(allocator.alloc(ObjectInfo {
                 kind: ObjectKind::Array(ArrayObjectInfo { elems: vec![] }),
                 prototype: object_prototype,
                 property: make_property_map!(
                     length => false, false, true : Value::Number(0.0),
+                    join   => true,  false, true : join,
                     push   => true,  false, true : push,
                     map    => true,  false, true : map
                 ),
@@ -120,12 +130,23 @@ impl ObjectPrototypes {
             }))
         };
 
+        let error_prototype = {
+            Value::Object(allocator.alloc(ObjectInfo {
+                kind: ObjectKind::Ordinary,
+                prototype: object_prototype,
+                // TODO: https://tc39.github.io/ecma262/#sec-properties-of-the-error-prototype-object
+                property: make_property_map!(),
+                sym_property: FxHashMap::default(),
+            }))
+        };
+
         ObjectPrototypes {
             object: object_prototype,
             function: function_prototype,
             string: string_prototype,
             array: array_prototype,
             symbol: symbol_prototype,
+            error: error_prototype,
         }
     }
 }
