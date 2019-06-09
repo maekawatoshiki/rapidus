@@ -1,5 +1,5 @@
 use crate::vm::{
-    frame,
+    exec_context::ExecContext,
     jsvalue::value::*,
     vm::{Factory, VMValueResult, VM},
 };
@@ -24,7 +24,7 @@ pub fn symbol_constructor(
     vm: &mut VM,
     args: &[Value],
     _this: Value,
-    _cur_frame: &mut frame::Frame,
+    _cur_frame: &mut ExecContext,
 ) -> VMValueResult {
     let symbol = vm.factory.symbol(args.get(0).map(|arg| arg.to_string()));
     Ok(symbol)
@@ -34,7 +34,7 @@ pub fn symbol_for(
     vm: &mut VM,
     args: &[Value],
     _this: Value,
-    _cur_frame: &mut frame::Frame,
+    _cur_frame: &mut ExecContext,
 ) -> VMValueResult {
     let symbol = vm.global_symbol_registry.for_(
         &mut vm.factory,
@@ -47,7 +47,7 @@ pub fn symbol_key_for(
     vm: &mut VM,
     args: &[Value],
     _this: Value,
-    cur_frame: &mut frame::Frame,
+    cur_frame: &mut ExecContext,
 ) -> VMValueResult {
     let sym = args.get(0).map(|x| *x).unwrap_or(Value::undefined());
 

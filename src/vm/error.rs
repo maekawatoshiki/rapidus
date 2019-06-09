@@ -1,4 +1,4 @@
-use crate::vm::frame::Frame;
+use crate::vm::exec_context::ExecContext;
 use crate::vm::jsvalue::value::Value;
 use crate::vm::vm::Factory;
 use ansi_term::Colour;
@@ -25,7 +25,7 @@ pub enum ErrorKind {
 }
 
 impl RuntimeError {
-    pub fn new(kind: ErrorKind, frame: &Frame) -> RuntimeError {
+    pub fn new(kind: ErrorKind, frame: &ExecContext) -> RuntimeError {
         RuntimeError {
             kind,
             inst_pc: frame.current_inst_pc,
@@ -51,7 +51,7 @@ impl RuntimeError {
         RuntimeError::default(ErrorKind::Reference(msg.into()))
     }
 
-    pub fn error_add_info(mut self, frame: &Frame) -> RuntimeError {
+    pub fn error_add_info(mut self, frame: &ExecContext) -> RuntimeError {
         self.func_id = frame.func_id;
         self.module_func_id = frame.module_func_id;
         self.inst_pc = frame.pc;

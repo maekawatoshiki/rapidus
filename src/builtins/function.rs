@@ -1,5 +1,5 @@
 use crate::vm::{
-    frame,
+    exec_context::ExecContext,
     jsvalue::{function::UserFunctionInfo, value::Value},
     vm::{Factory, VMValueResult, VM},
 };
@@ -17,7 +17,7 @@ pub fn function_constructor(
     vm: &mut VM,
     _args: &[Value],
     _this: Value,
-    cur_frame: &mut frame::Frame,
+    cur_frame: &mut ExecContext,
 ) -> VMValueResult {
     let info = UserFunctionInfo::new(cur_frame.module_func_id);
     let func = vm.factory.function(None, info);
@@ -28,7 +28,7 @@ pub fn function_prototype_call(
     vm: &mut VM,
     args: &[Value],
     this: Value,
-    cur_frame: &mut frame::Frame,
+    cur_frame: &mut ExecContext,
 ) -> VMValueResult {
     let this_arg = *args.get(0).unwrap_or(&Value::undefined());
     let func = this;

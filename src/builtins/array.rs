@@ -1,5 +1,5 @@
 use crate::vm::{
-    frame::Frame,
+    exec_context::ExecContext,
     jsvalue::{object::Property, value::Value},
     vm::{Factory, VMValueResult, VM},
 };
@@ -16,7 +16,7 @@ pub fn array_constructor(
     vm: &mut VM,
     args: &[Value],
     _this: Value,
-    _cur_frame: &mut Frame,
+    _cur_frame: &mut ExecContext,
 ) -> VMValueResult {
     let arg_length = args.len();
     let props = {
@@ -48,7 +48,7 @@ pub fn array_prototype_join(
     vm: &mut VM,
     args: &[Value],
     this: Value,
-    cur_frame: &mut Frame,
+    cur_frame: &mut ExecContext,
 ) -> VMValueResult {
     if !this.is_array_object() {
         return Err(cur_frame.error_unknown());
@@ -69,7 +69,7 @@ pub fn array_prototype_push(
     _vm: &mut VM,
     args: &[Value],
     this: Value,
-    cur_frame: &mut Frame,
+    cur_frame: &mut ExecContext,
 ) -> VMValueResult {
     if !this.is_array_object() {
         return Err(cur_frame.error_unknown());
@@ -90,7 +90,7 @@ pub fn array_prototype_map(
     vm: &mut VM,
     args: &[Value],
     this: Value,
-    cur_frame: &mut Frame,
+    cur_frame: &mut ExecContext,
 ) -> VMValueResult {
     if !this.is_array_object() {
         return Err(cur_frame.error_unknown());

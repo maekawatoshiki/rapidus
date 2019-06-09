@@ -1,6 +1,6 @@
 extern crate rapidus;
 use rapidus::parser;
-use rapidus::{vm, vm::frame, vm::jsvalue::value::Value, vm::vm::VM};
+use rapidus::{vm, vm::exec_context, vm::jsvalue::value::Value, vm::vm::VM};
 
 extern crate libc;
 
@@ -93,7 +93,7 @@ fn repl(is_trace: bool) {
     if is_trace {
         vm = vm.trace();
     }
-    let mut global_frame: Option<frame::Frame> = None;
+    let mut global_frame: Option<exec_context::ExecContext> = None;
 
     loop {
         let mut parser;

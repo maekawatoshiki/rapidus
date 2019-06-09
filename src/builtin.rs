@@ -1,16 +1,16 @@
 use crate::vm::{
-    frame::Frame,
+    exec_context::ExecContext,
     jsvalue::value::*,
     vm::{VMValueResult, VM},
 };
 
-pub type BuiltinFuncTy = fn(&mut VM, &[Value], Value, &mut Frame) -> VMValueResult;
+pub type BuiltinFuncTy = fn(&mut VM, &[Value], Value, &mut ExecContext) -> VMValueResult;
 
 pub fn parse_float(
     _vm: &mut VM,
     args: &[Value],
     _this: Value,
-    _cur_frame: &mut Frame,
+    _cur_frame: &mut ExecContext,
 ) -> VMValueResult {
     let string = args.get(0).unwrap_or(&Value::undefined()).to_string();
     let val = Value::Number(string.parse::<f64>().unwrap_or(::std::f64::NAN));
@@ -21,7 +21,7 @@ pub fn deep_seq(
     _vm: &mut VM,
     args: &[Value],
     _this: Value,
-    cur_frame: &mut Frame,
+    cur_frame: &mut ExecContext,
 ) -> VMValueResult {
     if args.len() != 2 {
         return Err(cur_frame.error_general("__assert_deep_seq(): Two arguments are needed."));
@@ -95,7 +95,12 @@ fn deep_seq_bool(lval: &Value, rval: &Value) -> bool {
     }
 }
 
-pub fn require(vm: &mut VM, args: &[Value], _this: Value, cur_frame: &mut Frame) -> VMValueResult {
+pub fn require(
+    vm: &mut VM,
+    args: &[Value],
+    _this: Value,
+    cur_frame: &mut ExecContext,
+) -> VMValueResult {
     let file_name = {
         let val = args
             .get(0)

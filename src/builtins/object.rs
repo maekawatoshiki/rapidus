@@ -1,5 +1,5 @@
 use crate::vm::{
-    frame,
+    exec_context::ExecContext,
     jsvalue::value::*,
     vm::{Factory, VMValueResult, VM},
 };
@@ -17,7 +17,7 @@ pub fn object_constructor(
     vm: &mut VM,
     args: &[Value],
     _this: Value,
-    _cur_frame: &mut frame::Frame,
+    _cur_frame: &mut ExecContext,
 ) -> VMValueResult {
     if args.len() == 0 {
         let empty_obj = vm.factory.object(FxHashMap::default());

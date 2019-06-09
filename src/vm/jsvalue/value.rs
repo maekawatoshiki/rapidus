@@ -1,6 +1,5 @@
 use super::super::error;
-use super::super::frame::LexicalEnvironmentRef;
-pub use super::array::*;
+pub use super::array::ArrayObjectInfo;
 pub use super::error::*;
 pub use super::function::*;
 pub use super::object::*;
@@ -8,6 +7,7 @@ pub use super::prototype::*;
 pub use super::symbol::*;
 use crate::builtin::BuiltinFuncTy;
 use crate::gc;
+use crate::vm::exec_context::LexicalEnvironmentRef;
 use crate::vm::vm::Factory;
 pub use rustc_hash::FxHashMap;
 use std::ffi::CString;
