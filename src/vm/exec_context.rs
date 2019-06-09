@@ -22,6 +22,7 @@ pub struct ExecContext {
     pub saved_stack_len: usize,
     pub bytecode: ByteCode,
     pub exception_table: Vec<Exception>,
+    /// This value in the context.
     pub this: Value,
     /// If true, calling JS function as a constructor.
     pub constructor_call: bool,

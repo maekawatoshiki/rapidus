@@ -139,7 +139,10 @@ fn repl(is_trace: bool) {
                     if let Err(e) = vm.run(global_frame.clone().unwrap()) {
                         let val = e.to_value(&mut vm.factory);
                         if val.is_error_object() {
-                            println!("{}", val.get_property_by_str_key("message").to_string());
+                            println!(
+                                "Error: {}",
+                                val.get_property_by_str_key("message").to_string()
+                            );
                         } else {
                             println!("Thrown: {}", val.to_string())
                         };

@@ -16,6 +16,7 @@ use crate::vm::{
     jsvalue::value::*,
 };
 use rustc_hash::FxHashMap;
+use std::time::{Duration, Instant};
 
 pub type VMResult = Result<(), RuntimeError>;
 /// Ok(Value::Other(Empty)) means mudule call.
@@ -39,6 +40,7 @@ pub struct VM {
     pub is_trace: bool,
     ///(func_id, script_info)
     pub script_info: Vec<(usize, ScriptInfo)>,
+    pub instant: Instant,
 }
 
 macro_rules! gc_lock {
@@ -190,6 +192,7 @@ impl VM {
             to_source_map: FxHashMap::default(),
             is_trace: false,
             script_info: vec![],
+            instant: Instant::now(),
         }
     }
 
@@ -444,8 +447,7 @@ impl VM {
             subroutine_stack: &mut Vec<SubroutineKind>,
         ) -> VMResult {
             let mut trycatch_found = false;
-            //TODO: too expensive!
-            let old_frame = cur_frame.clone();
+            let save_error_info = cur_frame.error_unknown();
             loop {
                 for exception in &cur_frame.exception_table {
                     let in_range = exception.start <= cur_frame.pc && cur_frame.pc < exception.end;
@@ -476,7 +478,9 @@ impl VM {
 
             if !trycatch_found {
                 let val: Value = vm.stack.pop().unwrap().into();
-                return Err(old_frame.error_exception(val));
+                let mut err = save_error_info;
+                err.kind = ErrorKind::Exception(val);
+                return Err(err);
             } else {
                 Ok(())
             }
@@ -484,9 +488,33 @@ impl VM {
 
         let mut subroutine_stack: Vec<SubroutineKind> = vec![];
         let is_trace = self.is_trace;
+        let start_time = self.instant.elapsed();
+        let mut prev_time: Duration = Duration::from_secs(0);
+        let mut trace_string = "".to_string();
+        println!("time: {} microsec", start_time.as_micros());
 
         loop {
             cur_frame.current_inst_pc = cur_frame.pc;
+            let duration = self.instant.elapsed() - prev_time;
+            if is_trace {
+                if trace_string.len() != 0 {
+                    println!("{:05}m {}", duration.as_micros(), trace_string);
+                }
+
+                trace_string = format!(
+                    "{} {}",
+                    crate::bytecode_gen::show_inst(
+                        &cur_frame.bytecode,
+                        cur_frame.current_inst_pc,
+                        &self.constant_table,
+                    ),
+                    match self.stack.last() {
+                        None => format!("<empty>"),
+                        Some(val) => format!("{:10}", (*val).into(): Value),
+                    }
+                );
+                prev_time = self.instant.elapsed();
+            }
 
             macro_rules! type_error {
                 ($msg:expr) => {{
@@ -510,22 +538,6 @@ impl VM {
                         }
                     }
                 }};
-            }
-
-            if is_trace {
-                crate::bytecode_gen::show_inst(
-                    &cur_frame.bytecode,
-                    cur_frame.current_inst_pc,
-                    &self.constant_table,
-                );
-                match self.stack.last() {
-                    None => {
-                        println!("<empty>");
-                    }
-                    Some(val) => {
-                        println!("{:10}", (*val).into(): Value);
-                    }
-                }
             }
 
             match cur_frame.bytecode[cur_frame.pc] {
