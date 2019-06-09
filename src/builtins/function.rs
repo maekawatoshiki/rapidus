@@ -1,6 +1,6 @@
 use crate::vm::{
     frame,
-    jsvalue::value::Value,
+    jsvalue::{function::UserFunctionInfo, value::Value},
     vm::{Factory, VMResult, VM},
 };
 
@@ -12,13 +12,16 @@ pub fn function(factory: &mut Factory) -> Value {
     )
 }
 
+// TODO: https://www.ecma-international.org/ecma-262/9.0/index.html#sec-function-constructor
 pub fn function_constructor(
     vm: &mut VM,
     _args: &[Value],
     _this: Value,
-    _cur_frame: &mut frame::Frame,
+    cur_frame: &mut frame::Frame,
 ) -> VMResult {
-    vm.stack.push(Value::undefined().into());
+    let info = UserFunctionInfo::new(cur_frame.module_func_id);
+    let func = vm.factory.function(None, info);
+    vm.stack.push(func.into());
     Ok(())
 }
 

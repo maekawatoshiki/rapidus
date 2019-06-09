@@ -81,6 +81,24 @@ pub enum DestinationKind {
     Finally,
 }
 
+impl UserFunctionInfo {
+    pub fn new(module_func_id: usize) -> Self {
+        UserFunctionInfo {
+            id: crate::id::get_unique_id(),
+            module_func_id,
+            params: vec![],
+            var_names: vec![],
+            lex_names: vec![],
+            func_decls: vec![],
+            constructible: false,
+            this_mode: ThisMode::Global,
+            code: vec![0x0c, 0x28], // [PUSH_UNDEFINED][RETURN]
+            exception_table: vec![],
+            outer: None,
+        }
+    }
+}
+
 impl FunctionObjectInfo {
     pub fn set_outer_environment(&mut self, outer_env: LexicalEnvironmentRef) {
         match self.kind {
