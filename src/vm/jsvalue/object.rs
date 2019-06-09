@@ -37,6 +37,7 @@ pub enum ObjectKind {
     Function(FunctionObjectInfo),
     Array(ArrayObjectInfo),
     Symbol(SymbolInfo),
+    Error(ErrorObjectInfo),
     Ordinary,
 }
 
