@@ -109,7 +109,7 @@ impl MemoryAllocator {
                 markset.insert(GcTargetKey(global.as_ptr()));
                 global.initial_trace(&mut markset);
 
-                cur_frame.execution_context.initial_trace(&mut markset);
+                cur_frame.initial_trace(&mut markset);
                 cur_frame.this.initial_trace(&mut markset);
 
                 object_prototypes.object.initial_trace(&mut markset);
@@ -125,7 +125,7 @@ impl MemoryAllocator {
                 }
 
                 for frame in saved_frame {
-                    frame.execution_context.initial_trace(&mut markset);
+                    frame.initial_trace(&mut markset);
                     frame.this.initial_trace(&mut markset);
                 }
 
@@ -235,7 +235,7 @@ macro_rules! mark_if_white {
     }};
 }
 
-impl GcTarget for frame::ExecutionContext {
+impl GcTarget for frame::Frame {
     fn initial_trace(&self, markset: &mut MarkSet) {
         mark!(markset, self.lexical_environment.as_ptr());
         mark!(markset, self.variable_environment.as_ptr());
@@ -253,7 +253,7 @@ impl GcTarget for frame::ExecutionContext {
     }
 
     fn free(&self) -> usize {
-        mem::size_of::<frame::ExecutionContext>()
+        mem::size_of::<frame::Frame>()
     }
 }
 

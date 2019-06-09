@@ -242,15 +242,10 @@ impl VM {
             lex_env.set_value(name, val).unwrap();
         }
 
-        let exec_ctx = frame::ExecutionContext {
-            variable_environment: var_env,
-            lexical_environment: lex_env,
-            saved_lexical_environment: vec![],
-        };
-
         let frame = frame::Frame::new(
-            exec_ctx,
             iseq,
+            var_env,
+            lex_env,
             global_info.exception_table,
             global_env_ref.get_global_object(),
         );
@@ -796,9 +791,7 @@ impl VM {
                     cur_frame.pc += 1;
                     let func_template: Value = self.stack.pop().unwrap().into();
                     let mut func = func_template.copy_object(&mut self.factory.memory_allocator);
-                    func.set_function_outer_environment(
-                        cur_frame.execution_context.lexical_environment,
-                    );
+                    func.set_function_outer_environment(cur_frame.lexical_environment);
                     self.stack.push(func.into());
                 }
                 VMInst::CREATE_OBJECT => {
@@ -825,12 +818,8 @@ impl VM {
                 }
                 VMInst::POP_ENV => {
                     cur_frame.pc += 1;
-                    let lex_env = cur_frame
-                        .execution_context
-                        .saved_lexical_environment
-                        .pop()
-                        .unwrap();
-                    cur_frame.execution_context.lexical_environment = lex_env;
+                    let lex_env = cur_frame.saved_lexical_environment.pop().unwrap();
+                    cur_frame.lexical_environment = lex_env;
                 }
                 VMInst::POP => {
                     cur_frame.pc += 1;
@@ -953,15 +942,14 @@ impl VM {
 
     fn push_env(&mut self, id: usize, cur_frame: &mut frame::Frame) -> VMResult {
         let lex_names = self.constant_table.get(id).as_lex_env_info().clone();
-        let outer = cur_frame.execution_context.lexical_environment;
+        let outer = cur_frame.lexical_environment;
 
         let lex_env = self.create_lexical_environment(&lex_names, outer);
 
         cur_frame
-            .execution_context
             .saved_lexical_environment
-            .push(cur_frame.execution_context.lexical_environment);
-        cur_frame.execution_context.lexical_environment = lex_env;
+            .push(cur_frame.lexical_environment);
+        cur_frame.lexical_environment = lex_env;
 
         Ok(())
     }
@@ -1208,19 +1196,17 @@ impl VM {
             lex_env_ref.set_value(name, func)?;
         }
 
-        let exec_ctx = frame::ExecutionContext {
-            variable_environment: var_env_ref,
-            lexical_environment: lex_env_ref,
-            saved_lexical_environment: vec![],
-        };
-
         let user_func = user_func.clone();
 
-        Ok(
-            frame::Frame::new(exec_ctx, user_func.code, user_func.exception_table, this)
-                .func_id(user_func.id)
-                .module_func_id(user_func.module_func_id),
+        Ok(frame::Frame::new(
+            user_func.code,
+            var_env_ref,
+            lex_env_ref,
+            user_func.exception_table,
+            this,
         )
+        .func_id(user_func.id)
+        .module_func_id(user_func.module_func_id))
     }
 
     fn enter_user_function(

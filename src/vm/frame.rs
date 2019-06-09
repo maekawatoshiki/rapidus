@@ -1,5 +1,4 @@
 #![macro_use]
-
 use crate::bytecode_gen::ByteCode;
 use crate::gc;
 use crate::vm::codegen::FunctionInfo;
@@ -18,7 +17,6 @@ pub struct LexicalEnvironmentRef(pub *mut LexicalEnvironment);
 pub struct Frame {
     pub func_id: usize, // 0 => global scope, n => function id
     pub module_func_id: usize,
-    pub execution_context: ExecutionContext,
     pub pc: usize,
     pub current_inst_pc: usize,
     pub saved_stack_len: usize,
@@ -31,10 +29,6 @@ pub struct Frame {
     pub module_call: bool,
     /// If true, calling JS function from native function.
     pub escape: bool,
-}
-
-#[derive(Debug, Clone)]
-pub struct ExecutionContext {
     pub variable_environment: LexicalEnvironmentRef,
     pub lexical_environment: LexicalEnvironmentRef,
     pub saved_lexical_environment: Vec<LexicalEnvironmentRef>,
@@ -65,15 +59,15 @@ pub enum EnvironmentRecord {
 
 impl Frame {
     pub fn new(
-        execution_context: ExecutionContext,
         bytecode: ByteCode,
+        var_env: LexicalEnvironmentRef,
+        lex_env: LexicalEnvironmentRef,
         exception_table: Vec<Exception>,
         this: Value,
     ) -> Self {
         Frame {
             func_id: 0,
             module_func_id: 0,
-            execution_context,
             pc: 0,
             current_inst_pc: 0,
             saved_stack_len: 0,
@@ -83,15 +77,18 @@ impl Frame {
             constructor_call: false,
             module_call: false,
             escape: false,
+            variable_environment: var_env,
+            lexical_environment: lex_env,
+            saved_lexical_environment: vec![],
         }
     }
 
     pub fn lex_env(&self) -> &LexicalEnvironment {
-        &*self.execution_context.lexical_environment
+        &*self.lexical_environment
     }
 
     pub fn lex_env_mut(&mut self) -> &mut LexicalEnvironment {
-        &mut *self.execution_context.lexical_environment
+        &mut *self.lexical_environment
     }
 
     pub fn escape(mut self) -> Self {
@@ -127,20 +124,19 @@ impl Frame {
     pub fn append_function(&mut self, memory_allocator: &mut gc::MemoryAllocator, f: Value) {
         let mut val = f.copy_object(memory_allocator);
         let name = val.as_function().name.clone().unwrap();
-        val.set_function_outer_environment(self.execution_context.lexical_environment);
+        val.set_function_outer_environment(self.lexical_environment);
         self.lex_env_mut().set_own_value(name, val).unwrap();
         use crate::gc::GcTarget;
-        self.execution_context
-            .initial_trace(&mut memory_allocator.roots);
+        self.initial_trace(&mut memory_allocator.roots);
     }
 
     pub fn append_variable_to_var_env(&mut self, name: String) {
-        let var_env = &mut self.execution_context.variable_environment;
+        let var_env = &mut self.variable_environment;
         var_env.set_own_value(name, Value::undefined()).unwrap(); // TODO: unwrap()
     }
 
     pub fn append_variable_to_lex_env(&mut self, name: String) {
-        let lex_env = &mut self.execution_context.lexical_environment;
+        let lex_env = &mut self.lexical_environment;
         lex_env.set_own_value(name, Value::uninitialized()).unwrap(); // TODO: unwrap()
     }
 
@@ -180,24 +176,6 @@ impl Frame {
 
     pub fn error_unknown(&self) -> RuntimeError {
         RuntimeError::new(ErrorKind::Unknown, self)
-    }
-}
-
-impl ExecutionContext {
-    pub fn new(env: LexicalEnvironmentRef) -> Self {
-        ExecutionContext {
-            variable_environment: env,
-            lexical_environment: env,
-            saved_lexical_environment: vec![],
-        }
-    }
-
-    pub fn new_empty() -> Self {
-        ExecutionContext {
-            variable_environment: LexicalEnvironmentRef::new_null(),
-            lexical_environment: LexicalEnvironmentRef::new_null(),
-            saved_lexical_environment: vec![],
-        }
     }
 }
 
