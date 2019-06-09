@@ -17,9 +17,9 @@ use crate::vm::{
 };
 use rustc_hash::FxHashMap;
 
-// New VM
-
 pub type VMResult = Result<(), RuntimeError>;
+/// Ok(Value::Other(Empty)) means mudule call.
+pub type VMValueResult = Result<Value, RuntimeError>;
 
 #[derive(Debug)]
 pub struct Factory {
@@ -272,7 +272,7 @@ impl VM {
         args: &[Value],
         this: Value,
         cur_frame: &mut frame::Frame,
-    ) -> VMResult {
+    ) -> VMValueResult {
         if !callee.is_function_object() {
             return Err(cur_frame.error_type("Not a function"));
         }
@@ -296,7 +296,7 @@ impl VM {
         this: Value,
         cur_frame: &frame::Frame,
         constructor_call: bool,
-    ) -> VMResult {
+    ) -> VMValueResult {
         let frame = self
             .prepare_frame_for_function_invokation(user_func, args, this, cur_frame)?
             .constructor_call(constructor_call)
@@ -435,7 +435,7 @@ macro_rules! read_int32 {
 }
 
 impl VM {
-    pub fn run(&mut self, mut cur_frame: frame::Frame) -> VMResult {
+    pub fn run(&mut self, mut cur_frame: frame::Frame) -> VMValueResult {
         #[derive(Debug, Clone)]
         enum SubroutineKind {
             Ordinary(usize),
@@ -915,7 +915,12 @@ impl VM {
             }
         }
 
-        Ok(())
+        let val = match self.stack.pop() {
+            None => Value::undefined(),
+            Some(val) => val.into(),
+        };
+        println!("{}", val);
+        Ok(val)
     }
 
     pub fn unwind_frame_saving_stack_top(&mut self, cur_frame: &mut frame::Frame) {
@@ -1052,9 +1057,11 @@ impl VM {
 
         let info = callee.as_function();
         let ret = match info.kind {
-            FunctionObjectKind::Builtin(func) => {
-                gc_lock!(self, args, func(self, args, this, cur_frame,))
-            }
+            FunctionObjectKind::Builtin(func) => gc_lock!(self, args, {
+                let val = func(self, args, this, cur_frame)?;
+                self.stack.push(val.into());
+                Ok(())
+            }),
             FunctionObjectKind::User(ref user_func) => {
                 if self.is_trace {
                     println!("--> call function",);

@@ -1,7 +1,7 @@
 use crate::vm::{
     frame,
     jsvalue::value::*,
-    vm::{Factory, VMResult, VM},
+    vm::{Factory, VMValueResult, VM},
 };
 use rustc_hash::FxHashMap;
 
@@ -18,24 +18,22 @@ pub fn object_constructor(
     args: &[Value],
     _this: Value,
     _cur_frame: &mut frame::Frame,
-) -> VMResult {
+) -> VMValueResult {
     if args.len() == 0 {
         let empty_obj = vm.factory.object(FxHashMap::default());
         vm.stack.push(empty_obj.into());
-        return Ok(());
+        return Ok(empty_obj);
     }
 
     match &args[0] {
         Value::Other(NULL) | Value::Other(UNDEFINED) => {
             let empty_obj = vm.factory.object(FxHashMap::default());
-            vm.stack.push(empty_obj.into());
+            Ok(empty_obj)
         }
         Value::Other(EMPTY) => unreachable!(),
         _ => {
             // TODO: Follow the specification
-            vm.stack.push(args[0].into());
+            Ok(args[0])
         }
     }
-
-    Ok(())
 }

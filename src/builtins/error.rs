@@ -1,7 +1,7 @@
 use crate::vm::{
     frame::Frame,
     jsvalue::value::Value,
-    vm::{Factory, VMResult, VM},
+    vm::{Factory, VMValueResult, VM},
 };
 
 pub fn error(factory: &mut Factory) -> Value {
@@ -17,15 +17,14 @@ pub fn error_constructor(
     args: &[Value],
     _this: Value,
     _cur_frame: &mut Frame,
-) -> VMResult {
+) -> VMValueResult {
     let message = if args.len() == 0 {
         "".to_string()
     } else {
         args[0].to_string()
     };
     let obj = vm.factory.error(message);
-    vm.stack.push(obj.into());
-    Ok(())
+    Ok(obj)
 }
 
 // pub fn init() -> Value {

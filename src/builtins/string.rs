@@ -1,17 +1,16 @@
-use crate::vm::{error::RuntimeError, frame::Frame, jsvalue::value::*, vm::VM};
+use crate::vm::{frame::Frame, jsvalue::value::*, vm::VMValueResult, vm::VM};
 
 pub fn string_prototype_split(
     vm: &mut VM,
     args: &[Value],
     this: Value,
     _cur_frame: &mut Frame,
-) -> Result<(), RuntimeError> {
+) -> VMValueResult {
     let string = this.into_str();
     let separator_ = args.get(0).map(|x| *x).unwrap_or(Value::undefined());
     if separator_.is_undefined() {
         let ary = vm.factory.array(vec![Property::new_data_simple(this)]);
-        vm.stack.push(ary.into());
-        return Ok(());
+        return Ok(ary);
     }
     let separator = separator_.to_string();
     let elems = string
@@ -21,22 +20,21 @@ pub fn string_prototype_split(
         .map(|s| Property::new_data_simple(vm.factory.string(s.to_string())))
         .collect::<Vec<Property>>();
     let ary = vm.factory.array(elems);
-    vm.stack.push(ary.into());
-    Ok(())
+    Ok(ary)
 }
 
 pub fn string_prototype_index_of(
-    vm: &mut VM,
+    _vm: &mut VM,
     args: &[Value],
     this: Value,
     _cur_frame: &mut Frame,
-) -> Result<(), RuntimeError> {
+) -> VMValueResult {
     let string = this.into_str();
     let search_string = args.get(0).unwrap_or(&Value::undefined()).to_string();
     let position = args.get(1).unwrap_or(&Value::Number(0.0)).into_number() as usize;
     let found_pos = string[position..]
         .find(search_string.as_str())
         .map_or(-1.0, |p| p as f64);
-    vm.stack.push(Value::Number(found_pos).into());
-    Ok(())
+    let val = Value::Number(found_pos);
+    Ok(val)
 }

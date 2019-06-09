@@ -205,6 +205,13 @@ impl Value {
         }
     }
 
+    pub fn is_empty(&self) -> bool {
+        match self {
+            Value::Other(EMPTY) => true,
+            _ => false,
+        }
+    }
+
     pub fn is_object(&self) -> bool {
         match self {
             Value::Object(_) => true,

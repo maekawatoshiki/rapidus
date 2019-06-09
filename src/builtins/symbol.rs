@@ -1,7 +1,7 @@
 use crate::vm::{
     frame,
     jsvalue::value::*,
-    vm::{Factory, VMResult, VM},
+    vm::{Factory, VMValueResult, VM},
 };
 
 pub fn symbol(factory: &mut Factory) -> Value {
@@ -25,10 +25,9 @@ pub fn symbol_constructor(
     args: &[Value],
     _this: Value,
     _cur_frame: &mut frame::Frame,
-) -> VMResult {
+) -> VMValueResult {
     let symbol = vm.factory.symbol(args.get(0).map(|arg| arg.to_string()));
-    vm.stack.push(symbol.into());
-    Ok(())
+    Ok(symbol)
 }
 
 pub fn symbol_for(
@@ -36,13 +35,12 @@ pub fn symbol_for(
     args: &[Value],
     _this: Value,
     _cur_frame: &mut frame::Frame,
-) -> VMResult {
-    let sym = vm.global_symbol_registry.for_(
+) -> VMValueResult {
+    let symbol = vm.global_symbol_registry.for_(
         &mut vm.factory,
         args.get(0).unwrap_or(&Value::undefined()).to_string(),
     );
-    vm.stack.push(sym.into());
-    Ok(())
+    Ok(symbol)
 }
 
 pub fn symbol_key_for(
@@ -50,7 +48,7 @@ pub fn symbol_key_for(
     args: &[Value],
     _this: Value,
     cur_frame: &mut frame::Frame,
-) -> VMResult {
+) -> VMValueResult {
     let sym = args.get(0).map(|x| *x).unwrap_or(Value::undefined());
 
     if !sym.is_symbol() {
@@ -58,6 +56,5 @@ pub fn symbol_key_for(
     }
 
     let key = vm.global_symbol_registry.key_for(&mut vm.factory, sym);
-    vm.stack.push(key.into());
-    Ok(())
+    Ok(key)
 }

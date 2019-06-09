@@ -1,7 +1,7 @@
 use crate::vm::{
     frame,
     jsvalue::{function::UserFunctionInfo, value::Value},
-    vm::{Factory, VMResult, VM},
+    vm::{Factory, VMValueResult, VM},
 };
 
 pub fn function(factory: &mut Factory) -> Value {
@@ -18,11 +18,10 @@ pub fn function_constructor(
     _args: &[Value],
     _this: Value,
     cur_frame: &mut frame::Frame,
-) -> VMResult {
+) -> VMValueResult {
     let info = UserFunctionInfo::new(cur_frame.module_func_id);
     let func = vm.factory.function(None, info);
-    vm.stack.push(func.into());
-    Ok(())
+    Ok(func)
 }
 
 pub fn function_prototype_call(
@@ -30,7 +29,7 @@ pub fn function_prototype_call(
     args: &[Value],
     this: Value,
     cur_frame: &mut frame::Frame,
-) -> VMResult {
+) -> VMValueResult {
     let this_arg = *args.get(0).unwrap_or(&Value::undefined());
     let func = this;
     vm.call_function(func, args.get(1..).unwrap_or(&[]), this_arg, cur_frame)
