@@ -1,6 +1,9 @@
+use crate::builtin::BuiltinFuncTy;
+use crate::builtins::console::debug_print;
 use crate::bytecode_gen::{show_inst, ByteCode, VMInst};
 use crate::gc;
 use crate::node::Node;
+use crate::parser::ScriptInfo;
 use crate::vm::{
     codegen,
     codegen::CodeGenerator,
@@ -31,8 +34,11 @@ pub struct VM {
     pub global_symbol_registry: GlobalSymbolRegistry,
     pub stack: Vec<BoxedValue>,
     pub saved_frame: Vec<frame::Frame>,
+    ///func_id, ToSourcePos
     pub to_source_map: FxHashMap<usize, codegen::ToSourcePos>,
-    is_trace: bool,
+    pub is_trace: bool,
+    ///(func_id, script_info)
+    pub script_info: Vec<(usize, ScriptInfo)>,
 }
 
 macro_rules! gc_lock {
@@ -102,7 +108,7 @@ impl Factory {
     pub fn builtin_function(
         &mut self,
         name: impl Into<String>,
-        func: crate::builtin::BuiltinFuncTy2,
+        func: crate::builtin::BuiltinFuncTy,
     ) -> Value {
         let name: String = name.into();
         let name_prop = self.string(name.clone());
@@ -140,6 +146,19 @@ impl Factory {
             sym_property: FxHashMap::default(),
         }))
     }
+
+    pub fn generate_builtin_constructor(
+        &mut self,
+        constructor_name: impl Into<String>,
+        constructor_func: BuiltinFuncTy,
+        prototype: Value,
+    ) -> Value {
+        let ary = self.builtin_function(constructor_name, constructor_func);
+        ary.set_property_by_string_key("prototype", prototype);
+        ary.get_property_by_str_key("prototype")
+            .set_constructor(ary);
+        ary
+    }
 }
 
 impl VM {
@@ -158,6 +177,7 @@ impl VM {
             saved_frame: vec![],
             to_source_map: FxHashMap::default(),
             is_trace: false,
+            script_info: vec![],
         }
     }
 
@@ -181,10 +201,14 @@ impl VM {
         node: &Node,
         iseq: &mut ByteCode,
         use_value: bool,
+        id: usize,
     ) -> Result<codegen::FunctionInfo, codegen::Error> {
-        let mut code_generator = CodeGenerator::new(&mut self.constant_table, &mut self.factory);
-        let res = code_generator.compile(node, iseq, use_value);
-        self.to_source_map = code_generator.to_source_map;
+        let mut code_generator =
+            CodeGenerator::new(&mut self.constant_table, &mut self.factory, id);
+        let res = code_generator.compile(node, iseq, use_value, id);
+        for (id, list) in code_generator.to_source_map {
+            self.to_source_map.insert(id, list);
+        }
         res
     }
 
@@ -217,7 +241,6 @@ impl VM {
             iseq,
             global_info.exception_table,
             global_env_ref.get_global_object(),
-            false,
         );
 
         frame
@@ -236,20 +259,18 @@ impl VM {
         callee: Value,
         args: &[Value],
         this: Value,
-        cur_frame: &frame::Frame,
+        cur_frame: &mut frame::Frame,
     ) -> VMResult {
         if !callee.is_function_object() {
-            return Err(RuntimeError::Type("Not a function".to_string()));
+            return Err(cur_frame.error_type("Not a function"));
         }
 
         let info = callee.as_function();
 
         match info.kind {
-            FunctionObjectKind::Builtin(func) => gc_lock!(
-                self,
-                args,
-                func(self, args, &frame::Frame::new_empty_with_this(this, false))
-            ),
+            FunctionObjectKind::Builtin(func) => {
+                gc_lock!(self, args, func(self, args, this, cur_frame))
+            }
             FunctionObjectKind::User(ref user_func) => {
                 self.call_user_function(user_func, args, this, cur_frame, false)
             }
@@ -265,13 +286,8 @@ impl VM {
         constructor_call: bool,
     ) -> VMResult {
         let frame = self
-            .prepare_frame_for_function_invokation(
-                user_func,
-                args,
-                this,
-                cur_frame,
-                constructor_call,
-            )?
+            .prepare_frame_for_function_invokation(user_func, args, this, cur_frame)?
+            .constructor_call(constructor_call)
             .escape();
 
         self.run(frame)
@@ -303,7 +319,7 @@ impl VM {
         &mut self,
         parent: Value,
         key: Value,
-        cur_frame: &frame::Frame,
+        cur_frame: &mut frame::Frame,
     ) -> Result<Value, RuntimeError> {
         let val = parent.get_property(&mut self.factory, key)?;
         match val {
@@ -323,7 +339,7 @@ impl VM {
         parent: Value,
         key: Value,
         val: Value,
-        cur_frame: &frame::Frame,
+        cur_frame: &mut frame::Frame,
     ) -> VMResult {
         let maybe_setter = parent.set_property(&mut self.factory.memory_allocator, key, val)?;
         if let Some(setter) = maybe_setter {
@@ -331,6 +347,63 @@ impl VM {
             self.stack.pop().unwrap(); // Pop undefined (setter's return value)
         }
         Ok(())
+    }
+}
+
+impl VM {
+    pub fn show_error_message(&self, error: RuntimeError, show_location: bool) {
+        match &error.kind {
+            ErrorKind::Unknown => runtime_error("UnknownError"),
+            ErrorKind::Unimplemented => runtime_error("Unimplemented feature"),
+            ErrorKind::Reference(msg) => runtime_error(format!("ReferenceError: {}", msg)),
+            ErrorKind::Type(msg) => runtime_error(format!("TypeError: {}", msg)),
+            ErrorKind::General(msg) => runtime_error(format!("Error: {}", msg)),
+            ErrorKind::Exception(ref val) => {
+                runtime_error("Uncaught Exception");
+                if show_location {
+                    let pos_in_script = self
+                        .to_source_map
+                        .get(&error.func_id)
+                        .unwrap()
+                        .get_node_pos(error.inst_pc);
+                    let module_func_id = error.module_func_id;
+                    let info = &self
+                        .script_info
+                        .iter()
+                        .find(|info| info.0 == module_func_id)
+                        .unwrap()
+                        .1;
+                    if let Some(pos) = pos_in_script {
+                        let (msg, _, line) = get_code_around_err_point(info, pos);
+                        println!("line: {}", line);
+                        println!("{}", msg);
+                    }
+                }
+                debug_print(val, false);
+                println!();
+            }
+        }
+
+        pub fn get_code_around_err_point(info: &ScriptInfo, pos: usize) -> (String, usize, usize) {
+            let code = info.code.as_bytes();
+            let iter = info.pos_line_list.iter();
+            let (start_pos, line) = iter.take_while(|x| x.0 <= pos).last().unwrap();
+
+            let mut iter = info.pos_line_list.iter();
+            let end_pos = match iter
+                .find(|x| x.0 > pos)
+                .unwrap_or(info.pos_line_list.last().unwrap())
+                .0
+            {
+                x if x == 0 => 0,
+                x => x - 1,
+            };
+            let surrounding_code = String::from_utf8(code[*start_pos..end_pos].to_vec())
+                .unwrap()
+                .to_string();
+            let err_point = format!("{}{}", " ".repeat(pos - start_pos), "^",);
+            (surrounding_code + "\n" + err_point.as_str(), pos, *line)
+        }
     }
 }
 
@@ -360,68 +433,61 @@ impl VM {
             Return,
         }
 
+        fn handle_exception(
+            vm: &mut VM,
+            cur_frame: &mut frame::Frame,
+            subroutine_stack: &mut Vec<SubroutineKind>,
+        ) -> VMResult {
+            let mut trycatch_found = false;
+            //TODO: too expensive!
+            let old_frame = cur_frame.clone();
+            loop {
+                for exception in &cur_frame.exception_table {
+                    let in_range = exception.start <= cur_frame.pc && cur_frame.pc < exception.end;
+                    if !in_range {
+                        continue;
+                    }
+                    match exception.dst_kind {
+                        DestinationKind::Catch => cur_frame.pc = exception.end,
+                        DestinationKind::Finally => {
+                            subroutine_stack.push(SubroutineKind::Throw);
+                            cur_frame.pc = exception.end
+                        }
+                    }
+
+                    trycatch_found = true;
+                    break;
+                }
+
+                if trycatch_found {
+                    break;
+                }
+
+                if vm.saved_frame.len() == 0 {
+                    break;
+                }
+                vm.unwind_frame_saving_stack_top(cur_frame);
+            }
+
+            if !trycatch_found {
+                let val: Value = vm.stack.pop().unwrap().into();
+                return Err(old_frame.error_exception(val));
+            } else {
+                Ok(())
+            }
+        }
+
         let mut subroutine_stack: Vec<SubroutineKind> = vec![];
         let is_trace = self.is_trace;
 
         loop {
-            let current_inst_pc = cur_frame.pc;
-
-            macro_rules! exception {
-                () => {{
-                    let mut exception_found = false;
-                    let mut outer_break = false;
-
-                    let node_pos = self
-                        .to_source_map
-                        .get(&cur_frame.id)
-                        .unwrap()
-                        .get_node_pos(current_inst_pc);
-
-                    loop {
-                        for exception in &cur_frame.exception_table {
-                            let in_range =
-                                exception.start <= cur_frame.pc && cur_frame.pc < exception.end;
-                            if !in_range {
-                                continue;
-                            }
-                            match exception.dst_kind {
-                                DestinationKind::Catch => cur_frame.pc = exception.end,
-                                DestinationKind::Finally => {
-                                    subroutine_stack.push(SubroutineKind::Throw);
-                                    cur_frame.pc = exception.end
-                                }
-                            }
-
-                            exception_found = true;
-                            outer_break = true;
-                            break;
-                        }
-
-                        if outer_break {
-                            break;
-                        }
-
-                        if self.saved_frame.len() == 0 {
-                            break;
-                        }
-
-                        if !exception_found {
-                            self.unwind_frame_saving_stack_top(&mut cur_frame);
-                        }
-                    }
-
-                    if !exception_found {
-                        let val: Value = self.stack.pop().unwrap().into();
-                        return Err(RuntimeError::Exception2(val, node_pos));
-                    }
-                }};
-            }
+            cur_frame.current_inst_pc = cur_frame.pc;
 
             macro_rules! type_error {
                 ($msg:expr) => {{
-                    let val = RuntimeError::Type($msg.to_string()).to_value(&mut self.factory);
+                    let val = cur_frame.error_type($msg).to_value(&mut self.factory);
                     self.stack.push(val.into());
-                    exception!();
+                    handle_exception(self, &mut cur_frame, &mut subroutine_stack)?;
                     continue;
                 }};
             }
@@ -431,9 +497,10 @@ impl VM {
                     match $val {
                         Ok(ok) => ok,
                         Err(err) => {
+                            let err = err.error_add_info(&cur_frame);
                             let val = err.to_value(&mut self.factory);
                             self.stack.push(val.into());
-                            exception!();
+                            handle_exception(self, &mut cur_frame, &mut subroutine_stack)?;
                             continue;
                         }
                     }
@@ -443,7 +510,7 @@ impl VM {
             if is_trace {
                 crate::bytecode_gen::show_inst(
                     &cur_frame.bytecode,
-                    current_inst_pc,
+                    cur_frame.current_inst_pc,
                     &self.constant_table,
                 );
                 match self.stack.last() {
@@ -664,7 +731,7 @@ impl VM {
                     let property: Value = self.stack.pop().unwrap().into();
                     let parent: Value = self.stack.pop().unwrap().into();
                     let val: Value = self.stack.pop().unwrap().into();
-                    etry!(self.set_property(parent, property, val, &cur_frame))
+                    etry!(self.set_property(parent, property, val, &mut cur_frame))
                 }
                 VMInst::SET_VALUE => {
                     cur_frame.pc += 1;
@@ -676,9 +743,8 @@ impl VM {
                 VMInst::GET_VALUE => {
                     cur_frame.pc += 1;
                     read_int32!(cur_frame.bytecode, cur_frame.pc, name_id, usize);
-                    let val = etry!(cur_frame
-                        .lex_env()
-                        .get_value(self.constant_table.get(name_id).as_string()));
+                    let string = self.constant_table.get(name_id).as_string();
+                    let val = etry!(cur_frame.lex_env().get_value(string.clone()));
                     self.stack.push(val.into());
                 }
                 VMInst::CONSTRUCT => {
@@ -689,9 +755,6 @@ impl VM {
                     for _ in 0..argc {
                         args.push(self.stack.pop().unwrap().into());
                     }
-                    if is_trace {
-                        println!("--> call constructor")
-                    };
                     self.enter_constructor(callee, &args, &mut cur_frame)?;
                 }
                 VMInst::CALL => {
@@ -702,9 +765,6 @@ impl VM {
                     for _ in 0..argc {
                         args.push(self.stack.pop().unwrap().into());
                     }
-                    if is_trace {
-                        println!("--> call function")
-                    };
                     etry!(self.enter_function(callee, &args, cur_frame.this, &mut cur_frame, false))
                 }
                 VMInst::CALL_METHOD => {
@@ -719,9 +779,6 @@ impl VM {
                     let callee = match etry!(parent.get_property(&mut self.factory, method)) {
                         Property::Data(DataProperty { val, .. }) => val,
                         _ => type_error!("Not a function"),
-                    };
-                    if is_trace {
-                        println!("--> call function")
                     };
                     etry!(self.enter_function(callee, &args, parent, &mut cur_frame, false))
                 }
@@ -799,7 +856,9 @@ impl VM {
                     cur_frame.pc += 1;
                     match subroutine_stack.pop().unwrap() {
                         SubroutineKind::Ordinary(pos) => cur_frame.pc = pos,
-                        SubroutineKind::Throw => exception!(),
+                        SubroutineKind::Throw => {
+                            handle_exception(self, &mut cur_frame, &mut subroutine_stack)?
+                        }
                         SubroutineKind::Return => {
                             self.unwind_frame_saving_stack_top(&mut cur_frame);
                         }
@@ -807,20 +866,27 @@ impl VM {
                 }
                 VMInst::THROW => {
                     cur_frame.pc += 1;
-                    exception!();
+                    handle_exception(self, &mut cur_frame, &mut subroutine_stack)?;
                 }
                 VMInst::RETURN => {
                     cur_frame.pc += 1;
                     let escape = cur_frame.escape;
-                    self.unwind_frame_saving_stack_top(&mut cur_frame);
-                    if is_trace {
-                        println!("<-- return")
+                    if self.saved_frame.len() == 0 {
+                        break;
                     };
+                    self.unwind_frame_saving_stack_top(&mut cur_frame);
                     // TODO: GC schedule
                     self.gc_mark(&cur_frame);
                     if escape {
                         break;
                     }
+                    if is_trace {
+                        println!("<-- return");
+                        println!(
+                            "  module_id:{} func_id:{}",
+                            cur_frame.module_func_id, cur_frame.func_id
+                        );
+                    };
                 }
                 VMInst::TYPEOF => {
                     cur_frame.pc += 1;
@@ -847,11 +913,20 @@ impl VM {
         let ret_val: Value = ret_val_boxed.into();
         let frame = self.saved_frame.pop().unwrap();
         self.stack.truncate(frame.saved_stack_len);
-        if cur_frame.constructor_call && !ret_val.is_object() {
-            self.stack.push(cur_frame.this.into());
+        let return_value = if cur_frame.module_call {
+            cur_frame
+                .lex_env()
+                .get_value("module")
+                .unwrap()
+                .get_object_info()
+                .get_property_by_str_key("exports")
+                .into()
+        } else if cur_frame.constructor_call && !ret_val.is_object() {
+            cur_frame.this.into()
         } else {
-            self.stack.push(ret_val_boxed);
-        }
+            ret_val_boxed
+        };
+        self.stack.push(return_value);
         *cur_frame = frame;
     }
 
@@ -962,21 +1037,26 @@ impl VM {
         constructor_call: bool,
     ) -> VMResult {
         if !callee.is_function_object() {
-            return Err(RuntimeError::Type("Not a function".to_string()));
+            return Err(cur_frame.error_type("Not a function"));
         }
 
         let info = callee.as_function();
-
-        match info.kind {
-            FunctionObjectKind::Builtin(func) => gc_lock!(
-                self,
-                args,
-                func(self, args, &frame::Frame::new_empty_with_this(this, false))
-            ),
+        let ret = match info.kind {
+            FunctionObjectKind::Builtin(func) => {
+                gc_lock!(self, args, func(self, args, this, cur_frame,))
+            }
             FunctionObjectKind::User(ref user_func) => {
+                if self.is_trace {
+                    println!("--> call function",);
+                    println!(
+                        "  module_id:{} func_id:{}",
+                        user_func.module_func_id, user_func.id
+                    );
+                };
                 self.enter_user_function(user_func.clone(), args, this, cur_frame, constructor_call)
             }
-        }
+        };
+        ret
     }
 
     fn create_declarative_environment<F>(
@@ -1071,13 +1151,18 @@ impl VM {
         frame::LexicalEnvironmentRef(self.factory.alloc(env))
     }
 
-    fn prepare_frame_for_function_invokation(
+    /// Prepare a new frame before invoking function.
+    /// 1. save current frame to the frame stack.
+    /// 2. set `this`.
+    /// 3. create a new function environment.
+    /// 4. prepare function objects defined inner the function, and register them to the lexical environment.
+    /// 5. generate a new frame, and return it.
+    pub fn prepare_frame_for_function_invokation(
         &mut self,
         user_func: &UserFunctionInfo,
         args: &[Value],
         this: Value,
         cur_frame: &frame::Frame,
-        constructor_call: bool,
     ) -> Result<frame::Frame, RuntimeError> {
         self.saved_frame
             .push(cur_frame.clone().saved_stack_len(self.stack.len()));
@@ -1114,14 +1199,11 @@ impl VM {
 
         let user_func = user_func.clone();
 
-        Ok(frame::Frame::new(
-            exec_ctx,
-            user_func.code,
-            user_func.exception_table,
-            this,
-            constructor_call,
+        Ok(
+            frame::Frame::new(exec_ctx, user_func.code, user_func.exception_table, this)
+                .func_id(user_func.id)
+                .module_func_id(user_func.module_func_id),
         )
-        .id(user_func.id))
     }
 
     fn enter_user_function(
@@ -1133,16 +1215,12 @@ impl VM {
         constructor_call: bool,
     ) -> VMResult {
         if !user_func.constructible && constructor_call {
-            return Err(RuntimeError::Type("Not a constructor".to_string()));
+            return Err(cur_frame.error_type("Not a constructor"));
         }
 
-        let frame = self.prepare_frame_for_function_invokation(
-            &user_func,
-            args,
-            this,
-            cur_frame,
-            constructor_call,
-        )?;
+        let frame = self
+            .prepare_frame_for_function_invokation(&user_func, args, this, cur_frame)?
+            .constructor_call(constructor_call);
 
         *cur_frame = frame;
 

@@ -3,9 +3,9 @@
 use crate::bytecode_gen::ByteCode;
 use crate::gc;
 use crate::vm::codegen::FunctionInfo;
+use crate::vm::error::ErrorKind;
 use crate::vm::error::RuntimeError;
 use crate::vm::jsvalue::function::Exception;
-use crate::vm::jsvalue::object::{DataProperty, ObjectInfo, ObjectKind, Property};
 use crate::vm::jsvalue::value::Value;
 use crate::vm::vm::{Factory, VMResult};
 use rustc_hash::FxHashMap;
@@ -16,14 +16,20 @@ pub struct LexicalEnvironmentRef(pub *mut LexicalEnvironment);
 
 #[derive(Debug, Clone)]
 pub struct Frame {
-    pub id: usize, // 0 => global scope, n => function id
+    pub func_id: usize, // 0 => global scope, n => function id
+    pub module_func_id: usize,
     pub execution_context: ExecutionContext,
     pub pc: usize,
+    pub current_inst_pc: usize,
     pub saved_stack_len: usize,
     pub bytecode: ByteCode,
     pub exception_table: Vec<Exception>,
     pub this: Value,
+    /// If true, calling JS function as a constructor.
     pub constructor_call: bool,
+    /// If true, calling JS function as a module.
+    pub module_call: bool,
+    /// If true, calling JS function from native function.
     pub escape: bool,
 }
 
@@ -63,31 +69,19 @@ impl Frame {
         bytecode: ByteCode,
         exception_table: Vec<Exception>,
         this: Value,
-        constructor_call: bool,
     ) -> Self {
         Frame {
-            id: 0,
+            func_id: 0,
+            module_func_id: 0,
             execution_context,
             pc: 0,
+            current_inst_pc: 0,
             saved_stack_len: 0,
             bytecode,
             exception_table,
             this,
-            constructor_call,
-            escape: false,
-        }
-    }
-
-    pub fn new_empty_with_this(this: Value, constructor_call: bool) -> Self {
-        Frame {
-            id: 0,
-            execution_context: ExecutionContext::new_empty(),
-            pc: 0,
-            saved_stack_len: 0,
-            bytecode: vec![],
-            exception_table: vec![],
-            this,
-            constructor_call,
+            constructor_call: false,
+            module_call: false,
             escape: false,
         }
     }
@@ -105,13 +99,28 @@ impl Frame {
         self
     }
 
+    pub fn constructor_call(mut self, is_constructor: bool) -> Self {
+        self.constructor_call = is_constructor;
+        self
+    }
+
+    pub fn module_call(mut self, is_module: bool) -> Self {
+        self.module_call = is_module;
+        self
+    }
+
     pub fn saved_stack_len(mut self, saved_stack_len: usize) -> Self {
         self.saved_stack_len = saved_stack_len;
         self
     }
 
-    pub fn id(mut self, id: usize) -> Self {
-        self.id = id;
+    pub fn func_id(mut self, id: usize) -> Self {
+        self.func_id = id;
+        self
+    }
+
+    pub fn module_func_id(mut self, id: usize) -> Self {
+        self.module_func_id = id;
         self
     }
 
@@ -152,6 +161,26 @@ impl Frame {
             self.append_variable_to_lex_env(name.clone())
         }
     }
+
+    pub fn error_general(&self, msg: impl Into<String>) -> RuntimeError {
+        RuntimeError::new(ErrorKind::General(msg.into()), self)
+    }
+
+    pub fn error_type(&self, msg: impl Into<String>) -> RuntimeError {
+        RuntimeError::new(ErrorKind::Type(msg.into()), self)
+    }
+
+    pub fn error_reference(&self, msg: impl Into<String>) -> RuntimeError {
+        RuntimeError::new(ErrorKind::Reference(msg.into()), self)
+    }
+
+    pub fn error_exception(&self, val: Value) -> RuntimeError {
+        RuntimeError::new(ErrorKind::Exception(val), self)
+    }
+
+    pub fn error_unknown(&self) -> RuntimeError {
+        RuntimeError::new(ErrorKind::Unknown, self)
+    }
 }
 
 impl ExecutionContext {
@@ -170,15 +199,6 @@ impl ExecutionContext {
             saved_lexical_environment: vec![],
         }
     }
-}
-
-#[macro_export]
-macro_rules! make_global_env {
-    ($($property_name:ident : $val:expr),*) => { {
-        let mut record = FxHashMap::default();
-        $( record.insert((stringify!($property_name)).to_string(), $val); )*
-        record
-    } };
 }
 
 impl LexicalEnvironment {
@@ -211,6 +231,7 @@ impl LexicalEnvironment {
         let function_constructor = builtins::function::function(factory);
         let array_constructor = builtins::array::array(factory);
         let symbol_constructor = builtins::symbol::symbol(factory);
+        let error_constructor = builtins::error::error(factory);
         let math_object = builtins::math::math(factory);
         LexicalEnvironment {
             record: EnvironmentRecord::Global(make_normal_object!(
@@ -226,19 +247,21 @@ impl LexicalEnvironment {
                 Function   => true, false, true: function_constructor,
                 Array      => true, false, true: array_constructor,
                 Symbol     => true, false, true: symbol_constructor,
+                Error      => true, false, true: error_constructor,
                 Math       => true, false, true: math_object
             )),
             outer: None,
         }
     }
 
-    pub fn get_value(&self, name: &String) -> Result<Value, RuntimeError> {
+    pub fn get_value(&self, name: impl Into<String>) -> Result<Value, RuntimeError> {
+        let name = name.into();
         match self.record {
             EnvironmentRecord::Function { ref record, .. }
             | EnvironmentRecord::Module { ref record, .. }
-            | EnvironmentRecord::Declarative(ref record) => match record.get(name) {
+            | EnvironmentRecord::Declarative(ref record) => match record.get(&name) {
                 Some(binding) if binding == &Value::uninitialized() => {
-                    return Err(RuntimeError::Reference(format!(
+                    return Err(RuntimeError::reference(format!(
                         "'{}' is not defined",
                         name
                     )));
@@ -250,7 +273,7 @@ impl LexicalEnvironment {
                 if obj.has_own_property(name.as_str()) {
                     let val = obj.get_property_by_str_key(name.as_str());
                     if val == Value::uninitialized() {
-                        return Err(RuntimeError::Reference(format!(
+                        return Err(RuntimeError::reference(format!(
                             "'{}' is not defined",
                             name
                         )));
@@ -263,7 +286,7 @@ impl LexicalEnvironment {
         if let Some(outer) = self.outer {
             outer.get_value(name)
         } else {
-            Err(RuntimeError::Reference(format!(
+            Err(RuntimeError::reference(format!(
                 "'{}' is not defined",
                 name
             )))
@@ -290,19 +313,19 @@ impl LexicalEnvironment {
         if let Some(mut outer) = self.outer {
             outer.set_value(name, val)
         } else {
-            Err(RuntimeError::Reference(format!(
+            Err(RuntimeError::reference(format!(
                 "Assignment to undeclared identifier '{}'",
                 name
             )))
         }
     }
 
-    pub fn set_own_value(&mut self, name: String, val: Value) -> VMResult {
+    pub fn set_own_value(&mut self, name: impl Into<String>, val: Value) -> VMResult {
         match self.record {
             EnvironmentRecord::Function { ref mut record, .. }
             | EnvironmentRecord::Module { ref mut record, .. }
             | EnvironmentRecord::Declarative(ref mut record) => {
-                record.insert(name, val);
+                record.insert(name.into(), val);
             }
             EnvironmentRecord::Global(obj) | EnvironmentRecord::Object(obj) => {
                 obj.set_property_by_string_key(name, val);

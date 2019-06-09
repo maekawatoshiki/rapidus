@@ -1,6 +1,11 @@
 use crate::vm::{error::RuntimeError, frame::Frame, jsvalue::value::*, vm::VM};
 
-pub fn console_log(vm: &mut VM, args: &[Value], _cur_frame: &Frame) -> Result<(), RuntimeError> {
+pub fn console_log(
+    vm: &mut VM,
+    args: &[Value],
+    _this: Value,
+    _cur_frame: &mut Frame,
+) -> Result<(), RuntimeError> {
     let args_len = args.len();
 
     for i in 0..args_len {

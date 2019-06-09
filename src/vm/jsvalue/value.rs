@@ -5,7 +5,7 @@ pub use super::function::*;
 pub use super::object::*;
 pub use super::prototype::*;
 pub use super::symbol::*;
-use crate::builtin::BuiltinFuncTy2;
+use crate::builtin::BuiltinFuncTy;
 use crate::gc;
 use crate::vm::vm::Factory;
 pub use rustc_hash::FxHashMap;
@@ -44,10 +44,10 @@ macro_rules! make_property_map_sub {
          $configurable:ident
     ),*) => { {
         #[allow(unused_mut)]
-        let mut record = FxHashMap::default();
+        let mut record = rustc_hash::FxHashMap::default();
         $( record.insert(
             (stringify!($property_name)).to_string(),
-            Property::Data(DataProperty {
+            crate::vm::jsvalue::object::Property::Data(crate::vm::jsvalue::object::DataProperty {
                 val: $val,
                 writable: $writable,
                 enumerable: $enumerable,
@@ -73,11 +73,11 @@ macro_rules! make_property_map {
 macro_rules! make_normal_object {
     ($factory:expr) => { {
         Value::Object($factory.alloc(
-            ObjectInfo {
-                kind: ObjectKind::Ordinary,
+            crate::vm::jsvalue::object::ObjectInfo {
+                kind: crate::vm::jsvalue::object::ObjectKind::Ordinary,
                 prototype: $factory.object_prototypes.object,
-                property: FxHashMap::default(),
-                sym_property: FxHashMap::default()
+                property: rustc_hash::FxHashMap::default(),
+                sym_property: rustc_hash::FxHashMap::default()
             }
         ))
     } };
@@ -103,11 +103,11 @@ macro_rules! make_normal_object {
     } };
     ($factory:expr, $($property_name:ident => $x:ident, $y:ident, $z:ident : $val:expr),*) => { {
         Value::Object($factory.alloc(
-            ObjectInfo {
-                kind: ObjectKind::Ordinary,
+            crate::vm::jsvalue::object::ObjectInfo {
+                kind: crate::vm::jsvalue::object::ObjectKind::Ordinary,
                 prototype: $factory.object_prototypes.object,
                 property: make_property_map_sub!($($property_name, $val, $x, $y, $z),* ),
-                sym_property: FxHashMap::default()
+                sym_property: rustc_hash::FxHashMap::default()
             }
             ))
     } };
@@ -169,7 +169,7 @@ impl Value {
         memory_allocator: &mut gc::MemoryAllocator,
         proto: Value,
         name: impl Into<String>,
-        func: BuiltinFuncTy2,
+        func: BuiltinFuncTy,
     ) -> Self {
         let name: String = name.into();
         let name_prop = Value::string(memory_allocator, name.clone());
@@ -343,7 +343,7 @@ impl Value {
                 return string_get_property(factory, cstrp_to_str(*s), key);
             }
             Value::Other(_) => {
-                return Err(error::RuntimeError::Type(format!(
+                return Err(error::RuntimeError::typeerr(format!(
                     "TypeError: Cannot read property '{}' of {}",
                     key.to_string(),
                     self.to_string()
@@ -376,7 +376,7 @@ impl Value {
     ) -> Result<Option<Value>, error::RuntimeError> {
         match self {
             Value::Object(obj_info) => ObjectRef(*obj_info).set_property(allocator, key, val),
-            Value::Other(_) => Err(error::RuntimeError::Type(format!(
+            Value::Other(_) => Err(error::RuntimeError::typeerr(format!(
                 "TypeError: Cannot set property '{}' of {}",
                 key.to_string(),
                 self.to_string()

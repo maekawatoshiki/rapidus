@@ -10,7 +10,6 @@ pub mod builtins;
 pub mod bytecode_gen;
 pub mod gc;
 pub mod id;
-// pub mod jit;
 pub mod lexer;
 pub mod node;
 pub mod parser;
