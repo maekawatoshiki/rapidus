@@ -97,8 +97,8 @@ impl MemoryAllocator {
         object_prototypes: &prototype::ObjectPrototypes,
         constant_table: &constant::ConstantTable,
         stack: &Vec<BoxedValue>,
-        cur_frame: &exec_context::ExecContext,
-        saved_frame: &Vec<exec_context::ExecContext>,
+        cur_context: &exec_context::ExecContext,
+        saved_context: &Vec<exec_context::ExecContext>,
     ) {
         let mut markset = MarkSet::default();
 
@@ -110,8 +110,8 @@ impl MemoryAllocator {
                 markset.insert(GcTargetKey(global.as_ptr()));
                 global.initial_trace(&mut markset);
 
-                cur_frame.initial_trace(&mut markset);
-                cur_frame.this.initial_trace(&mut markset);
+                cur_context.initial_trace(&mut markset);
+                cur_context.this.initial_trace(&mut markset);
 
                 object_prototypes.object.initial_trace(&mut markset);
                 object_prototypes.function.initial_trace(&mut markset);
@@ -125,9 +125,9 @@ impl MemoryAllocator {
                     val.initial_trace(&mut markset);
                 }
 
-                for frame in saved_frame {
-                    frame.initial_trace(&mut markset);
-                    frame.this.initial_trace(&mut markset);
+                for context in saved_context {
+                    context.initial_trace(&mut markset);
+                    context.this.initial_trace(&mut markset);
                 }
 
                 // println!("initial mark: {:?}", markset);

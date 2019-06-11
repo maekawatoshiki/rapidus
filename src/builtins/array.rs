@@ -1,5 +1,4 @@
 use crate::vm::{
-    exec_context::ExecContext,
     jsvalue::{object::Property, value::Value},
     vm::{Factory, VMValueResult, VM},
 };
@@ -12,12 +11,7 @@ pub fn array(factory: &mut Factory) -> Value {
     )
 }
 
-pub fn array_constructor(
-    vm: &mut VM,
-    args: &[Value],
-    _this: Value,
-    _cur_frame: &mut ExecContext,
-) -> VMValueResult {
+pub fn array_constructor(vm: &mut VM, args: &[Value], _this: Value) -> VMValueResult {
     let arg_length = args.len();
     let props = {
         match arg_length {
@@ -44,14 +38,9 @@ pub fn array_constructor(
     Ok(val)
 }
 
-pub fn array_prototype_join(
-    vm: &mut VM,
-    args: &[Value],
-    this: Value,
-    cur_frame: &mut ExecContext,
-) -> VMValueResult {
+pub fn array_prototype_join(vm: &mut VM, args: &[Value], this: Value) -> VMValueResult {
     if !this.is_array_object() {
-        return Err(cur_frame.error_unknown());
+        return Err(vm.current_context.error_unknown());
     }
 
     let ary_info = this.as_array_mut();
@@ -65,14 +54,9 @@ pub fn array_prototype_join(
     Ok(val)
 }
 
-pub fn array_prototype_push(
-    _vm: &mut VM,
-    args: &[Value],
-    this: Value,
-    cur_frame: &mut ExecContext,
-) -> VMValueResult {
+pub fn array_prototype_push(vm: &mut VM, args: &[Value], this: Value) -> VMValueResult {
     if !this.is_array_object() {
-        return Err(cur_frame.error_unknown());
+        return Err(vm.current_context.error_unknown());
     }
 
     let ary_info = this.as_array_mut();
@@ -86,14 +70,9 @@ pub fn array_prototype_push(
     Ok(val)
 }
 
-pub fn array_prototype_map(
-    vm: &mut VM,
-    args: &[Value],
-    this: Value,
-    cur_frame: &mut ExecContext,
-) -> VMValueResult {
+pub fn array_prototype_map(vm: &mut VM, args: &[Value], this: Value) -> VMValueResult {
     if !this.is_array_object() {
-        return Err(cur_frame.error_unknown());
+        return Err(vm.current_context.error_unknown());
     }
 
     let ary_info = this.as_array_mut();
@@ -108,10 +87,10 @@ pub fn array_prototype_map(
     let mut new_ary = vec![];
 
     for i in 0..ary_info.get_length() {
-        args_for_callback[0] = vm.get_property(this, Value::Number(i as f64), cur_frame)?; // 'i'th element may be getter
+        args_for_callback[0] = vm.get_property(this, Value::Number(i as f64))?; // 'i'th element may be getter
         args_for_callback[1] = Value::Number(i as f64);
 
-        let val = vm.call_function(callback, &args_for_callback, Value::undefined(), cur_frame)?;
+        let val = vm.call_function(callback, &args_for_callback, Value::undefined())?;
         if val.is_empty() {
             unreachable!("EMPTY")
         };

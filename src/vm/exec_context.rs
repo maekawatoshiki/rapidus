@@ -83,6 +83,24 @@ impl ExecContext {
             saved_lexical_environment: vec![],
         }
     }
+    pub fn empty() -> Self {
+        ExecContext {
+            func_id: 0,
+            module_func_id: 0,
+            pc: 0,
+            current_inst_pc: 0,
+            saved_stack_len: 0,
+            bytecode: vec![],
+            exception_table: vec![],
+            this: Value::undefined(),
+            constructor_call: false,
+            module_call: false,
+            escape: false,
+            variable_environment: LexicalEnvironmentRef::new_null(),
+            lexical_environment: LexicalEnvironmentRef::new_null(),
+            saved_lexical_environment: vec![],
+        }
+    }
 
     pub fn lex_env(&self) -> &LexicalEnvironment {
         &*self.lexical_environment

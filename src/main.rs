@@ -93,7 +93,7 @@ fn repl(is_trace: bool) {
     if is_trace {
         vm = vm.trace();
     }
-    let mut global_frame: Option<exec_context::ExecContext> = None;
+    let mut global_context: Option<exec_context::ExecContext> = None;
 
     loop {
         let mut parser;
@@ -122,21 +122,22 @@ fn repl(is_trace: bool) {
                         }
                     };
 
-                    match global_frame {
-                        Some(ref mut frame) => {
-                            frame.bytecode = iseq;
-                            frame.exception_table = global_info.exception_table.clone();
-                            frame.append_from_function_info(
+                    match global_context {
+                        Some(ref mut context) => {
+                            context.bytecode = iseq;
+                            context.exception_table = global_info.exception_table.clone();
+                            context.append_from_function_info(
                                 &mut vm.factory.memory_allocator,
                                 &global_info,
                             )
                         }
-                        None => global_frame = Some(vm.create_global_frame(global_info, iseq)),
+                        None => global_context = Some(vm.create_global_context(global_info, iseq)),
                     }
 
                     let script_info = parser.into_script_info();
                     vm.script_info = vec![(0, script_info)];
-                    if let Err(e) = vm.run(global_frame.clone().unwrap()) {
+                    vm.current_context = global_context.clone().unwrap();
+                    if let Err(e) = vm.run() {
                         let val = e.to_value(&mut vm.factory);
                         if val.is_error_object() {
                             println!(

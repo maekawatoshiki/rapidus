@@ -47,12 +47,13 @@ pub struct Parser {
 }
 
 #[derive(Clone, Debug)]
+/// Information about a script (module), e.g. file name, source text, and correspondence between char postions and line numbers.
 pub struct ScriptInfo {
     /// File name with Absolute path.
     pub file_name: String,
     /// Script text.
     pub code: String,
-    /// A vector of (column_number, line_number).
+    /// Correspondence between char postions and line numbers.
     pub pos_line_list: Vec<(usize, usize)>,
 }
 

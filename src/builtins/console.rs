@@ -1,5 +1,4 @@
 use crate::vm::{
-    exec_context::ExecContext,
     jsvalue::value::{
         cstrp_to_str, AccessorProperty, DataProperty, ObjectKind, ObjectRef, Property, Value,
         EMPTY, NULL, UNDEFINED, UNINITIALIZED,
@@ -8,12 +7,7 @@ use crate::vm::{
     vm::VM,
 };
 
-pub fn console_log(
-    _vm: &mut VM,
-    args: &[Value],
-    _this: Value,
-    _cur_frame: &mut ExecContext,
-) -> VMValueResult {
+pub fn console_log(_vm: &mut VM, args: &[Value], _this: Value) -> VMValueResult {
     let args_len = args.len();
 
     for i in 0..args_len {
