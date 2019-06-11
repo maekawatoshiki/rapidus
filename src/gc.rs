@@ -1,5 +1,6 @@
 use crate::vm::{
-    constant, frame,
+    constant, exec_context,
+    exec_context::{EnvironmentRecord, ExecContext, LexicalEnvironment},
     jsvalue::{
         function, object, prototype,
         value::{BoxedValue, Value},
@@ -92,12 +93,12 @@ impl MemoryAllocator {
 impl MemoryAllocator {
     pub fn mark(
         &mut self,
-        global: frame::LexicalEnvironmentRef,
+        global: exec_context::LexicalEnvironmentRef,
         object_prototypes: &prototype::ObjectPrototypes,
         constant_table: &constant::ConstantTable,
         stack: &Vec<BoxedValue>,
-        cur_frame: &frame::Frame,
-        saved_frame: &Vec<frame::Frame>,
+        cur_frame: &exec_context::ExecContext,
+        saved_frame: &Vec<exec_context::ExecContext>,
     ) {
         let mut markset = MarkSet::default();
 
@@ -109,7 +110,7 @@ impl MemoryAllocator {
                 markset.insert(GcTargetKey(global.as_ptr()));
                 global.initial_trace(&mut markset);
 
-                cur_frame.execution_context.initial_trace(&mut markset);
+                cur_frame.initial_trace(&mut markset);
                 cur_frame.this.initial_trace(&mut markset);
 
                 object_prototypes.object.initial_trace(&mut markset);
@@ -125,7 +126,7 @@ impl MemoryAllocator {
                 }
 
                 for frame in saved_frame {
-                    frame.execution_context.initial_trace(&mut markset);
+                    frame.initial_trace(&mut markset);
                     frame.this.initial_trace(&mut markset);
                 }
 
@@ -235,7 +236,7 @@ macro_rules! mark_if_white {
     }};
 }
 
-impl GcTarget for frame::ExecutionContext {
+impl GcTarget for ExecContext {
     fn initial_trace(&self, markset: &mut MarkSet) {
         mark!(markset, self.lexical_environment.as_ptr());
         mark!(markset, self.variable_environment.as_ptr());
@@ -253,22 +254,22 @@ impl GcTarget for frame::ExecutionContext {
     }
 
     fn free(&self) -> usize {
-        mem::size_of::<frame::ExecutionContext>()
+        mem::size_of::<exec_context::ExecContext>()
     }
 }
 
-impl GcTarget for frame::LexicalEnvironment {
+impl GcTarget for LexicalEnvironment {
     fn initial_trace(&self, markset: &mut MarkSet) {
-        fn trace_record(record: &frame::EnvironmentRecord, markset: &mut MarkSet) {
+        fn trace_record(record: &exec_context::EnvironmentRecord, markset: &mut MarkSet) {
             match record {
-                frame::EnvironmentRecord::Declarative(record)
-                | frame::EnvironmentRecord::Function { record, .. }
-                | frame::EnvironmentRecord::Module { record, .. } => {
+                EnvironmentRecord::Declarative(record)
+                | EnvironmentRecord::Function { record, .. }
+                | EnvironmentRecord::Module { record, .. } => {
                     for (_, val) in record {
                         val.initial_trace(markset);
                     }
                 }
-                frame::EnvironmentRecord::Object(obj) | frame::EnvironmentRecord::Global(obj) => {
+                EnvironmentRecord::Object(obj) | EnvironmentRecord::Global(obj) => {
                     obj.initial_trace(markset)
                 }
             }
@@ -284,18 +285,18 @@ impl GcTarget for frame::LexicalEnvironment {
     fn trace(&self, allocator: &mut MemoryAllocator, markset: &mut MarkSet) {
         fn trace_record(
             allocator: &mut MemoryAllocator,
-            record: &frame::EnvironmentRecord,
+            record: &exec_context::EnvironmentRecord,
             markset: &mut MarkSet,
         ) {
             match record {
-                frame::EnvironmentRecord::Declarative(record)
-                | frame::EnvironmentRecord::Function { record, .. }
-                | frame::EnvironmentRecord::Module { record, .. } => {
+                EnvironmentRecord::Declarative(record)
+                | EnvironmentRecord::Function { record, .. }
+                | EnvironmentRecord::Module { record, .. } => {
                     for (_, val) in record {
                         val.trace(allocator, markset);
                     }
                 }
-                frame::EnvironmentRecord::Object(obj) | frame::EnvironmentRecord::Global(obj) => {
+                EnvironmentRecord::Object(obj) | EnvironmentRecord::Global(obj) => {
                     obj.trace(allocator, markset)
                 }
             }
@@ -309,7 +310,7 @@ impl GcTarget for frame::LexicalEnvironment {
     }
 
     fn free(&self) -> usize {
-        mem::size_of::<frame::LexicalEnvironment>()
+        mem::size_of::<LexicalEnvironment>()
     }
 }
 
@@ -424,6 +425,7 @@ impl GcTarget for object::ObjectKind {
                 }
             }
             object::ObjectKind::Symbol(_) => {}
+            object::ObjectKind::Error(_) => {}
             object::ObjectKind::Ordinary => {}
         }
     }
@@ -456,6 +458,7 @@ impl GcTarget for object::ObjectKind {
                 }
             }
             object::ObjectKind::Symbol(_) => {}
+            object::ObjectKind::Error(_) => {}
             object::ObjectKind::Ordinary => {}
         }
     }

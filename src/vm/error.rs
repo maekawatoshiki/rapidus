@@ -1,4 +1,4 @@
-use crate::vm::frame::Frame;
+use crate::vm::exec_context::ExecContext;
 use crate::vm::jsvalue::value::Value;
 use crate::vm::vm::Factory;
 use ansi_term::Colour;
@@ -25,7 +25,7 @@ pub enum ErrorKind {
 }
 
 impl RuntimeError {
-    pub fn new(kind: ErrorKind, frame: &Frame) -> RuntimeError {
+    pub fn new(kind: ErrorKind, frame: &ExecContext) -> RuntimeError {
         RuntimeError {
             kind,
             inst_pc: frame.current_inst_pc,
@@ -34,7 +34,7 @@ impl RuntimeError {
         }
     }
 
-    fn new_(kind: ErrorKind) -> RuntimeError {
+    fn default(kind: ErrorKind) -> RuntimeError {
         RuntimeError {
             kind,
             inst_pc: 0,
@@ -44,14 +44,14 @@ impl RuntimeError {
     }
 
     pub fn typeerr(msg: impl Into<String>) -> RuntimeError {
-        RuntimeError::new_(ErrorKind::Type(msg.into()))
+        RuntimeError::default(ErrorKind::Type(msg.into()))
     }
 
     pub fn reference(msg: impl Into<String>) -> RuntimeError {
-        RuntimeError::new_(ErrorKind::Reference(msg.into()))
+        RuntimeError::default(ErrorKind::Reference(msg.into()))
     }
 
-    pub fn error_add_info(mut self, frame: &Frame) -> RuntimeError {
+    pub fn error_add_info(mut self, frame: &ExecContext) -> RuntimeError {
         self.func_id = frame.func_id;
         self.module_func_id = frame.module_func_id;
         self.inst_pc = frame.pc;
@@ -60,26 +60,13 @@ impl RuntimeError {
 
     /// convert RuntimeError -> Value
     pub fn to_value(self, factory: &mut Factory) -> Value {
-        let err_obj = make_normal_object!(factory);
         match self.kind {
             ErrorKind::Exception(v) => v,
-            ErrorKind::Type(s) => {
-                let v = factory.string(format!("Type error: {}", s));
-                err_obj.set_property_by_string_key("message", v);
-                err_obj
-            }
-            ErrorKind::General(s) => {
-                let v = factory.string(format!("Error: {}", s));
-                err_obj.set_property_by_string_key("message", v);
-                err_obj
-            }
-            ErrorKind::Reference(s) => {
-                let v = factory.string(format!("Reference error: {}", s));
-                err_obj.set_property_by_string_key("message", v);
-                err_obj
-            }
-            ErrorKind::Unimplemented => factory.string("Unimplemented"),
-            ErrorKind::Unknown => factory.string("Unknown"),
+            ErrorKind::Type(s) => factory.error(format!("Type error: {}", s)),
+            ErrorKind::General(s) => factory.error(format!("Error: {}", s)),
+            ErrorKind::Reference(s) => factory.error(format!("Reference error: {}", s)),
+            ErrorKind::Unimplemented => factory.error("Unimplemented"),
+            ErrorKind::Unknown => factory.error("Unknown"),
         }
     }
 }

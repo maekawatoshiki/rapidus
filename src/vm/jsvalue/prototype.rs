@@ -1,9 +1,8 @@
 #![macro_use]
-use super::{function::ThisMode, value::*};
+use super::value::*;
 use crate::builtins;
 use crate::builtins::{array, function};
 use crate::gc::MemoryAllocator;
-use crate::id::get_unique_id;
 use rustc_hash::FxHashMap;
 
 #[derive(Debug, Clone)]
@@ -25,23 +24,12 @@ impl ObjectPrototypes {
             sym_property: FxHashMap::default(),
         }));
 
+        // https://www.ecma-international.org/ecma-262/9.0/index.html#sec-properties-of-the-function-prototype-object
         let function_prototype = {
             let function_prototype = Value::Object(allocator.alloc(ObjectInfo {
                 kind: ObjectKind::Function(FunctionObjectInfo {
                     name: None,
-                    kind: FunctionObjectKind::User(UserFunctionInfo {
-                        id: get_unique_id(),
-                        module_func_id: 0,
-                        params: vec![],
-                        var_names: vec![],
-                        lex_names: vec![],
-                        func_decls: vec![],
-                        constructible: false,
-                        this_mode: ThisMode::Global,
-                        code: vec![],
-                        exception_table: vec![],
-                        outer: None,
-                    }),
+                    kind: FunctionObjectKind::User(UserFunctionInfo::new(0)),
                 }),
                 prototype: object_prototype,
                 property: make_property_map!(),
@@ -132,7 +120,9 @@ impl ObjectPrototypes {
 
         let error_prototype = {
             Value::Object(allocator.alloc(ObjectInfo {
-                kind: ObjectKind::Ordinary,
+                kind: ObjectKind::Error(ErrorObjectInfo {
+                    stack_trace: "".to_string(),
+                }),
                 prototype: object_prototype,
                 // TODO: https://tc39.github.io/ecma262/#sec-properties-of-the-error-prototype-object
                 property: make_property_map!(),

@@ -1,11 +1,19 @@
-use crate::vm::{error::RuntimeError, frame::Frame, jsvalue::value::*, vm::VM};
+use crate::vm::{
+    exec_context::ExecContext,
+    jsvalue::value::{
+        cstrp_to_str, AccessorProperty, DataProperty, ObjectKind, ObjectRef, Property, Value,
+        EMPTY, NULL, UNDEFINED, UNINITIALIZED,
+    },
+    vm::VMValueResult,
+    vm::VM,
+};
 
 pub fn console_log(
-    vm: &mut VM,
+    _vm: &mut VM,
     args: &[Value],
     _this: Value,
-    _cur_frame: &mut Frame,
-) -> Result<(), RuntimeError> {
+    _cur_frame: &mut ExecContext,
+) -> VMValueResult {
     let args_len = args.len();
 
     for i in 0..args_len {
@@ -16,9 +24,7 @@ pub fn console_log(
     }
     println!();
 
-    vm.stack.push(Value::undefined().into());
-
-    Ok(())
+    Ok(Value::undefined())
 }
 
 pub fn debug_print(val: &Value, nest: bool) {
@@ -96,6 +102,10 @@ pub fn debug_print(val: &Value, nest: bool) {
                 ObjectKind::Symbol(ref info) => print!(
                     "Symbol({})",
                     info.description.as_ref().unwrap_or(&"".to_string())
+                ),
+                ObjectKind::Error(ref _info) => print!(
+                    "Error({})",
+                    obj_info.get_property_by_str_key("message").to_string()
                 ),
                 ObjectKind::Function(ref func_info) => {
                     if let Some(ref name) = func_info.name {

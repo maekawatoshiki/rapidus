@@ -9,17 +9,18 @@ use crate::vm::{
     codegen::CodeGenerator,
     constant,
     error::*,
-    frame,
+    exec_context,
     jsvalue::function::{DestinationKind, ThisMode},
     jsvalue::prototype::ObjectPrototypes,
     jsvalue::symbol::GlobalSymbolRegistry,
     jsvalue::value::*,
 };
 use rustc_hash::FxHashMap;
-
-// New VM
+use std::time::{Duration, Instant};
 
 pub type VMResult = Result<(), RuntimeError>;
+/// Ok(Value::Other(Empty)) means mudule call.
+pub type VMValueResult = Result<Value, RuntimeError>;
 
 #[derive(Debug)]
 pub struct Factory {
@@ -29,16 +30,17 @@ pub struct Factory {
 
 pub struct VM {
     pub factory: Factory,
-    pub global_environment: frame::LexicalEnvironmentRef,
+    pub global_environment: exec_context::LexicalEnvironmentRef,
     pub constant_table: constant::ConstantTable,
     pub global_symbol_registry: GlobalSymbolRegistry,
     pub stack: Vec<BoxedValue>,
-    pub saved_frame: Vec<frame::Frame>,
+    pub saved_frame: Vec<exec_context::ExecContext>,
     ///func_id, ToSourcePos
     pub to_source_map: FxHashMap<usize, codegen::ToSourcePos>,
     pub is_trace: bool,
     ///(func_id, script_info)
     pub script_info: Vec<(usize, ScriptInfo)>,
+    pub instant: Instant,
 }
 
 macro_rules! gc_lock {
@@ -147,6 +149,18 @@ impl Factory {
         }))
     }
 
+    pub fn error(&mut self, message: impl Into<String>) -> Value {
+        let message = self.string(message.into());
+        Value::Object(self.alloc(ObjectInfo {
+            kind: ObjectKind::Error(ErrorObjectInfo::new()),
+            prototype: self.object_prototypes.error,
+            property: make_property_map!(
+                message => true, false, true: message
+            ),
+            sym_property: FxHashMap::default(),
+        }))
+    }
+
     pub fn generate_builtin_constructor(
         &mut self,
         constructor_name: impl Into<String>,
@@ -166,8 +180,8 @@ impl VM {
         let mut memory_allocator = gc::MemoryAllocator::new();
         let object_prototypes = ObjectPrototypes::new(&mut memory_allocator);
         let mut factory = Factory::new(memory_allocator, object_prototypes);
-        let global_env = frame::LexicalEnvironment::new_global_initialized(&mut factory);
-        let global_environment = frame::LexicalEnvironmentRef(factory.alloc(global_env));
+        let global_env = exec_context::LexicalEnvironment::new_global_initialized(&mut factory);
+        let global_environment = exec_context::LexicalEnvironmentRef(factory.alloc(global_env));
         VM {
             global_environment,
             factory,
@@ -178,6 +192,7 @@ impl VM {
             to_source_map: FxHashMap::default(),
             is_trace: false,
             script_info: vec![],
+            instant: Instant::now(),
         }
     }
 
@@ -186,7 +201,7 @@ impl VM {
         self
     }
 
-    pub fn gc_mark(&mut self, cur_frame: &frame::Frame) {
+    pub fn gc_mark(&mut self, cur_frame: &exec_context::ExecContext) {
         self.factory.memory_allocator.mark(
             self.global_environment,
             &self.factory.object_prototypes,
@@ -216,7 +231,7 @@ impl VM {
         &mut self,
         global_info: codegen::FunctionInfo,
         iseq: ByteCode,
-    ) -> frame::Frame {
+    ) -> exec_context::ExecContext {
         let global_env_ref = self.global_environment;
 
         let var_env = self.create_variable_environment(&global_info.var_names, global_env_ref);
@@ -230,15 +245,10 @@ impl VM {
             lex_env.set_value(name, val).unwrap();
         }
 
-        let exec_ctx = frame::ExecutionContext {
-            variable_environment: var_env,
-            lexical_environment: lex_env,
-            saved_lexical_environment: vec![],
-        };
-
-        let frame = frame::Frame::new(
-            exec_ctx,
+        let frame = exec_context::ExecContext::new(
             iseq,
+            var_env,
+            lex_env,
             global_info.exception_table,
             global_env_ref.get_global_object(),
         );
@@ -259,8 +269,8 @@ impl VM {
         callee: Value,
         args: &[Value],
         this: Value,
-        cur_frame: &mut frame::Frame,
-    ) -> VMResult {
+        cur_frame: &mut exec_context::ExecContext,
+    ) -> VMValueResult {
         if !callee.is_function_object() {
             return Err(cur_frame.error_type("Not a function"));
         }
@@ -282,9 +292,9 @@ impl VM {
         user_func: &UserFunctionInfo,
         args: &[Value],
         this: Value,
-        cur_frame: &frame::Frame,
+        cur_frame: &exec_context::ExecContext,
         constructor_call: bool,
-    ) -> VMResult {
+    ) -> VMValueResult {
         let frame = self
             .prepare_frame_for_function_invokation(user_func, args, this, cur_frame)?
             .constructor_call(constructor_call)
@@ -297,7 +307,7 @@ impl VM {
         &mut self,
         parent: Value,
         key: Value,
-        cur_frame: &mut frame::Frame,
+        cur_frame: &mut exec_context::ExecContext,
     ) -> VMResult {
         let val = parent.get_property(&mut self.factory, key)?;
         match val {
@@ -319,7 +329,7 @@ impl VM {
         &mut self,
         parent: Value,
         key: Value,
-        cur_frame: &mut frame::Frame,
+        cur_frame: &mut exec_context::ExecContext,
     ) -> Result<Value, RuntimeError> {
         let val = parent.get_property(&mut self.factory, key)?;
         match val {
@@ -339,7 +349,7 @@ impl VM {
         parent: Value,
         key: Value,
         val: Value,
-        cur_frame: &mut frame::Frame,
+        cur_frame: &mut exec_context::ExecContext,
     ) -> VMResult {
         let maybe_setter = parent.set_property(&mut self.factory.memory_allocator, key, val)?;
         if let Some(setter) = maybe_setter {
@@ -351,7 +361,7 @@ impl VM {
 }
 
 impl VM {
-    pub fn show_error_message(&self, error: RuntimeError, show_location: bool) {
+    pub fn show_error_message(&self, error: RuntimeError) {
         match &error.kind {
             ErrorKind::Unknown => runtime_error("UnknownError"),
             ErrorKind::Unimplemented => runtime_error("Unimplemented feature"),
@@ -360,24 +370,22 @@ impl VM {
             ErrorKind::General(msg) => runtime_error(format!("Error: {}", msg)),
             ErrorKind::Exception(ref val) => {
                 runtime_error("Uncaught Exception");
-                if show_location {
-                    let pos_in_script = self
-                        .to_source_map
-                        .get(&error.func_id)
-                        .unwrap()
-                        .get_node_pos(error.inst_pc);
-                    let module_func_id = error.module_func_id;
-                    let info = &self
-                        .script_info
-                        .iter()
-                        .find(|info| info.0 == module_func_id)
-                        .unwrap()
-                        .1;
-                    if let Some(pos) = pos_in_script {
-                        let (msg, _, line) = get_code_around_err_point(info, pos);
-                        println!("line: {}", line);
-                        println!("{}", msg);
-                    }
+                let pos_in_script = self
+                    .to_source_map
+                    .get(&error.func_id)
+                    .unwrap()
+                    .get_node_pos(error.inst_pc);
+                let module_func_id = error.module_func_id;
+                let info = &self
+                    .script_info
+                    .iter()
+                    .find(|info| info.0 == module_func_id)
+                    .unwrap()
+                    .1;
+                if let Some(pos) = pos_in_script {
+                    let (msg, _, line) = get_code_around_err_point(info, pos);
+                    println!("line: {}", line);
+                    println!("{}", msg);
                 }
                 debug_print(val, false);
                 println!();
@@ -425,7 +433,7 @@ macro_rules! read_int32 {
 }
 
 impl VM {
-    pub fn run(&mut self, mut cur_frame: frame::Frame) -> VMResult {
+    pub fn run(&mut self, mut cur_frame: exec_context::ExecContext) -> VMValueResult {
         #[derive(Debug, Clone)]
         enum SubroutineKind {
             Ordinary(usize),
@@ -435,12 +443,11 @@ impl VM {
 
         fn handle_exception(
             vm: &mut VM,
-            cur_frame: &mut frame::Frame,
+            cur_frame: &mut exec_context::ExecContext,
             subroutine_stack: &mut Vec<SubroutineKind>,
         ) -> VMResult {
             let mut trycatch_found = false;
-            //TODO: too expensive!
-            let old_frame = cur_frame.clone();
+            let save_error_info = cur_frame.error_unknown();
             loop {
                 for exception in &cur_frame.exception_table {
                     let in_range = exception.start <= cur_frame.pc && cur_frame.pc < exception.end;
@@ -471,7 +478,9 @@ impl VM {
 
             if !trycatch_found {
                 let val: Value = vm.stack.pop().unwrap().into();
-                return Err(old_frame.error_exception(val));
+                let mut err = save_error_info;
+                err.kind = ErrorKind::Exception(val);
+                return Err(err);
             } else {
                 Ok(())
             }
@@ -479,9 +488,33 @@ impl VM {
 
         let mut subroutine_stack: Vec<SubroutineKind> = vec![];
         let is_trace = self.is_trace;
+        let start_time = self.instant.elapsed();
+        let mut prev_time: Duration = Duration::from_secs(0);
+        let mut trace_string = "".to_string();
+        println!("time: {} microsec", start_time.as_micros());
 
         loop {
             cur_frame.current_inst_pc = cur_frame.pc;
+            let duration = self.instant.elapsed() - prev_time;
+            if is_trace {
+                if trace_string.len() != 0 {
+                    println!("{:05}m {}", duration.as_micros(), trace_string);
+                }
+
+                trace_string = format!(
+                    "{} {}",
+                    crate::bytecode_gen::show_inst(
+                        &cur_frame.bytecode,
+                        cur_frame.current_inst_pc,
+                        &self.constant_table,
+                    ),
+                    match self.stack.last() {
+                        None => format!("<empty>"),
+                        Some(val) => format!("{:10}", (*val).into(): Value),
+                    }
+                );
+                prev_time = self.instant.elapsed();
+            }
 
             macro_rules! type_error {
                 ($msg:expr) => {{
@@ -505,22 +538,6 @@ impl VM {
                         }
                     }
                 }};
-            }
-
-            if is_trace {
-                crate::bytecode_gen::show_inst(
-                    &cur_frame.bytecode,
-                    cur_frame.current_inst_pc,
-                    &self.constant_table,
-                );
-                match self.stack.last() {
-                    None => {
-                        println!("<empty>");
-                    }
-                    Some(val) => {
-                        println!("{:10}", (*val).into(): Value);
-                    }
-                }
             }
 
             match cur_frame.bytecode[cur_frame.pc] {
@@ -786,9 +803,7 @@ impl VM {
                     cur_frame.pc += 1;
                     let func_template: Value = self.stack.pop().unwrap().into();
                     let mut func = func_template.copy_object(&mut self.factory.memory_allocator);
-                    func.set_function_outer_environment(
-                        cur_frame.execution_context.lexical_environment,
-                    );
+                    func.set_function_outer_environment(cur_frame.lexical_environment);
                     self.stack.push(func.into());
                 }
                 VMInst::CREATE_OBJECT => {
@@ -815,12 +830,8 @@ impl VM {
                 }
                 VMInst::POP_ENV => {
                     cur_frame.pc += 1;
-                    let lex_env = cur_frame
-                        .execution_context
-                        .saved_lexical_environment
-                        .pop()
-                        .unwrap();
-                    cur_frame.execution_context.lexical_environment = lex_env;
+                    let lex_env = cur_frame.saved_lexical_environment.pop().unwrap();
+                    cur_frame.lexical_environment = lex_env;
                 }
                 VMInst::POP => {
                     cur_frame.pc += 1;
@@ -905,10 +916,15 @@ impl VM {
             }
         }
 
-        Ok(())
+        let val = match self.stack.pop() {
+            None => Value::undefined(),
+            Some(val) => val.into(),
+        };
+        println!("{}", val);
+        Ok(val)
     }
 
-    pub fn unwind_frame_saving_stack_top(&mut self, cur_frame: &mut frame::Frame) {
+    pub fn unwind_frame_saving_stack_top(&mut self, cur_frame: &mut exec_context::ExecContext) {
         let ret_val_boxed = self.stack.pop().unwrap();
         let ret_val: Value = ret_val_boxed.into();
         let frame = self.saved_frame.pop().unwrap();
@@ -930,23 +946,22 @@ impl VM {
         *cur_frame = frame;
     }
 
-    pub fn unwind_frame(&mut self, cur_frame: &mut frame::Frame) {
+    pub fn unwind_frame(&mut self, cur_frame: &mut exec_context::ExecContext) {
         let frame = self.saved_frame.pop().unwrap();
         self.stack.truncate(frame.saved_stack_len);
         *cur_frame = frame;
     }
 
-    fn push_env(&mut self, id: usize, cur_frame: &mut frame::Frame) -> VMResult {
+    fn push_env(&mut self, id: usize, cur_frame: &mut exec_context::ExecContext) -> VMResult {
         let lex_names = self.constant_table.get(id).as_lex_env_info().clone();
-        let outer = cur_frame.execution_context.lexical_environment;
+        let outer = cur_frame.lexical_environment;
 
         let lex_env = self.create_lexical_environment(&lex_names, outer);
 
         cur_frame
-            .execution_context
             .saved_lexical_environment
-            .push(cur_frame.execution_context.lexical_environment);
-        cur_frame.execution_context.lexical_environment = lex_env;
+            .push(cur_frame.lexical_environment);
+        cur_frame.lexical_environment = lex_env;
 
         Ok(())
     }
@@ -1016,7 +1031,7 @@ impl VM {
         &mut self,
         callee: Value,
         args: &[Value],
-        cur_frame: &mut frame::Frame,
+        cur_frame: &mut exec_context::ExecContext,
     ) -> VMResult {
         let this = Value::Object(self.factory.alloc(ObjectInfo {
             kind: ObjectKind::Ordinary,
@@ -1033,7 +1048,7 @@ impl VM {
         callee: Value,
         args: &[Value],
         this: Value,
-        cur_frame: &mut frame::Frame,
+        cur_frame: &mut exec_context::ExecContext,
         constructor_call: bool,
     ) -> VMResult {
         if !callee.is_function_object() {
@@ -1042,9 +1057,11 @@ impl VM {
 
         let info = callee.as_function();
         let ret = match info.kind {
-            FunctionObjectKind::Builtin(func) => {
-                gc_lock!(self, args, func(self, args, this, cur_frame,))
-            }
+            FunctionObjectKind::Builtin(func) => gc_lock!(self, args, {
+                let val = func(self, args, this, cur_frame)?;
+                self.stack.push(val.into());
+                Ok(())
+            }),
             FunctionObjectKind::User(ref user_func) => {
                 if self.is_trace {
                     println!("--> call function",);
@@ -1062,13 +1079,13 @@ impl VM {
     fn create_declarative_environment<F>(
         &mut self,
         f: F,
-        outer: Option<frame::LexicalEnvironmentRef>,
-    ) -> frame::LexicalEnvironmentRef
+        outer: Option<exec_context::LexicalEnvironmentRef>,
+    ) -> exec_context::LexicalEnvironmentRef
     where
         F: Fn(&mut VM, &mut FxHashMap<String, Value>),
     {
-        let env = frame::LexicalEnvironment {
-            record: frame::EnvironmentRecord::Declarative({
+        let env = exec_context::LexicalEnvironment {
+            record: exec_context::EnvironmentRecord::Declarative({
                 let mut record = FxHashMap::default();
                 f(self, &mut record);
                 record
@@ -1076,14 +1093,14 @@ impl VM {
             outer,
         };
 
-        frame::LexicalEnvironmentRef(self.factory.alloc(env))
+        exec_context::LexicalEnvironmentRef(self.factory.alloc(env))
     }
 
     fn create_variable_environment(
         &mut self,
         var_names: &Vec<String>,
-        outer_env_ref: frame::LexicalEnvironmentRef,
-    ) -> frame::LexicalEnvironmentRef {
+        outer_env_ref: exec_context::LexicalEnvironmentRef,
+    ) -> exec_context::LexicalEnvironmentRef {
         self.create_declarative_environment(
             |_, record| {
                 for name in var_names {
@@ -1097,8 +1114,8 @@ impl VM {
     fn create_lexical_environment(
         &mut self,
         lex_names: &Vec<String>,
-        outer_env_ref: frame::LexicalEnvironmentRef,
-    ) -> frame::LexicalEnvironmentRef {
+        outer_env_ref: exec_context::LexicalEnvironmentRef,
+    ) -> exec_context::LexicalEnvironmentRef {
         self.create_declarative_environment(
             |_, record| {
                 for name in lex_names {
@@ -1115,10 +1132,10 @@ impl VM {
         params: &Vec<FunctionParameter>,
         args: &[Value],
         this: Value,
-        outer: Option<frame::LexicalEnvironmentRef>,
-    ) -> frame::LexicalEnvironmentRef {
-        let env = frame::LexicalEnvironment {
-            record: frame::EnvironmentRecord::Function {
+        outer: Option<exec_context::LexicalEnvironmentRef>,
+    ) -> exec_context::LexicalEnvironmentRef {
+        let env = exec_context::LexicalEnvironment {
+            record: exec_context::EnvironmentRecord::Function {
                 record: {
                     let mut record = FxHashMap::default();
                     for name in var_names {
@@ -1148,7 +1165,7 @@ impl VM {
             outer,
         };
 
-        frame::LexicalEnvironmentRef(self.factory.alloc(env))
+        exec_context::LexicalEnvironmentRef(self.factory.alloc(env))
     }
 
     /// Prepare a new frame before invoking function.
@@ -1162,8 +1179,8 @@ impl VM {
         user_func: &UserFunctionInfo,
         args: &[Value],
         this: Value,
-        cur_frame: &frame::Frame,
-    ) -> Result<frame::Frame, RuntimeError> {
+        cur_frame: &exec_context::ExecContext,
+    ) -> Result<exec_context::ExecContext, RuntimeError> {
         self.saved_frame
             .push(cur_frame.clone().saved_stack_len(self.stack.len()));
 
@@ -1191,19 +1208,17 @@ impl VM {
             lex_env_ref.set_value(name, func)?;
         }
 
-        let exec_ctx = frame::ExecutionContext {
-            variable_environment: var_env_ref,
-            lexical_environment: lex_env_ref,
-            saved_lexical_environment: vec![],
-        };
-
         let user_func = user_func.clone();
 
-        Ok(
-            frame::Frame::new(exec_ctx, user_func.code, user_func.exception_table, this)
-                .func_id(user_func.id)
-                .module_func_id(user_func.module_func_id),
+        Ok(exec_context::ExecContext::new(
+            user_func.code,
+            var_env_ref,
+            lex_env_ref,
+            user_func.exception_table,
+            this,
         )
+        .func_id(user_func.id)
+        .module_func_id(user_func.module_func_id))
     }
 
     fn enter_user_function(
@@ -1211,7 +1226,7 @@ impl VM {
         user_func: UserFunctionInfo,
         args: &[Value],
         this: Value,
-        cur_frame: &mut frame::Frame,
+        cur_frame: &mut exec_context::ExecContext,
         constructor_call: bool,
     ) -> VMResult {
         if !user_func.constructible && constructor_call {

@@ -1,12 +1,13 @@
 use super::super::error;
-use super::super::frame::LexicalEnvironmentRef;
-pub use super::array::*;
+pub use super::array::ArrayObjectInfo;
+pub use super::error::*;
 pub use super::function::*;
 pub use super::object::*;
 pub use super::prototype::*;
 pub use super::symbol::*;
 use crate::builtin::BuiltinFuncTy;
 use crate::gc;
+use crate::vm::exec_context::LexicalEnvironmentRef;
 use crate::vm::vm::Factory;
 pub use rustc_hash::FxHashMap;
 use std::ffi::CString;
@@ -133,6 +134,7 @@ impl std::fmt::Display for Value {
                     ObjectKind::Function(_) => write!(f, "Function"),
                     ObjectKind::Array(_) => write!(f, "Array"),
                     ObjectKind::Symbol(_) => write!(f, "Symbol"),
+                    ObjectKind::Error(_) => write!(f, "Error"),
                 }
             }
         }
@@ -203,6 +205,13 @@ impl Value {
         }
     }
 
+    pub fn is_empty(&self) -> bool {
+        match self {
+            Value::Other(EMPTY) => true,
+            _ => false,
+        }
+    }
+
     pub fn is_object(&self) -> bool {
         match self {
             Value::Object(_) => true,
@@ -224,6 +233,17 @@ impl Value {
         match self {
             Value::Object(info) => match ObjectRef(*info).kind {
                 ObjectKind::Array(_) => true,
+                _ => false,
+            },
+            _ => false,
+        }
+    }
+
+    /// Returns true if the value is an Error object.
+    pub fn is_error_object(&self) -> bool {
+        match self {
+            Value::Object(info) => match ObjectRef(*info).kind {
+                ObjectKind::Error(_) => true,
                 _ => false,
             },
             _ => false,
@@ -637,6 +657,7 @@ impl Value {
                     ObjectKind::Ordinary => Some(self),
                     ObjectKind::Function(_) => None,
                     ObjectKind::Array(_) => None,
+                    ObjectKind::Error(_) => None,
                     ObjectKind::Symbol(_) => Some(self), // TODO
                 }
             }
@@ -876,6 +897,7 @@ impl Value {
                     ObjectKind::Function(_) => "function",
                     ObjectKind::Array(_) => "object",
                     ObjectKind::Symbol(_) => "symbol",
+                    ObjectKind::Error(_) => "error",
                     ObjectKind::Ordinary => "object",
                 }
             }
@@ -963,6 +985,10 @@ impl Value {
                     ObjectKind::Symbol(ref info) => format!(
                         "Symbol({})",
                         info.description.as_ref().unwrap_or(&"".to_string())
+                    ),
+                    ObjectKind::Error(ref _info) => format!(
+                        "Error({})",
+                        obj_info.get_property_by_str_key("message").to_string()
                     ),
                     ObjectKind::Function(ref func_info) => {
                         if let Some(ref name) = func_info.name {
