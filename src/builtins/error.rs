@@ -1,7 +1,7 @@
 use crate::vm::{
-    frame::Frame,
+    exec_context::ExecContext,
     jsvalue::value::Value,
-    vm::{Factory, VMResult, VM},
+    vm::{Factory, VMValueResult, VM},
 };
 
 pub fn error(factory: &mut Factory) -> Value {
@@ -16,20 +16,15 @@ pub fn error_constructor(
     vm: &mut VM,
     args: &[Value],
     _this: Value,
-    _cur_frame: &mut Frame,
-) -> VMResult {
+    _cur_frame: &mut ExecContext,
+) -> VMValueResult {
     let message = if args.len() == 0 {
-        vm.factory.string("")
+        "".to_string()
     } else {
-        let str = args[0].to_string();
-        vm.factory.string(str)
+        args[0].to_string()
     };
-    let obj = make_normal_object!(
-        vm.factory,
-        message      => true, false, true:     message
-    );
-    vm.stack.push(obj.into());
-    Ok(())
+    let obj = vm.factory.error(message);
+    Ok(obj)
 }
 
 // pub fn init() -> Value {

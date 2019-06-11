@@ -1,10 +1,8 @@
-let assert = (x, y) => {
-  if (x !== y) throw 'err'
-}
+let assert = require('./assert.js').deepStrictEqual
 
 function fibo(x) {
   if (x < 2) return 1
   return fibo(x - 1) + fibo(x - 2)
 }
 
-assert(fibo(10), 89)
+assert(fibo(20), 10946)

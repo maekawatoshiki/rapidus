@@ -302,8 +302,7 @@ pub fn read_int32(iseq: &ByteCode, pc: usize) -> i32 {
 pub fn show_inst_seq(code: &ByteCode, const_table: &constant::ConstantTable) {
     let mut i = 0;
     while i < code.len() {
-        show_inst(code, i, const_table);
-        println!();
+        println!("{}", show_inst(code, i, const_table));
         i += if let Some(size) = VMInst::get_inst_size(code[i]) {
             size
         } else {
@@ -312,8 +311,8 @@ pub fn show_inst_seq(code: &ByteCode, const_table: &constant::ConstantTable) {
     }
 }
 
-pub fn show_inst(code: &ByteCode, i: usize, const_table: &constant::ConstantTable) {
-    print!(
+pub fn show_inst(code: &ByteCode, i: usize, const_table: &constant::ConstantTable) -> String {
+    format!(
         "{:05} {:<25}",
         i,
         match code[i] {
@@ -450,13 +449,12 @@ pub fn show_inst(code: &ByteCode, i: usize, const_table: &constant::ConstantTabl
             VMInst::EXP => format!("Exp"),
             _ => panic!("Unimplemented instruction is show_inst()."),
         }
-    );
+    )
 }
 
 #[allow(non_snake_case)]
 pub mod VMInst {
     pub const END: u8 = 0x00;
-    pub const CONSTRUCT: u8 = 0x02;
     pub const CREATE_OBJECT: u8 = 0x03;
     pub const CREATE_ARRAY: u8 = 0x04;
     pub const PUSH_INT8: u8 = 0x05;
@@ -468,6 +466,8 @@ pub mod VMInst {
     pub const PUSH_THIS: u8 = 0x0a;
     pub const PUSH_ARGUMENTS: u8 = 0x0b;
     pub const PUSH_UNDEFINED: u8 = 0x0c;
+    pub const DOUBLE: u8 = 0x29;
+    pub const POP: u8 = 0x2a;
     pub const LNOT: u8 = 0x0d;
     pub const POSI: u8 = 0x0e;
     pub const NEG: u8 = 0x0f;
@@ -476,6 +476,10 @@ pub mod VMInst {
     pub const MUL: u8 = 0x12;
     pub const DIV: u8 = 0x13;
     pub const REM: u8 = 0x14;
+    pub const EXP: u8 = 0x47;
+    pub const LAND: u8 = 0x2b;
+    pub const LOR: u8 = 0x2c;
+    pub const NOT: u8 = 0x3d;
     pub const LT: u8 = 0x15;
     pub const GT: u8 = 0x16;
     pub const LE: u8 = 0x17;
@@ -490,17 +494,14 @@ pub mod VMInst {
     pub const SHL: u8 = 0x20;
     pub const SHR: u8 = 0x21;
     pub const ZFSHR: u8 = 0x22;
-    pub const GET_MEMBER: u8 = 0x23;
-    pub const SET_MEMBER: u8 = 0x24;
     pub const JMP_IF_FALSE: u8 = 0x25;
     pub const JMP: u8 = 0x26;
     pub const CALL: u8 = 0x27;
     pub const CALL_METHOD: u8 = 0x41;
+    pub const CONSTRUCT: u8 = 0x02;
     pub const RETURN: u8 = 0x28;
-    pub const DOUBLE: u8 = 0x29;
-    pub const POP: u8 = 0x2a;
-    pub const LAND: u8 = 0x2b;
-    pub const LOR: u8 = 0x2c;
+    pub const GET_MEMBER: u8 = 0x23;
+    pub const SET_MEMBER: u8 = 0x24;
     pub const GET_VALUE: u8 = 0x2e;
     pub const SET_VALUE: u8 = 0x2f;
     pub const DECL_VAR: u8 = 0x30;
@@ -512,12 +513,10 @@ pub mod VMInst {
     pub const LOOP_START: u8 = 0x32;
     pub const THROW: u8 = 0x33;
     pub const RETURN_TRY: u8 = 0x38;
-    pub const NOT: u8 = 0x3d;
     pub const SET_OUTER_ENV: u8 = 0x42;
     pub const JMP_SUB: u8 = 0x43;
     pub const RETURN_SUB: u8 = 0x44;
     pub const TYPEOF: u8 = 0x45;
-    pub const EXP: u8 = 0x47;
 
     pub fn get_inst_size(inst: u8) -> Option<usize> {
         match inst {

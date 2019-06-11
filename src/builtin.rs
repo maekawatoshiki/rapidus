@@ -1,26 +1,35 @@
 use crate::vm::{
-    frame::Frame,
+    exec_context::ExecContext,
     jsvalue::value::*,
-    vm::{VMResult, VM},
+    vm::{VMValueResult, VM},
 };
 
-pub type BuiltinFuncTy = fn(&mut VM, &[Value], Value, &mut Frame) -> VMResult;
+pub type BuiltinFuncTy = fn(&mut VM, &[Value], Value, &mut ExecContext) -> VMValueResult;
 
-pub fn parse_float(vm: &mut VM, args: &[Value], _this: Value, _cur_frame: &mut Frame) -> VMResult {
+pub fn parse_float(
+    _vm: &mut VM,
+    args: &[Value],
+    _this: Value,
+    _cur_frame: &mut ExecContext,
+) -> VMValueResult {
     let string = args.get(0).unwrap_or(&Value::undefined()).to_string();
-    vm.stack
-        .push(Value::Number(string.parse::<f64>().unwrap_or(::std::f64::NAN)).into());
-    Ok(())
+    let val = Value::Number(string.parse::<f64>().unwrap_or(::std::f64::NAN));
+    Ok(val)
 }
 
-pub fn deep_seq(vm: &mut VM, args: &[Value], _this: Value, cur_frame: &mut Frame) -> VMResult {
+pub fn deep_seq(
+    _vm: &mut VM,
+    args: &[Value],
+    _this: Value,
+    cur_frame: &mut ExecContext,
+) -> VMValueResult {
     if args.len() != 2 {
-        return Err(cur_frame.error_general("__assert_deep_seq():Two arguments are needed."));
+        return Err(cur_frame.error_general("__assert_deep_seq(): Two arguments are needed."));
     };
     let lval = args.get(0).unwrap();
     let rval = args.get(1).unwrap();
-    vm.stack.push(Value::bool(deep_seq_bool(lval, rval)).into());
-    Ok(())
+    let val = Value::bool(deep_seq_bool(lval, rval));
+    Ok(val)
 }
 
 /// Check deep strict equality.
@@ -86,7 +95,12 @@ fn deep_seq_bool(lval: &Value, rval: &Value) -> bool {
     }
 }
 
-pub fn require(vm: &mut VM, args: &[Value], _this: Value, cur_frame: &mut Frame) -> VMResult {
+pub fn require(
+    vm: &mut VM,
+    args: &[Value],
+    _this: Value,
+    cur_frame: &mut ExecContext,
+) -> VMValueResult {
     let file_name = {
         let val = args
             .get(0)
@@ -163,7 +177,5 @@ pub fn require(vm: &mut VM, args: &[Value], _this: Value, cur_frame: &mut Frame)
 
     *cur_frame = frame;
 
-    //vm.stack.push(vm.factory.string("module").into());
-
-    Ok(())
+    Ok(Value::empty())
 }

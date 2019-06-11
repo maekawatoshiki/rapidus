@@ -1,7 +1,7 @@
 use crate::vm::{
-    frame::Frame,
+    exec_context::ExecContext,
     jsvalue::{object::Property, value::Value},
-    vm::{Factory, VMResult, VM},
+    vm::{Factory, VMValueResult, VM},
 };
 
 pub fn array(factory: &mut Factory) -> Value {
@@ -16,8 +16,8 @@ pub fn array_constructor(
     vm: &mut VM,
     args: &[Value],
     _this: Value,
-    _cur_frame: &mut Frame,
-) -> VMResult {
+    _cur_frame: &mut ExecContext,
+) -> VMValueResult {
     let arg_length = args.len();
     let props = {
         match arg_length {
@@ -41,16 +41,15 @@ pub fn array_constructor(
         }
     };
     let val = vm.factory.array(props);
-    vm.stack.push(val.into());
-    Ok(())
+    Ok(val)
 }
 
 pub fn array_prototype_join(
     vm: &mut VM,
     args: &[Value],
     this: Value,
-    cur_frame: &mut Frame,
-) -> VMResult {
+    cur_frame: &mut ExecContext,
+) -> VMValueResult {
     if !this.is_array_object() {
         return Err(cur_frame.error_unknown());
     }
@@ -62,18 +61,16 @@ pub fn array_prototype_join(
         _ => Some(args[0].to_string()),
     };
     let result = ary_info.join(seperator);
-
-    vm.stack.push(vm.factory.string(result).into());
-
-    Ok(())
+    let val = vm.factory.string(result);
+    Ok(val)
 }
 
 pub fn array_prototype_push(
-    vm: &mut VM,
+    _vm: &mut VM,
     args: &[Value],
     this: Value,
-    cur_frame: &mut Frame,
-) -> VMResult {
+    cur_frame: &mut ExecContext,
+) -> VMValueResult {
     if !this.is_array_object() {
         return Err(cur_frame.error_unknown());
     }
@@ -84,18 +81,17 @@ pub fn array_prototype_push(
         ary_info.elems.push(Property::new_data_simple(*arg));
     }
 
-    vm.stack
-        .push(Value::Number(ary_info.get_length() as f64).into());
+    let val = Value::Number(ary_info.get_length() as f64);
 
-    Ok(())
+    Ok(val)
 }
 
 pub fn array_prototype_map(
     vm: &mut VM,
     args: &[Value],
     this: Value,
-    cur_frame: &mut Frame,
-) -> VMResult {
+    cur_frame: &mut ExecContext,
+) -> VMValueResult {
     if !this.is_array_object() {
         return Err(cur_frame.error_unknown());
     }
@@ -115,14 +111,13 @@ pub fn array_prototype_map(
         args_for_callback[0] = vm.get_property(this, Value::Number(i as f64), cur_frame)?; // 'i'th element may be getter
         args_for_callback[1] = Value::Number(i as f64);
 
-        vm.call_function(callback, &args_for_callback, Value::undefined(), cur_frame)?;
+        let val = vm.call_function(callback, &args_for_callback, Value::undefined(), cur_frame)?;
+        if val.is_empty() {
+            unreachable!("EMPTY")
+        };
 
-        new_ary.push(Property::new_data_simple(
-            vm.stack.pop().unwrap().into(): Value,
-        ));
+        new_ary.push(Property::new_data_simple(val));
     }
-
-    vm.stack.push(vm.factory.array(new_ary).into());
-
-    Ok(())
+    let val = vm.factory.array(new_ary);
+    Ok(val)
 }

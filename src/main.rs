@@ -1,6 +1,6 @@
 extern crate rapidus;
 use rapidus::parser;
-use rapidus::{vm, vm::frame, vm::jsvalue::value::Value, vm::vm::VM};
+use rapidus::{vm, vm::exec_context, vm::jsvalue::value::Value, vm::vm::VM};
 
 extern crate libc;
 
@@ -76,7 +76,7 @@ fn main() {
     let script_info = parser.into_script_info();
     vm.script_info.push((0, script_info));
     if let Err(e) = vm.run_global(global_info, iseq) {
-        vm.show_error_message(e, true);
+        vm.show_error_message(e);
     }
 
     if is_debug {
@@ -93,7 +93,7 @@ fn repl(is_trace: bool) {
     if is_trace {
         vm = vm.trace();
     }
-    let mut global_frame: Option<frame::Frame> = None;
+    let mut global_frame: Option<exec_context::ExecContext> = None;
 
     loop {
         let mut parser;
@@ -137,7 +137,15 @@ fn repl(is_trace: bool) {
                     let script_info = parser.into_script_info();
                     vm.script_info = vec![(0, script_info)];
                     if let Err(e) = vm.run(global_frame.clone().unwrap()) {
-                        vm.show_error_message(e, false);
+                        let val = e.to_value(&mut vm.factory);
+                        if val.is_error_object() {
+                            println!(
+                                "Error: {}",
+                                val.get_property_by_str_key("message").to_string()
+                            );
+                        } else {
+                            println!("Thrown: {}", val.to_string())
+                        };
                         break;
                     }
 

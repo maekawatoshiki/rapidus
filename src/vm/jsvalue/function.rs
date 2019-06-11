@@ -1,7 +1,7 @@
-use super::super::frame::LexicalEnvironmentRef;
 use super::value::*;
 use crate::builtin::BuiltinFuncTy;
 use crate::bytecode_gen::ByteCode;
+use crate::vm::exec_context::LexicalEnvironmentRef;
 
 #[derive(Clone, Debug)]
 pub struct FunctionObjectInfo {
@@ -79,6 +79,24 @@ pub struct Exception {
 pub enum DestinationKind {
     Catch,
     Finally,
+}
+
+impl UserFunctionInfo {
+    pub fn new(module_func_id: usize) -> Self {
+        UserFunctionInfo {
+            id: crate::id::get_unique_id(),
+            module_func_id,
+            params: vec![],
+            var_names: vec![],
+            lex_names: vec![],
+            func_decls: vec![],
+            constructible: false,
+            this_mode: ThisMode::Global,
+            code: vec![0x0c, 0x28], // [PUSH_UNDEFINED][RETURN]
+            exception_table: vec![],
+            outer: None,
+        }
+    }
 }
 
 impl FunctionObjectInfo {

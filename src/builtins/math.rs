@@ -1,7 +1,7 @@
 use crate::vm::{
-    frame,
+    exec_context::ExecContext,
     jsvalue::value::Value,
-    vm::{Factory, VMResult, VM},
+    vm::{Factory, VMValueResult, VM},
 };
 use rand::random;
 
@@ -14,11 +14,11 @@ pub fn math(factory: &mut Factory) -> Value {
 }
 
 pub fn math_random(
-    vm: &mut VM,
+    _vm: &mut VM,
     _args: &[Value],
     _this: Value,
-    _cur_frame: &mut frame::Frame,
-) -> VMResult {
-    vm.stack.push(Value::Number(random::<f64>()).into());
-    Ok(())
+    _cur_frame: &mut ExecContext,
+) -> VMValueResult {
+    let val = Value::Number(random::<f64>());
+    Ok(val)
 }
