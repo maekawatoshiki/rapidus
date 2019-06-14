@@ -33,7 +33,6 @@ pub struct VM {
     pub global_environment: exec_context::LexicalEnvironmentRef,
     pub constant_table: constant::ConstantTable,
     pub global_symbol_registry: GlobalSymbolRegistry,
-    pub stack: Vec<BoxedValue>,
     pub current_context: exec_context::ExecContext,
     pub saved_context: Vec<exec_context::ExecContext>,
     ///func_id, ToSourcePos
@@ -188,7 +187,7 @@ impl VM {
             factory,
             constant_table: constant::ConstantTable::new(),
             global_symbol_registry: GlobalSymbolRegistry::new(),
-            stack: vec![],
+            //stack: vec![],
             current_context: exec_context::ExecContext::empty(),
             saved_context: vec![],
             to_source_map: FxHashMap::default(),
@@ -208,7 +207,7 @@ impl VM {
             self.global_environment,
             &self.factory.object_prototypes,
             &self.constant_table,
-            &self.stack,
+            //&self.stack,
             &self.current_context,
             &self.saved_context,
         );
@@ -300,12 +299,12 @@ impl VM {
         let val = parent.get_property(&mut self.factory, key)?;
         match val {
             Property::Data(DataProperty { val, .. }) => {
-                self.stack.push(val.into());
+                self.current_context.stack.push(val.into());
                 Ok(())
             }
             Property::Accessor(AccessorProperty { get, .. }) => {
                 if get.is_undefined() {
-                    self.stack.push(Value::undefined().into());
+                    self.current_context.stack.push(Value::undefined().into());
                     return Ok(());
                 }
                 self.enter_function(get, &[], parent, false)
@@ -322,7 +321,7 @@ impl VM {
                     return Ok(Value::undefined());
                 }
                 self.call_function(get, &[], parent)?;
-                Ok(self.stack.pop().unwrap().into(): Value)
+                Ok(self.current_context.stack.pop().unwrap().into(): Value)
             }
         }
     }
@@ -331,7 +330,7 @@ impl VM {
         let maybe_setter = parent.set_property(&mut self.factory.memory_allocator, key, val)?;
         if let Some(setter) = maybe_setter {
             self.call_function(setter, &[val], parent)?;
-            self.stack.pop().unwrap(); // Pop undefined (setter's return value)
+            self.current_context.stack.pop().unwrap(); // Pop undefined (setter's return value)
         }
         Ok(())
     }
@@ -393,19 +392,20 @@ impl VM {
 }
 
 macro_rules! read_int8 {
-    ($iseq:expr, $pc:expr, $var:ident, $ty:ty) => {
-        let $var = $iseq[$pc] as $ty;
-        $pc += 1;
+    ($vm:expr, $var:ident, $ty:ty) => {
+        let $var = $vm.current_context.bytecode[$vm.current_context.pc] as $ty;
+        $vm.current_context.pc += 1;
     };
 }
 
 macro_rules! read_int32 {
-    ($iseq:expr, $pc:expr, $var:ident, $ty:ty) => {
-        let $var = (($iseq[$pc as usize + 3] as $ty) << 24)
-            + (($iseq[$pc as usize + 2] as $ty) << 16)
-            + (($iseq[$pc as usize + 1] as $ty) << 8)
-            + ($iseq[$pc as usize + 0] as $ty);
-        $pc += 4;
+    ($vm:expr, $var:ident, $ty:ty) => {
+        let $var = (($vm.current_context.bytecode[$vm.current_context.pc as usize + 3] as $ty)
+            << 24)
+            + (($vm.current_context.bytecode[$vm.current_context.pc as usize + 2] as $ty) << 16)
+            + (($vm.current_context.bytecode[$vm.current_context.pc as usize + 1] as $ty) << 8)
+            + ($vm.current_context.bytecode[$vm.current_context.pc as usize + 0] as $ty);
+        $vm.current_context.pc += 4;
     };
 }
 
@@ -447,11 +447,11 @@ impl VM {
                 if vm.saved_context.len() == 0 {
                     break;
                 }
-                vm.unwind_context_saving_stack_top();
+                vm.unwind_context();
             }
 
             if !trycatch_found {
-                let val: Value = vm.stack.pop().unwrap().into();
+                let val: Value = vm.current_context.stack.pop().unwrap().into();
                 let mut err = save_error_info;
                 err.kind = ErrorKind::Exception(val);
                 return Err(err);
@@ -462,10 +462,10 @@ impl VM {
 
         let mut subroutine_stack: Vec<SubroutineKind> = vec![];
         let is_trace = self.is_trace;
-        let start_time = self.instant.elapsed();
+        //let start_time = self.instant.elapsed();
         let mut prev_time: Duration = Duration::from_secs(0);
         let mut trace_string = "".to_string();
-        println!("time: {} microsec", start_time.as_micros());
+        //println!("time: {} microsec", start_time.as_micros());
 
         loop {
             self.current_context.current_inst_pc = self.current_context.pc;
@@ -482,7 +482,7 @@ impl VM {
                         self.current_context.current_inst_pc,
                         &self.constant_table,
                     ),
-                    match self.stack.last() {
+                    match self.current_context.stack.last() {
                         None => format!("<empty>"),
                         Some(val) => format!("{:10}", (*val).into(): Value),
                     }
@@ -496,7 +496,7 @@ impl VM {
                         .current_context
                         .error_type($msg)
                         .to_value(&mut self.factory);
-                    self.stack.push(val.into());
+                    self.current_context.stack.push(val.into());
                     handle_exception(self, &mut subroutine_stack)?;
                     continue;
                 }};
@@ -509,7 +509,7 @@ impl VM {
                         Err(err) => {
                             let err = err.error_add_info(&self.current_context);
                             let val = err.to_value(&mut self.factory);
-                            self.stack.push(val.into());
+                            self.current_context.stack.push(val.into());
                             handle_exception(self, &mut subroutine_stack)?;
                             continue;
                         }
@@ -521,236 +521,235 @@ impl VM {
                 // TODO: Macro for bin ops?
                 VMInst::ADD => {
                     self.current_context.pc += 1;
-                    let rhs: Value = self.stack.pop().unwrap().into();
-                    let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack
+                    let rhs: Value = self.current_context.stack.pop().unwrap().into();
+                    let lhs: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context
+                        .stack
                         .push(lhs.add(&mut self.factory.memory_allocator, rhs).into());
                 }
                 VMInst::SUB => {
                     self.current_context.pc += 1;
-                    let rhs: Value = self.stack.pop().unwrap().into();
-                    let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack.push(lhs.sub(rhs).into());
+                    let rhs: Value = self.current_context.stack.pop().unwrap().into();
+                    let lhs: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context.stack.push(lhs.sub(rhs).into());
                 }
                 VMInst::MUL => {
                     self.current_context.pc += 1;
-                    let rhs: Value = self.stack.pop().unwrap().into();
-                    let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack.push(lhs.mul(rhs).into());
+                    let rhs: Value = self.current_context.stack.pop().unwrap().into();
+                    let lhs: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context.stack.push(lhs.mul(rhs).into());
                 }
                 VMInst::DIV => {
                     self.current_context.pc += 1;
-                    let rhs: Value = self.stack.pop().unwrap().into();
-                    let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack.push(lhs.div(rhs).into());
+                    let rhs: Value = self.current_context.stack.pop().unwrap().into();
+                    let lhs: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context.stack.push(lhs.div(rhs).into());
                 }
                 VMInst::REM => {
                     self.current_context.pc += 1;
-                    let rhs: Value = self.stack.pop().unwrap().into();
-                    let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack.push(lhs.rem(rhs).into());
+                    let rhs: Value = self.current_context.stack.pop().unwrap().into();
+                    let lhs: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context.stack.push(lhs.rem(rhs).into());
                 }
                 VMInst::EXP => {
                     self.current_context.pc += 1;
-                    let rhs: Value = self.stack.pop().unwrap().into();
-                    let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack
+                    let rhs: Value = self.current_context.stack.pop().unwrap().into();
+                    let lhs: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context
+                        .stack
                         .push(lhs.exp(&mut self.factory.memory_allocator, rhs).into());
                 }
                 VMInst::EQ => {
                     self.current_context.pc += 1;
-                    let rhs: Value = self.stack.pop().unwrap().into();
-                    let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack
+                    let rhs: Value = self.current_context.stack.pop().unwrap().into();
+                    let lhs: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context
+                        .stack
                         .push(lhs.eq(&mut self.factory.memory_allocator, rhs).into());
                 }
                 VMInst::SEQ => {
                     self.current_context.pc += 1;
-                    let rhs: Value = self.stack.pop().unwrap().into();
-                    let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack.push(lhs.strict_eq(rhs).into());
+                    let rhs: Value = self.current_context.stack.pop().unwrap().into();
+                    let lhs: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context.stack.push(lhs.strict_eq(rhs).into());
                 }
                 VMInst::NE => {
                     self.current_context.pc += 1;
-                    let rhs: Value = self.stack.pop().unwrap().into();
-                    let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack
+                    let rhs: Value = self.current_context.stack.pop().unwrap().into();
+                    let lhs: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context
+                        .stack
                         .push(lhs.ne(&mut self.factory.memory_allocator, rhs).into());
                 }
                 VMInst::SNE => {
                     self.current_context.pc += 1;
-                    let rhs: Value = self.stack.pop().unwrap().into();
-                    let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack.push(lhs.strict_ne(rhs).into());
+                    let rhs: Value = self.current_context.stack.pop().unwrap().into();
+                    let lhs: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context.stack.push(lhs.strict_ne(rhs).into());
                 }
                 VMInst::LT => {
                     self.current_context.pc += 1;
-                    let rhs: Value = self.stack.pop().unwrap().into();
-                    let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack
+                    let rhs: Value = self.current_context.stack.pop().unwrap().into();
+                    let lhs: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context
+                        .stack
                         .push(lhs.lt(&mut self.factory.memory_allocator, rhs).into());
                 }
                 VMInst::LE => {
                     self.current_context.pc += 1;
-                    let rhs: Value = self.stack.pop().unwrap().into();
-                    let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack
+                    let rhs: Value = self.current_context.stack.pop().unwrap().into();
+                    let lhs: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context
+                        .stack
                         .push(lhs.le(&mut self.factory.memory_allocator, rhs).into());
                 }
                 VMInst::GT => {
                     self.current_context.pc += 1;
-                    let rhs: Value = self.stack.pop().unwrap().into();
-                    let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack
+                    let rhs: Value = self.current_context.stack.pop().unwrap().into();
+                    let lhs: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context
+                        .stack
                         .push(rhs.lt(&mut self.factory.memory_allocator, lhs).into());
                 }
                 VMInst::GE => {
                     self.current_context.pc += 1;
-                    let rhs: Value = self.stack.pop().unwrap().into();
-                    let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack
+                    let rhs: Value = self.current_context.stack.pop().unwrap().into();
+                    let lhs: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context
+                        .stack
                         .push(rhs.le(&mut self.factory.memory_allocator, lhs).into());
                 }
                 VMInst::AND => {
                     self.current_context.pc += 1;
-                    let rhs: Value = self.stack.pop().unwrap().into();
-                    let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack
+                    let rhs: Value = self.current_context.stack.pop().unwrap().into();
+                    let lhs: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context
+                        .stack
                         .push(rhs.and(&mut self.factory.memory_allocator, lhs).into());
                 }
                 VMInst::OR => {
                     self.current_context.pc += 1;
-                    let rhs: Value = self.stack.pop().unwrap().into();
-                    let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack
+                    let rhs: Value = self.current_context.stack.pop().unwrap().into();
+                    let lhs: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context
+                        .stack
                         .push(rhs.or(&mut self.factory.memory_allocator, lhs).into());
                 }
                 VMInst::XOR => {
                     self.current_context.pc += 1;
-                    let rhs: Value = self.stack.pop().unwrap().into();
-                    let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack
+                    let rhs: Value = self.current_context.stack.pop().unwrap().into();
+                    let lhs: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context
+                        .stack
                         .push(rhs.xor(&mut self.factory.memory_allocator, lhs).into());
                 }
                 VMInst::NOT => {
                     self.current_context.pc += 1;
-                    let rhs: Value = self.stack.pop().unwrap().into();
-                    self.stack
+                    let rhs: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context
+                        .stack
                         .push(rhs.not(&mut self.factory.memory_allocator).into());
                 }
                 VMInst::SHL => {
                     self.current_context.pc += 1;
-                    let rhs: Value = self.stack.pop().unwrap().into();
-                    let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack
+                    let rhs: Value = self.current_context.stack.pop().unwrap().into();
+                    let lhs: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context
+                        .stack
                         .push(lhs.shift_l(&mut self.factory.memory_allocator, rhs).into());
                 }
                 VMInst::SHR => {
                     self.current_context.pc += 1;
-                    let rhs: Value = self.stack.pop().unwrap().into();
-                    let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack
+                    let rhs: Value = self.current_context.stack.pop().unwrap().into();
+                    let lhs: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context
+                        .stack
                         .push(lhs.shift_r(&mut self.factory.memory_allocator, rhs).into());
                 }
                 VMInst::ZFSHR => {
                     self.current_context.pc += 1;
-                    let rhs: Value = self.stack.pop().unwrap().into();
-                    let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack.push(
+                    let rhs: Value = self.current_context.stack.pop().unwrap().into();
+                    let lhs: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context.stack.push(
                         lhs.z_shift_r(&mut self.factory.memory_allocator, rhs)
                             .into(),
                     );
                 }
                 VMInst::NEG => {
                     self.current_context.pc += 1;
-                    let val: Value = self.stack.pop().unwrap().into();
-                    self.stack.push(val.minus().into());
+                    let val: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context.stack.push(val.minus().into());
                 }
                 VMInst::POSI => {
                     self.current_context.pc += 1;
-                    let val: Value = self.stack.pop().unwrap().into();
-                    self.stack
+                    let val: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context
+                        .stack
                         .push(val.positive(&mut self.factory.memory_allocator).into());
                 }
                 VMInst::LNOT => {
                     self.current_context.pc += 1;
-                    let val: Value = self.stack.pop().unwrap().into();
+                    let val: Value = self.current_context.stack.pop().unwrap().into();
                     let res = Value::bool(!val.to_boolean());
-                    self.stack.push(res.into());
+                    self.current_context.stack.push(res.into());
                 }
                 VMInst::PUSH_INT8 => {
                     self.current_context.pc += 1;
-                    read_int8!(
-                        self.current_context.bytecode,
-                        self.current_context.pc,
-                        num,
-                        f64
-                    );
-                    self.stack.push(Value::Number(num).into());
+                    read_int8!(self, num, f64);
+                    self.current_context.stack.push(Value::Number(num).into());
                 }
                 VMInst::PUSH_INT32 => {
                     self.current_context.pc += 1;
-                    read_int32!(
-                        self.current_context.bytecode,
-                        self.current_context.pc,
-                        num,
-                        i32
-                    );
-                    self.stack.push(Value::Number(num as f64).into());
+                    read_int32!(self, num, i32);
+                    self.current_context
+                        .stack
+                        .push(Value::Number(num as f64).into());
                 }
                 VMInst::PUSH_CONST => {
                     self.current_context.pc += 1;
-                    read_int32!(
-                        self.current_context.bytecode,
-                        self.current_context.pc,
-                        id,
-                        usize
-                    );
+                    read_int32!(self, id, usize);
                     let val = *self.constant_table.get(id).as_value();
-                    self.stack.push(val.into());
+                    self.current_context.stack.push(val.into());
                 }
                 VMInst::PUSH_NULL => {
                     self.current_context.pc += 1;
-                    self.stack.push(Value::null().into());
+                    self.current_context.stack.push(Value::null().into());
                 }
                 VMInst::PUSH_UNDEFINED => {
                     self.current_context.pc += 1;
-                    self.stack.push(Value::undefined().into());
+                    self.current_context.stack.push(Value::undefined().into());
                 }
                 VMInst::PUSH_THIS => {
                     self.current_context.pc += 1;
-                    self.stack.push(self.current_context.this.into());
+                    self.current_context
+                        .stack
+                        .push(self.current_context.this.into());
                 }
                 VMInst::PUSH_FALSE => {
                     self.current_context.pc += 1;
-                    self.stack.push(Value::Bool(0).into());
+                    self.current_context.stack.push(Value::Bool(0).into());
                 }
                 VMInst::PUSH_TRUE => {
                     self.current_context.pc += 1;
-                    self.stack.push(Value::Bool(1).into());
+                    self.current_context.stack.push(Value::Bool(1).into());
                 }
                 VMInst::GET_MEMBER => {
                     self.current_context.pc += 1;
-                    let property: Value = self.stack.pop().unwrap().into();
-                    let parent: Value = self.stack.pop().unwrap().into();
+                    let property: Value = self.current_context.stack.pop().unwrap().into();
+                    let parent: Value = self.current_context.stack.pop().unwrap().into();
                     etry!(self.get_property_to_stack_top(parent, property))
                 }
                 VMInst::SET_MEMBER => {
                     self.current_context.pc += 1;
-                    let property: Value = self.stack.pop().unwrap().into();
-                    let parent: Value = self.stack.pop().unwrap().into();
-                    let val: Value = self.stack.pop().unwrap().into();
+                    let property: Value = self.current_context.stack.pop().unwrap().into();
+                    let parent: Value = self.current_context.stack.pop().unwrap().into();
+                    let val: Value = self.current_context.stack.pop().unwrap().into();
                     etry!(self.set_property(parent, property, val))
                 }
                 VMInst::SET_VALUE => {
                     self.current_context.pc += 1;
-                    read_int32!(
-                        self.current_context.bytecode,
-                        self.current_context.pc,
-                        name_id,
-                        usize
-                    );
-                    let val = self.stack.pop().unwrap();
+                    read_int32!(self, name_id, usize);
+                    let val = self.current_context.stack.pop().unwrap();
                     let name = self.constant_table.get(name_id).as_string().clone();
                     etry!(self
                         .current_context
@@ -759,59 +758,39 @@ impl VM {
                 }
                 VMInst::GET_VALUE => {
                     self.current_context.pc += 1;
-                    read_int32!(
-                        self.current_context.bytecode,
-                        self.current_context.pc,
-                        name_id,
-                        usize
-                    );
+                    read_int32!(self, name_id, usize);
                     let string = self.constant_table.get(name_id).as_string();
                     let val = etry!(self.current_context.lex_env().get_value(string.clone()));
-                    self.stack.push(val.into());
+                    self.current_context.stack.push(val.into());
                 }
                 VMInst::CONSTRUCT => {
                     self.current_context.pc += 1;
-                    read_int32!(
-                        self.current_context.bytecode,
-                        self.current_context.pc,
-                        argc,
-                        usize
-                    );
-                    let callee: Value = self.stack.pop().unwrap().into();
+                    read_int32!(self, argc, usize);
+                    let callee: Value = self.current_context.stack.pop().unwrap().into();
                     let mut args: Vec<Value> = vec![];
                     for _ in 0..argc {
-                        args.push(self.stack.pop().unwrap().into());
+                        args.push(self.current_context.stack.pop().unwrap().into());
                     }
                     self.enter_constructor(callee, &args)?;
                 }
                 VMInst::CALL => {
                     self.current_context.pc += 1;
-                    read_int32!(
-                        self.current_context.bytecode,
-                        self.current_context.pc,
-                        argc,
-                        usize
-                    );
-                    let callee: Value = self.stack.pop().unwrap().into();
+                    read_int32!(self, argc, usize);
+                    let callee: Value = self.current_context.stack.pop().unwrap().into();
                     let mut args: Vec<Value> = vec![];
                     for _ in 0..argc {
-                        args.push(self.stack.pop().unwrap().into());
+                        args.push(self.current_context.stack.pop().unwrap().into());
                     }
                     etry!(self.enter_function(callee, &args, self.current_context.this, false))
                 }
                 VMInst::CALL_METHOD => {
                     self.current_context.pc += 1;
-                    read_int32!(
-                        self.current_context.bytecode,
-                        self.current_context.pc,
-                        argc,
-                        usize
-                    );
-                    let parent: Value = self.stack.pop().unwrap().into();
-                    let method: Value = self.stack.pop().unwrap().into();
+                    read_int32!(self, argc, usize);
+                    let parent: Value = self.current_context.stack.pop().unwrap().into();
+                    let method: Value = self.current_context.stack.pop().unwrap().into();
                     let mut args: Vec<Value> = vec![];
                     for _ in 0..argc {
-                        args.push(self.stack.pop().unwrap().into());
+                        args.push(self.current_context.stack.pop().unwrap().into());
                     }
                     let callee = match etry!(parent.get_property(&mut self.factory, method)) {
                         Property::Data(DataProperty { val, .. }) => val,
@@ -821,46 +800,31 @@ impl VM {
                 }
                 VMInst::SET_OUTER_ENV => {
                     self.current_context.pc += 1;
-                    let func_template: Value = self.stack.pop().unwrap().into();
+                    let func_template: Value = self.current_context.stack.pop().unwrap().into();
                     let mut func = func_template.copy_object(&mut self.factory.memory_allocator);
                     func.set_function_outer_environment(self.current_context.lexical_environment);
-                    self.stack.push(func.into());
+                    self.current_context.stack.push(func.into());
                 }
                 VMInst::CREATE_OBJECT => {
                     self.current_context.pc += 1;
-                    read_int32!(
-                        self.current_context.bytecode,
-                        self.current_context.pc,
-                        id,
-                        usize
-                    );
+                    read_int32!(self, id, usize);
                     self.create_object(id)?;
                     self.gc_mark();
                 }
                 VMInst::CREATE_ARRAY => {
                     self.current_context.pc += 1;
-                    read_int32!(
-                        self.current_context.bytecode,
-                        self.current_context.pc,
-                        len,
-                        usize
-                    );
+                    read_int32!(self, len, usize);
                     self.create_array(len)?;
                     self.gc_mark();
                 }
                 VMInst::DOUBLE => {
                     self.current_context.pc += 1;
-                    let val = *self.stack.last().unwrap();
-                    self.stack.push(val);
+                    let val = *self.current_context.stack.last().unwrap();
+                    self.current_context.stack.push(val);
                 }
                 VMInst::PUSH_ENV => {
                     self.current_context.pc += 1;
-                    read_int32!(
-                        self.current_context.bytecode,
-                        self.current_context.pc,
-                        id,
-                        usize
-                    );
+                    read_int32!(self, id, usize);
                     self.push_env(id)?;
                 }
                 VMInst::POP_ENV => {
@@ -874,17 +838,12 @@ impl VM {
                 }
                 VMInst::POP => {
                     self.current_context.pc += 1;
-                    self.stack.pop();
+                    self.current_context.stack.pop();
                 }
                 VMInst::JMP_IF_FALSE => {
                     self.current_context.pc += 1;
-                    read_int32!(
-                        self.current_context.bytecode,
-                        self.current_context.pc,
-                        dst,
-                        i32
-                    );
-                    let cond_boxed = self.stack.pop().unwrap();
+                    read_int32!(self, dst, i32);
+                    let cond_boxed = self.current_context.stack.pop().unwrap();
                     let cond: Value = cond_boxed.into();
                     if !cond.to_boolean() {
                         self.current_context.pc =
@@ -893,35 +852,20 @@ impl VM {
                 }
                 VMInst::JMP => {
                     self.current_context.pc += 1;
-                    read_int32!(
-                        self.current_context.bytecode,
-                        self.current_context.pc,
-                        dst,
-                        i32
-                    );
+                    read_int32!(self, dst, i32);
                     self.current_context.pc =
                         (self.current_context.pc as isize + dst as isize) as usize;
                 }
                 VMInst::JMP_SUB => {
                     self.current_context.pc += 1;
-                    read_int32!(
-                        self.current_context.bytecode,
-                        self.current_context.pc,
-                        dst,
-                        i32
-                    );
+                    read_int32!(self, dst, i32);
                     subroutine_stack.push(SubroutineKind::Ordinary(self.current_context.pc));
                     self.current_context.pc =
                         (self.current_context.pc as isize + dst as isize) as usize;
                 }
                 VMInst::RETURN_TRY => {
                     self.current_context.pc += 1;
-                    read_int32!(
-                        self.current_context.bytecode,
-                        self.current_context.pc,
-                        dst,
-                        i32
-                    );
+                    read_int32!(self, dst, i32);
                     self.current_context.pc =
                         (self.current_context.pc as isize + dst as isize) as usize;
                     subroutine_stack.push(SubroutineKind::Return);
@@ -932,7 +876,7 @@ impl VM {
                         SubroutineKind::Ordinary(pos) => self.current_context.pc = pos,
                         SubroutineKind::Throw => handle_exception(self, &mut subroutine_stack)?,
                         SubroutineKind::Return => {
-                            self.unwind_context_saving_stack_top();
+                            self.unwind_context();
                         }
                     }
                 }
@@ -946,7 +890,7 @@ impl VM {
                     if self.saved_context.len() == 0 {
                         break;
                     };
-                    self.unwind_context_saving_stack_top();
+                    self.unwind_context();
                     // TODO: GC schedule
                     self.gc_mark();
                     if escape {
@@ -962,10 +906,10 @@ impl VM {
                 }
                 VMInst::TYPEOF => {
                     self.current_context.pc += 1;
-                    let val: Value = self.stack.pop().unwrap().into();
+                    let val: Value = self.current_context.stack.pop().unwrap().into();
                     let type_str = val.type_of();
                     let type_str_val = self.factory.string(type_str.to_string());
-                    self.stack.push(type_str_val.into());
+                    self.current_context.stack.push(type_str_val.into());
                 }
                 VMInst::END => break,
                 _ => {
@@ -981,19 +925,21 @@ impl VM {
             }
         }
 
-        let val = match self.stack.pop() {
+        let val = match self.current_context.stack.pop() {
             None => Value::undefined(),
             Some(val) => val.into(),
         };
-        println!("{}", val);
+
         Ok(val)
     }
 
-    pub fn unwind_context_saving_stack_top(&mut self) {
-        let ret_val_boxed = self.stack.pop().unwrap();
-        let ret_val: Value = ret_val_boxed.into();
+    /// Return from JS function.
+    /// 1. Pop a Value from the stack of the current execution context.
+    /// 2. Pop an ExecContext from the context stack.
+    /// 3. Set current execution context to the ExecContext.
+    /// 4. Push the Value to the stack of new current execution context.
+    pub fn unwind_context(&mut self) {
         let prev_context = self.saved_context.pop().unwrap();
-        self.stack.truncate(prev_context.saved_stack_len);
         let return_value = if self.current_context.module_call {
             self.current_context
                 .lex_env()
@@ -1002,13 +948,17 @@ impl VM {
                 .get_object_info()
                 .get_property_by_str_key("exports")
                 .into()
-        } else if self.current_context.constructor_call && !ret_val.is_object() {
-            self.current_context.this.into()
         } else {
-            ret_val_boxed
+            let ret_val_boxed = self.current_context.stack.pop().unwrap();
+            let ret_val: Value = ret_val_boxed.into();
+            if self.current_context.constructor_call && !ret_val.is_object() {
+                self.current_context.this.into()
+            } else {
+                ret_val_boxed
+            }
         };
-        self.stack.push(return_value);
         self.current_context = prev_context;
+        self.current_context.stack.push(return_value);
     }
 
     fn push_env(&mut self, id: usize) -> VMResult {
@@ -1030,9 +980,9 @@ impl VM {
         let mut properties = FxHashMap::default();
 
         for i in 0..len {
-            let prop: Value = self.stack.pop().unwrap().into();
+            let prop: Value = self.current_context.stack.pop().unwrap().into();
             let name = prop.to_string();
-            let val: Value = self.stack.pop().unwrap().into();
+            let val: Value = self.current_context.stack.pop().unwrap().into();
             if let Some(kind) = special_properties.get(&i) {
                 let AccessorProperty { get, set, .. } = properties
                     .entry(name)
@@ -1063,7 +1013,7 @@ impl VM {
         }
 
         let obj = self.factory.object(properties);
-        self.stack.push(obj.into());
+        self.current_context.stack.push(obj.into());
 
         Ok(())
     }
@@ -1071,7 +1021,7 @@ impl VM {
     fn create_array(&mut self, len: usize) -> VMResult {
         let mut elems = vec![];
         for _ in 0..len {
-            let val: Value = self.stack.pop().unwrap().into();
+            let val: Value = self.current_context.stack.pop().unwrap().into();
             elems.push(Property::Data(DataProperty {
                 val,
                 writable: true,
@@ -1081,7 +1031,7 @@ impl VM {
         }
 
         let ary = self.factory.array(elems);
-        self.stack.push(ary.into());
+        self.current_context.stack.push(ary.into());
 
         Ok(())
     }
@@ -1112,7 +1062,7 @@ impl VM {
         let ret = match info.kind {
             FunctionObjectKind::Builtin(func) => gc_lock!(self, args, {
                 let val = func(self, args, this)?;
-                self.stack.push(val.into());
+                self.current_context.stack.push(val.into());
                 Ok(())
             }),
             FunctionObjectKind::User(ref user_func) => {
@@ -1233,10 +1183,7 @@ impl VM {
         args: &[Value],
         this: Value,
     ) -> Result<exec_context::ExecContext, RuntimeError> {
-        let context = self
-            .current_context
-            .clone()
-            .saved_stack_len(self.stack.len());
+        let context = self.current_context.clone();
         self.saved_context.push(context);
 
         let this = if user_func.this_mode == ThisMode::Lexical {

@@ -5,7 +5,7 @@ use crate::vm::codegen::FunctionInfo;
 use crate::vm::error::ErrorKind;
 use crate::vm::error::RuntimeError;
 use crate::vm::jsvalue::function::Exception;
-use crate::vm::jsvalue::value::Value;
+use crate::vm::jsvalue::value::{BoxedValue, Value};
 use crate::vm::vm::{Factory, VMResult};
 use rustc_hash::FxHashMap;
 use std::ops::{Deref, DerefMut};
@@ -19,7 +19,7 @@ pub struct ExecContext {
     pub module_func_id: usize,
     pub pc: usize,
     pub current_inst_pc: usize,
-    pub saved_stack_len: usize,
+    pub stack: Vec<BoxedValue>,
     pub bytecode: ByteCode,
     pub exception_table: Vec<Exception>,
     /// This value in the context.
@@ -71,7 +71,7 @@ impl ExecContext {
             module_func_id: 0,
             pc: 0,
             current_inst_pc: 0,
-            saved_stack_len: 0,
+            stack: vec![],
             bytecode,
             exception_table,
             this,
@@ -89,7 +89,7 @@ impl ExecContext {
             module_func_id: 0,
             pc: 0,
             current_inst_pc: 0,
-            saved_stack_len: 0,
+            stack: vec![],
             bytecode: vec![],
             exception_table: vec![],
             this: Value::undefined(),
@@ -122,11 +122,6 @@ impl ExecContext {
 
     pub fn module_call(mut self, is_module: bool) -> Self {
         self.module_call = is_module;
-        self
-    }
-
-    pub fn saved_stack_len(mut self, saved_stack_len: usize) -> Self {
-        self.saved_stack_len = saved_stack_len;
         self
     }
 

@@ -15,7 +15,7 @@ pub fn object(factory: &mut Factory) -> Value {
 pub fn object_constructor(vm: &mut VM, args: &[Value], _this: Value) -> VMValueResult {
     if args.len() == 0 {
         let empty_obj = vm.factory.object(FxHashMap::default());
-        vm.stack.push(empty_obj.into());
+        vm.current_context.stack.push(empty_obj.into());
         return Ok(empty_obj);
     }
 

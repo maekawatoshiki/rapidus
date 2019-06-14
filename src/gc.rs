@@ -1,10 +1,7 @@
 use crate::vm::{
     constant, exec_context,
     exec_context::{EnvironmentRecord, ExecContext, LexicalEnvironment},
-    jsvalue::{
-        function, object, prototype,
-        value::{BoxedValue, Value},
-    },
+    jsvalue::{function, object, prototype, value::Value},
 };
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::hash::{Hash, Hasher};
@@ -96,7 +93,7 @@ impl MemoryAllocator {
         global: exec_context::LexicalEnvironmentRef,
         object_prototypes: &prototype::ObjectPrototypes,
         constant_table: &constant::ConstantTable,
-        stack: &Vec<BoxedValue>,
+        //stack: &Vec<BoxedValue>,
         cur_context: &exec_context::ExecContext,
         saved_context: &Vec<exec_context::ExecContext>,
     ) {
@@ -119,12 +116,12 @@ impl MemoryAllocator {
                 object_prototypes.array.initial_trace(&mut markset);
 
                 constant_table.initial_trace(&mut markset);
-
-                for val_boxed in stack {
-                    let val: Value = (*val_boxed).into();
-                    val.initial_trace(&mut markset);
-                }
-
+                /*
+                                for val_boxed in stack {
+                                    let val: Value = (*val_boxed).into();
+                                    val.initial_trace(&mut markset);
+                                }
+                */
                 for context in saved_context {
                     context.initial_trace(&mut markset);
                     context.this.initial_trace(&mut markset);
@@ -242,6 +239,10 @@ impl GcTarget for ExecContext {
         mark!(markset, self.variable_environment.as_ptr());
         for env in &self.saved_lexical_environment {
             mark!(markset, env.as_ptr());
+        }
+        for val_boxed in &self.stack {
+            let val: Value = (*val_boxed).into();
+            val.initial_trace(markset);
         }
     }
 

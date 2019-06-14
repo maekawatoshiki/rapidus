@@ -80,7 +80,7 @@ fn main() {
     }
 
     if is_debug {
-        for (i, val_boxed) in vm.stack.iter().enumerate() {
+        for (i, val_boxed) in vm.current_context.stack.iter().enumerate() {
             let val: Value = (*val_boxed).into();
             println!("stack remaining: [{}]: {:?}", i, val);
         }
@@ -137,25 +137,20 @@ fn repl(is_trace: bool) {
                     let script_info = parser.into_script_info();
                     vm.script_info = vec![(0, script_info)];
                     vm.current_context = global_context.clone().unwrap();
-                    if let Err(e) = vm.run() {
-                        let val = e.to_value(&mut vm.factory);
-                        if val.is_error_object() {
-                            println!(
-                                "Error: {}",
-                                val.get_property_by_str_key("message").to_string()
-                            );
-                        } else {
-                            println!("Thrown: {}", val.to_string())
-                        };
-                        break;
+                    match vm.run() {
+                        Ok(val) => println!("{}", val.debug_string(true)),
+                        Err(e) => {
+                            let val = e.to_value(&mut vm.factory);
+                            if val.is_error_object() {
+                                println!(
+                                    "Error: {}",
+                                    val.get_property_by_str_key("message").to_string()
+                                );
+                            } else {
+                                println!("Thrown: {}", val.to_string())
+                            };
+                        }
                     }
-
-                    if vm.stack.len() != 0 {
-                        let val: Value = vm.stack[0].into();
-                        println!("{}", val.debug_string(true));
-                        vm.stack = vec![];
-                    }
-
                     break;
                 }
                 Err(parser::Error::UnexpectedEOF(_)) => match rl.readline("... ") {
@@ -319,6 +314,11 @@ mod tests {
     #[test]
     fn fact() {
         assert_file("fact")
+    }
+
+    #[test]
+    fn test_module() {
+        assert_file("test_module_caller")
     }
 
     #[test]
