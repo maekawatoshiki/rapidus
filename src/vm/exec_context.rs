@@ -6,7 +6,7 @@ use crate::vm::error::ErrorKind;
 use crate::vm::error::RuntimeError;
 use crate::vm::jsvalue::function::Exception;
 use crate::vm::jsvalue::value::{BoxedValue, Value};
-use crate::vm::vm::{Factory, VMResult};
+use crate::vm::vm::{CallMode, Factory, VMResult};
 use rustc_hash::FxHashMap;
 use std::ops::{Deref, DerefMut};
 
@@ -26,10 +26,11 @@ pub struct ExecContext {
     pub this: Value,
     /// If true, calling JS function as a constructor.
     pub constructor_call: bool,
+    pub call_mode: CallMode,
     /// If true, calling JS function as a module.
-    pub module_call: bool,
+    //    pub module_call: bool,
     /// If true, calling JS function from native function.
-    pub escape: bool,
+    //    pub escape: bool,
     pub variable_environment: LexicalEnvironmentRef,
     pub lexical_environment: LexicalEnvironmentRef,
     pub saved_lexical_environment: Vec<LexicalEnvironmentRef>,
@@ -76,8 +77,7 @@ impl ExecContext {
             exception_table,
             this,
             constructor_call: false,
-            module_call: false,
-            escape: false,
+            call_mode: CallMode::OrdinaryCall,
             variable_environment: var_env,
             lexical_environment: lex_env,
             saved_lexical_environment: vec![],
@@ -94,8 +94,7 @@ impl ExecContext {
             exception_table: vec![],
             this: Value::undefined(),
             constructor_call: false,
-            module_call: false,
-            escape: false,
+            call_mode: CallMode::OrdinaryCall,
             variable_environment: LexicalEnvironmentRef::new_null(),
             lexical_environment: LexicalEnvironmentRef::new_null(),
             saved_lexical_environment: vec![],
@@ -110,18 +109,8 @@ impl ExecContext {
         &mut *self.lexical_environment
     }
 
-    pub fn escape(mut self) -> Self {
-        self.escape = true;
-        self
-    }
-
     pub fn constructor_call(mut self, is_constructor: bool) -> Self {
         self.constructor_call = is_constructor;
-        self
-    }
-
-    pub fn module_call(mut self, is_module: bool) -> Self {
-        self.module_call = is_module;
         self
     }
 

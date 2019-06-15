@@ -43,6 +43,13 @@ pub struct VM {
     pub instant: Instant,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum CallMode {
+    OrdinaryCall,
+    ModuleCall,
+    FromNative,
+}
+
 macro_rules! gc_lock {
     ($vm:ident, $targets:expr, $($body:tt)*) => { {
         for arg in $targets { $vm.factory.memory_allocator.lock(*arg) }
@@ -287,10 +294,13 @@ impl VM {
         this: Value,
         constructor_call: bool,
     ) -> VMValueResult {
-        self.current_context = self
-            .prepare_context_for_function_invokation(user_func, args, this)?
-            .constructor_call(constructor_call)
-            .escape();
+        self.prepare_context_for_function_invokation(
+            user_func,
+            args,
+            this,
+            CallMode::FromNative,
+            constructor_call,
+        )?;
 
         self.run()
     }
@@ -886,14 +896,14 @@ impl VM {
                 }
                 VMInst::RETURN => {
                     self.current_context.pc += 1;
-                    let escape = self.current_context.escape;
+                    let call_mode = self.current_context.call_mode.clone();
                     if self.saved_context.len() == 0 {
                         break;
                     };
                     self.unwind_context();
                     // TODO: GC schedule
                     self.gc_mark();
-                    if escape {
+                    if call_mode == CallMode::FromNative {
                         break;
                     }
                     if is_trace {
@@ -940,7 +950,7 @@ impl VM {
     /// 4. Push the Value to the stack of new current execution context.
     pub fn unwind_context(&mut self) {
         let prev_context = self.saved_context.pop().unwrap();
-        let return_value = if self.current_context.module_call {
+        let return_value = if self.current_context.call_mode == CallMode::ModuleCall {
             self.current_context
                 .lex_env()
                 .get_value("module")
@@ -1172,18 +1182,23 @@ impl VM {
     }
 
     /// Prepare a new context before invoking function.
-    /// 1. save current context to the context stack.
-    /// 2. set `this`.
-    /// 3. create a new function environment.
-    /// 4. prepare function objects defined inner the function, and register them to the lexical environment.
-    /// 5. generate a new context, and return it.
+    /// 1. Push current context to the context stack.
+    /// 2. Set `this`.
+    /// 3. Create a new function environment.
+    /// 4. Prepare function objects defined inner the function, and register them to the lexical environment.
+    /// 5. Generate a new context, and set the current context to it.
     pub fn prepare_context_for_function_invokation(
         &mut self,
         user_func: &UserFunctionInfo,
         args: &[Value],
         this: Value,
-    ) -> Result<exec_context::ExecContext, RuntimeError> {
-        let context = self.current_context.clone();
+        mode: CallMode,
+        constructor_call: bool,
+    ) -> Result<(), RuntimeError> {
+        let context = std::mem::replace(
+            &mut self.current_context,
+            exec_context::ExecContext::empty(),
+        );
         self.saved_context.push(context);
 
         let this = if user_func.this_mode == ThisMode::Lexical {
@@ -1212,7 +1227,7 @@ impl VM {
 
         let user_func = user_func.clone();
 
-        Ok(exec_context::ExecContext::new(
+        let mut context = exec_context::ExecContext::new(
             user_func.code,
             var_env_ref,
             lex_env_ref,
@@ -1220,7 +1235,11 @@ impl VM {
             this,
         )
         .func_id(user_func.id)
-        .module_func_id(user_func.module_func_id))
+        .module_func_id(user_func.module_func_id)
+        .constructor_call(constructor_call);
+        context.call_mode = mode;
+        self.current_context = context;
+        Ok(())
     }
 
     fn enter_user_function(
@@ -1234,11 +1253,13 @@ impl VM {
             return Err(self.current_context.error_type("Not a constructor"));
         }
 
-        let context = self
-            .prepare_context_for_function_invokation(&user_func, args, this)?
-            .constructor_call(constructor_call);
-
-        self.current_context = context;
+        self.prepare_context_for_function_invokation(
+            &user_func,
+            args,
+            this,
+            CallMode::OrdinaryCall,
+            constructor_call,
+        )?;
 
         Ok(())
     }

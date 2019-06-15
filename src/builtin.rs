@@ -1,6 +1,6 @@
 use crate::vm::{
     jsvalue::value::*,
-    vm::{VMValueResult, VM},
+    vm::{CallMode, VMValueResult, VM},
 };
 
 pub type BuiltinFuncTy = fn(&mut VM, &[Value], Value) -> VMValueResult;
@@ -140,13 +140,13 @@ pub fn require(vm: &mut VM, args: &[Value], _this: Value) -> VMValueResult {
         outer: Some(vm.global_environment),
     };
 
-    let mut context = vm
-        .prepare_context_for_function_invokation(
-            &user_func_info,
-            args: &[Value],
-            Value::undefined(),
-        )?
-        .module_call(true);
+    vm.prepare_context_for_function_invokation(
+        &user_func_info,
+        args: &[Value],
+        Value::undefined(),
+        CallMode::ModuleCall,
+        false,
+    )?;
 
     let empty_object = make_normal_object!(vm.factory);
     let id_object = vm.factory.string(absolute_path);
@@ -155,17 +155,17 @@ pub fn require(vm: &mut VM, args: &[Value], _this: Value) -> VMValueResult {
         id       => false, false, false: id_object,
         exports  => true,  false, false: empty_object
     );
-    context.lex_env_mut().set_own_value("module", module)?;
+    vm.current_context
+        .lex_env_mut()
+        .set_own_value("module", module)?;
 
     if vm.is_trace {
         println!("--> call module");
         println!(
             "  module_id:{} func_id:{}",
-            context.module_func_id, context.func_id
+            vm.current_context.module_func_id, vm.current_context.func_id
         );
     };
-
-    vm.current_context = context;
 
     Ok(Value::empty())
 }

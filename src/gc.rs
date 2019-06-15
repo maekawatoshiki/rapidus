@@ -137,8 +137,8 @@ impl MemoryAllocator {
             }
             GCState::Marking => {
                 // println!("start marking: {:?}", markset);
-
-                for root in self.roots.clone() {
+                let roots = std::mem::replace(&mut self.roots, FxHashSet::default());
+                for root in roots {
                     self.allocated_memory.insert(root, MarkState::Black);
                     unsafe { &*root.0 }.trace(self, &mut markset);
                 }
