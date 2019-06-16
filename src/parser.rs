@@ -70,7 +70,7 @@ impl Parser {
     /// * `file_name` - A module file name.
     pub fn load_module(file_name: impl Into<String>) -> Result<Parser, Error> {
         let file_name = file_name.into();
-        let path = Path::new(&file_name);
+        let path = Path::new(&file_name).with_extension("js");
         let absolute_path = match path.canonicalize() {
             Ok(path) => path,
             Err(ioerr) => {

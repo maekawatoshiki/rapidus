@@ -1,4 +1,4 @@
-var assert = require('./assert.js').deepStrictEqual
+var assert = require('assert').deepStrictEqual
 count = 1000
 var mod = (function() {
   var count = 0

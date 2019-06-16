@@ -1,4 +1,4 @@
-let assert = require('./assert.js').deepStrictEqual
+let assert = require('assert').deepStrictEqual
 let obj = {
   _x: 7,
   get x() {

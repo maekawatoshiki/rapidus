@@ -1,4 +1,4 @@
-let assert = require('assert.js').deepStrictEqual
+let assert = require('assert').deepStrictEqual
 
 function Product(name, price) {
   this.name = name

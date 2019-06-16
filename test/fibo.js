@@ -1,4 +1,4 @@
-let assert = require('./assert.js').deepStrictEqual
+let assert = require('assert').deepStrictEqual
 
 function fibo(x) {
   if (x < 2) return 1

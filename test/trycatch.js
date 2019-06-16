@@ -1,4 +1,4 @@
-let assert = require('./assert.js').deepStrictEqual
+let assert = require('assert').deepStrictEqual
 
 var a = []
 const b = 1

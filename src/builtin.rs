@@ -90,14 +90,14 @@ pub fn require(vm: &mut VM, args: &[Value], _this: Value) -> VMValueResult {
     let file_name = {
         let val = args.get(0).ok_or(
             vm.current_context
-                .error_general("require():One argument is needed."),
+                .error_general("require(): One argument is needed."),
         )?;
         match val {
             Value::String(_) => val.to_string(),
             _ => {
                 return Err(vm
                     .current_context
-                    .error_type("require():An argument should be string."));
+                    .error_type("require(): An argument should be string."));
             }
         }
     };
