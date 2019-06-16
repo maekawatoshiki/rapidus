@@ -1,6 +1,6 @@
 extern crate rapidus;
 use rapidus::parser;
-use rapidus::{vm, vm::exec_context, vm::jsvalue::value::Value, vm::vm::VM};
+use rapidus::{vm, vm::exec_context, vm::vm::VM};
 
 extern crate libc;
 
@@ -78,13 +78,6 @@ fn main() {
     if let Err(e) = vm.run_global(global_info, iseq) {
         vm.show_error_message(e);
     }
-
-    if is_debug {
-        for (i, val_boxed) in vm.current_context.stack.iter().enumerate() {
-            let val: Value = (*val_boxed).into();
-            println!("stack remaining: [{}]: {:?}", i, val);
-        }
-    }
 }
 
 fn repl(is_trace: bool) {
@@ -142,10 +135,7 @@ fn repl(is_trace: bool) {
                         Err(e) => {
                             let val = e.to_value(&mut vm.factory);
                             if val.is_error_object() {
-                                println!(
-                                    "Error: {}",
-                                    val.get_property_by_str_key("message").to_string()
-                                );
+                                println!("Error: {}", val.get_property("message"));
                             } else {
                                 println!("Thrown: {}", val.to_string())
                             };

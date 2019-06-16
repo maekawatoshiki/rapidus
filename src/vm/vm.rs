@@ -105,7 +105,7 @@ impl Factory {
             sym_property: FxHashMap::default(),
         }));
 
-        f.get_property_by_str_key("prototype")
+        f.get_property("prototype")
             .get_object_info()
             .property
             .insert("constructor".to_string(), Property::new_data_simple(f));
@@ -175,9 +175,8 @@ impl Factory {
         prototype: Value,
     ) -> Value {
         let ary = self.builtin_function(constructor_name, constructor_func);
-        ary.set_property_by_string_key("prototype", prototype);
-        ary.get_property_by_str_key("prototype")
-            .set_constructor(ary);
+        ary.set_property("prototype", prototype);
+        ary.get_property("prototype").set_constructor(ary);
         ary
     }
 }
@@ -307,7 +306,7 @@ impl VM {
     }
 
     fn get_property_to_stack_top(&mut self, parent: Value, key: Value) -> VMResult {
-        let val = parent.get_property(&mut self.factory, key)?;
+        let val = parent.get_property_by_value(&mut self.factory, key)?;
         match val {
             Property::Data(DataProperty { val, .. }) => {
                 self.current_context.stack.push(val.into());
@@ -323,8 +322,12 @@ impl VM {
         }
     }
 
-    pub fn get_property(&mut self, parent: Value, key: Value) -> Result<Value, RuntimeError> {
-        let val = parent.get_property(&mut self.factory, key)?;
+    pub fn get_property_by_value(
+        &mut self,
+        parent: Value,
+        key: Value,
+    ) -> Result<Value, RuntimeError> {
+        let val = parent.get_property_by_value(&mut self.factory, key)?;
         match val {
             Property::Data(DataProperty { val, .. }) => Ok(val),
             Property::Accessor(AccessorProperty { get, .. }) => {
@@ -337,8 +340,9 @@ impl VM {
         }
     }
 
-    pub fn set_property(&mut self, parent: Value, key: Value, val: Value) -> VMResult {
-        let maybe_setter = parent.set_property(&mut self.factory.memory_allocator, key, val)?;
+    pub fn set_property_by_value(&mut self, parent: Value, key: Value, val: Value) -> VMResult {
+        let maybe_setter =
+            parent.set_property_by_value(&mut self.factory.memory_allocator, key, val)?;
         if let Some(setter) = maybe_setter {
             self.call_function(setter, &[val], parent)?;
             self.current_context.stack.pop().unwrap(); // Pop undefined (setter's return value)
@@ -755,7 +759,7 @@ impl VM {
                     let property: Value = self.current_context.stack.pop().unwrap().into();
                     let parent: Value = self.current_context.stack.pop().unwrap().into();
                     let val: Value = self.current_context.stack.pop().unwrap().into();
-                    etry!(self.set_property(parent, property, val))
+                    etry!(self.set_property_by_value(parent, property, val))
                 }
                 VMInst::SET_VALUE => {
                     self.current_context.pc += 1;
@@ -803,7 +807,8 @@ impl VM {
                     for _ in 0..argc {
                         args.push(self.current_context.stack.pop().unwrap().into());
                     }
-                    let callee = match etry!(parent.get_property(&mut self.factory, method)) {
+                    let callee = match etry!(parent.get_property_by_value(&mut self.factory, method))
+                    {
                         Property::Data(DataProperty { val, .. }) => val,
                         _ => type_error!("Not a function"),
                     };
@@ -957,7 +962,7 @@ impl VM {
                 .get_value("module")
                 .unwrap()
                 .get_object_info()
-                .get_property_by_str_key("exports")
+                .get_property("exports")
                 .into()
         } else {
             let ret_val_boxed = self.current_context.stack.pop().unwrap();
@@ -1050,7 +1055,7 @@ impl VM {
     fn enter_constructor(&mut self, callee: Value, args: &[Value]) -> VMResult {
         let this = Value::Object(self.factory.alloc(ObjectInfo {
             kind: ObjectKind::Ordinary,
-            prototype: callee.get_property_by_str_key("prototype"),
+            prototype: callee.get_property("prototype"),
             property: FxHashMap::default(),
             sym_property: FxHashMap::default(),
         }));

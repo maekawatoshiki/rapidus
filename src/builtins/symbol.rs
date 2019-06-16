@@ -11,11 +11,9 @@ pub fn symbol(factory: &mut Factory) -> Value {
     );
 
     // Symbol.for
-    obj.set_property_by_string_key("for", { factory.builtin_function("for", symbol_for) });
+    obj.set_property("for", factory.builtin_function("for", symbol_for));
     // Symbol.keyFor
-    obj.set_property_by_string_key("keyFor", {
-        factory.builtin_function("keyFor", symbol_key_for)
-    });
+    obj.set_property("keyFor", factory.builtin_function("keyFor", symbol_key_for));
     obj
 }
 

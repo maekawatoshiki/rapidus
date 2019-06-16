@@ -253,7 +253,7 @@ impl LexicalEnvironment {
             },
             EnvironmentRecord::Global(obj) | EnvironmentRecord::Object(obj) => {
                 if obj.has_own_property(name.as_str()) {
-                    let val = obj.get_property_by_str_key(name.as_str());
+                    let val = obj.get_property(name.as_str());
                     if val == Value::uninitialized() {
                         return Err(RuntimeError::reference(format!(
                             "'{}' is not defined",
@@ -287,7 +287,7 @@ impl LexicalEnvironment {
                 None => {}
             },
             EnvironmentRecord::Global(obj) | EnvironmentRecord::Object(obj) => {
-                obj.set_property_by_string_key(name, val);
+                obj.set_property(name, val);
                 return Ok(());
             }
         };
@@ -310,7 +310,7 @@ impl LexicalEnvironment {
                 record.insert(name.into(), val);
             }
             EnvironmentRecord::Global(obj) | EnvironmentRecord::Object(obj) => {
-                obj.set_property_by_string_key(name, val);
+                obj.set_property(name, val);
             }
         };
         return Ok(());

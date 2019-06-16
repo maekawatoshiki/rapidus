@@ -87,7 +87,7 @@ pub fn array_prototype_map(vm: &mut VM, args: &[Value], this: Value) -> VMValueR
     let mut new_ary = vec![];
 
     for i in 0..ary_info.get_length() {
-        args_for_callback[0] = vm.get_property(this, Value::Number(i as f64))?; // 'i'th element may be getter
+        args_for_callback[0] = vm.get_property_by_value(this, Value::Number(i as f64))?; // 'i'th element may be getter
         args_for_callback[1] = Value::Number(i as f64);
 
         let val = vm.call_function(callback, &args_for_callback, Value::undefined())?;

@@ -326,14 +326,14 @@ impl Value {
         }
     }
 
-    pub fn get_property_by_str_key(&self, key: &str) -> Value {
+    pub fn get_property(&self, key: &str) -> Value {
         match self {
-            Value::Object(obj_info) => ObjectRef(*obj_info).get_property_by_str_key(key),
+            Value::Object(obj_info) => ObjectRef(*obj_info).get_property(key),
             _ => Value::undefined(),
         }
     }
 
-    pub fn get_property(
+    pub fn get_property_by_value(
         &self,
         factory: &mut Factory,
         key: Value,
@@ -354,7 +354,7 @@ impl Value {
                     .object_prototypes
                     .string
                     .get_object_info()
-                    .get_property(factory, key),
+                    .get_property_by_value(factory, key),
             }
         }
 
@@ -374,28 +374,28 @@ impl Value {
         }
 
         match self {
-            Value::Object(obj_info) => ObjectRef(*obj_info).get_property(factory, key),
+            Value::Object(obj_info) => ObjectRef(*obj_info).get_property_by_value(factory, key),
             _ => Ok(Property::new_data_simple(Value::undefined())),
         }
     }
 
-    pub fn set_property_by_string_key(&self, key: impl Into<String>, val: Value) {
+    pub fn set_property(&self, key: impl Into<String>, val: Value) {
         match self {
-            Value::Object(obj_info) => {
-                ObjectRef(*obj_info).set_property_by_string_key(key.into(), val)
-            }
+            Value::Object(obj_info) => ObjectRef(*obj_info).set_property(key.into(), val),
             _ => {}
         }
     }
 
-    pub fn set_property(
+    pub fn set_property_by_value(
         &self,
         allocator: &mut gc::MemoryAllocator,
         key: Value,
         val: Value,
     ) -> Result<Option<Value>, error::RuntimeError> {
         match self {
-            Value::Object(obj_info) => ObjectRef(*obj_info).set_property(allocator, key, val),
+            Value::Object(obj_info) => {
+                ObjectRef(*obj_info).set_property_by_value(allocator, key, val)
+            }
             Value::Other(_) => Err(error::RuntimeError::typeerr(format!(
                 "TypeError: Cannot set property '{}' of {}",
                 key.to_string(),
@@ -986,10 +986,9 @@ impl Value {
                         "Symbol({})",
                         info.description.as_ref().unwrap_or(&"".to_string())
                     ),
-                    ObjectKind::Error(ref _info) => format!(
-                        "Error({})",
-                        obj_info.get_property_by_str_key("message").to_string()
-                    ),
+                    ObjectKind::Error(ref _info) => {
+                        format!("Error({})", obj_info.get_property("message").to_string())
+                    }
                     ObjectKind::Function(ref func_info) => {
                         if let Some(ref name) = func_info.name {
                             format!("[Function: {}]", name)
