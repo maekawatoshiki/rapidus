@@ -1,6 +1,8 @@
+#![feature(test)]
 extern crate rapidus;
 use rapidus::parser;
 use rapidus::{vm, vm::exec_context, vm::vm::VM};
+extern crate test;
 
 extern crate libc;
 
@@ -344,5 +346,11 @@ mod tests {
     #[test]
     fn runtime_error5() {
         runtime_error("let a = {}; a(5)");
+    }
+
+    use test::Bencher;
+    #[bench]
+    fn bench_fibo(b: &mut Bencher) {
+        b.iter(|| assert_file("fibo"));
     }
 }

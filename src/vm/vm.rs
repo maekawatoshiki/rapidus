@@ -1,9 +1,9 @@
-use crate::builtin::BuiltinFuncTy;
 use crate::builtins::console::debug_print;
 use crate::bytecode_gen::{show_inst, ByteCode, VMInst};
 use crate::gc;
 use crate::node::Node;
 use crate::parser::ScriptInfo;
+pub use crate::vm::factory::Factory;
 use crate::vm::{
     codegen,
     codegen::CodeGenerator,
@@ -22,12 +22,6 @@ pub type VMResult = Result<(), RuntimeError>;
 /// Ok(Value::Other(Empty)) means mudule call.
 pub type VMValueResult = Result<Value, RuntimeError>;
 
-#[derive(Debug)]
-pub struct Factory {
-    pub memory_allocator: gc::MemoryAllocator,
-    pub object_prototypes: ObjectPrototypes,
-}
-
 pub struct VM {
     pub factory: Factory,
     pub global_environment: exec_context::LexicalEnvironmentRef,
@@ -41,6 +35,8 @@ pub struct VM {
     ///(func_id, script_info)
     pub script_info: Vec<(usize, ScriptInfo)>,
     pub instant: Instant,
+    pub prev_time: Duration,
+    pub trace_string: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -59,128 +55,6 @@ macro_rules! gc_lock {
     } }
 }
 
-impl Factory {
-    pub fn new(memory_allocator: gc::MemoryAllocator, object_prototypes: ObjectPrototypes) -> Self {
-        Factory {
-            memory_allocator,
-            object_prototypes,
-        }
-    }
-
-    pub fn alloc<T: gc::GcTarget + 'static>(&mut self, data: T) -> *mut T {
-        self.memory_allocator.alloc(data)
-    }
-
-    /// Generate Value for a string.
-    pub fn string(&mut self, body: impl Into<String>) -> Value {
-        Value::String(self.alloc(std::ffi::CString::new(body.into()).unwrap()))
-    }
-
-    /// Generate Value for an object.
-    pub fn object(&mut self, property: FxHashMap<String, Property>) -> Value {
-        Value::Object(self.alloc(ObjectInfo {
-            kind: ObjectKind::Ordinary,
-            prototype: self.object_prototypes.object,
-            property,
-            sym_property: FxHashMap::default(),
-        }))
-    }
-
-    /// Generate Value for a JS function.
-    pub fn function(&mut self, name: Option<String>, info: UserFunctionInfo) -> Value {
-        let name_prop = self.string(name.clone().unwrap_or("".to_string()));
-        let prototype = self.object(FxHashMap::default());
-
-        let f = Value::Object(self.alloc(ObjectInfo {
-            prototype: self.object_prototypes.function,
-            property: make_property_map!(
-                length    => false, false, true : Value::Number(info.params.len() as f64), /* TODO: rest param */
-                name      => false, false, true : name_prop,
-                prototype => true , false, false: prototype
-            ),
-            kind: ObjectKind::Function(FunctionObjectInfo {
-                name: name,
-                kind: FunctionObjectKind::User(info)
-            }),
-            sym_property: FxHashMap::default(),
-        }));
-
-        f.get_property("prototype")
-            .get_object_info()
-            .property
-            .insert("constructor".to_string(), Property::new_data_simple(f));
-
-        f
-    }
-
-    /// Generate Value for a built-in (native) function.
-    pub fn builtin_function(
-        &mut self,
-        name: impl Into<String>,
-        func: crate::builtin::BuiltinFuncTy,
-    ) -> Value {
-        let name: String = name.into();
-        let name_prop = self.string(name.clone());
-        Value::Object(self.alloc(ObjectInfo {
-            kind: ObjectKind::Function(FunctionObjectInfo {
-                name: Some(name),
-                kind: FunctionObjectKind::Builtin(func),
-            }),
-            prototype: self.object_prototypes.function,
-            property: make_property_map!(
-                length => false, false, true : Value::Number(0.0),
-                name   => false, false, true : name_prop
-            ),
-            sym_property: FxHashMap::default(),
-        }))
-    }
-
-    pub fn array(&mut self, elems: Vec<Property>) -> Value {
-        Value::Object(self.alloc(ObjectInfo {
-            kind: ObjectKind::Array(ArrayObjectInfo { elems }),
-            prototype: self.object_prototypes.array,
-            property: make_property_map!(),
-            sym_property: FxHashMap::default(),
-        }))
-    }
-
-    pub fn symbol(&mut self, description: Option<String>) -> Value {
-        Value::Object(self.alloc(ObjectInfo {
-            kind: ObjectKind::Symbol(SymbolInfo {
-                id: crate::id::get_unique_id(),
-                description,
-            }),
-            prototype: self.object_prototypes.symbol,
-            property: make_property_map!(),
-            sym_property: FxHashMap::default(),
-        }))
-    }
-
-    pub fn error(&mut self, message: impl Into<String>) -> Value {
-        let message = self.string(message.into());
-        Value::Object(self.alloc(ObjectInfo {
-            kind: ObjectKind::Error(ErrorObjectInfo::new()),
-            prototype: self.object_prototypes.error,
-            property: make_property_map!(
-                message => true, false, true: message
-            ),
-            sym_property: FxHashMap::default(),
-        }))
-    }
-
-    pub fn generate_builtin_constructor(
-        &mut self,
-        constructor_name: impl Into<String>,
-        constructor_func: BuiltinFuncTy,
-        prototype: Value,
-    ) -> Value {
-        let ary = self.builtin_function(constructor_name, constructor_func);
-        ary.set_property("prototype", prototype);
-        ary.get_property("prototype").set_constructor(ary);
-        ary
-    }
-}
-
 impl VM {
     pub fn new() -> Self {
         let mut memory_allocator = gc::MemoryAllocator::new();
@@ -193,13 +67,14 @@ impl VM {
             factory,
             constant_table: constant::ConstantTable::new(),
             global_symbol_registry: GlobalSymbolRegistry::new(),
-            //stack: vec![],
             current_context: exec_context::ExecContext::empty(),
             saved_context: vec![],
             to_source_map: FxHashMap::default(),
             is_trace: false,
             script_info: vec![],
             instant: Instant::now(),
+            prev_time: Duration::from_secs(0),
+            trace_string: "".to_string(),
         }
     }
 
@@ -213,7 +88,6 @@ impl VM {
             self.global_environment,
             &self.factory.object_prototypes,
             &self.constant_table,
-            //&self.stack,
             &self.current_context,
             &self.saved_context,
         );
@@ -477,32 +351,12 @@ impl VM {
 
         let mut subroutine_stack: Vec<SubroutineKind> = vec![];
         let is_trace = self.is_trace;
-        //let start_time = self.instant.elapsed();
-        let mut prev_time: Duration = Duration::from_secs(0);
-        let mut trace_string = "".to_string();
-        //println!("time: {} microsec", start_time.as_micros());
+        self.trace_string = "".to_string();
 
         loop {
             self.current_context.current_inst_pc = self.current_context.pc;
-            let duration = self.instant.elapsed() - prev_time;
             if is_trace {
-                if trace_string.len() != 0 {
-                    println!("{:05}m {}", duration.as_micros(), trace_string);
-                }
-
-                trace_string = format!(
-                    "{} {}",
-                    crate::bytecode_gen::show_inst(
-                        &self.current_context.bytecode,
-                        self.current_context.current_inst_pc,
-                        &self.constant_table,
-                    ),
-                    match self.current_context.stack.last() {
-                        None => format!("<empty>"),
-                        Some(val) => format!("{:10}", (*val).into(): Value),
-                    }
-                );
-                prev_time = self.instant.elapsed();
+                self.trace_print();
             }
 
             macro_rules! type_error {
@@ -906,17 +760,19 @@ impl VM {
                     if self.saved_context.len() == 0 {
                         break;
                     };
-                    self.unwind_context();
+                    let str = self.unwind_context();
                     // TODO: GC schedule
                     self.gc_mark();
                     if call_mode == CallMode::FromNative {
                         break;
                     }
                     if is_trace {
-                        println!("<-- return");
-                        println!(
-                            "  module_id:{} func_id:{}",
-                            self.current_context.module_func_id, self.current_context.func_id
+                        self.trace_string = format!(
+                            "{}\n<-- return value({})\n  module_id:{} func_id:{}",
+                            self.trace_string,
+                            str,
+                            self.current_context.module_func_id,
+                            self.current_context.func_id
                         );
                     };
                 }
@@ -941,6 +797,10 @@ impl VM {
             }
         }
 
+        if is_trace {
+            self.trace_print()
+        };
+
         let val = match self.current_context.stack.pop() {
             None => Value::undefined(),
             Some(val) => val.into(),
@@ -949,12 +809,33 @@ impl VM {
         Ok(val)
     }
 
+    pub fn trace_print(&mut self) {
+        if self.trace_string.len() != 0 {
+            let duration = self.instant.elapsed() - self.prev_time;
+            println!("{:05}m {}", duration.as_micros(), self.trace_string);
+        }
+
+        self.trace_string = format!(
+            "{} {}",
+            crate::bytecode_gen::show_inst(
+                &self.current_context.bytecode,
+                self.current_context.current_inst_pc,
+                &self.constant_table,
+            ),
+            match self.current_context.stack.last() {
+                None => format!("<empty>"),
+                Some(val) => format!("{:10}", (*val).into(): Value),
+            }
+        );
+        self.prev_time = self.instant.elapsed();
+    }
+
     /// Return from JS function.
     /// 1. Pop a Value from the stack of the current execution context.
     /// 2. Pop an ExecContext from the context stack.
     /// 3. Set current execution context to the ExecContext.
     /// 4. Push the Value to the stack of new current execution context.
-    pub fn unwind_context(&mut self) {
+    pub fn unwind_context(&mut self) -> String {
         let prev_context = self.saved_context.pop().unwrap();
         let return_value = if self.current_context.call_mode == CallMode::ModuleCall {
             self.current_context
@@ -963,18 +844,19 @@ impl VM {
                 .unwrap()
                 .get_object_info()
                 .get_property("exports")
-                .into()
         } else {
             let ret_val_boxed = self.current_context.stack.pop().unwrap();
             let ret_val: Value = ret_val_boxed.into();
             if self.current_context.constructor_call && !ret_val.is_object() {
-                self.current_context.this.into()
+                self.current_context.this
             } else {
-                ret_val_boxed
+                ret_val
             }
         };
+        let str = format!("{}", return_value);
         self.current_context = prev_context;
-        self.current_context.stack.push(return_value);
+        self.current_context.stack.push(return_value.into());
+        str
     }
 
     fn push_env(&mut self, id: usize) -> VMResult {
@@ -1083,10 +965,16 @@ impl VM {
             }),
             FunctionObjectKind::User(ref user_func) => {
                 if self.is_trace {
-                    println!("--> call function",);
-                    println!(
-                        "  module_id:{} func_id:{}",
-                        user_func.module_func_id, user_func.id
+                    self.trace_string = format!(
+                        "{}\n--> call {}\n  module_id:{} func_id:{}",
+                        self.trace_string,
+                        if constructor_call {
+                            "constructor"
+                        } else {
+                            "function"
+                        },
+                        self.current_context.module_func_id,
+                        self.current_context.func_id
                     );
                 };
                 self.enter_user_function(user_func.clone(), args, this, constructor_call)
