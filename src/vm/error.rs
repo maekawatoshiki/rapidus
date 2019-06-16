@@ -11,6 +11,7 @@ pub struct RuntimeError {
     pub inst_pc: usize,
     /// Function id where the error raised.
     pub func_id: usize,
+    /// Module function id where the error raised.
     pub module_func_id: usize,
 }
 

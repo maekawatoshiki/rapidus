@@ -260,6 +260,7 @@ impl VM {
             lex_env,
             global_info.exception_table,
             global_env_ref.get_global_object(),
+            CallMode::OrdinaryCall,
         );
 
         context
@@ -1141,20 +1142,20 @@ impl VM {
 
     fn create_function_environment(
         &mut self,
-        var_names: &Vec<String>,
-        params: &Vec<FunctionParameter>,
+        user_func: &UserFunctionInfo,
         args: &[Value],
         this: Value,
-        outer: Option<exec_context::LexicalEnvironmentRef>,
     ) -> exec_context::LexicalEnvironmentRef {
         let env = exec_context::LexicalEnvironment {
             record: exec_context::EnvironmentRecord::Function {
                 record: {
                     let mut record = FxHashMap::default();
-                    for name in var_names {
+                    for name in &user_func.var_names {
                         record.insert(name.clone(), Value::undefined());
                     }
-                    for (i, FunctionParameter { name, rest_param }) in params.iter().enumerate() {
+                    for (i, FunctionParameter { name, rest_param }) in
+                        user_func.params.iter().enumerate()
+                    {
                         record.insert(
                             name.clone(),
                             if *rest_param {
@@ -1175,7 +1176,7 @@ impl VM {
                 },
                 this,
             },
-            outer,
+            outer: user_func.outer,
         };
 
         exec_context::LexicalEnvironmentRef(self.factory.alloc(env))
@@ -1208,13 +1209,7 @@ impl VM {
             this
         };
 
-        let var_env_ref = self.create_function_environment(
-            &user_func.var_names,
-            &user_func.params,
-            args,
-            this,
-            user_func.outer,
-        );
+        let var_env_ref = self.create_function_environment(&user_func, args, this);
 
         let mut lex_env_ref = self.create_lexical_environment(&user_func.lex_names, var_env_ref);
 
@@ -1227,17 +1222,17 @@ impl VM {
 
         let user_func = user_func.clone();
 
-        let mut context = exec_context::ExecContext::new(
+        let context = exec_context::ExecContext::new(
             user_func.code,
             var_env_ref,
             lex_env_ref,
             user_func.exception_table,
             this,
+            mode,
         )
         .func_id(user_func.id)
         .module_func_id(user_func.module_func_id)
         .constructor_call(constructor_call);
-        context.call_mode = mode;
         self.current_context = context;
         Ok(())
     }

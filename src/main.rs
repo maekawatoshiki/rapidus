@@ -322,6 +322,16 @@ mod tests {
     }
 
     #[test]
+    fn function_methods() {
+        assert_file("function_methods")
+    }
+
+    #[test]
+    fn string_methods() {
+        assert_file("string_methods")
+    }
+
+    #[test]
     fn runtime_error1() {
         runtime_error("let a = {}; a.b.c");
     }

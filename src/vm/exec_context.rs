@@ -66,6 +66,7 @@ impl ExecContext {
         lex_env: LexicalEnvironmentRef,
         exception_table: Vec<Exception>,
         this: Value,
+        call_mode: CallMode,
     ) -> Self {
         ExecContext {
             func_id: 0,
@@ -77,7 +78,7 @@ impl ExecContext {
             exception_table,
             this,
             constructor_call: false,
-            call_mode: CallMode::OrdinaryCall,
+            call_mode,
             variable_environment: var_env,
             lexical_environment: lex_env,
             saved_lexical_environment: vec![],
