@@ -1,6 +1,8 @@
+#![feature(test)]
 extern crate rapidus;
 use rapidus::parser;
-use rapidus::{vm, vm::exec_context, vm::jsvalue::value::Value, vm::vm::VM};
+use rapidus::{vm, vm::exec_context, vm::vm::VM};
+extern crate test;
 
 extern crate libc;
 
@@ -78,13 +80,6 @@ fn main() {
     if let Err(e) = vm.run_global(global_info, iseq) {
         vm.show_error_message(e);
     }
-
-    if is_debug {
-        for (i, val_boxed) in vm.stack.iter().enumerate() {
-            let val: Value = (*val_boxed).into();
-            println!("stack remaining: [{}]: {:?}", i, val);
-        }
-    }
 }
 
 fn repl(is_trace: bool) {
@@ -93,7 +88,7 @@ fn repl(is_trace: bool) {
     if is_trace {
         vm = vm.trace();
     }
-    let mut global_frame: Option<exec_context::ExecContext> = None;
+    let mut global_context: Option<exec_context::ExecContext> = None;
 
     loop {
         let mut parser;
@@ -122,39 +117,32 @@ fn repl(is_trace: bool) {
                         }
                     };
 
-                    match global_frame {
-                        Some(ref mut frame) => {
-                            frame.bytecode = iseq;
-                            frame.exception_table = global_info.exception_table.clone();
-                            frame.append_from_function_info(
+                    match global_context {
+                        Some(ref mut context) => {
+                            context.bytecode = iseq;
+                            context.exception_table = global_info.exception_table.clone();
+                            context.append_from_function_info(
                                 &mut vm.factory.memory_allocator,
                                 &global_info,
                             )
                         }
-                        None => global_frame = Some(vm.create_global_frame(global_info, iseq)),
+                        None => global_context = Some(vm.create_global_context(global_info, iseq)),
                     }
 
                     let script_info = parser.into_script_info();
                     vm.script_info = vec![(0, script_info)];
-                    if let Err(e) = vm.run(global_frame.clone().unwrap()) {
-                        let val = e.to_value(&mut vm.factory);
-                        if val.is_error_object() {
-                            println!(
-                                "Error: {}",
-                                val.get_property_by_str_key("message").to_string()
-                            );
-                        } else {
-                            println!("Thrown: {}", val.to_string())
-                        };
-                        break;
+                    vm.current_context = global_context.clone().unwrap();
+                    match vm.run() {
+                        Ok(val) => println!("{}", val.debug_string(true)),
+                        Err(e) => {
+                            let val = e.to_value(&mut vm.factory);
+                            if val.is_error_object() {
+                                println!("Error: {}", val.get_property("message"));
+                            } else {
+                                println!("Thrown: {}", val.to_string())
+                            };
+                        }
                     }
-
-                    if vm.stack.len() != 0 {
-                        let val: Value = vm.stack[0].into();
-                        println!("{}", val.debug_string(true));
-                        vm.stack = vec![];
-                    }
-
                     break;
                 }
                 Err(parser::Error::UnexpectedEOF(_)) => match rl.readline("... ") {
@@ -321,6 +309,21 @@ mod tests {
     }
 
     #[test]
+    fn test_module() {
+        assert_file("test_module_caller")
+    }
+
+    #[test]
+    fn function_methods() {
+        assert_file("function_methods")
+    }
+
+    #[test]
+    fn string_methods() {
+        assert_file("string_methods")
+    }
+
+    #[test]
     fn runtime_error1() {
         runtime_error("let a = {}; a.b.c");
     }
@@ -343,5 +346,11 @@ mod tests {
     #[test]
     fn runtime_error5() {
         runtime_error("let a = {}; a(5)");
+    }
+
+    use test::Bencher;
+    #[bench]
+    fn bench_fibo(b: &mut Bencher) {
+        b.iter(|| assert_file("fibo"));
     }
 }

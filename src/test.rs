@@ -74,7 +74,12 @@ pub fn execute_script(text: String) -> String {
 
     let func_info = vm.compile(&node, &mut iseq, true, 0).unwrap();
     vm.run_global(func_info, iseq).unwrap();
-    let val: Value = vm.stack.pop().unwrap_or(Value::undefined().into()).into();
+    let val: Value = vm
+        .current_context
+        .stack
+        .pop()
+        .unwrap_or(Value::undefined().into())
+        .into();
     val.debug_string(true)
 }
 

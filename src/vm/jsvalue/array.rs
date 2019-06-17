@@ -1,4 +1,4 @@
-// use super::super::frame::LexicalEnvironmentRef;
+// use super::super::context::LexicalEnvironmentRef;
 use super::value::*;
 // use builtin::BuiltinFuncTy;
 // use bytecode_gen::ByteCode;

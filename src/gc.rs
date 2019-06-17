@@ -1,10 +1,7 @@
 use crate::vm::{
     constant, exec_context,
     exec_context::{EnvironmentRecord, ExecContext, LexicalEnvironment},
-    jsvalue::{
-        function, object, prototype,
-        value::{BoxedValue, Value},
-    },
+    jsvalue::{function, object, prototype, value::Value},
 };
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::hash::{Hash, Hasher};
@@ -96,9 +93,9 @@ impl MemoryAllocator {
         global: exec_context::LexicalEnvironmentRef,
         object_prototypes: &prototype::ObjectPrototypes,
         constant_table: &constant::ConstantTable,
-        stack: &Vec<BoxedValue>,
-        cur_frame: &exec_context::ExecContext,
-        saved_frame: &Vec<exec_context::ExecContext>,
+        //stack: &Vec<BoxedValue>,
+        cur_context: &exec_context::ExecContext,
+        saved_context: &Vec<exec_context::ExecContext>,
     ) {
         let mut markset = MarkSet::default();
 
@@ -110,8 +107,8 @@ impl MemoryAllocator {
                 markset.insert(GcTargetKey(global.as_ptr()));
                 global.initial_trace(&mut markset);
 
-                cur_frame.initial_trace(&mut markset);
-                cur_frame.this.initial_trace(&mut markset);
+                cur_context.initial_trace(&mut markset);
+                cur_context.this.initial_trace(&mut markset);
 
                 object_prototypes.object.initial_trace(&mut markset);
                 object_prototypes.function.initial_trace(&mut markset);
@@ -119,15 +116,15 @@ impl MemoryAllocator {
                 object_prototypes.array.initial_trace(&mut markset);
 
                 constant_table.initial_trace(&mut markset);
-
-                for val_boxed in stack {
-                    let val: Value = (*val_boxed).into();
-                    val.initial_trace(&mut markset);
-                }
-
-                for frame in saved_frame {
-                    frame.initial_trace(&mut markset);
-                    frame.this.initial_trace(&mut markset);
+                /*
+                                for val_boxed in stack {
+                                    let val: Value = (*val_boxed).into();
+                                    val.initial_trace(&mut markset);
+                                }
+                */
+                for context in saved_context {
+                    context.initial_trace(&mut markset);
+                    context.this.initial_trace(&mut markset);
                 }
 
                 // println!("initial mark: {:?}", markset);
@@ -140,8 +137,8 @@ impl MemoryAllocator {
             }
             GCState::Marking => {
                 // println!("start marking: {:?}", markset);
-
-                for root in self.roots.clone() {
+                let roots = std::mem::replace(&mut self.roots, FxHashSet::default());
+                for root in roots {
                     self.allocated_memory.insert(root, MarkState::Black);
                     unsafe { &*root.0 }.trace(self, &mut markset);
                 }
@@ -242,6 +239,10 @@ impl GcTarget for ExecContext {
         mark!(markset, self.variable_environment.as_ptr());
         for env in &self.saved_lexical_environment {
             mark!(markset, env.as_ptr());
+        }
+        for val_boxed in &self.stack {
+            let val: Value = (*val_boxed).into();
+            val.initial_trace(markset);
         }
     }
 

@@ -1,7 +1,7 @@
 # Rapidus
 
 [![CircleCI](https://circleci.com/gh/maekawatoshiki/rapidus.svg?style=shield)](https://circleci.com/gh/maekawatoshiki/rapidus)
-[![codecov](https://codecov.io/gh/maekawatoshiki/rapidus/branch/new-gen/graph/badge.svg)](https://codecov.io/gh/maekawatoshiki/rapidus/branch/new-gen)
+[![codecov](https://codecov.io/gh/maekawatoshiki/rapidus/branch/master/graph/badge.svg)](https://codecov.io/gh/maekawatoshiki/rapidus/branch/master)
 [![](http://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
 A toy JavaScript engine (now aiming for ES6).
@@ -102,44 +102,39 @@ undefined
 
 ```sh
 $ cargo run -- --trace
-> function fact(n) { if (n<2) { return n } else { return n*fact(n-1) } }
- tryst    tryret   scope stack   top            PC   INST
- None              1     0                      0000 CreateContext
- None              1     0                      0001 DeclVar 'fact'
- None              1     0                      0006 PushConst [Function]
- None              1     1     [Function]       000b UpdateParentScope
- None              1     1     [Function]       000c SetValue 'fact'
- None              1     0                      0011 End
-stack trace:
+> function fibo(x) { if (x<2) return 1; return fibo(x-1)+fibo(x-2)}
+00020m 00000 Return                    <empty>
 undefined
-> fact(3)
- tryst    tryret   scope stack   top            PC   INST
- None              1     0                      0000 CreateContext
- None              1     0                      0001 PushInt8 3
- None              1     1     3                0003 GetValue 'fact'
- None              1     2     [Function]       0008 Call 1 params
- None              2     0                      0000 CreateContext
- None              2     0                      0001 GetValue 'n'
- None              2     1     3                0006 PushInt8 2
- None              2     2     2                0008 Lt
- None              2     1     false            0009 JmpIfFalse 0019
- None              2     0                      0019 GetValue 'n'
- None              2     1     3                001e GetValue 'n'
- None              2     2     3                0023 PushInt8 1
- None              2     3     1                0025 Sub
- None              2     2     2                0026 GetValue 'fact'
- None              2     3     [Function]       002b Call 1 params
- None              2     2     2                0030 Mul
- None              2     1     6                0031 Return
-stack trace: 6
- None              1     1     6                000d End
-stack trace: 6
-6
-                   |     |     |                 |  bytecode instruction
-                   |     |     |                 \- program counter
-                   |     |     \------------------- value on the stack top
-                   |     \------------------------- execution stack depth
-                   \------------------------------- scope stack depth
+> fibo(3)
+00009m 00000 PushInt8 3                <empty>
+00015m 00002 GetValue 'fibo'           3.0
+00066m 00007 Call 1                    Function
+--> call function
+  module_id:0 func_id:0
+00007m 00000 GetValue 'x'              <empty>
+00001m 00005 PushInt8 2                3.0
+00013m 00007 Lt                        2.0
+
+...
+
+00001m 00007 Lt                        2.0
+00000m 00008 JmpIfFalse 00016          true
+00000m 00013 PushInt8 1                <empty>
+00167m 00015 Return                    1.0
+<-- return value(1.0)
+  module_id:0 func_id:2
+00001m 00052 Add                       1.0
+00044m 00053 Return                    3.0
+<-- return value(3.0)
+  module_id:0 func_id:0
+00000m 00012 Return                    3.0
+3
+> 
+   |     |     |                        | 
+   |     |     |                        \- value at the top of exec stack
+   |     |     \-------------------------- instruction
+   |     \-------------------------------- program counter
+   \-------------------------------------- execution time per inst. (in microsecs)
 ```
 
 ## Building on other platforms

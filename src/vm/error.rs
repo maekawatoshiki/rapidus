@@ -11,6 +11,7 @@ pub struct RuntimeError {
     pub inst_pc: usize,
     /// Function id where the error raised.
     pub func_id: usize,
+    /// Module function id where the error raised.
     pub module_func_id: usize,
 }
 
@@ -25,12 +26,12 @@ pub enum ErrorKind {
 }
 
 impl RuntimeError {
-    pub fn new(kind: ErrorKind, frame: &ExecContext) -> RuntimeError {
+    pub fn new(kind: ErrorKind, context: &ExecContext) -> RuntimeError {
         RuntimeError {
             kind,
-            inst_pc: frame.current_inst_pc,
-            func_id: frame.func_id,
-            module_func_id: frame.module_func_id,
+            inst_pc: context.current_inst_pc,
+            func_id: context.func_id,
+            module_func_id: context.module_func_id,
         }
     }
 
@@ -51,10 +52,10 @@ impl RuntimeError {
         RuntimeError::default(ErrorKind::Reference(msg.into()))
     }
 
-    pub fn error_add_info(mut self, frame: &ExecContext) -> RuntimeError {
-        self.func_id = frame.func_id;
-        self.module_func_id = frame.module_func_id;
-        self.inst_pc = frame.pc;
+    pub fn error_add_info(mut self, context: &ExecContext) -> RuntimeError {
+        self.func_id = context.func_id;
+        self.module_func_id = context.module_func_id;
+        self.inst_pc = context.pc;
         self
     }
 

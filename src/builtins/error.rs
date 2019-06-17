@@ -1,5 +1,4 @@
 use crate::vm::{
-    exec_context::ExecContext,
     jsvalue::value::Value,
     vm::{Factory, VMValueResult, VM},
 };
@@ -12,12 +11,7 @@ pub fn error(factory: &mut Factory) -> Value {
     )
 }
 
-pub fn error_constructor(
-    vm: &mut VM,
-    args: &[Value],
-    _this: Value,
-    _cur_frame: &mut ExecContext,
-) -> VMValueResult {
+pub fn error_constructor(vm: &mut VM, args: &[Value], _this: Value) -> VMValueResult {
     let message = if args.len() == 0 {
         "".to_string()
     } else {

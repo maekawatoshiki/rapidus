@@ -1,5 +1,4 @@
 use crate::vm::{
-    exec_context::ExecContext,
     jsvalue::value::{
         cstrp_to_str, AccessorProperty, DataProperty, ObjectKind, ObjectRef, Property, Value,
         EMPTY, NULL, UNDEFINED, UNINITIALIZED,
@@ -8,12 +7,7 @@ use crate::vm::{
     vm::VM,
 };
 
-pub fn console_log(
-    _vm: &mut VM,
-    args: &[Value],
-    _this: Value,
-    _cur_frame: &mut ExecContext,
-) -> VMValueResult {
+pub fn console_log(_vm: &mut VM, args: &[Value], _this: Value) -> VMValueResult {
     let args_len = args.len();
 
     for i in 0..args_len {
@@ -103,10 +97,9 @@ pub fn debug_print(val: &Value, nest: bool) {
                     "Symbol({})",
                     info.description.as_ref().unwrap_or(&"".to_string())
                 ),
-                ObjectKind::Error(ref _info) => print!(
-                    "Error({})",
-                    obj_info.get_property_by_str_key("message").to_string()
-                ),
+                ObjectKind::Error(ref _info) => {
+                    print!("Error({})", obj_info.get_property("message").to_string())
+                }
                 ObjectKind::Function(ref func_info) => {
                     if let Some(ref name) = func_info.name {
                         print!("[Function: {}]", name);

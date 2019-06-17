@@ -5,8 +5,8 @@ use crate::vm::codegen::FunctionInfo;
 use crate::vm::error::ErrorKind;
 use crate::vm::error::RuntimeError;
 use crate::vm::jsvalue::function::Exception;
-use crate::vm::jsvalue::value::Value;
-use crate::vm::vm::{Factory, VMResult};
+use crate::vm::jsvalue::value::{BoxedValue, Value};
+use crate::vm::vm::{CallMode, Factory, VMResult};
 use rustc_hash::FxHashMap;
 use std::ops::{Deref, DerefMut};
 
@@ -19,17 +19,18 @@ pub struct ExecContext {
     pub module_func_id: usize,
     pub pc: usize,
     pub current_inst_pc: usize,
-    pub saved_stack_len: usize,
+    pub stack: Vec<BoxedValue>,
     pub bytecode: ByteCode,
     pub exception_table: Vec<Exception>,
     /// This value in the context.
     pub this: Value,
     /// If true, calling JS function as a constructor.
     pub constructor_call: bool,
+    pub call_mode: CallMode,
     /// If true, calling JS function as a module.
-    pub module_call: bool,
+    //    pub module_call: bool,
     /// If true, calling JS function from native function.
-    pub escape: bool,
+    //    pub escape: bool,
     pub variable_environment: LexicalEnvironmentRef,
     pub lexical_environment: LexicalEnvironmentRef,
     pub saved_lexical_environment: Vec<LexicalEnvironmentRef>,
@@ -65,21 +66,38 @@ impl ExecContext {
         lex_env: LexicalEnvironmentRef,
         exception_table: Vec<Exception>,
         this: Value,
+        call_mode: CallMode,
     ) -> Self {
         ExecContext {
             func_id: 0,
             module_func_id: 0,
             pc: 0,
             current_inst_pc: 0,
-            saved_stack_len: 0,
+            stack: vec![],
             bytecode,
             exception_table,
             this,
             constructor_call: false,
-            module_call: false,
-            escape: false,
+            call_mode,
             variable_environment: var_env,
             lexical_environment: lex_env,
+            saved_lexical_environment: vec![],
+        }
+    }
+    pub fn empty() -> Self {
+        ExecContext {
+            func_id: 0,
+            module_func_id: 0,
+            pc: 0,
+            current_inst_pc: 0,
+            stack: vec![],
+            bytecode: vec![],
+            exception_table: vec![],
+            this: Value::undefined(),
+            constructor_call: false,
+            call_mode: CallMode::OrdinaryCall,
+            variable_environment: LexicalEnvironmentRef::new_null(),
+            lexical_environment: LexicalEnvironmentRef::new_null(),
             saved_lexical_environment: vec![],
         }
     }
@@ -92,23 +110,8 @@ impl ExecContext {
         &mut *self.lexical_environment
     }
 
-    pub fn escape(mut self) -> Self {
-        self.escape = true;
-        self
-    }
-
     pub fn constructor_call(mut self, is_constructor: bool) -> Self {
         self.constructor_call = is_constructor;
-        self
-    }
-
-    pub fn module_call(mut self, is_module: bool) -> Self {
-        self.module_call = is_module;
-        self
-    }
-
-    pub fn saved_stack_len(mut self, saved_stack_len: usize) -> Self {
-        self.saved_stack_len = saved_stack_len;
         self
     }
 
@@ -250,7 +253,7 @@ impl LexicalEnvironment {
             },
             EnvironmentRecord::Global(obj) | EnvironmentRecord::Object(obj) => {
                 if obj.has_own_property(name.as_str()) {
-                    let val = obj.get_property_by_str_key(name.as_str());
+                    let val = obj.get_property(name.as_str());
                     if val == Value::uninitialized() {
                         return Err(RuntimeError::reference(format!(
                             "'{}' is not defined",
@@ -284,7 +287,7 @@ impl LexicalEnvironment {
                 None => {}
             },
             EnvironmentRecord::Global(obj) | EnvironmentRecord::Object(obj) => {
-                obj.set_property_by_string_key(name, val);
+                obj.set_property(name, val);
                 return Ok(());
             }
         };
@@ -307,7 +310,7 @@ impl LexicalEnvironment {
                 record.insert(name.into(), val);
             }
             EnvironmentRecord::Global(obj) | EnvironmentRecord::Object(obj) => {
-                obj.set_property_by_string_key(name, val);
+                obj.set_property(name, val);
             }
         };
         return Ok(());
