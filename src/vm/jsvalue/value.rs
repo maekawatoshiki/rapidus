@@ -692,11 +692,11 @@ impl Value {
         }
     }
 
-    // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-subtraction-operator-minus-runtime-semantics-evaluation
-    pub fn sub(self, val: Value) -> Self {
+    // https://www.ecma-international.org/ecma-262/6.0/#sec-subtraction-operator-minus-runtime-semantics-evaluation
+    pub fn sub(self, allocator: &mut gc::MemoryAllocator, val: Value) -> Self {
         match (self, val) {
             (Value::Number(x), Value::Number(y)) => Value::Number(x - y),
-            _ => Value::undefined(),
+            (x, y) => Value::Number(x.to_number(allocator) - y.to_number(allocator)),
         }
     }
 

@@ -125,7 +125,7 @@ impl ExecContext {
         self
     }
 
-    pub fn append_function(&mut self, memory_allocator: &mut gc::MemoryAllocator, f: Value) {
+    fn append_function(&mut self, memory_allocator: &mut gc::MemoryAllocator, f: Value) {
         let mut val = f.copy_object(memory_allocator);
         let name = val.as_function().name.clone().unwrap();
         val.set_function_outer_environment(self.lexical_environment);
@@ -134,12 +134,12 @@ impl ExecContext {
         self.initial_trace(&mut memory_allocator.roots);
     }
 
-    pub fn append_variable_to_var_env(&mut self, name: String) {
+    fn append_variable_to_var_env(&mut self, name: String) {
         let var_env = &mut self.variable_environment;
         var_env.set_own_value(name, Value::undefined()).unwrap(); // TODO: unwrap()
     }
 
-    pub fn append_variable_to_lex_env(&mut self, name: String) {
+    fn append_variable_to_lex_env(&mut self, name: String) {
         let lex_env = &mut self.lexical_environment;
         lex_env.set_own_value(name, Value::uninitialized()).unwrap(); // TODO: unwrap()
     }

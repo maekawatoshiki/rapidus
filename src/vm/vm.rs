@@ -1,5 +1,5 @@
 use crate::builtins::console::debug_print;
-use crate::bytecode_gen::{show_inst, ByteCode, VMInst};
+use crate::bytecode_gen::{inst_to_inst_name, show_inst, ByteCode, VMInst};
 use crate::gc;
 use crate::node::Node;
 use crate::parser::ScriptInfo;
@@ -34,9 +34,15 @@ pub struct VM {
     pub is_trace: bool,
     ///(func_id, script_info)
     pub script_info: Vec<(usize, ScriptInfo)>,
+    pub profile: Profile,
+}
+
+pub struct Profile {
     pub instant: Instant,
     pub prev_time: Duration,
+    pub current_inst: u8,
     pub trace_string: String,
+    pub inst_info: [(Duration, usize); 70],
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -72,9 +78,13 @@ impl VM {
             to_source_map: FxHashMap::default(),
             is_trace: false,
             script_info: vec![],
-            instant: Instant::now(),
-            prev_time: Duration::from_secs(0),
-            trace_string: "".to_string(),
+            profile: Profile {
+                instant: Instant::now(),
+                prev_time: Duration::from_secs(0),
+                current_inst: 255,
+                trace_string: "".to_string(),
+                inst_info: [(Duration::from_micros(0), 0); 70],
+            },
         }
     }
 
@@ -289,11 +299,14 @@ macro_rules! read_int8 {
 
 macro_rules! read_int32 {
     ($vm:expr, $var:ident, $ty:ty) => {
-        let $var = (($vm.current_context.bytecode[$vm.current_context.pc as usize + 3] as $ty)
-            << 24)
-            + (($vm.current_context.bytecode[$vm.current_context.pc as usize + 2] as $ty) << 16)
-            + (($vm.current_context.bytecode[$vm.current_context.pc as usize + 1] as $ty) << 8)
-            + ($vm.current_context.bytecode[$vm.current_context.pc as usize + 0] as $ty);
+        let $var = {
+            let iseq = &$vm.current_context.bytecode;
+            let pc = $vm.current_context.pc;
+            ((iseq[pc as usize + 3] as $ty) << 24)
+                + ((iseq[pc as usize + 2] as $ty) << 16)
+                + ((iseq[pc as usize + 1] as $ty) << 8)
+                + (iseq[pc as usize + 0] as $ty)
+        };
         $vm.current_context.pc += 4;
     };
 }
@@ -351,7 +364,7 @@ impl VM {
 
         let mut subroutine_stack: Vec<SubroutineKind> = vec![];
         let is_trace = self.is_trace;
-        self.trace_string = "".to_string();
+        self.profile.trace_string = "".to_string();
 
         loop {
             self.current_context.current_inst_pc = self.current_context.pc;
@@ -385,8 +398,8 @@ impl VM {
                     }
                 }};
             }
-
-            match self.current_context.bytecode[self.current_context.pc] {
+            self.profile.current_inst = self.current_context.bytecode[self.current_context.pc];
+            match self.profile.current_inst {
                 // TODO: Macro for bin ops?
                 VMInst::ADD => {
                     self.current_context.pc += 1;
@@ -400,7 +413,9 @@ impl VM {
                     self.current_context.pc += 1;
                     let rhs: Value = self.current_context.stack.pop().unwrap().into();
                     let lhs: Value = self.current_context.stack.pop().unwrap().into();
-                    self.current_context.stack.push(lhs.sub(rhs).into());
+                    self.current_context
+                        .stack
+                        .push(lhs.sub(&mut self.factory.memory_allocator, rhs).into());
                 }
                 VMInst::MUL => {
                     self.current_context.pc += 1;
@@ -767,9 +782,9 @@ impl VM {
                         break;
                     }
                     if is_trace {
-                        self.trace_string = format!(
+                        self.profile.trace_string = format!(
                             "{}\n<-- return value({})\n  module_id:{} func_id:{}",
-                            self.trace_string,
+                            self.profile.trace_string,
                             str,
                             self.current_context.module_func_id,
                             self.current_context.func_id
@@ -798,7 +813,8 @@ impl VM {
         }
 
         if is_trace {
-            self.trace_print()
+            self.trace_print();
+            self.print_inst_time();
         };
 
         let val = match self.current_context.stack.pop() {
@@ -810,12 +826,15 @@ impl VM {
     }
 
     pub fn trace_print(&mut self) {
-        if self.trace_string.len() != 0 {
-            let duration = self.instant.elapsed() - self.prev_time;
-            println!("{:05}m {}", duration.as_micros(), self.trace_string);
+        if self.profile.trace_string.len() != 0 {
+            let duration = self.profile.instant.elapsed() - self.profile.prev_time;
+            let mut inst_info = &mut self.profile.inst_info[self.profile.current_inst as usize];
+            (*inst_info).0 += duration;
+            (*inst_info).1 += 1;
+            println!("{:05}m {}", duration.as_micros(), self.profile.trace_string);
         }
 
-        self.trace_string = format!(
+        self.profile.trace_string = format!(
             "{} {}",
             crate::bytecode_gen::show_inst(
                 &self.current_context.bytecode,
@@ -827,7 +846,27 @@ impl VM {
                 Some(val) => format!("{:10}", (*val).into(): Value),
             }
         );
-        self.prev_time = self.instant.elapsed();
+        self.profile.prev_time = self.profile.instant.elapsed();
+    }
+
+    pub fn print_inst_time(&mut self) {
+        println!("# performance analysis");
+        println!("inst          total %    time per inst");
+        let total_time = self
+            .profile
+            .inst_info
+            .iter()
+            .fold(0, |acc, x| acc + x.0.as_micros()) as f64;
+        for (i, duration) in self.profile.inst_info.iter().enumerate() {
+            if duration.1 != 0 {
+                println!(
+                    "{:12} {:>6.2} % {:>8.2} nanosecs",
+                    inst_to_inst_name(i as u8),
+                    duration.0.as_micros() as f64 / total_time * 100.0,
+                    duration.0.as_nanos() as f64 / duration.1 as f64
+                );
+            }
+        }
     }
 
     /// Return from JS function.
@@ -965,9 +1004,9 @@ impl VM {
             }),
             FunctionObjectKind::User(ref user_func) => {
                 if self.is_trace {
-                    self.trace_string = format!(
+                    self.profile.trace_string = format!(
                         "{}\n--> call {}\n  module_id:{} func_id:{}",
-                        self.trace_string,
+                        self.profile.trace_string,
                         if constructor_call {
                             "constructor"
                         } else {
@@ -1080,7 +1119,7 @@ impl VM {
     /// 2. Set `this`.
     /// 3. Create a new function environment.
     /// 4. Prepare function objects defined inner the function, and register them to the lexical environment.
-    /// 5. Generate a new context, and set the current context to it.
+    /// 5. Generate a new context, and set the current context (running execution context) to it.
     pub fn prepare_context_for_function_invokation(
         &mut self,
         user_func: &UserFunctionInfo,
@@ -1113,13 +1152,11 @@ impl VM {
             lex_env_ref.set_value(name, func)?;
         }
 
-        let user_func = user_func.clone();
-
         let context = exec_context::ExecContext::new(
-            user_func.code,
+            user_func.code.clone(),
             var_env_ref,
             lex_env_ref,
-            user_func.exception_table,
+            user_func.exception_table.clone(),
             this,
             mode,
         )
