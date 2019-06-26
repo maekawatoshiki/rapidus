@@ -36,11 +36,11 @@ pub struct MemoryAllocator {
     allocated_size: usize,
     pub roots: MarkSet,
     locked: MarkSet,
-    state: GCState,
+    pub state: GCState,
     white: MarkState,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum GCState {
     Initial,
     Marking,

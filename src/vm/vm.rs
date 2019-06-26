@@ -38,11 +38,13 @@ pub struct VM {
 }
 
 pub struct Profile {
-    pub instant: Instant,
-    pub prev_time: Duration,
-    pub current_inst: u8,
-    pub trace_string: String,
-    pub inst_info: [(Duration, usize); 70],
+    instant: Instant,
+    prev_time: Duration,
+    gc_stop_time: Duration,
+    gc_profile: [(usize, Duration); 3],
+    current_inst: u8,
+    trace_string: String,
+    inst_info: [(Duration, usize); 70],
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -81,6 +83,8 @@ impl VM {
             profile: Profile {
                 instant: Instant::now(),
                 prev_time: Duration::from_secs(0),
+                gc_stop_time: Duration::from_secs(0),
+                gc_profile: [(0, Duration::from_secs(0)); 3],
                 current_inst: 255,
                 trace_string: "".to_string(),
                 inst_info: [(Duration::from_micros(0), 0); 70],
@@ -94,6 +98,8 @@ impl VM {
     }
 
     pub fn gc_mark(&mut self) {
+        let time_before_gc = self.profile.instant.elapsed();
+        let gc_mode = self.factory.memory_allocator.state;
         self.factory.memory_allocator.mark(
             self.global_environment,
             &self.factory.object_prototypes,
@@ -101,6 +107,15 @@ impl VM {
             &self.current_context,
             &self.saved_context,
         );
+        let i = match gc_mode {
+            gc::GCState::Initial => 0,
+            gc::GCState::Marking => 1,
+            gc::GCState::ReadyToSweep => 2,
+        };
+        let stop_time = self.profile.instant.elapsed() - time_before_gc;
+        self.profile.gc_stop_time += stop_time;
+        self.profile.gc_profile[i].0 += 1;
+        self.profile.gc_profile[i].1 += stop_time;
     }
 
     pub fn compile(
@@ -827,11 +842,19 @@ impl VM {
 
     pub fn trace_print(&mut self) {
         if self.profile.trace_string.len() != 0 {
-            let duration = self.profile.instant.elapsed() - self.profile.prev_time;
+            let duration =
+                self.profile.instant.elapsed() - self.profile.prev_time - self.profile.gc_stop_time;
             let mut inst_info = &mut self.profile.inst_info[self.profile.current_inst as usize];
             (*inst_info).0 += duration;
             (*inst_info).1 += 1;
-            // println!("{:05}m {}", duration.as_micros(), self.profile.trace_string);
+            /*
+            println!(
+                "{:05}m {:05}m {}",
+                duration.as_micros(),
+                self.profile.gc_stop_time.as_micros(),
+                self.profile.trace_string,
+            );
+            */
         }
 
         self.profile.trace_string = format!(
@@ -847,16 +870,20 @@ impl VM {
             }
         );
         self.profile.prev_time = self.profile.instant.elapsed();
+        self.profile.gc_stop_time = Duration::from_secs(0);
     }
 
     pub fn print_inst_time(&mut self) {
         println!("# performance analysis");
-        println!("inst          total %      time per inst");
+
         let total_time = self
             .profile
             .inst_info
             .iter()
             .fold(0, |acc, x| acc + x.0.as_micros()) as f64;
+        println!("total execution time {} microsecs", total_time);
+
+        println!("Inst          total %    ave.time / inst");
         for (i, duration) in self.profile.inst_info.iter().enumerate() {
             if duration.1 != 0 {
                 println!(
@@ -867,6 +894,24 @@ impl VM {
                 );
             }
         }
+        println!("# GC performance");
+        println!("State    count        total time");
+        let prof = self.profile.gc_profile;
+        println!(
+            "Init  {:>8}  {:>10.2} millisecs",
+            prof[0].0,
+            prof[0].1.as_millis() as f64
+        );
+        println!(
+            "Mark  {:>8}  {:>10.2} millisecs",
+            prof[1].0,
+            prof[1].1.as_millis() as f64
+        );
+        println!(
+            "Sweep {:>8}  {:>10.2} millisecs",
+            prof[2].0,
+            prof[2].1.as_millis() as f64
+        );
     }
 
     /// Return from JS function.
