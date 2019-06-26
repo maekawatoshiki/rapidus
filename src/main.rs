@@ -62,7 +62,8 @@ fn main() {
         vm = vm.trace();
     }
     let mut iseq = vec![];
-    let global_info = match vm.compile(&node, &mut iseq, false, 0) {
+    let main_id = vm.factory.main_func_id();
+    let global_info = match vm.compile(&node, &mut iseq, false, main_id) {
         Ok(ok) => ok,
         Err(vm::codegen::Error { msg, token_pos, .. }) => {
             parser.show_error_at(token_pos, msg);
@@ -76,7 +77,7 @@ fn main() {
     };
 
     let script_info = parser.into_script_info();
-    vm.script_info.push((0, script_info));
+    vm.script_info.push((main_id, script_info));
     if let Err(e) = vm.run_global(global_info, iseq) {
         vm.show_error_message(e);
     }
@@ -102,6 +103,7 @@ fn repl(is_trace: bool) {
         rl.add_history_entry(line.clone());
 
         let mut lines = line + "\n";
+        let main_id = vm.factory.main_func_id();
 
         loop {
             parser = parser::Parser::new("REPL", lines.clone());
@@ -109,7 +111,7 @@ fn repl(is_trace: bool) {
                 Ok(node) => {
                     // compile and execute
                     let mut iseq = vec![];
-                    let global_info = match vm.compile(&node, &mut iseq, true, 0) {
+                    let global_info = match vm.compile(&node, &mut iseq, true, main_id) {
                         Ok(ok) => ok,
                         Err(vm::codegen::Error { msg, token_pos, .. }) => {
                             parser.show_error_at(token_pos, msg);
@@ -130,7 +132,7 @@ fn repl(is_trace: bool) {
                     }
 
                     let script_info = parser.into_script_info();
-                    vm.script_info = vec![(0, script_info)];
+                    vm.script_info = vec![(main_id, script_info)];
                     vm.current_context = global_context.clone().unwrap();
                     match vm.run() {
                         Ok(val) => println!("{}", val.debug_string(true)),

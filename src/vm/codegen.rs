@@ -1,10 +1,10 @@
 use crate::bytecode_gen::{ByteCode, ByteCodeGenerator, VMInst};
-use crate::id::get_unique_id;
 use crate::node::{
     BinOp, FormalParameter, FormalParameters, MethodDefinitionKind, Node, NodeBase,
     PropertyDefinition, UnaryOp, VarKind,
 };
 use crate::vm::constant::{ConstantTable, SpecialProperties, SpecialPropertyKind};
+use crate::vm::factory::FunctionId;
 use crate::vm::jsvalue::function::{DestinationKind, Exception, ThisMode, UserFunctionInfo};
 use crate::vm::jsvalue::value;
 use crate::vm::jsvalue::value::Value;
@@ -31,10 +31,10 @@ pub struct CodeGenerator<'a> {
     pub bytecode_generator: ByteCodeGenerator<'a>,
     pub factory: &'a mut Factory,
     pub function_stack: Vec<FunctionInfo>,
-    pub to_source_map: FxHashMap<usize, ToSourcePos>,
+    pub to_source_map: FxHashMap<FunctionId, ToSourcePos>,
     /// A position in the bytecode of the current node.
     pub node_pos: usize,
-    pub module_func_id: usize,
+    pub module_func_id: FunctionId,
 }
 
 #[derive(Debug, Clone)]
@@ -47,14 +47,14 @@ pub struct FunctionInfo {
     pub level: Vec<Level>,
     pub exception_table: Vec<Exception>,
     pub to_source_pos: ToSourcePos,
-    pub module_func_id: usize,
+    pub module_func_id: FunctionId,
 }
 
 #[derive(Debug, Clone)]
 /// Table of correspondence of an instruction pointer and char position on script.
 pub struct ToSourcePos {
     table: Vec<(usize, usize)>,
-    module_func_id: usize,
+    module_func_id: FunctionId,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -77,7 +77,7 @@ impl<'a> CodeGenerator<'a> {
     pub fn new(
         constant_table: &'a mut ConstantTable,
         factory: &'a mut Factory,
-        module_func_id: usize,
+        module_func_id: FunctionId,
     ) -> Self {
         CodeGenerator {
             bytecode_generator: ByteCodeGenerator::new(constant_table),
@@ -95,7 +95,7 @@ impl<'a> CodeGenerator<'a> {
         iseq: &mut ByteCode,
         use_value: bool,
         // id of the function.
-        id: usize,
+        id: FunctionId,
     ) -> Result<FunctionInfo, Error> {
         self.visit(node, iseq, use_value)?;
         self.bytecode_generator.append_return(iseq);
@@ -639,7 +639,7 @@ impl<'a> CodeGenerator<'a> {
 
         let function_info = self.function_stack.pop().unwrap();
 
-        let id = get_unique_id();
+        let id = self.factory.new_func_id();
 
         self.to_source_map.insert(id, function_info.to_source_pos);
 
@@ -1200,7 +1200,7 @@ impl Error {
 // FunctionInfo
 
 impl FunctionInfo {
-    pub fn new(name: Option<String>, module_func_id: usize) -> Self {
+    pub fn new(name: Option<String>, module_func_id: FunctionId) -> Self {
         FunctionInfo {
             name,
             var_names: vec![],
@@ -1385,7 +1385,7 @@ impl Level {
 }
 
 impl ToSourcePos {
-    pub fn new(module_func_id: usize) -> Self {
+    pub fn new(module_func_id: FunctionId) -> Self {
         Self {
             module_func_id,
             table: vec![],

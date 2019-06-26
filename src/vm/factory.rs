@@ -9,10 +9,27 @@ use crate::vm::{
 };
 use rustc_hash::FxHashMap;
 
+#[derive(Debug, Clone, Hash, Copy)]
+pub struct FunctionId(usize);
+
+impl PartialEq for FunctionId {
+    fn eq(&self, other: &FunctionId) -> bool {
+        self.0 == other.0
+    }
+}
+impl Eq for FunctionId {}
+
+impl FunctionId {
+    pub fn default() -> Self {
+        FunctionId(0)
+    }
+}
+
 #[derive(Debug)]
 pub struct Factory {
     pub memory_allocator: gc::MemoryAllocator,
     pub object_prototypes: ObjectPrototypes,
+    pub next_func_id: usize,
 }
 
 impl Factory {
@@ -20,11 +37,22 @@ impl Factory {
         Factory {
             memory_allocator,
             object_prototypes,
+            next_func_id: 0,
         }
     }
 
     pub fn alloc<T: gc::GcTarget + 'static>(&mut self, data: T) -> *mut T {
         self.memory_allocator.alloc(data)
+    }
+
+    pub fn new_func_id(&mut self) -> FunctionId {
+        let id = self.next_func_id;
+        self.next_func_id = id + 1;
+        FunctionId(id)
+    }
+
+    pub fn main_func_id(&mut self) -> FunctionId {
+        FunctionId(0)
     }
 
     /// Generate Value for a string.

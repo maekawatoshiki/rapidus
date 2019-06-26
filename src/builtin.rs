@@ -114,7 +114,7 @@ pub fn require(vm: &mut VM, args: &[Value], _this: Value) -> VMValueResult {
     }));
 
     let mut iseq = vec![];
-    let id = crate::id::get_unique_id();
+    let id = vm.factory.new_func_id();
     use crate::vm::codegen::Error;
     let global_info = r#try!(vm
         .compile(&node, &mut iseq, true, id)
@@ -162,7 +162,7 @@ pub fn require(vm: &mut VM, args: &[Value], _this: Value) -> VMValueResult {
     if vm.is_trace {
         println!("--> call module");
         println!(
-            "  module_id:{} func_id:{}",
+            "  module_id:{:?} func_id:{:?}",
             vm.current_context.module_func_id, vm.current_context.func_id
         );
     };

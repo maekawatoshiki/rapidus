@@ -13,7 +13,7 @@ pub fn function(factory: &mut Factory) -> Value {
 
 // TODO: https://www.ecma-international.org/ecma-262/9.0/index.html#sec-function-constructor
 pub fn function_constructor(vm: &mut VM, _args: &[Value], _this: Value) -> VMValueResult {
-    let info = UserFunctionInfo::new(vm.current_context.module_func_id);
+    let info = UserFunctionInfo::new(&mut vm.factory, vm.current_context.module_func_id);
     let func = vm.factory.function(None, info);
     Ok(func)
 }

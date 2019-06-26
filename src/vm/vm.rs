@@ -3,7 +3,7 @@ use crate::bytecode_gen::{inst_to_inst_name, show_inst, ByteCode, VMInst};
 use crate::gc;
 use crate::node::Node;
 use crate::parser::ScriptInfo;
-pub use crate::vm::factory::Factory;
+pub use crate::vm::factory::{Factory, FunctionId};
 use crate::vm::{
     codegen,
     codegen::CodeGenerator,
@@ -30,10 +30,10 @@ pub struct VM {
     pub current_context: exec_context::ExecContext,
     pub saved_context: Vec<exec_context::ExecContext>,
     ///func_id, ToSourcePos
-    pub to_source_map: FxHashMap<usize, codegen::ToSourcePos>,
+    pub to_source_map: FxHashMap<FunctionId, codegen::ToSourcePos>,
     pub is_trace: bool,
     ///(func_id, script_info)
-    pub script_info: Vec<(usize, ScriptInfo)>,
+    pub script_info: Vec<(FunctionId, ScriptInfo)>,
     pub profile: Profile,
 }
 
@@ -108,7 +108,7 @@ impl VM {
         node: &Node,
         iseq: &mut ByteCode,
         use_value: bool,
-        id: usize,
+        id: FunctionId,
     ) -> Result<codegen::FunctionInfo, codegen::Error> {
         let mut code_generator =
             CodeGenerator::new(&mut self.constant_table, &mut self.factory, id);
@@ -783,7 +783,7 @@ impl VM {
                     }
                     if is_trace {
                         self.profile.trace_string = format!(
-                            "{}\n<-- return value({})\n  module_id:{} func_id:{}",
+                            "{}\n<-- return value({})\n  module_id:{:?} func_id:{:?}",
                             self.profile.trace_string,
                             str,
                             self.current_context.module_func_id,
@@ -831,7 +831,7 @@ impl VM {
             let mut inst_info = &mut self.profile.inst_info[self.profile.current_inst as usize];
             (*inst_info).0 += duration;
             (*inst_info).1 += 1;
-            println!("{:05}m {}", duration.as_micros(), self.profile.trace_string);
+            // println!("{:05}m {}", duration.as_micros(), self.profile.trace_string);
         }
 
         self.profile.trace_string = format!(
@@ -851,7 +851,7 @@ impl VM {
 
     pub fn print_inst_time(&mut self) {
         println!("# performance analysis");
-        println!("inst          total %    time per inst");
+        println!("inst          total %      time per inst");
         let total_time = self
             .profile
             .inst_info
@@ -860,7 +860,7 @@ impl VM {
         for (i, duration) in self.profile.inst_info.iter().enumerate() {
             if duration.1 != 0 {
                 println!(
-                    "{:12} {:>6.2} % {:>8.2} nanosecs",
+                    "{:12} {:>6.2} % {:>10.2} nanosecs",
                     inst_to_inst_name(i as u8),
                     duration.0.as_micros() as f64 / total_time * 100.0,
                     duration.0.as_nanos() as f64 / duration.1 as f64
@@ -1005,7 +1005,7 @@ impl VM {
             FunctionObjectKind::User(ref user_func) => {
                 if self.is_trace {
                     self.profile.trace_string = format!(
-                        "{}\n--> call {}\n  module_id:{} func_id:{}",
+                        "{}\n--> call {}\n  module_id:{:?} func_id:{:?}",
                         self.profile.trace_string,
                         if constructor_call {
                             "constructor"
