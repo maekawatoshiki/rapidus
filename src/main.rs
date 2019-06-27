@@ -1,14 +1,11 @@
 #![feature(test)]
-extern crate rapidus;
+//extern crate rapidus;
 use rapidus::parser;
 use rapidus::{vm, vm::exec_context, vm::vm::VM};
-extern crate test;
-
-extern crate libc;
-
-extern crate rustyline;
-
 extern crate clap;
+extern crate libc;
+extern crate rustyline;
+extern crate test;
 use clap::{App, Arg};
 
 const VERSION_STR: &'static str = env!("CARGO_PKG_VERSION");
@@ -24,18 +21,24 @@ fn main() {
                 .long("debug"),
         )
         .arg(
+            Arg::with_name("profile")
+                .help("Collect and print performance profile")
+                .long("profile"),
+        )
+        .arg(
             Arg::with_name("trace")
-                .help("Trace bytecode execution for debugging")
+                .help("Tracing execution")
                 .long("trace"),
         )
         .arg(Arg::with_name("file").help("Input file name").index(1));
     let app_matches = app.clone().get_matches();
     let is_debug = app_matches.is_present("debug");
+    let is_profile = app_matches.is_present("profile");
     let is_trace = app_matches.is_present("trace");
     let file_name = match app_matches.value_of("file") {
         Some(file_name) => file_name,
         None => {
-            repl(is_trace);
+            repl(is_profile, is_trace);
             return;
         }
     };
@@ -58,6 +61,9 @@ fn main() {
     };
 
     let mut vm = VM::new();
+    if is_profile {
+        vm = vm.profile();
+    }
     if is_trace {
         vm = vm.trace();
     }
@@ -83,9 +89,12 @@ fn main() {
     }
 }
 
-fn repl(is_trace: bool) {
+fn repl(is_profile: bool, is_trace: bool) {
     let mut rl = rustyline::Editor::<()>::new();
     let mut vm = VM::new();
+    if is_profile {
+        vm = vm.profile();
+    }
     if is_trace {
         vm = vm.trace();
     }

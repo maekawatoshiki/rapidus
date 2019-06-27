@@ -31,20 +31,21 @@ pub struct VM {
     pub saved_context: Vec<exec_context::ExecContext>,
     ///func_id, ToSourcePos
     pub to_source_map: FxHashMap<FunctionId, codegen::ToSourcePos>,
+    pub is_profile: bool,
     pub is_trace: bool,
     ///(func_id, script_info)
     pub script_info: Vec<(FunctionId, ScriptInfo)>,
-    pub profile: Profile,
+    pub profile: Profiler,
 }
 
-pub struct Profile {
+pub struct Profiler {
     instant: Instant,
     prev_time: Duration,
-    gc_stop_time: Duration,
-    gc_profile: [(usize, Duration); 3],
     current_inst: u8,
+    inst_profile: [(usize, Duration); 100],
+    gc_profile: [(usize, Duration); 3],
+    gc_stop_time: Duration,
     trace_string: String,
-    inst_info: [(Duration, usize); 70],
     start_flag: bool,
 }
 
@@ -79,19 +80,25 @@ impl VM {
             current_context: exec_context::ExecContext::empty(),
             saved_context: vec![],
             to_source_map: FxHashMap::default(),
+            is_profile: false,
             is_trace: false,
             script_info: vec![],
-            profile: Profile {
+            profile: Profiler {
                 instant: Instant::now(),
                 prev_time: Duration::from_secs(0),
                 gc_stop_time: Duration::from_secs(0),
                 gc_profile: [(0, Duration::from_secs(0)); 3],
                 current_inst: 255,
                 trace_string: "".to_string(),
-                inst_info: [(Duration::from_micros(0), 0); 70],
+                inst_profile: [(0, Duration::from_micros(0)); 100],
                 start_flag: false,
             },
         }
+    }
+
+    pub fn profile(mut self) -> Self {
+        self.is_profile = true;
+        self
     }
 
     pub fn trace(mut self) -> Self {
@@ -380,12 +387,11 @@ impl VM {
         }
 
         let mut subroutine_stack: Vec<SubroutineKind> = vec![];
-        let is_trace = self.is_trace;
         self.profile.trace_string = "".to_string();
 
         loop {
             self.current_context.current_inst_pc = self.current_context.pc;
-            if is_trace {
+            if self.is_profile || self.is_trace {
                 self.trace_print();
             }
 
@@ -415,8 +421,10 @@ impl VM {
                     }
                 }};
             }
-            self.profile.current_inst = self.current_context.bytecode[self.current_context.pc];
-            match self.profile.current_inst {
+
+            let inst = self.current_context.bytecode[self.current_context.pc];
+            self.profile.current_inst = inst;
+            match inst {
                 // TODO: Macro for bin ops?
                 VMInst::ADD => {
                     self.current_context.pc += 1;
@@ -792,18 +800,17 @@ impl VM {
                     if self.saved_context.len() == 0 {
                         break;
                     };
-                    let str = self.unwind_context();
+                    self.unwind_context();
                     // TODO: GC schedule
                     self.gc_mark();
                     if call_mode == CallMode::FromNative {
                         break;
                     }
 
-                    if is_trace {
+                    if self.is_trace {
                         self.profile.trace_string = format!(
-                            "{}\n<-- return value({})\n  module_id:{:?} func_id:{:?}",
+                            "{}\n<-- return\n  module_id:{:?} func_id:{:?}",
                             self.profile.trace_string,
-                            str,
                             self.current_context.module_func_id,
                             self.current_context.func_id
                         );
@@ -830,9 +837,11 @@ impl VM {
             }
         }
 
-        if is_trace {
+        if self.is_profile || self.is_trace {
             self.trace_print();
-            self.print_inst_time();
+        };
+        if self.is_profile {
+            self.print_profile();
         };
 
         let val = match self.current_context.stack.pop() {
@@ -847,44 +856,48 @@ impl VM {
         if self.profile.start_flag {
             let duration =
                 self.profile.instant.elapsed() - self.profile.prev_time - self.profile.gc_stop_time;
-            let mut inst_info = &mut self.profile.inst_info[self.profile.current_inst as usize];
-            (*inst_info).0 += duration;
-            (*inst_info).1 += 1;
-
-            println!(
-                "{:05}m {:05}m {}",
-                duration.as_micros(),
-                self.profile.gc_stop_time.as_micros(),
-                self.profile.trace_string,
-            );
+            let mut inst_profile =
+                &mut self.profile.inst_profile[self.profile.current_inst as usize];
+            (*inst_profile).1 += duration;
+            (*inst_profile).0 += 1;
+            if self.is_trace {
+                println!(
+                    "{:6}n {:6}n {}",
+                    duration.as_nanos(),
+                    self.profile.gc_stop_time.as_nanos(),
+                    self.profile.trace_string,
+                );
+            }
         }
         self.profile.start_flag = true;
 
-        self.profile.trace_string = format!(
-            "{} {}",
-            crate::bytecode_gen::show_inst(
-                &self.current_context.bytecode,
-                self.current_context.current_inst_pc,
-                &self.constant_table,
-            ),
-            match self.current_context.stack.last() {
-                None => format!("<empty>"),
-                Some(val) => format!("{:10}", (*val).into(): Value),
-            }
-        );
+        if self.is_trace {
+            self.profile.trace_string = format!(
+                "{} {}",
+                crate::bytecode_gen::show_inst(
+                    &self.current_context.bytecode,
+                    self.current_context.current_inst_pc,
+                    &self.constant_table,
+                ),
+                match self.current_context.stack.last() {
+                    None => format!("<empty>"),
+                    Some(val) => format!("{:10}", (*val).into(): Value),
+                }
+            );
+        }
 
         self.profile.prev_time = self.profile.instant.elapsed();
         self.profile.gc_stop_time = Duration::from_secs(0);
     }
 
-    pub fn print_inst_time(&mut self) {
+    pub fn print_profile(&mut self) {
         println!("# performance analysis");
 
         let total_inst_time = self
             .profile
-            .inst_info
+            .inst_profile
             .iter()
-            .fold(0, |acc, x| acc + x.0.as_micros()) as f64;
+            .fold(0, |acc, x| acc + x.1.as_micros()) as f64;
 
         let total_gc_time = self
             .profile
@@ -899,13 +912,13 @@ impl VM {
         );
 
         println!("Inst          total %    ave.time / inst");
-        for (i, prof) in self.profile.inst_info.iter().enumerate() {
-            if prof.1 != 0 {
+        for (i, prof) in self.profile.inst_profile.iter().enumerate() {
+            if prof.0 != 0 {
                 println!(
                     "{:12} {:>6.2} % {:>10.2} nanosecs",
                     inst_to_inst_name(i as u8),
-                    prof.0.as_micros() as f64 / total_time * 100.0,
-                    prof.0.as_nanos() as f64 / prof.1 as f64
+                    prof.1.as_micros() as f64 / total_time * 100.0,
+                    prof.1.as_nanos() as f64 / prof.0 as f64
                 );
             }
         }
@@ -934,7 +947,7 @@ impl VM {
     /// 2. Pop an ExecContext from the context stack.
     /// 3. Set current execution context to the ExecContext.
     /// 4. Push the Value to the stack of new current execution context.
-    pub fn unwind_context(&mut self) -> String {
+    pub fn unwind_context(&mut self) {
         let prev_context = self.saved_context.pop().unwrap();
         let return_value = if self.current_context.call_mode == CallMode::ModuleCall {
             self.current_context
@@ -952,10 +965,8 @@ impl VM {
                 ret_val
             }
         };
-        let str = format!("{}", return_value);
         self.current_context = prev_context;
         self.current_context.stack.push(return_value.into());
-        str
     }
 
     fn push_env(&mut self, id: usize) -> VMResult {
