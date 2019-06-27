@@ -3,4 +3,4 @@ function fibo (x) {
   return fibo(x - 1) + fibo(x - 2)
 }
 
-fibo(30)
+fibo(15)

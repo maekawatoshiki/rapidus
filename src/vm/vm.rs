@@ -45,6 +45,7 @@ pub struct Profile {
     current_inst: u8,
     trace_string: String,
     inst_info: [(Duration, usize); 70],
+    start_flag: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -88,6 +89,7 @@ impl VM {
                 current_inst: 255,
                 trace_string: "".to_string(),
                 inst_info: [(Duration::from_micros(0), 0); 70],
+                start_flag: false,
             },
         }
     }
@@ -796,6 +798,7 @@ impl VM {
                     if call_mode == CallMode::FromNative {
                         break;
                     }
+
                     if is_trace {
                         self.profile.trace_string = format!(
                             "{}\n<-- return value({})\n  module_id:{:?} func_id:{:?}",
@@ -841,21 +844,21 @@ impl VM {
     }
 
     pub fn trace_print(&mut self) {
-        if self.profile.trace_string.len() != 0 {
+        if self.profile.start_flag {
             let duration =
                 self.profile.instant.elapsed() - self.profile.prev_time - self.profile.gc_stop_time;
             let mut inst_info = &mut self.profile.inst_info[self.profile.current_inst as usize];
             (*inst_info).0 += duration;
             (*inst_info).1 += 1;
-            /*
+
             println!(
                 "{:05}m {:05}m {}",
                 duration.as_micros(),
                 self.profile.gc_stop_time.as_micros(),
                 self.profile.trace_string,
             );
-            */
         }
+        self.profile.start_flag = true;
 
         self.profile.trace_string = format!(
             "{} {}",
@@ -869,6 +872,7 @@ impl VM {
                 Some(val) => format!("{:10}", (*val).into(): Value),
             }
         );
+
         self.profile.prev_time = self.profile.instant.elapsed();
         self.profile.gc_stop_time = Duration::from_secs(0);
     }
@@ -876,21 +880,32 @@ impl VM {
     pub fn print_inst_time(&mut self) {
         println!("# performance analysis");
 
-        let total_time = self
+        let total_inst_time = self
             .profile
             .inst_info
             .iter()
             .fold(0, |acc, x| acc + x.0.as_micros()) as f64;
-        println!("total execution time {} microsecs", total_time);
+
+        let total_gc_time = self
+            .profile
+            .gc_profile
+            .iter()
+            .fold(0, |acc, x| acc + x.1.as_micros()) as f64;
+
+        let total_time = total_gc_time + total_inst_time;
+        println!(
+            "total execution time {} microsecs  gc time {} microsecs",
+            total_time, total_gc_time
+        );
 
         println!("Inst          total %    ave.time / inst");
-        for (i, duration) in self.profile.inst_info.iter().enumerate() {
-            if duration.1 != 0 {
+        for (i, prof) in self.profile.inst_info.iter().enumerate() {
+            if prof.1 != 0 {
                 println!(
                     "{:12} {:>6.2} % {:>10.2} nanosecs",
                     inst_to_inst_name(i as u8),
-                    duration.0.as_micros() as f64 / total_time * 100.0,
-                    duration.0.as_nanos() as f64 / duration.1 as f64
+                    prof.0.as_micros() as f64 / total_time * 100.0,
+                    prof.0.as_nanos() as f64 / prof.1 as f64
                 );
             }
         }
