@@ -1,7 +1,7 @@
 #![macro_use]
+use crate::vm::jsvalue::function::UserFunctionInfo;
 use crate::bytecode_gen::ByteCode;
 use crate::gc;
-use crate::vm::codegen::FunctionInfo;
 use crate::vm::error::ErrorKind;
 use crate::vm::error::RuntimeError;
 use crate::vm::jsvalue::function::Exception;
@@ -147,7 +147,7 @@ impl ExecContext {
     pub fn append_from_function_info(
         &mut self,
         memory_allocator: &mut gc::MemoryAllocator,
-        info: &FunctionInfo,
+        info: &UserFunctionInfo,
     ) {
         for f in &info.func_decls {
             self.append_function(memory_allocator, *f);

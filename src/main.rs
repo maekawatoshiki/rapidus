@@ -67,9 +67,8 @@ fn main() {
     if is_trace {
         vm = vm.trace();
     }
-    let mut iseq = vec![];
-    let main_id = vm.factory.main_func_id();
-    let global_info = match vm.compile(&node, &mut iseq, false, main_id) {
+
+    let global_info = match vm.compile(&node, false) {
         Ok(ok) => ok,
         Err(vm::codegen::Error { msg, token_pos, .. }) => {
             parser.show_error_at(token_pos, msg);
@@ -79,12 +78,13 @@ fn main() {
 
     if is_debug {
         println!("Codegen:");
-        rapidus::bytecode_gen::show_inst_seq(&iseq, &vm.constant_table);
+        rapidus::bytecode_gen::show_inst_seq(&global_info.code, &vm.constant_table);
     };
 
     let script_info = parser.into_script_info();
-    vm.script_info.push((main_id, script_info));
-    if let Err(e) = vm.run_global(global_info, iseq) {
+    vm.script_info
+        .push((global_info.module_func_id, script_info));
+    if let Err(e) = vm.run_global(global_info) {
         vm.show_error_message(e);
     }
 }
@@ -112,15 +112,13 @@ fn repl(is_profile: bool, is_trace: bool) {
         rl.add_history_entry(line.clone());
 
         let mut lines = line + "\n";
-        let main_id = vm.factory.main_func_id();
 
         loop {
             parser = parser::Parser::new("REPL", lines.clone());
             match parser.parse_all() {
                 Ok(node) => {
                     // compile and execute
-                    let mut iseq = vec![];
-                    let global_info = match vm.compile(&node, &mut iseq, true, main_id) {
+                    let global_info = match vm.compile(&node, true) {
                         Ok(ok) => ok,
                         Err(vm::codegen::Error { msg, token_pos, .. }) => {
                             parser.show_error_at(token_pos, msg);
@@ -130,19 +128,22 @@ fn repl(is_profile: bool, is_trace: bool) {
 
                     match global_context {
                         Some(ref mut context) => {
-                            context.bytecode = iseq;
-                            context.exception_table = global_info.exception_table.clone();
                             context.append_from_function_info(
                                 &mut vm.factory.memory_allocator,
                                 &global_info,
-                            )
+                            );
+                            context.module_func_id = global_info.module_func_id;
+                            context.func_id = global_info.func_id;
+                            context.bytecode = global_info.code;
+                            context.exception_table = global_info.exception_table;
                         }
-                        None => global_context = Some(vm.create_global_context(global_info, iseq)),
+                        None => global_context = Some(vm.create_global_context(global_info)),
                     }
 
-                    let script_info = parser.into_script_info();
-                    vm.script_info = vec![(main_id, script_info)];
                     vm.current_context = global_context.clone().unwrap();
+                    let script_info = parser.into_script_info();
+                    vm.script_info = vec![(vm.current_context.module_func_id, script_info)];
+
                     match vm.run() {
                         Ok(val) => println!("{}", val.debug_string(true)),
                         Err(e) => {

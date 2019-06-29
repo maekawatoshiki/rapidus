@@ -92,19 +92,30 @@ impl<'a> CodeGenerator<'a> {
     pub fn compile(
         &mut self,
         node: &Node,
-        iseq: &mut ByteCode,
         use_value: bool,
-        // id of the function.
-        id: FunctionId,
-    ) -> Result<FunctionInfo, Error> {
-        self.visit(node, iseq, use_value)?;
-        self.bytecode_generator.append_return(iseq);
+    ) -> Result<UserFunctionInfo, Error> {
+        let mut iseq = vec![];
+        self.visit(node, &mut iseq, use_value)?;
+        self.bytecode_generator.append_return(&mut iseq);
 
-        let global_info = self.function_stack.pop().unwrap();
+        let function_info = self.function_stack.pop().unwrap();
+        let module_id = self.module_func_id;
         self.to_source_map
-            .insert(id, global_info.to_source_pos.clone());
+            .insert(module_id, function_info.to_source_pos.clone());
 
-        Ok(global_info)
+        Ok(UserFunctionInfo {
+            func_id: module_id,
+            module_func_id: module_id,
+            params: vec![],
+            var_names: function_info.var_names,
+            lex_names: function_info.lex_names,
+            func_decls: function_info.func_decls,
+            constructible: false,
+            this_mode: ThisMode::Global,
+            code: iseq,
+            exception_table: function_info.exception_table,
+            outer: None,
+        })
     }
 }
 
@@ -639,14 +650,14 @@ impl<'a> CodeGenerator<'a> {
 
         let function_info = self.function_stack.pop().unwrap();
 
-        let id = self.factory.new_func_id();
+        let func_id = self.factory.new_func_id();
 
-        self.to_source_map.insert(id, function_info.to_source_pos);
+        self.to_source_map.insert(func_id, function_info.to_source_pos);
 
         Ok(self.factory.function(
             function_info.name,
             UserFunctionInfo {
-                id,
+                func_id,
                 module_func_id: self.module_func_id,
                 params,
                 var_names: function_info.var_names,

@@ -1,5 +1,5 @@
 use crate::builtins::console::debug_print;
-use crate::bytecode_gen::{inst_to_inst_name, show_inst, ByteCode, VMInst};
+use crate::bytecode_gen::{inst_to_inst_name, show_inst, VMInst};
 use crate::gc;
 use crate::node::Node;
 use crate::parser::ScriptInfo;
@@ -49,7 +49,7 @@ pub struct Profiler {
     start_flag: bool,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Copy)]
 pub enum CallMode {
     OrdinaryCall,
     ModuleCall,
@@ -130,23 +130,21 @@ impl VM {
     pub fn compile(
         &mut self,
         node: &Node,
-        iseq: &mut ByteCode,
         use_value: bool,
-        id: FunctionId,
-    ) -> Result<codegen::FunctionInfo, codegen::Error> {
+    ) -> Result<UserFunctionInfo, codegen::Error> {
+        let func_id = self.factory.new_func_id();
         let mut code_generator =
-            CodeGenerator::new(&mut self.constant_table, &mut self.factory, id);
-        let res = code_generator.compile(node, iseq, use_value, id);
-        for (id, list) in code_generator.to_source_map {
-            self.to_source_map.insert(id, list);
+            CodeGenerator::new(&mut self.constant_table, &mut self.factory, func_id);
+        let res = code_generator.compile(node, use_value);
+        for (func_id, list) in code_generator.to_source_map {
+            self.to_source_map.insert(func_id, list);
         }
         res
     }
 
     pub fn create_global_context(
         &mut self,
-        global_info: codegen::FunctionInfo,
-        iseq: ByteCode,
+        global_info: UserFunctionInfo,
     ) -> exec_context::ExecContext {
         let global_env_ref = self.global_environment;
 
@@ -162,7 +160,7 @@ impl VM {
         }
 
         let context = exec_context::ExecContext::new(
-            iseq,
+            global_info.code,
             var_env,
             lex_env,
             global_info.exception_table,
@@ -173,8 +171,8 @@ impl VM {
         context
     }
 
-    pub fn run_global(&mut self, global_info: codegen::FunctionInfo, iseq: ByteCode) -> VMResult {
-        self.current_context = self.create_global_context(global_info, iseq);
+    pub fn run_global(&mut self, func_info: UserFunctionInfo) -> VMResult {
+        self.current_context = self.create_global_context(func_info);
         self.run()?;
 
         Ok(())
@@ -796,7 +794,7 @@ impl VM {
                 }
                 VMInst::RETURN => {
                     self.current_context.pc += 1;
-                    let call_mode = self.current_context.call_mode.clone();
+                    let call_mode = self.current_context.call_mode;
                     if self.saved_context.len() == 0 {
                         break;
                     };
@@ -1231,7 +1229,7 @@ impl VM {
             this,
             mode,
         )
-        .func_id(user_func.id)
+        .func_id(user_func.func_id)
         .module_func_id(user_func.module_func_id)
         .constructor_call(constructor_call);
         self.current_context = context;

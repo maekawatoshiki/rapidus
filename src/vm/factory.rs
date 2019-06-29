@@ -9,7 +9,7 @@ use crate::vm::{
 };
 use rustc_hash::FxHashMap;
 
-#[derive(Debug, Clone, Hash, Copy)]
+#[derive(Clone, Hash, Copy)]
 pub struct FunctionId(usize);
 
 impl PartialEq for FunctionId {
@@ -22,6 +22,12 @@ impl Eq for FunctionId {}
 impl FunctionId {
     pub fn default() -> Self {
         FunctionId(0)
+    }
+}
+
+impl std::fmt::Debug for FunctionId {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 

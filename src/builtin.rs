@@ -107,41 +107,26 @@ pub fn require(vm: &mut VM, args: &[Value], _this: Value) -> VMValueResult {
         .map_err(|e| return vm.current_context.error_general(format!("{:?}", e)))?;
     let absolute_path = parser.file_name.clone();
 
-    let node = r#try!(parser.parse_all().map_err(|parse_err| {
+    let node = parser.parse_all().map_err(|parse_err| {
         parser.handle_error(&parse_err);
         vm.current_context
             .error_general(format!("Error in parsing module \"{}\"", file_name))
-    }));
+    })?;
 
-    let mut iseq = vec![];
-    let id = vm.factory.new_func_id();
     use crate::vm::codegen::Error;
-    let global_info = r#try!(vm
-        .compile(&node, &mut iseq, true, id)
-        .map_err(|codegen_err| {
-            let Error { msg, token_pos, .. } = codegen_err;
-            parser.show_error_at(token_pos, msg);
-            vm.current_context
-                .error_general(format!("Error in parsing module \"{}\"", file_name))
-        }));
+    let mut module_info = vm.compile(&node, true).map_err(|codegen_err| {
+        let Error { msg, token_pos, .. } = codegen_err;
+        parser.show_error_at(token_pos, msg);
+        vm.current_context
+            .error_general(format!("Error in parsing module \"{}\"", file_name))
+    })?;
+    let id = module_info.module_func_id;
     let script_info = parser.into_script_info();
     vm.script_info.push((id, script_info));
-    let user_func_info = UserFunctionInfo {
-        id,
-        module_func_id: id,
-        params: vec![],
-        var_names: global_info.var_names,
-        lex_names: global_info.lex_names,
-        func_decls: global_info.func_decls,
-        constructible: false,
-        this_mode: ThisMode::Global,
-        code: iseq,
-        exception_table: global_info.exception_table,
-        outer: Some(vm.global_environment),
-    };
+    module_info.outer = Some(vm.global_environment);
 
     vm.prepare_context_for_function_invokation(
-        &user_func_info,
+        &module_info,
         args: &[Value],
         Value::undefined(),
         CallMode::ModuleCall,
