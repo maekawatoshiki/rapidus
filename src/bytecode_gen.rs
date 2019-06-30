@@ -316,8 +316,6 @@ pub fn show_inst(code: &ByteCode, i: usize, const_table: &constant::ConstantTabl
         "{:05} {:<25}",
         i,
         match code[i] {
-            VMInst::END => format!("End"),
-            //VMInst::CREATE_CONTEXT => format!("CreateContext"),
             VMInst::CONSTRUCT => {
                 let int32 = read_int32(code, i + 1);
                 format!("Construct {}", int32)
@@ -338,42 +336,12 @@ pub fn show_inst(code: &ByteCode, i: usize, const_table: &constant::ConstantTabl
                 let int32 = read_int32(code, i + 1);
                 format!("PushInt32 {}", int32)
             }
-            VMInst::PUSH_FALSE => format!("PushFalse"),
-            VMInst::PUSH_TRUE => format!("PushTrue"),
             VMInst::PUSH_CONST => {
                 let int32 = read_int32(code, i + 1);
                 let value = const_table.get(int32 as usize).as_value();
                 // TODO: Implement 'format' for 'value'
                 format!("PushConst {}", value)
             }
-            VMInst::PUSH_NULL => format!("PushNull"),
-            VMInst::PUSH_THIS => format!("PushThis"),
-            VMInst::PUSH_ARGUMENTS => format!("PushArguments"),
-            VMInst::PUSH_UNDEFINED => format!("PushUndefined"),
-            VMInst::LNOT => format!("LogNot"),
-            VMInst::POSI => format!("Posi"),
-            VMInst::NEG => format!("Neg"),
-            VMInst::ADD => format!("Add"),
-            VMInst::SUB => format!("Sub"),
-            VMInst::MUL => format!("Mul"),
-            VMInst::DIV => format!("Div"),
-            VMInst::REM => format!("Rem"),
-            VMInst::LT => format!("Lt"),
-            VMInst::GT => format!("Gt"),
-            VMInst::LE => format!("Le"),
-            VMInst::GE => format!("Ge"),
-            VMInst::EQ => format!("Eq"),
-            VMInst::NE => format!("Ne"),
-            VMInst::SEQ => format!("SEq"),
-            VMInst::SNE => format!("SNeg"),
-            VMInst::AND => format!("BitwiseAnd"),
-            VMInst::OR => format!("BitwiseOr"),
-            VMInst::XOR => format!("BitwiseXor"),
-            VMInst::SHL => format!("Shift-L"),
-            VMInst::SHR => format!("Shift-R"),
-            VMInst::ZFSHR => format!("ZeroFill-Shift-R"),
-            VMInst::GET_MEMBER => format!("GetMember"),
-            VMInst::SET_MEMBER => format!("SetMember"),
             VMInst::JMP_IF_FALSE => {
                 let int32 = read_int32(code, i + 1);
                 format!("JmpIfFalse {:05}", i as i32 + int32 + 5)
@@ -431,25 +399,82 @@ pub fn show_inst(code: &ByteCode, i: usize, const_table: &constant::ConstantTabl
                 let names = const_table.get(int32 as usize).as_lex_env_info();
                 format!("PushEnv '{:?}'", names)
             }
-            VMInst::POP_ENV => format!("PopEnv"),
-            VMInst::COND_OP => format!("CondOp"),
-            VMInst::LOOP_START => format!("LoopStart"),
-            VMInst::THROW => format!("Throw"),
-            VMInst::RETURN_TRY => format!("ReturnTry"),
-            //VMInst::PUSH_SCOPE => format!("PushScope"),
-            //VMInst::POP_SCOPE => format!("PopScope"),
-            VMInst::NOT => format!("BitwiseNot"),
-            VMInst::SET_OUTER_ENV => format!("SetOuterEnv"),
             VMInst::JMP_SUB => {
                 let int32 = read_int32(code, i + 1);
                 format!("JmpSub {:05}", i as i32 + int32 + 5)
             }
-            VMInst::RETURN_SUB => format!("ReturnSub"),
-            VMInst::TYPEOF => format!("Typeof"),
-            VMInst::EXP => format!("Exp"),
-            _ => panic!("Unimplemented instruction is show_inst()."),
+            _ => inst_to_inst_name(code[i]).to_string(),
         }
     )
+}
+
+pub fn inst_to_inst_name(inst: u8) -> &'static str {
+    match inst {
+        VMInst::END => "End",
+        VMInst::CONSTRUCT => "Construct",
+        VMInst::CREATE_OBJECT => "CreateObject",
+        VMInst::CREATE_ARRAY => "CreateArray",
+        VMInst::PUSH_INT8 => "PushInt8",
+        VMInst::PUSH_INT32 => "PushInt32",
+        VMInst::PUSH_FALSE => "PushFalse",
+        VMInst::PUSH_TRUE => "PushTrue",
+        VMInst::PUSH_CONST => "PushConst",
+        VMInst::PUSH_NULL => "PushNull",
+        VMInst::PUSH_THIS => "PushThis",
+        VMInst::PUSH_ARGUMENTS => "PushArguments",
+        VMInst::PUSH_UNDEFINED => "PushUndefined",
+        VMInst::LNOT => "LogNot",
+        VMInst::POSI => "Posi",
+        VMInst::NEG => "Neg",
+        VMInst::ADD => "Add",
+        VMInst::SUB => "Sub",
+        VMInst::MUL => "Mul",
+        VMInst::DIV => "Div",
+        VMInst::REM => "Rem",
+        VMInst::LT => "Lt",
+        VMInst::GT => "Gt",
+        VMInst::LE => "Le",
+        VMInst::GE => "Ge",
+        VMInst::EQ => "Eq",
+        VMInst::NE => "Ne",
+        VMInst::SEQ => "SEq",
+        VMInst::SNE => "SNeg",
+        VMInst::AND => "BitwiseAnd",
+        VMInst::OR => "BitwiseOr",
+        VMInst::XOR => "BitwiseXor",
+        VMInst::SHL => "Shift-L",
+        VMInst::SHR => "Shift-R",
+        VMInst::ZFSHR => "ZeroFill-Shift-R",
+        VMInst::GET_MEMBER => "GetMember",
+        VMInst::SET_MEMBER => "SetMember",
+        VMInst::JMP_IF_FALSE => "JmpIfFalse",
+        VMInst::JMP => "Jmp",
+        VMInst::CALL => "Call",
+        VMInst::CALL_METHOD => "CallMethod",
+        VMInst::RETURN => "Return",
+        VMInst::DOUBLE => "Double",
+        VMInst::POP => "Pop",
+        VMInst::LAND => "LogAnd",
+        VMInst::LOR => "LogOr",
+        VMInst::GET_VALUE => "GetValue",
+        VMInst::SET_VALUE => "SetValue",
+        VMInst::DECL_VAR => "DeclVar",
+        VMInst::DECL_CONST => "DeclConst",
+        VMInst::DECL_LET => "DeclLet",
+        VMInst::PUSH_ENV => "PushEnv",
+        VMInst::POP_ENV => "PopEnv",
+        VMInst::COND_OP => "CondOp",
+        VMInst::LOOP_START => "LoopStart",
+        VMInst::THROW => "Throw",
+        VMInst::RETURN_TRY => "ReturnTry",
+        VMInst::NOT => "BitwiseNot",
+        VMInst::SET_OUTER_ENV => "SetOuterEnv",
+        VMInst::JMP_SUB => "JmpSub",
+        VMInst::RETURN_SUB => "ReturnSub",
+        VMInst::TYPEOF => "Typeof",
+        VMInst::EXP => "Exp",
+        _ => "???",
+    }
 }
 
 #[allow(non_snake_case)]

@@ -1,6 +1,6 @@
 use crate::vm::exec_context::ExecContext;
 use crate::vm::jsvalue::value::Value;
-use crate::vm::vm::Factory;
+use crate::vm::vm::{Factory, FunctionId};
 use ansi_term::Colour;
 
 #[derive(Clone, PartialEq, Debug)]
@@ -10,9 +10,9 @@ pub struct RuntimeError {
     /// Program counter where the error raised.
     pub inst_pc: usize,
     /// Function id where the error raised.
-    pub func_id: usize,
+    pub func_id: FunctionId,
     /// Module function id where the error raised.
-    pub module_func_id: usize,
+    pub module_func_id: FunctionId,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -39,8 +39,8 @@ impl RuntimeError {
         RuntimeError {
             kind,
             inst_pc: 0,
-            func_id: 0,
-            module_func_id: 0,
+            func_id: FunctionId::default(),
+            module_func_id: FunctionId::default(),
         }
     }
 

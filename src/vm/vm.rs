@@ -1,9 +1,9 @@
 use crate::builtins::console::debug_print;
-use crate::bytecode_gen::{show_inst, ByteCode, VMInst};
+use crate::bytecode_gen::{inst_to_inst_name, show_inst, VMInst};
 use crate::gc;
 use crate::node::Node;
 use crate::parser::ScriptInfo;
-pub use crate::vm::factory::Factory;
+pub use crate::vm::factory::{Factory, FunctionId};
 use crate::vm::{
     codegen,
     codegen::CodeGenerator,
@@ -30,16 +30,26 @@ pub struct VM {
     pub current_context: exec_context::ExecContext,
     pub saved_context: Vec<exec_context::ExecContext>,
     ///func_id, ToSourcePos
-    pub to_source_map: FxHashMap<usize, codegen::ToSourcePos>,
+    pub to_source_map: FxHashMap<FunctionId, codegen::ToSourcePos>,
+    pub is_profile: bool,
     pub is_trace: bool,
     ///(func_id, script_info)
-    pub script_info: Vec<(usize, ScriptInfo)>,
-    pub instant: Instant,
-    pub prev_time: Duration,
-    pub trace_string: String,
+    pub script_info: Vec<(FunctionId, ScriptInfo)>,
+    pub profile: Profiler,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+pub struct Profiler {
+    instant: Instant,
+    prev_time: Duration,
+    current_inst: u8,
+    inst_profile: [(usize, Duration); 100],
+    gc_profile: [(usize, Duration); 3],
+    gc_stop_time: Duration,
+    trace_string: String,
+    start_flag: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Copy)]
 pub enum CallMode {
     OrdinaryCall,
     ModuleCall,
@@ -70,12 +80,25 @@ impl VM {
             current_context: exec_context::ExecContext::empty(),
             saved_context: vec![],
             to_source_map: FxHashMap::default(),
+            is_profile: false,
             is_trace: false,
             script_info: vec![],
-            instant: Instant::now(),
-            prev_time: Duration::from_secs(0),
-            trace_string: "".to_string(),
+            profile: Profiler {
+                instant: Instant::now(),
+                prev_time: Duration::from_secs(0),
+                gc_stop_time: Duration::from_secs(0),
+                gc_profile: [(0, Duration::from_secs(0)); 3],
+                current_inst: 255,
+                trace_string: "".to_string(),
+                inst_profile: [(0, Duration::from_micros(0)); 100],
+                start_flag: false,
+            },
         }
+    }
+
+    pub fn profile(mut self) -> Self {
+        self.is_profile = true;
+        self
     }
 
     pub fn trace(mut self) -> Self {
@@ -84,6 +107,8 @@ impl VM {
     }
 
     pub fn gc_mark(&mut self) {
+        let time_before_gc = self.profile.instant.elapsed();
+        let gc_mode = self.factory.memory_allocator.state;
         self.factory.memory_allocator.mark(
             self.global_environment,
             &self.factory.object_prototypes,
@@ -91,28 +116,35 @@ impl VM {
             &self.current_context,
             &self.saved_context,
         );
+        let i = match gc_mode {
+            gc::GCState::Initial => 0,
+            gc::GCState::Marking => 1,
+            gc::GCState::ReadyToSweep => 2,
+        };
+        let stop_time = self.profile.instant.elapsed() - time_before_gc;
+        self.profile.gc_stop_time += stop_time;
+        self.profile.gc_profile[i].0 += 1;
+        self.profile.gc_profile[i].1 += stop_time;
     }
 
     pub fn compile(
         &mut self,
         node: &Node,
-        iseq: &mut ByteCode,
         use_value: bool,
-        id: usize,
-    ) -> Result<codegen::FunctionInfo, codegen::Error> {
+    ) -> Result<UserFunctionInfo, codegen::Error> {
+        let func_id = self.factory.new_func_id();
         let mut code_generator =
-            CodeGenerator::new(&mut self.constant_table, &mut self.factory, id);
-        let res = code_generator.compile(node, iseq, use_value, id);
-        for (id, list) in code_generator.to_source_map {
-            self.to_source_map.insert(id, list);
+            CodeGenerator::new(&mut self.constant_table, &mut self.factory, func_id);
+        let res = code_generator.compile(node, use_value);
+        for (func_id, list) in code_generator.to_source_map {
+            self.to_source_map.insert(func_id, list);
         }
         res
     }
 
     pub fn create_global_context(
         &mut self,
-        global_info: codegen::FunctionInfo,
-        iseq: ByteCode,
+        global_info: UserFunctionInfo,
     ) -> exec_context::ExecContext {
         let global_env_ref = self.global_environment;
 
@@ -128,7 +160,7 @@ impl VM {
         }
 
         let context = exec_context::ExecContext::new(
-            iseq,
+            global_info.code,
             var_env,
             lex_env,
             global_info.exception_table,
@@ -139,8 +171,8 @@ impl VM {
         context
     }
 
-    pub fn run_global(&mut self, global_info: codegen::FunctionInfo, iseq: ByteCode) -> VMResult {
-        self.current_context = self.create_global_context(global_info, iseq);
+    pub fn run_global(&mut self, func_info: UserFunctionInfo) -> VMResult {
+        self.current_context = self.create_global_context(func_info);
         self.run()?;
 
         Ok(())
@@ -289,11 +321,14 @@ macro_rules! read_int8 {
 
 macro_rules! read_int32 {
     ($vm:expr, $var:ident, $ty:ty) => {
-        let $var = (($vm.current_context.bytecode[$vm.current_context.pc as usize + 3] as $ty)
-            << 24)
-            + (($vm.current_context.bytecode[$vm.current_context.pc as usize + 2] as $ty) << 16)
-            + (($vm.current_context.bytecode[$vm.current_context.pc as usize + 1] as $ty) << 8)
-            + ($vm.current_context.bytecode[$vm.current_context.pc as usize + 0] as $ty);
+        let $var = {
+            let iseq = &$vm.current_context.bytecode;
+            let pc = $vm.current_context.pc;
+            ((iseq[pc as usize + 3] as $ty) << 24)
+                + ((iseq[pc as usize + 2] as $ty) << 16)
+                + ((iseq[pc as usize + 1] as $ty) << 8)
+                + (iseq[pc as usize + 0] as $ty)
+        };
         $vm.current_context.pc += 4;
     };
 }
@@ -350,12 +385,11 @@ impl VM {
         }
 
         let mut subroutine_stack: Vec<SubroutineKind> = vec![];
-        let is_trace = self.is_trace;
-        self.trace_string = "".to_string();
+        self.profile.trace_string = "".to_string();
 
         loop {
             self.current_context.current_inst_pc = self.current_context.pc;
-            if is_trace {
+            if self.is_profile || self.is_trace {
                 self.trace_print();
             }
 
@@ -386,7 +420,9 @@ impl VM {
                 }};
             }
 
-            match self.current_context.bytecode[self.current_context.pc] {
+            let inst = self.current_context.bytecode[self.current_context.pc];
+            self.profile.current_inst = inst;
+            match inst {
                 // TODO: Macro for bin ops?
                 VMInst::ADD => {
                     self.current_context.pc += 1;
@@ -400,7 +436,9 @@ impl VM {
                     self.current_context.pc += 1;
                     let rhs: Value = self.current_context.stack.pop().unwrap().into();
                     let lhs: Value = self.current_context.stack.pop().unwrap().into();
-                    self.current_context.stack.push(lhs.sub(rhs).into());
+                    self.current_context
+                        .stack
+                        .push(lhs.sub(&mut self.factory.memory_allocator, rhs).into());
                 }
                 VMInst::MUL => {
                     self.current_context.pc += 1;
@@ -756,21 +794,21 @@ impl VM {
                 }
                 VMInst::RETURN => {
                     self.current_context.pc += 1;
-                    let call_mode = self.current_context.call_mode.clone();
+                    let call_mode = self.current_context.call_mode;
                     if self.saved_context.len() == 0 {
                         break;
                     };
-                    let str = self.unwind_context();
+                    self.unwind_context();
                     // TODO: GC schedule
                     self.gc_mark();
                     if call_mode == CallMode::FromNative {
                         break;
                     }
-                    if is_trace {
-                        self.trace_string = format!(
-                            "{}\n<-- return value({})\n  module_id:{} func_id:{}",
-                            self.trace_string,
-                            str,
+
+                    if self.is_trace {
+                        self.profile.trace_string = format!(
+                            "{}\n<-- return\n  module_id:{:?} func_id:{:?}",
+                            self.profile.trace_string,
                             self.current_context.module_func_id,
                             self.current_context.func_id
                         );
@@ -797,8 +835,11 @@ impl VM {
             }
         }
 
-        if is_trace {
-            self.trace_print()
+        if self.is_profile || self.is_trace {
+            self.trace_print();
+        };
+        if self.is_profile {
+            self.print_profile();
         };
 
         let val = match self.current_context.stack.pop() {
@@ -810,24 +851,93 @@ impl VM {
     }
 
     pub fn trace_print(&mut self) {
-        if self.trace_string.len() != 0 {
-            let duration = self.instant.elapsed() - self.prev_time;
-            println!("{:05}m {}", duration.as_micros(), self.trace_string);
+        if self.profile.start_flag {
+            let duration =
+                self.profile.instant.elapsed() - self.profile.prev_time - self.profile.gc_stop_time;
+            let mut inst_profile =
+                &mut self.profile.inst_profile[self.profile.current_inst as usize];
+            (*inst_profile).1 += duration;
+            (*inst_profile).0 += 1;
+            if self.is_trace {
+                println!(
+                    "{:6}n {:6}n {}",
+                    duration.as_nanos(),
+                    self.profile.gc_stop_time.as_nanos(),
+                    self.profile.trace_string,
+                );
+            }
+        }
+        self.profile.start_flag = true;
+
+        if self.is_trace {
+            self.profile.trace_string = format!(
+                "{} {}",
+                crate::bytecode_gen::show_inst(
+                    &self.current_context.bytecode,
+                    self.current_context.current_inst_pc,
+                    &self.constant_table,
+                ),
+                match self.current_context.stack.last() {
+                    None => format!("<empty>"),
+                    Some(val) => format!("{:10}", (*val).into(): Value),
+                }
+            );
         }
 
-        self.trace_string = format!(
-            "{} {}",
-            crate::bytecode_gen::show_inst(
-                &self.current_context.bytecode,
-                self.current_context.current_inst_pc,
-                &self.constant_table,
-            ),
-            match self.current_context.stack.last() {
-                None => format!("<empty>"),
-                Some(val) => format!("{:10}", (*val).into(): Value),
-            }
+        self.profile.prev_time = self.profile.instant.elapsed();
+        self.profile.gc_stop_time = Duration::from_secs(0);
+    }
+
+    pub fn print_profile(&mut self) {
+        println!("# performance analysis");
+
+        let total_inst_time = self
+            .profile
+            .inst_profile
+            .iter()
+            .fold(0, |acc, x| acc + x.1.as_micros()) as f64;
+
+        let total_gc_time = self
+            .profile
+            .gc_profile
+            .iter()
+            .fold(0, |acc, x| acc + x.1.as_micros()) as f64;
+
+        let total_time = total_gc_time + total_inst_time;
+        println!(
+            "total execution time {} microsecs  gc time {} microsecs",
+            total_time, total_gc_time
         );
-        self.prev_time = self.instant.elapsed();
+
+        println!("Inst          total %    ave.time / inst");
+        for (i, prof) in self.profile.inst_profile.iter().enumerate() {
+            if prof.0 != 0 {
+                println!(
+                    "{:12} {:>6.2} % {:>10.2} nanosecs",
+                    inst_to_inst_name(i as u8),
+                    prof.1.as_micros() as f64 / total_time * 100.0,
+                    prof.1.as_nanos() as f64 / prof.0 as f64
+                );
+            }
+        }
+        println!("# GC performance");
+        println!("State    count        total time");
+        let prof = self.profile.gc_profile;
+        println!(
+            "Init  {:>8}  {:>10.2} millisecs",
+            prof[0].0,
+            prof[0].1.as_millis() as f64
+        );
+        println!(
+            "Mark  {:>8}  {:>10.2} millisecs",
+            prof[1].0,
+            prof[1].1.as_millis() as f64
+        );
+        println!(
+            "Sweep {:>8}  {:>10.2} millisecs",
+            prof[2].0,
+            prof[2].1.as_millis() as f64
+        );
     }
 
     /// Return from JS function.
@@ -835,7 +945,7 @@ impl VM {
     /// 2. Pop an ExecContext from the context stack.
     /// 3. Set current execution context to the ExecContext.
     /// 4. Push the Value to the stack of new current execution context.
-    pub fn unwind_context(&mut self) -> String {
+    pub fn unwind_context(&mut self) {
         let prev_context = self.saved_context.pop().unwrap();
         let return_value = if self.current_context.call_mode == CallMode::ModuleCall {
             self.current_context
@@ -853,10 +963,8 @@ impl VM {
                 ret_val
             }
         };
-        let str = format!("{}", return_value);
         self.current_context = prev_context;
         self.current_context.stack.push(return_value.into());
-        str
     }
 
     fn push_env(&mut self, id: usize) -> VMResult {
@@ -965,9 +1073,9 @@ impl VM {
             }),
             FunctionObjectKind::User(ref user_func) => {
                 if self.is_trace {
-                    self.trace_string = format!(
-                        "{}\n--> call {}\n  module_id:{} func_id:{}",
-                        self.trace_string,
+                    self.profile.trace_string = format!(
+                        "{}\n--> call {}\n  module_id:{:?} func_id:{:?}",
+                        self.profile.trace_string,
                         if constructor_call {
                             "constructor"
                         } else {
@@ -1080,7 +1188,7 @@ impl VM {
     /// 2. Set `this`.
     /// 3. Create a new function environment.
     /// 4. Prepare function objects defined inner the function, and register them to the lexical environment.
-    /// 5. Generate a new context, and set the current context to it.
+    /// 5. Generate a new context, and set the current context (running execution context) to it.
     pub fn prepare_context_for_function_invokation(
         &mut self,
         user_func: &UserFunctionInfo,
@@ -1113,17 +1221,15 @@ impl VM {
             lex_env_ref.set_value(name, func)?;
         }
 
-        let user_func = user_func.clone();
-
         let context = exec_context::ExecContext::new(
-            user_func.code,
+            user_func.code.clone(),
             var_env_ref,
             lex_env_ref,
-            user_func.exception_table,
+            user_func.exception_table.clone(),
             this,
             mode,
         )
-        .func_id(user_func.id)
+        .func_id(user_func.func_id)
         .module_func_id(user_func.module_func_id)
         .constructor_call(constructor_call);
         self.current_context = context;

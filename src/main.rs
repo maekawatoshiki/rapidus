@@ -1,14 +1,11 @@
 #![feature(test)]
-extern crate rapidus;
+//extern crate rapidus;
 use rapidus::parser;
 use rapidus::{vm, vm::exec_context, vm::vm::VM};
-extern crate test;
-
-extern crate libc;
-
-extern crate rustyline;
-
 extern crate clap;
+extern crate libc;
+extern crate rustyline;
+extern crate test;
 use clap::{App, Arg};
 
 const VERSION_STR: &'static str = env!("CARGO_PKG_VERSION");
@@ -24,18 +21,24 @@ fn main() {
                 .long("debug"),
         )
         .arg(
+            Arg::with_name("profile")
+                .help("Collect and print performance profile")
+                .long("profile"),
+        )
+        .arg(
             Arg::with_name("trace")
-                .help("Trace bytecode execution for debugging")
+                .help("Tracing execution")
                 .long("trace"),
         )
         .arg(Arg::with_name("file").help("Input file name").index(1));
     let app_matches = app.clone().get_matches();
     let is_debug = app_matches.is_present("debug");
+    let is_profile = app_matches.is_present("profile");
     let is_trace = app_matches.is_present("trace");
     let file_name = match app_matches.value_of("file") {
         Some(file_name) => file_name,
         None => {
-            repl(is_trace);
+            repl(is_profile, is_trace);
             return;
         }
     };
@@ -58,11 +61,14 @@ fn main() {
     };
 
     let mut vm = VM::new();
+    if is_profile {
+        vm = vm.profile();
+    }
     if is_trace {
         vm = vm.trace();
     }
-    let mut iseq = vec![];
-    let global_info = match vm.compile(&node, &mut iseq, false, 0) {
+
+    let global_info = match vm.compile(&node, false) {
         Ok(ok) => ok,
         Err(vm::codegen::Error { msg, token_pos, .. }) => {
             parser.show_error_at(token_pos, msg);
@@ -72,19 +78,23 @@ fn main() {
 
     if is_debug {
         println!("Codegen:");
-        rapidus::bytecode_gen::show_inst_seq(&iseq, &vm.constant_table);
+        rapidus::bytecode_gen::show_inst_seq(&global_info.code, &vm.constant_table);
     };
 
     let script_info = parser.into_script_info();
-    vm.script_info.push((0, script_info));
-    if let Err(e) = vm.run_global(global_info, iseq) {
+    vm.script_info
+        .push((global_info.module_func_id, script_info));
+    if let Err(e) = vm.run_global(global_info) {
         vm.show_error_message(e);
     }
 }
 
-fn repl(is_trace: bool) {
+fn repl(is_profile: bool, is_trace: bool) {
     let mut rl = rustyline::Editor::<()>::new();
     let mut vm = VM::new();
+    if is_profile {
+        vm = vm.profile();
+    }
     if is_trace {
         vm = vm.trace();
     }
@@ -108,8 +118,7 @@ fn repl(is_trace: bool) {
             match parser.parse_all() {
                 Ok(node) => {
                     // compile and execute
-                    let mut iseq = vec![];
-                    let global_info = match vm.compile(&node, &mut iseq, true, 0) {
+                    let global_info = match vm.compile(&node, true) {
                         Ok(ok) => ok,
                         Err(vm::codegen::Error { msg, token_pos, .. }) => {
                             parser.show_error_at(token_pos, msg);
@@ -119,19 +128,22 @@ fn repl(is_trace: bool) {
 
                     match global_context {
                         Some(ref mut context) => {
-                            context.bytecode = iseq;
-                            context.exception_table = global_info.exception_table.clone();
                             context.append_from_function_info(
                                 &mut vm.factory.memory_allocator,
                                 &global_info,
-                            )
+                            );
+                            context.module_func_id = global_info.module_func_id;
+                            context.func_id = global_info.func_id;
+                            context.bytecode = global_info.code;
+                            context.exception_table = global_info.exception_table;
                         }
-                        None => global_context = Some(vm.create_global_context(global_info, iseq)),
+                        None => global_context = Some(vm.create_global_context(global_info)),
                     }
 
-                    let script_info = parser.into_script_info();
-                    vm.script_info = vec![(0, script_info)];
                     vm.current_context = global_context.clone().unwrap();
+                    let script_info = parser.into_script_info();
+                    vm.script_info = vec![(vm.current_context.module_func_id, script_info)];
+
                     match vm.run() {
                         Ok(val) => println!("{}", val.debug_string(true)),
                         Err(e) => {

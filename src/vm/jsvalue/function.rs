@@ -2,6 +2,7 @@ use super::value::*;
 use crate::builtin::BuiltinFuncTy;
 use crate::bytecode_gen::ByteCode;
 use crate::vm::exec_context::LexicalEnvironmentRef;
+use crate::vm::factory::{Factory, FunctionId};
 
 #[derive(Clone, Debug)]
 pub struct FunctionObjectInfo {
@@ -18,10 +19,10 @@ pub enum FunctionObjectKind {
 #[derive(Clone, Debug)]
 pub struct UserFunctionInfo {
     /// Unique id for many purposes
-    pub id: usize,
+    pub func_id: FunctionId,
 
     /// Module id
-    pub module_func_id: usize,
+    pub module_func_id: FunctionId,
 
     /// Internal slot \[\[FormalParameters\]\]
     pub params: Vec<FunctionParameter>,
@@ -82,10 +83,26 @@ pub enum DestinationKind {
 }
 
 impl UserFunctionInfo {
-    pub fn new(module_func_id: usize) -> Self {
+    pub fn new(factory: &mut Factory, module_func_id: FunctionId) -> Self {
         UserFunctionInfo {
-            id: crate::id::get_unique_id(),
+            func_id: factory.new_func_id(),
             module_func_id,
+            params: vec![],
+            var_names: vec![],
+            lex_names: vec![],
+            func_decls: vec![],
+            constructible: false,
+            this_mode: ThisMode::Global,
+            code: vec![0x0c, 0x28], // [PUSH_UNDEFINED][RETURN]
+            exception_table: vec![],
+            outer: None,
+        }
+    }
+
+    pub fn default() -> Self {
+        UserFunctionInfo {
+            func_id: FunctionId::default(),
+            module_func_id: FunctionId::default(),
             params: vec![],
             var_names: vec![],
             lex_names: vec![],

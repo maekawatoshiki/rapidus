@@ -12,7 +12,7 @@ pub type MarkMap = FxHashMap<GcTargetKey, MarkState>;
 pub type MarkSet = FxHashSet<GcTargetKey>;
 
 #[derive(Debug, Clone, Eq, Copy)]
-pub struct GcTargetKey(pub *mut GcTarget);
+pub struct GcTargetKey(pub *mut dyn GcTarget);
 
 impl PartialEq for GcTargetKey {
     fn eq(&self, other: &GcTargetKey) -> bool {
@@ -36,11 +36,12 @@ pub struct MemoryAllocator {
     allocated_size: usize,
     pub roots: MarkSet,
     locked: MarkSet,
-    state: GCState,
+    pub state: GCState,
     white: MarkState,
+    counter: u32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum GCState {
     Initial,
     Marking,
@@ -75,6 +76,7 @@ impl MemoryAllocator {
             locked: MarkSet::default(),
             state: GCState::Initial,
             white: MarkState::White,
+            counter: 0,
         }
     }
 
@@ -97,6 +99,11 @@ impl MemoryAllocator {
         cur_context: &exec_context::ExecContext,
         saved_context: &Vec<exec_context::ExecContext>,
     ) {
+        self.counter += 1;
+        if self.counter < 100 {
+            return;
+        };
+        self.counter = 0;
         let mut markset = MarkSet::default();
 
         self.state = match self.state {

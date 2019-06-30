@@ -53,10 +53,9 @@ pub fn runtime_error(text: &str) -> String {
 
     let mut parser = parser::Parser::new("test", text);
     let node = parser.parse_all().unwrap();
-    let mut iseq = vec![];
 
-    let func_info = vm.compile(&node, &mut iseq, true, 0).unwrap();
-    match vm.run_global(func_info, iseq) {
+    let func_info = vm.compile(&node, true).unwrap();
+    match vm.run_global(func_info) {
         Ok(()) => panic!(),
         Err(err) => return format!("{:?}", err),
     };
@@ -70,10 +69,8 @@ pub fn execute_script(text: String) -> String {
 
     let mut parser = parser::Parser::new("test", text);
     let node = parser.parse_all().unwrap();
-    let mut iseq = vec![];
-
-    let func_info = vm.compile(&node, &mut iseq, true, 0).unwrap();
-    vm.run_global(func_info, iseq).unwrap();
+    let func_info = vm.compile(&node, true).unwrap();
+    vm.run_global(func_info).unwrap();
     let val: Value = vm
         .current_context
         .stack

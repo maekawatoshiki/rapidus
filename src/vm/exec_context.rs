@@ -1,12 +1,12 @@
 #![macro_use]
+use crate::vm::jsvalue::function::UserFunctionInfo;
 use crate::bytecode_gen::ByteCode;
 use crate::gc;
-use crate::vm::codegen::FunctionInfo;
 use crate::vm::error::ErrorKind;
 use crate::vm::error::RuntimeError;
 use crate::vm::jsvalue::function::Exception;
 use crate::vm::jsvalue::value::{BoxedValue, Value};
-use crate::vm::vm::{CallMode, Factory, VMResult};
+use crate::vm::vm::{CallMode, Factory, FunctionId, VMResult};
 use rustc_hash::FxHashMap;
 use std::ops::{Deref, DerefMut};
 
@@ -15,8 +15,8 @@ pub struct LexicalEnvironmentRef(pub *mut LexicalEnvironment);
 
 #[derive(Debug, Clone)]
 pub struct ExecContext {
-    pub func_id: usize, // 0 => global scope, n => function id
-    pub module_func_id: usize,
+    pub func_id: FunctionId, // 0 => global scope, n => function id
+    pub module_func_id: FunctionId,
     pub pc: usize,
     pub current_inst_pc: usize,
     pub stack: Vec<BoxedValue>,
@@ -69,8 +69,8 @@ impl ExecContext {
         call_mode: CallMode,
     ) -> Self {
         ExecContext {
-            func_id: 0,
-            module_func_id: 0,
+            func_id: FunctionId::default(),
+            module_func_id: FunctionId::default(),
             pc: 0,
             current_inst_pc: 0,
             stack: vec![],
@@ -86,8 +86,8 @@ impl ExecContext {
     }
     pub fn empty() -> Self {
         ExecContext {
-            func_id: 0,
-            module_func_id: 0,
+            func_id: FunctionId::default(),
+            module_func_id: FunctionId::default(),
             pc: 0,
             current_inst_pc: 0,
             stack: vec![],
@@ -115,17 +115,17 @@ impl ExecContext {
         self
     }
 
-    pub fn func_id(mut self, id: usize) -> Self {
+    pub fn func_id(mut self, id: FunctionId) -> Self {
         self.func_id = id;
         self
     }
 
-    pub fn module_func_id(mut self, id: usize) -> Self {
+    pub fn module_func_id(mut self, id: FunctionId) -> Self {
         self.module_func_id = id;
         self
     }
 
-    pub fn append_function(&mut self, memory_allocator: &mut gc::MemoryAllocator, f: Value) {
+    fn append_function(&mut self, memory_allocator: &mut gc::MemoryAllocator, f: Value) {
         let mut val = f.copy_object(memory_allocator);
         let name = val.as_function().name.clone().unwrap();
         val.set_function_outer_environment(self.lexical_environment);
@@ -134,12 +134,12 @@ impl ExecContext {
         self.initial_trace(&mut memory_allocator.roots);
     }
 
-    pub fn append_variable_to_var_env(&mut self, name: String) {
+    fn append_variable_to_var_env(&mut self, name: String) {
         let var_env = &mut self.variable_environment;
         var_env.set_own_value(name, Value::undefined()).unwrap(); // TODO: unwrap()
     }
 
-    pub fn append_variable_to_lex_env(&mut self, name: String) {
+    fn append_variable_to_lex_env(&mut self, name: String) {
         let lex_env = &mut self.lexical_environment;
         lex_env.set_own_value(name, Value::uninitialized()).unwrap(); // TODO: unwrap()
     }
@@ -147,7 +147,7 @@ impl ExecContext {
     pub fn append_from_function_info(
         &mut self,
         memory_allocator: &mut gc::MemoryAllocator,
-        info: &FunctionInfo,
+        info: &UserFunctionInfo,
     ) {
         for f in &info.func_decls {
             self.append_function(memory_allocator, *f);
