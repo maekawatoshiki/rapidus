@@ -55,6 +55,33 @@ pub struct UserFunctionInfo {
     pub this_mode: ThisMode,
 }
 
+#[derive(Clone, Debug, Copy)]
+pub struct FuncInfoRef(*mut UserFunctionInfo);
+
+impl UserFunctionInfo {
+    pub fn as_ref(&mut self) -> FuncInfoRef {
+        FuncInfoRef::new(self)
+    }
+}
+
+impl FuncInfoRef {
+    pub fn as_ptr(self) -> *mut UserFunctionInfo {
+        self.0
+    }
+
+    pub fn new(info: &mut UserFunctionInfo) -> FuncInfoRef {
+        FuncInfoRef(&mut *info as *mut UserFunctionInfo)
+    }
+}
+
+impl std::ops::Deref for FuncInfoRef {
+    type Target = UserFunctionInfo;
+
+    fn deref(&self) -> &UserFunctionInfo {
+        unsafe { &*self.as_ptr() }
+    }
+}
+
 #[derive(Clone, Debug, Copy, PartialEq)]
 pub enum ThisMode {
     Lexical,
