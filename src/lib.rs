@@ -21,7 +21,7 @@ extern crate chrono;
 extern crate encoding;
 extern crate libc;
 extern crate libloading;
-extern crate llvm_sys as llvm;
+//extern crate llvm_sys as llvm;
 extern crate nix;
 extern crate rand;
 extern crate rustc_hash;

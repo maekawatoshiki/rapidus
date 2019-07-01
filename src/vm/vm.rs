@@ -1,9 +1,9 @@
-use crate::builtin::BuiltinFuncTy;
 use crate::builtins::console::debug_print;
-use crate::bytecode_gen::{show_inst, ByteCode, VMInst};
+use crate::bytecode_gen::{inst_to_inst_name, show_inst, VMInst};
 use crate::gc;
 use crate::node::Node;
 use crate::parser::ScriptInfo;
+pub use crate::vm::factory::{Factory, FunctionId};
 use crate::vm::{
     codegen,
     codegen::CodeGenerator,
@@ -22,25 +22,38 @@ pub type VMResult = Result<(), RuntimeError>;
 /// Ok(Value::Other(Empty)) means mudule call.
 pub type VMValueResult = Result<Value, RuntimeError>;
 
-#[derive(Debug)]
-pub struct Factory {
-    pub memory_allocator: gc::MemoryAllocator,
-    pub object_prototypes: ObjectPrototypes,
-}
-
 pub struct VM {
     pub factory: Factory,
     pub global_environment: exec_context::LexicalEnvironmentRef,
     pub constant_table: constant::ConstantTable,
     pub global_symbol_registry: GlobalSymbolRegistry,
-    pub stack: Vec<BoxedValue>,
-    pub saved_frame: Vec<exec_context::ExecContext>,
+    pub current_context: exec_context::ExecContext,
+    pub saved_context: Vec<exec_context::ExecContext>,
     ///func_id, ToSourcePos
-    pub to_source_map: FxHashMap<usize, codegen::ToSourcePos>,
+    pub to_source_map: FxHashMap<FunctionId, codegen::ToSourcePos>,
+    pub is_profile: bool,
     pub is_trace: bool,
     ///(func_id, script_info)
-    pub script_info: Vec<(usize, ScriptInfo)>,
-    pub instant: Instant,
+    pub script_info: Vec<(FunctionId, ScriptInfo)>,
+    pub profile: Profiler,
+}
+
+pub struct Profiler {
+    instant: Instant,
+    prev_time: Duration,
+    current_inst: u8,
+    inst_profile: [(usize, Duration); 100],
+    gc_profile: [(usize, Duration); 3],
+    gc_stop_time: Duration,
+    trace_string: String,
+    start_flag: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Copy)]
+pub enum CallMode {
+    OrdinaryCall,
+    ModuleCall,
+    FromNative,
 }
 
 macro_rules! gc_lock {
@@ -50,129 +63,6 @@ macro_rules! gc_lock {
         for arg in $targets { $vm.factory.memory_allocator.unlock(*arg) }
         ret
     } }
-}
-
-impl Factory {
-    pub fn new(memory_allocator: gc::MemoryAllocator, object_prototypes: ObjectPrototypes) -> Self {
-        Factory {
-            memory_allocator,
-            object_prototypes,
-        }
-    }
-
-    pub fn alloc<T: gc::GcTarget + 'static>(&mut self, data: T) -> *mut T {
-        self.memory_allocator.alloc(data)
-    }
-
-    /// Generate Value for a string.
-    pub fn string(&mut self, body: impl Into<String>) -> Value {
-        Value::String(self.alloc(std::ffi::CString::new(body.into()).unwrap()))
-    }
-
-    /// Generate Value for an object.
-    pub fn object(&mut self, property: FxHashMap<String, Property>) -> Value {
-        Value::Object(self.alloc(ObjectInfo {
-            kind: ObjectKind::Ordinary,
-            prototype: self.object_prototypes.object,
-            property,
-            sym_property: FxHashMap::default(),
-        }))
-    }
-
-    /// Generate Value for a JS function.
-    pub fn function(&mut self, name: Option<String>, info: UserFunctionInfo) -> Value {
-        let name_prop = self.string(name.clone().unwrap_or("".to_string()));
-        let prototype = self.object(FxHashMap::default());
-
-        let f = Value::Object(self.alloc(ObjectInfo {
-            prototype: self.object_prototypes.function,
-            property: make_property_map!(
-                length    => false, false, true : Value::Number(info.params.len() as f64), /* TODO: rest param */
-                name      => false, false, true : name_prop,
-                prototype => true , false, false: prototype
-            ),
-            kind: ObjectKind::Function(FunctionObjectInfo {
-                name: name,
-                kind: FunctionObjectKind::User(info)
-            }),
-            sym_property: FxHashMap::default(),
-        }));
-
-        f.get_property_by_str_key("prototype")
-            .get_object_info()
-            .property
-            .insert("constructor".to_string(), Property::new_data_simple(f));
-
-        f
-    }
-
-    /// Generate Value for a built-in (native) function.
-    pub fn builtin_function(
-        &mut self,
-        name: impl Into<String>,
-        func: crate::builtin::BuiltinFuncTy,
-    ) -> Value {
-        let name: String = name.into();
-        let name_prop = self.string(name.clone());
-        Value::Object(self.alloc(ObjectInfo {
-            kind: ObjectKind::Function(FunctionObjectInfo {
-                name: Some(name),
-                kind: FunctionObjectKind::Builtin(func),
-            }),
-            prototype: self.object_prototypes.function,
-            property: make_property_map!(
-                length => false, false, true : Value::Number(0.0),
-                name   => false, false, true : name_prop
-            ),
-            sym_property: FxHashMap::default(),
-        }))
-    }
-
-    pub fn array(&mut self, elems: Vec<Property>) -> Value {
-        Value::Object(self.alloc(ObjectInfo {
-            kind: ObjectKind::Array(ArrayObjectInfo { elems }),
-            prototype: self.object_prototypes.array,
-            property: make_property_map!(),
-            sym_property: FxHashMap::default(),
-        }))
-    }
-
-    pub fn symbol(&mut self, description: Option<String>) -> Value {
-        Value::Object(self.alloc(ObjectInfo {
-            kind: ObjectKind::Symbol(SymbolInfo {
-                id: crate::id::get_unique_id(),
-                description,
-            }),
-            prototype: self.object_prototypes.symbol,
-            property: make_property_map!(),
-            sym_property: FxHashMap::default(),
-        }))
-    }
-
-    pub fn error(&mut self, message: impl Into<String>) -> Value {
-        let message = self.string(message.into());
-        Value::Object(self.alloc(ObjectInfo {
-            kind: ObjectKind::Error(ErrorObjectInfo::new()),
-            prototype: self.object_prototypes.error,
-            property: make_property_map!(
-                message => true, false, true: message
-            ),
-            sym_property: FxHashMap::default(),
-        }))
-    }
-
-    pub fn generate_builtin_constructor(
-        &mut self,
-        constructor_name: impl Into<String>,
-        constructor_func: BuiltinFuncTy,
-        prototype: Value,
-    ) -> Value {
-        let ary = self.builtin_function(constructor_name, constructor_func);
-        ary.set_property_by_string_key("prototype", prototype);
-        ary.get_property_by_str_key("prototype")
-            .set_constructor(ary);
-        ary
-    }
 }
 
 impl VM {
@@ -187,13 +77,28 @@ impl VM {
             factory,
             constant_table: constant::ConstantTable::new(),
             global_symbol_registry: GlobalSymbolRegistry::new(),
-            stack: vec![],
-            saved_frame: vec![],
+            current_context: exec_context::ExecContext::empty(),
+            saved_context: vec![],
             to_source_map: FxHashMap::default(),
+            is_profile: false,
             is_trace: false,
             script_info: vec![],
-            instant: Instant::now(),
+            profile: Profiler {
+                instant: Instant::now(),
+                prev_time: Duration::from_secs(0),
+                gc_stop_time: Duration::from_secs(0),
+                gc_profile: [(0, Duration::from_secs(0)); 3],
+                current_inst: 255,
+                trace_string: "".to_string(),
+                inst_profile: [(0, Duration::from_micros(0)); 100],
+                start_flag: false,
+            },
         }
+    }
+
+    pub fn profile(mut self) -> Self {
+        self.is_profile = true;
+        self
     }
 
     pub fn trace(mut self) -> Self {
@@ -201,36 +106,45 @@ impl VM {
         self
     }
 
-    pub fn gc_mark(&mut self, cur_frame: &exec_context::ExecContext) {
+    pub fn gc_mark(&mut self) {
+        let time_before_gc = self.profile.instant.elapsed();
+        let gc_mode = self.factory.memory_allocator.state;
         self.factory.memory_allocator.mark(
             self.global_environment,
             &self.factory.object_prototypes,
             &self.constant_table,
-            &self.stack,
-            cur_frame,
-            &self.saved_frame,
+            &self.current_context,
+            &self.saved_context,
         );
+        let i = match gc_mode {
+            gc::GCState::Initial => 0,
+            gc::GCState::Marking => 1,
+            gc::GCState::ReadyToSweep => 2,
+        };
+        let stop_time = self.profile.instant.elapsed() - time_before_gc;
+        self.profile.gc_stop_time += stop_time;
+        self.profile.gc_profile[i].0 += 1;
+        self.profile.gc_profile[i].1 += stop_time;
     }
+
     pub fn compile(
         &mut self,
         node: &Node,
-        iseq: &mut ByteCode,
         use_value: bool,
-        id: usize,
-    ) -> Result<codegen::FunctionInfo, codegen::Error> {
+    ) -> Result<UserFunctionInfo, codegen::Error> {
+        let func_id = self.factory.new_func_id();
         let mut code_generator =
-            CodeGenerator::new(&mut self.constant_table, &mut self.factory, id);
-        let res = code_generator.compile(node, iseq, use_value, id);
-        for (id, list) in code_generator.to_source_map {
-            self.to_source_map.insert(id, list);
+            CodeGenerator::new(&mut self.constant_table, &mut self.factory, func_id);
+        let res = code_generator.compile(node, use_value);
+        for (func_id, list) in code_generator.to_source_map {
+            self.to_source_map.insert(func_id, list);
         }
         res
     }
 
-    pub fn create_global_frame(
+    pub fn create_global_context(
         &mut self,
-        global_info: codegen::FunctionInfo,
-        iseq: ByteCode,
+        global_info: UserFunctionInfo,
     ) -> exec_context::ExecContext {
         let global_env_ref = self.global_environment;
 
@@ -245,44 +159,36 @@ impl VM {
             lex_env.set_value(name, val).unwrap();
         }
 
-        let frame = exec_context::ExecContext::new(
-            iseq,
+        let context = exec_context::ExecContext::new(
+            global_info.code,
             var_env,
             lex_env,
             global_info.exception_table,
             global_env_ref.get_global_object(),
+            CallMode::OrdinaryCall,
         );
 
-        frame
+        context
     }
 
-    pub fn run_global(&mut self, global_info: codegen::FunctionInfo, iseq: ByteCode) -> VMResult {
-        let global_frame = self.create_global_frame(global_info, iseq);
-
-        self.run(global_frame)?;
+    pub fn run_global(&mut self, func_info: UserFunctionInfo) -> VMResult {
+        self.current_context = self.create_global_context(func_info);
+        self.run()?;
 
         Ok(())
     }
 
-    pub fn call_function(
-        &mut self,
-        callee: Value,
-        args: &[Value],
-        this: Value,
-        cur_frame: &mut exec_context::ExecContext,
-    ) -> VMValueResult {
+    pub fn call_function(&mut self, callee: Value, args: &[Value], this: Value) -> VMValueResult {
         if !callee.is_function_object() {
-            return Err(cur_frame.error_type("Not a function"));
+            return Err(self.current_context.error_type("Not a function"));
         }
 
         let info = callee.as_function();
 
         match info.kind {
-            FunctionObjectKind::Builtin(func) => {
-                gc_lock!(self, args, func(self, args, this, cur_frame))
-            }
+            FunctionObjectKind::Builtin(func) => gc_lock!(self, args, func(self, args, this)),
             FunctionObjectKind::User(ref user_func) => {
-                self.call_user_function(user_func, args, this, cur_frame, false)
+                self.call_user_function(user_func, args, this, false)
             }
         }
     }
@@ -292,69 +198,60 @@ impl VM {
         user_func: &UserFunctionInfo,
         args: &[Value],
         this: Value,
-        cur_frame: &exec_context::ExecContext,
         constructor_call: bool,
     ) -> VMValueResult {
-        let frame = self
-            .prepare_frame_for_function_invokation(user_func, args, this, cur_frame)?
-            .constructor_call(constructor_call)
-            .escape();
+        self.prepare_context_for_function_invokation(
+            user_func,
+            args,
+            this,
+            CallMode::FromNative,
+            constructor_call,
+        )?;
 
-        self.run(frame)
+        self.run()
     }
 
-    fn get_property_to_stack_top(
-        &mut self,
-        parent: Value,
-        key: Value,
-        cur_frame: &mut exec_context::ExecContext,
-    ) -> VMResult {
-        let val = parent.get_property(&mut self.factory, key)?;
+    fn get_property_to_stack_top(&mut self, parent: Value, key: Value) -> VMResult {
+        let val = parent.get_property_by_value(&mut self.factory, key)?;
         match val {
             Property::Data(DataProperty { val, .. }) => {
-                self.stack.push(val.into());
+                self.current_context.stack.push(val.into());
                 Ok(())
             }
             Property::Accessor(AccessorProperty { get, .. }) => {
                 if get.is_undefined() {
-                    self.stack.push(Value::undefined().into());
+                    self.current_context.stack.push(Value::undefined().into());
                     return Ok(());
                 }
-                self.enter_function(get, &[], parent, cur_frame, false)
+                self.enter_function(get, &[], parent, false)
             }
         }
     }
 
-    pub fn get_property(
+    pub fn get_property_by_value(
         &mut self,
         parent: Value,
         key: Value,
-        cur_frame: &mut exec_context::ExecContext,
     ) -> Result<Value, RuntimeError> {
-        let val = parent.get_property(&mut self.factory, key)?;
+        let val = parent.get_property_by_value(&mut self.factory, key)?;
         match val {
             Property::Data(DataProperty { val, .. }) => Ok(val),
             Property::Accessor(AccessorProperty { get, .. }) => {
                 if get.is_undefined() {
                     return Ok(Value::undefined());
                 }
-                self.call_function(get, &[], parent, cur_frame)?;
-                Ok(self.stack.pop().unwrap().into(): Value)
+                self.call_function(get, &[], parent)?;
+                Ok(self.current_context.stack.pop().unwrap().into(): Value)
             }
         }
     }
 
-    pub fn set_property(
-        &mut self,
-        parent: Value,
-        key: Value,
-        val: Value,
-        cur_frame: &mut exec_context::ExecContext,
-    ) -> VMResult {
-        let maybe_setter = parent.set_property(&mut self.factory.memory_allocator, key, val)?;
+    pub fn set_property_by_value(&mut self, parent: Value, key: Value, val: Value) -> VMResult {
+        let maybe_setter =
+            parent.set_property_by_value(&mut self.factory.memory_allocator, key, val)?;
         if let Some(setter) = maybe_setter {
-            self.call_function(setter, &[val], parent, cur_frame)?;
-            self.stack.pop().unwrap(); // Pop undefined (setter's return value)
+            self.call_function(setter, &[val], parent)?;
+            self.current_context.stack.pop().unwrap(); // Pop undefined (setter's return value)
         }
         Ok(())
     }
@@ -416,24 +313,28 @@ impl VM {
 }
 
 macro_rules! read_int8 {
-    ($iseq:expr, $pc:expr, $var:ident, $ty:ty) => {
-        let $var = $iseq[$pc] as $ty;
-        $pc += 1;
+    ($vm:expr, $var:ident, $ty:ty) => {
+        let $var = $vm.current_context.bytecode[$vm.current_context.pc] as $ty;
+        $vm.current_context.pc += 1;
     };
 }
 
 macro_rules! read_int32 {
-    ($iseq:expr, $pc:expr, $var:ident, $ty:ty) => {
-        let $var = (($iseq[$pc as usize + 3] as $ty) << 24)
-            + (($iseq[$pc as usize + 2] as $ty) << 16)
-            + (($iseq[$pc as usize + 1] as $ty) << 8)
-            + ($iseq[$pc as usize + 0] as $ty);
-        $pc += 4;
+    ($vm:expr, $var:ident, $ty:ty) => {
+        let $var = {
+            let iseq = &$vm.current_context.bytecode;
+            let pc = $vm.current_context.pc;
+            ((iseq[pc as usize + 3] as $ty) << 24)
+                + ((iseq[pc as usize + 2] as $ty) << 16)
+                + ((iseq[pc as usize + 1] as $ty) << 8)
+                + (iseq[pc as usize + 0] as $ty)
+        };
+        $vm.current_context.pc += 4;
     };
 }
 
 impl VM {
-    pub fn run(&mut self, mut cur_frame: exec_context::ExecContext) -> VMValueResult {
+    pub fn run(&mut self) -> VMValueResult {
         #[derive(Debug, Clone)]
         enum SubroutineKind {
             Ordinary(usize),
@@ -441,24 +342,21 @@ impl VM {
             Return,
         }
 
-        fn handle_exception(
-            vm: &mut VM,
-            cur_frame: &mut exec_context::ExecContext,
-            subroutine_stack: &mut Vec<SubroutineKind>,
-        ) -> VMResult {
+        fn handle_exception(vm: &mut VM, subroutine_stack: &mut Vec<SubroutineKind>) -> VMResult {
             let mut trycatch_found = false;
-            let save_error_info = cur_frame.error_unknown();
+            let save_error_info = vm.current_context.error_unknown();
             loop {
-                for exception in &cur_frame.exception_table {
-                    let in_range = exception.start <= cur_frame.pc && cur_frame.pc < exception.end;
+                for exception in &vm.current_context.exception_table {
+                    let in_range = exception.start <= vm.current_context.pc
+                        && vm.current_context.pc < exception.end;
                     if !in_range {
                         continue;
                     }
                     match exception.dst_kind {
-                        DestinationKind::Catch => cur_frame.pc = exception.end,
+                        DestinationKind::Catch => vm.current_context.pc = exception.end,
                         DestinationKind::Finally => {
                             subroutine_stack.push(SubroutineKind::Throw);
-                            cur_frame.pc = exception.end
+                            vm.current_context.pc = exception.end
                         }
                     }
 
@@ -470,14 +368,14 @@ impl VM {
                     break;
                 }
 
-                if vm.saved_frame.len() == 0 {
+                if vm.saved_context.len() == 0 {
                     break;
                 }
-                vm.unwind_frame_saving_stack_top(cur_frame);
+                vm.unwind_context();
             }
 
             if !trycatch_found {
-                let val: Value = vm.stack.pop().unwrap().into();
+                let val: Value = vm.current_context.stack.pop().unwrap().into();
                 let mut err = save_error_info;
                 err.kind = ErrorKind::Exception(val);
                 return Err(err);
@@ -487,40 +385,22 @@ impl VM {
         }
 
         let mut subroutine_stack: Vec<SubroutineKind> = vec![];
-        let is_trace = self.is_trace;
-        let start_time = self.instant.elapsed();
-        let mut prev_time: Duration = Duration::from_secs(0);
-        let mut trace_string = "".to_string();
-        println!("time: {} microsec", start_time.as_micros());
+        self.profile.trace_string = "".to_string();
 
         loop {
-            cur_frame.current_inst_pc = cur_frame.pc;
-            let duration = self.instant.elapsed() - prev_time;
-            if is_trace {
-                if trace_string.len() != 0 {
-                    println!("{:05}m {}", duration.as_micros(), trace_string);
-                }
-
-                trace_string = format!(
-                    "{} {}",
-                    crate::bytecode_gen::show_inst(
-                        &cur_frame.bytecode,
-                        cur_frame.current_inst_pc,
-                        &self.constant_table,
-                    ),
-                    match self.stack.last() {
-                        None => format!("<empty>"),
-                        Some(val) => format!("{:10}", (*val).into(): Value),
-                    }
-                );
-                prev_time = self.instant.elapsed();
+            self.current_context.current_inst_pc = self.current_context.pc;
+            if self.is_profile || self.is_trace {
+                self.trace_print();
             }
 
             macro_rules! type_error {
                 ($msg:expr) => {{
-                    let val = cur_frame.error_type($msg).to_value(&mut self.factory);
-                    self.stack.push(val.into());
-                    handle_exception(self, &mut cur_frame, &mut subroutine_stack)?;
+                    let val = self
+                        .current_context
+                        .error_type($msg)
+                        .to_value(&mut self.factory);
+                    self.current_context.stack.push(val.into());
+                    handle_exception(self, &mut subroutine_stack)?;
                     continue;
                 }};
             }
@@ -530,438 +410,573 @@ impl VM {
                     match $val {
                         Ok(ok) => ok,
                         Err(err) => {
-                            let err = err.error_add_info(&cur_frame);
+                            let err = err.error_add_info(&self.current_context);
                             let val = err.to_value(&mut self.factory);
-                            self.stack.push(val.into());
-                            handle_exception(self, &mut cur_frame, &mut subroutine_stack)?;
+                            self.current_context.stack.push(val.into());
+                            handle_exception(self, &mut subroutine_stack)?;
                             continue;
                         }
                     }
                 }};
             }
 
-            match cur_frame.bytecode[cur_frame.pc] {
+            let inst = self.current_context.bytecode[self.current_context.pc];
+            self.profile.current_inst = inst;
+            match inst {
                 // TODO: Macro for bin ops?
                 VMInst::ADD => {
-                    cur_frame.pc += 1;
-                    let rhs: Value = self.stack.pop().unwrap().into();
-                    let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack
+                    self.current_context.pc += 1;
+                    let rhs: Value = self.current_context.stack.pop().unwrap().into();
+                    let lhs: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context
+                        .stack
                         .push(lhs.add(&mut self.factory.memory_allocator, rhs).into());
                 }
                 VMInst::SUB => {
-                    cur_frame.pc += 1;
-                    let rhs: Value = self.stack.pop().unwrap().into();
-                    let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack.push(lhs.sub(rhs).into());
+                    self.current_context.pc += 1;
+                    let rhs: Value = self.current_context.stack.pop().unwrap().into();
+                    let lhs: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context
+                        .stack
+                        .push(lhs.sub(&mut self.factory.memory_allocator, rhs).into());
                 }
                 VMInst::MUL => {
-                    cur_frame.pc += 1;
-                    let rhs: Value = self.stack.pop().unwrap().into();
-                    let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack.push(lhs.mul(rhs).into());
+                    self.current_context.pc += 1;
+                    let rhs: Value = self.current_context.stack.pop().unwrap().into();
+                    let lhs: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context.stack.push(lhs.mul(rhs).into());
                 }
                 VMInst::DIV => {
-                    cur_frame.pc += 1;
-                    let rhs: Value = self.stack.pop().unwrap().into();
-                    let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack.push(lhs.div(rhs).into());
+                    self.current_context.pc += 1;
+                    let rhs: Value = self.current_context.stack.pop().unwrap().into();
+                    let lhs: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context.stack.push(lhs.div(rhs).into());
                 }
                 VMInst::REM => {
-                    cur_frame.pc += 1;
-                    let rhs: Value = self.stack.pop().unwrap().into();
-                    let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack.push(lhs.rem(rhs).into());
+                    self.current_context.pc += 1;
+                    let rhs: Value = self.current_context.stack.pop().unwrap().into();
+                    let lhs: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context.stack.push(lhs.rem(rhs).into());
                 }
                 VMInst::EXP => {
-                    cur_frame.pc += 1;
-                    let rhs: Value = self.stack.pop().unwrap().into();
-                    let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack
+                    self.current_context.pc += 1;
+                    let rhs: Value = self.current_context.stack.pop().unwrap().into();
+                    let lhs: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context
+                        .stack
                         .push(lhs.exp(&mut self.factory.memory_allocator, rhs).into());
                 }
                 VMInst::EQ => {
-                    cur_frame.pc += 1;
-                    let rhs: Value = self.stack.pop().unwrap().into();
-                    let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack
+                    self.current_context.pc += 1;
+                    let rhs: Value = self.current_context.stack.pop().unwrap().into();
+                    let lhs: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context
+                        .stack
                         .push(lhs.eq(&mut self.factory.memory_allocator, rhs).into());
                 }
                 VMInst::SEQ => {
-                    cur_frame.pc += 1;
-                    let rhs: Value = self.stack.pop().unwrap().into();
-                    let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack.push(lhs.strict_eq(rhs).into());
+                    self.current_context.pc += 1;
+                    let rhs: Value = self.current_context.stack.pop().unwrap().into();
+                    let lhs: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context.stack.push(lhs.strict_eq(rhs).into());
                 }
                 VMInst::NE => {
-                    cur_frame.pc += 1;
-                    let rhs: Value = self.stack.pop().unwrap().into();
-                    let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack
+                    self.current_context.pc += 1;
+                    let rhs: Value = self.current_context.stack.pop().unwrap().into();
+                    let lhs: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context
+                        .stack
                         .push(lhs.ne(&mut self.factory.memory_allocator, rhs).into());
                 }
                 VMInst::SNE => {
-                    cur_frame.pc += 1;
-                    let rhs: Value = self.stack.pop().unwrap().into();
-                    let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack.push(lhs.strict_ne(rhs).into());
+                    self.current_context.pc += 1;
+                    let rhs: Value = self.current_context.stack.pop().unwrap().into();
+                    let lhs: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context.stack.push(lhs.strict_ne(rhs).into());
                 }
                 VMInst::LT => {
-                    cur_frame.pc += 1;
-                    let rhs: Value = self.stack.pop().unwrap().into();
-                    let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack
+                    self.current_context.pc += 1;
+                    let rhs: Value = self.current_context.stack.pop().unwrap().into();
+                    let lhs: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context
+                        .stack
                         .push(lhs.lt(&mut self.factory.memory_allocator, rhs).into());
                 }
                 VMInst::LE => {
-                    cur_frame.pc += 1;
-                    let rhs: Value = self.stack.pop().unwrap().into();
-                    let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack
+                    self.current_context.pc += 1;
+                    let rhs: Value = self.current_context.stack.pop().unwrap().into();
+                    let lhs: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context
+                        .stack
                         .push(lhs.le(&mut self.factory.memory_allocator, rhs).into());
                 }
                 VMInst::GT => {
-                    cur_frame.pc += 1;
-                    let rhs: Value = self.stack.pop().unwrap().into();
-                    let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack
+                    self.current_context.pc += 1;
+                    let rhs: Value = self.current_context.stack.pop().unwrap().into();
+                    let lhs: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context
+                        .stack
                         .push(rhs.lt(&mut self.factory.memory_allocator, lhs).into());
                 }
                 VMInst::GE => {
-                    cur_frame.pc += 1;
-                    let rhs: Value = self.stack.pop().unwrap().into();
-                    let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack
+                    self.current_context.pc += 1;
+                    let rhs: Value = self.current_context.stack.pop().unwrap().into();
+                    let lhs: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context
+                        .stack
                         .push(rhs.le(&mut self.factory.memory_allocator, lhs).into());
                 }
                 VMInst::AND => {
-                    cur_frame.pc += 1;
-                    let rhs: Value = self.stack.pop().unwrap().into();
-                    let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack
+                    self.current_context.pc += 1;
+                    let rhs: Value = self.current_context.stack.pop().unwrap().into();
+                    let lhs: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context
+                        .stack
                         .push(rhs.and(&mut self.factory.memory_allocator, lhs).into());
                 }
                 VMInst::OR => {
-                    cur_frame.pc += 1;
-                    let rhs: Value = self.stack.pop().unwrap().into();
-                    let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack
+                    self.current_context.pc += 1;
+                    let rhs: Value = self.current_context.stack.pop().unwrap().into();
+                    let lhs: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context
+                        .stack
                         .push(rhs.or(&mut self.factory.memory_allocator, lhs).into());
                 }
                 VMInst::XOR => {
-                    cur_frame.pc += 1;
-                    let rhs: Value = self.stack.pop().unwrap().into();
-                    let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack
+                    self.current_context.pc += 1;
+                    let rhs: Value = self.current_context.stack.pop().unwrap().into();
+                    let lhs: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context
+                        .stack
                         .push(rhs.xor(&mut self.factory.memory_allocator, lhs).into());
                 }
                 VMInst::NOT => {
-                    cur_frame.pc += 1;
-                    let rhs: Value = self.stack.pop().unwrap().into();
-                    self.stack
+                    self.current_context.pc += 1;
+                    let rhs: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context
+                        .stack
                         .push(rhs.not(&mut self.factory.memory_allocator).into());
                 }
                 VMInst::SHL => {
-                    cur_frame.pc += 1;
-                    let rhs: Value = self.stack.pop().unwrap().into();
-                    let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack
+                    self.current_context.pc += 1;
+                    let rhs: Value = self.current_context.stack.pop().unwrap().into();
+                    let lhs: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context
+                        .stack
                         .push(lhs.shift_l(&mut self.factory.memory_allocator, rhs).into());
                 }
                 VMInst::SHR => {
-                    cur_frame.pc += 1;
-                    let rhs: Value = self.stack.pop().unwrap().into();
-                    let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack
+                    self.current_context.pc += 1;
+                    let rhs: Value = self.current_context.stack.pop().unwrap().into();
+                    let lhs: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context
+                        .stack
                         .push(lhs.shift_r(&mut self.factory.memory_allocator, rhs).into());
                 }
                 VMInst::ZFSHR => {
-                    cur_frame.pc += 1;
-                    let rhs: Value = self.stack.pop().unwrap().into();
-                    let lhs: Value = self.stack.pop().unwrap().into();
-                    self.stack.push(
+                    self.current_context.pc += 1;
+                    let rhs: Value = self.current_context.stack.pop().unwrap().into();
+                    let lhs: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context.stack.push(
                         lhs.z_shift_r(&mut self.factory.memory_allocator, rhs)
                             .into(),
                     );
                 }
                 VMInst::NEG => {
-                    cur_frame.pc += 1;
-                    let val: Value = self.stack.pop().unwrap().into();
-                    self.stack.push(val.minus().into());
+                    self.current_context.pc += 1;
+                    let val: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context.stack.push(val.minus().into());
                 }
                 VMInst::POSI => {
-                    cur_frame.pc += 1;
-                    let val: Value = self.stack.pop().unwrap().into();
-                    self.stack
+                    self.current_context.pc += 1;
+                    let val: Value = self.current_context.stack.pop().unwrap().into();
+                    self.current_context
+                        .stack
                         .push(val.positive(&mut self.factory.memory_allocator).into());
                 }
                 VMInst::LNOT => {
-                    cur_frame.pc += 1;
-                    let val: Value = self.stack.pop().unwrap().into();
+                    self.current_context.pc += 1;
+                    let val: Value = self.current_context.stack.pop().unwrap().into();
                     let res = Value::bool(!val.to_boolean());
-                    self.stack.push(res.into());
+                    self.current_context.stack.push(res.into());
                 }
                 VMInst::PUSH_INT8 => {
-                    cur_frame.pc += 1;
-                    read_int8!(cur_frame.bytecode, cur_frame.pc, num, f64);
-                    self.stack.push(Value::Number(num).into());
+                    self.current_context.pc += 1;
+                    read_int8!(self, num, f64);
+                    self.current_context.stack.push(Value::Number(num).into());
                 }
                 VMInst::PUSH_INT32 => {
-                    cur_frame.pc += 1;
-                    read_int32!(cur_frame.bytecode, cur_frame.pc, num, i32);
-                    self.stack.push(Value::Number(num as f64).into());
+                    self.current_context.pc += 1;
+                    read_int32!(self, num, i32);
+                    self.current_context
+                        .stack
+                        .push(Value::Number(num as f64).into());
                 }
                 VMInst::PUSH_CONST => {
-                    cur_frame.pc += 1;
-                    read_int32!(cur_frame.bytecode, cur_frame.pc, id, usize);
+                    self.current_context.pc += 1;
+                    read_int32!(self, id, usize);
                     let val = *self.constant_table.get(id).as_value();
-                    self.stack.push(val.into());
+                    self.current_context.stack.push(val.into());
                 }
                 VMInst::PUSH_NULL => {
-                    cur_frame.pc += 1;
-                    self.stack.push(Value::null().into());
+                    self.current_context.pc += 1;
+                    self.current_context.stack.push(Value::null().into());
                 }
                 VMInst::PUSH_UNDEFINED => {
-                    cur_frame.pc += 1;
-                    self.stack.push(Value::undefined().into());
+                    self.current_context.pc += 1;
+                    self.current_context.stack.push(Value::undefined().into());
                 }
                 VMInst::PUSH_THIS => {
-                    cur_frame.pc += 1;
-                    self.stack.push(cur_frame.this.into());
+                    self.current_context.pc += 1;
+                    self.current_context
+                        .stack
+                        .push(self.current_context.this.into());
                 }
                 VMInst::PUSH_FALSE => {
-                    cur_frame.pc += 1;
-                    self.stack.push(Value::Bool(0).into());
+                    self.current_context.pc += 1;
+                    self.current_context.stack.push(Value::Bool(0).into());
                 }
                 VMInst::PUSH_TRUE => {
-                    cur_frame.pc += 1;
-                    self.stack.push(Value::Bool(1).into());
+                    self.current_context.pc += 1;
+                    self.current_context.stack.push(Value::Bool(1).into());
                 }
                 VMInst::GET_MEMBER => {
-                    cur_frame.pc += 1;
-                    let property: Value = self.stack.pop().unwrap().into();
-                    let parent: Value = self.stack.pop().unwrap().into();
-                    etry!(self.get_property_to_stack_top(parent, property, &mut cur_frame))
+                    self.current_context.pc += 1;
+                    let property: Value = self.current_context.stack.pop().unwrap().into();
+                    let parent: Value = self.current_context.stack.pop().unwrap().into();
+                    etry!(self.get_property_to_stack_top(parent, property))
                 }
                 VMInst::SET_MEMBER => {
-                    cur_frame.pc += 1;
-                    let property: Value = self.stack.pop().unwrap().into();
-                    let parent: Value = self.stack.pop().unwrap().into();
-                    let val: Value = self.stack.pop().unwrap().into();
-                    etry!(self.set_property(parent, property, val, &mut cur_frame))
+                    self.current_context.pc += 1;
+                    let property: Value = self.current_context.stack.pop().unwrap().into();
+                    let parent: Value = self.current_context.stack.pop().unwrap().into();
+                    let val: Value = self.current_context.stack.pop().unwrap().into();
+                    etry!(self.set_property_by_value(parent, property, val))
                 }
                 VMInst::SET_VALUE => {
-                    cur_frame.pc += 1;
-                    read_int32!(cur_frame.bytecode, cur_frame.pc, name_id, usize);
-                    let val = self.stack.pop().unwrap();
+                    self.current_context.pc += 1;
+                    read_int32!(self, name_id, usize);
+                    let val = self.current_context.stack.pop().unwrap();
                     let name = self.constant_table.get(name_id).as_string().clone();
-                    etry!(cur_frame.lex_env_mut().set_value(name, val.into()));
+                    etry!(self
+                        .current_context
+                        .lex_env_mut()
+                        .set_value(name, val.into()));
                 }
                 VMInst::GET_VALUE => {
-                    cur_frame.pc += 1;
-                    read_int32!(cur_frame.bytecode, cur_frame.pc, name_id, usize);
+                    self.current_context.pc += 1;
+                    read_int32!(self, name_id, usize);
                     let string = self.constant_table.get(name_id).as_string();
-                    let val = etry!(cur_frame.lex_env().get_value(string.clone()));
-                    self.stack.push(val.into());
+                    let val = etry!(self.current_context.lex_env().get_value(string.clone()));
+                    self.current_context.stack.push(val.into());
                 }
                 VMInst::CONSTRUCT => {
-                    cur_frame.pc += 1;
-                    read_int32!(cur_frame.bytecode, cur_frame.pc, argc, usize);
-                    let callee: Value = self.stack.pop().unwrap().into();
+                    self.current_context.pc += 1;
+                    read_int32!(self, argc, usize);
+                    let callee: Value = self.current_context.stack.pop().unwrap().into();
                     let mut args: Vec<Value> = vec![];
                     for _ in 0..argc {
-                        args.push(self.stack.pop().unwrap().into());
+                        args.push(self.current_context.stack.pop().unwrap().into());
                     }
-                    self.enter_constructor(callee, &args, &mut cur_frame)?;
+                    self.enter_constructor(callee, &args)?;
                 }
                 VMInst::CALL => {
-                    cur_frame.pc += 1;
-                    read_int32!(cur_frame.bytecode, cur_frame.pc, argc, usize);
-                    let callee: Value = self.stack.pop().unwrap().into();
+                    self.current_context.pc += 1;
+                    read_int32!(self, argc, usize);
+                    let callee: Value = self.current_context.stack.pop().unwrap().into();
                     let mut args: Vec<Value> = vec![];
                     for _ in 0..argc {
-                        args.push(self.stack.pop().unwrap().into());
+                        args.push(self.current_context.stack.pop().unwrap().into());
                     }
-                    etry!(self.enter_function(callee, &args, cur_frame.this, &mut cur_frame, false))
+                    etry!(self.enter_function(callee, &args, self.current_context.this, false))
                 }
                 VMInst::CALL_METHOD => {
-                    cur_frame.pc += 1;
-                    read_int32!(cur_frame.bytecode, cur_frame.pc, argc, usize);
-                    let parent: Value = self.stack.pop().unwrap().into();
-                    let method: Value = self.stack.pop().unwrap().into();
+                    self.current_context.pc += 1;
+                    read_int32!(self, argc, usize);
+                    let parent: Value = self.current_context.stack.pop().unwrap().into();
+                    let method: Value = self.current_context.stack.pop().unwrap().into();
                     let mut args: Vec<Value> = vec![];
                     for _ in 0..argc {
-                        args.push(self.stack.pop().unwrap().into());
+                        args.push(self.current_context.stack.pop().unwrap().into());
                     }
-                    let callee = match etry!(parent.get_property(&mut self.factory, method)) {
+                    let callee = match etry!(parent.get_property_by_value(&mut self.factory, method))
+                    {
                         Property::Data(DataProperty { val, .. }) => val,
                         _ => type_error!("Not a function"),
                     };
-                    etry!(self.enter_function(callee, &args, parent, &mut cur_frame, false))
+                    etry!(self.enter_function(callee, &args, parent, false))
                 }
                 VMInst::SET_OUTER_ENV => {
-                    cur_frame.pc += 1;
-                    let func_template: Value = self.stack.pop().unwrap().into();
+                    self.current_context.pc += 1;
+                    let func_template: Value = self.current_context.stack.pop().unwrap().into();
                     let mut func = func_template.copy_object(&mut self.factory.memory_allocator);
-                    func.set_function_outer_environment(cur_frame.lexical_environment);
-                    self.stack.push(func.into());
+                    func.set_function_outer_environment(self.current_context.lexical_environment);
+                    self.current_context.stack.push(func.into());
                 }
                 VMInst::CREATE_OBJECT => {
-                    cur_frame.pc += 1;
-                    read_int32!(cur_frame.bytecode, cur_frame.pc, id, usize);
+                    self.current_context.pc += 1;
+                    read_int32!(self, id, usize);
                     self.create_object(id)?;
-                    self.gc_mark(&cur_frame);
+                    self.gc_mark();
                 }
                 VMInst::CREATE_ARRAY => {
-                    cur_frame.pc += 1;
-                    read_int32!(cur_frame.bytecode, cur_frame.pc, len, usize);
+                    self.current_context.pc += 1;
+                    read_int32!(self, len, usize);
                     self.create_array(len)?;
-                    self.gc_mark(&cur_frame);
+                    self.gc_mark();
                 }
                 VMInst::DOUBLE => {
-                    cur_frame.pc += 1;
-                    let val = *self.stack.last().unwrap();
-                    self.stack.push(val);
+                    self.current_context.pc += 1;
+                    let val = *self.current_context.stack.last().unwrap();
+                    self.current_context.stack.push(val);
                 }
                 VMInst::PUSH_ENV => {
-                    cur_frame.pc += 1;
-                    read_int32!(cur_frame.bytecode, cur_frame.pc, id, usize);
-                    self.push_env(id, &mut cur_frame)?;
+                    self.current_context.pc += 1;
+                    read_int32!(self, id, usize);
+                    self.push_env(id)?;
                 }
                 VMInst::POP_ENV => {
-                    cur_frame.pc += 1;
-                    let lex_env = cur_frame.saved_lexical_environment.pop().unwrap();
-                    cur_frame.lexical_environment = lex_env;
+                    self.current_context.pc += 1;
+                    let lex_env = self
+                        .current_context
+                        .saved_lexical_environment
+                        .pop()
+                        .unwrap();
+                    self.current_context.lexical_environment = lex_env;
                 }
                 VMInst::POP => {
-                    cur_frame.pc += 1;
-                    self.stack.pop();
+                    self.current_context.pc += 1;
+                    self.current_context.stack.pop();
                 }
                 VMInst::JMP_IF_FALSE => {
-                    cur_frame.pc += 1;
-                    read_int32!(cur_frame.bytecode, cur_frame.pc, dst, i32);
-                    let cond_boxed = self.stack.pop().unwrap();
+                    self.current_context.pc += 1;
+                    read_int32!(self, dst, i32);
+                    let cond_boxed = self.current_context.stack.pop().unwrap();
                     let cond: Value = cond_boxed.into();
                     if !cond.to_boolean() {
-                        cur_frame.pc = (cur_frame.pc as isize + dst as isize) as usize;
+                        self.current_context.pc =
+                            (self.current_context.pc as isize + dst as isize) as usize;
                     }
                 }
                 VMInst::JMP => {
-                    cur_frame.pc += 1;
-                    read_int32!(cur_frame.bytecode, cur_frame.pc, dst, i32);
-                    cur_frame.pc = (cur_frame.pc as isize + dst as isize) as usize;
+                    self.current_context.pc += 1;
+                    read_int32!(self, dst, i32);
+                    self.current_context.pc =
+                        (self.current_context.pc as isize + dst as isize) as usize;
                 }
                 VMInst::JMP_SUB => {
-                    cur_frame.pc += 1;
-                    read_int32!(cur_frame.bytecode, cur_frame.pc, dst, i32);
-                    subroutine_stack.push(SubroutineKind::Ordinary(cur_frame.pc));
-                    cur_frame.pc = (cur_frame.pc as isize + dst as isize) as usize;
+                    self.current_context.pc += 1;
+                    read_int32!(self, dst, i32);
+                    subroutine_stack.push(SubroutineKind::Ordinary(self.current_context.pc));
+                    self.current_context.pc =
+                        (self.current_context.pc as isize + dst as isize) as usize;
                 }
                 VMInst::RETURN_TRY => {
-                    cur_frame.pc += 1;
-                    read_int32!(cur_frame.bytecode, cur_frame.pc, dst, i32);
-                    cur_frame.pc = (cur_frame.pc as isize + dst as isize) as usize;
+                    self.current_context.pc += 1;
+                    read_int32!(self, dst, i32);
+                    self.current_context.pc =
+                        (self.current_context.pc as isize + dst as isize) as usize;
                     subroutine_stack.push(SubroutineKind::Return);
                 }
                 VMInst::RETURN_SUB => {
-                    cur_frame.pc += 1;
+                    self.current_context.pc += 1;
                     match subroutine_stack.pop().unwrap() {
-                        SubroutineKind::Ordinary(pos) => cur_frame.pc = pos,
-                        SubroutineKind::Throw => {
-                            handle_exception(self, &mut cur_frame, &mut subroutine_stack)?
-                        }
+                        SubroutineKind::Ordinary(pos) => self.current_context.pc = pos,
+                        SubroutineKind::Throw => handle_exception(self, &mut subroutine_stack)?,
                         SubroutineKind::Return => {
-                            self.unwind_frame_saving_stack_top(&mut cur_frame);
+                            self.unwind_context();
                         }
                     }
                 }
                 VMInst::THROW => {
-                    cur_frame.pc += 1;
-                    handle_exception(self, &mut cur_frame, &mut subroutine_stack)?;
+                    self.current_context.pc += 1;
+                    handle_exception(self, &mut subroutine_stack)?;
                 }
                 VMInst::RETURN => {
-                    cur_frame.pc += 1;
-                    let escape = cur_frame.escape;
-                    if self.saved_frame.len() == 0 {
+                    self.current_context.pc += 1;
+                    let call_mode = self.current_context.call_mode;
+                    if self.saved_context.len() == 0 {
                         break;
                     };
-                    self.unwind_frame_saving_stack_top(&mut cur_frame);
+                    self.unwind_context();
                     // TODO: GC schedule
-                    self.gc_mark(&cur_frame);
-                    if escape {
+                    self.gc_mark();
+                    if call_mode == CallMode::FromNative {
                         break;
                     }
-                    if is_trace {
-                        println!("<-- return");
-                        println!(
-                            "  module_id:{} func_id:{}",
-                            cur_frame.module_func_id, cur_frame.func_id
+
+                    if self.is_trace {
+                        self.profile.trace_string = format!(
+                            "{}\n<-- return\n  module_id:{:?} func_id:{:?}",
+                            self.profile.trace_string,
+                            self.current_context.module_func_id,
+                            self.current_context.func_id
                         );
                     };
                 }
                 VMInst::TYPEOF => {
-                    cur_frame.pc += 1;
-                    let val: Value = self.stack.pop().unwrap().into();
+                    self.current_context.pc += 1;
+                    let val: Value = self.current_context.stack.pop().unwrap().into();
                     let type_str = val.type_of();
                     let type_str_val = self.factory.string(type_str.to_string());
-                    self.stack.push(type_str_val.into());
+                    self.current_context.stack.push(type_str_val.into());
                 }
                 VMInst::END => break,
                 _ => {
                     print!("Not yet implemented VMInst: ");
-                    show_inst(&cur_frame.bytecode, cur_frame.pc, &self.constant_table);
+                    show_inst(
+                        &self.current_context.bytecode,
+                        self.current_context.pc,
+                        &self.constant_table,
+                    );
                     println!();
                     unimplemented!();
                 }
             }
         }
 
-        let val = match self.stack.pop() {
+        if self.is_profile || self.is_trace {
+            self.trace_print();
+        };
+        if self.is_profile {
+            self.print_profile();
+        };
+
+        let val = match self.current_context.stack.pop() {
             None => Value::undefined(),
             Some(val) => val.into(),
         };
-        println!("{}", val);
+
         Ok(val)
     }
 
-    pub fn unwind_frame_saving_stack_top(&mut self, cur_frame: &mut exec_context::ExecContext) {
-        let ret_val_boxed = self.stack.pop().unwrap();
-        let ret_val: Value = ret_val_boxed.into();
-        let frame = self.saved_frame.pop().unwrap();
-        self.stack.truncate(frame.saved_stack_len);
-        let return_value = if cur_frame.module_call {
-            cur_frame
+    pub fn trace_print(&mut self) {
+        if self.profile.start_flag {
+            let duration =
+                self.profile.instant.elapsed() - self.profile.prev_time - self.profile.gc_stop_time;
+            let mut inst_profile =
+                &mut self.profile.inst_profile[self.profile.current_inst as usize];
+            (*inst_profile).1 += duration;
+            (*inst_profile).0 += 1;
+            if self.is_trace {
+                println!(
+                    "{:6}n {:6}n {}",
+                    duration.as_nanos(),
+                    self.profile.gc_stop_time.as_nanos(),
+                    self.profile.trace_string,
+                );
+            }
+        }
+        self.profile.start_flag = true;
+
+        if self.is_trace {
+            self.profile.trace_string = format!(
+                "{} {}",
+                crate::bytecode_gen::show_inst(
+                    &self.current_context.bytecode,
+                    self.current_context.current_inst_pc,
+                    &self.constant_table,
+                ),
+                match self.current_context.stack.last() {
+                    None => format!("<empty>"),
+                    Some(val) => format!("{:10}", (*val).into(): Value),
+                }
+            );
+        }
+
+        self.profile.prev_time = self.profile.instant.elapsed();
+        self.profile.gc_stop_time = Duration::from_secs(0);
+    }
+
+    pub fn print_profile(&mut self) {
+        println!("# performance analysis");
+
+        let total_inst_time = self
+            .profile
+            .inst_profile
+            .iter()
+            .fold(0, |acc, x| acc + x.1.as_micros()) as f64;
+
+        let total_gc_time = self
+            .profile
+            .gc_profile
+            .iter()
+            .fold(0, |acc, x| acc + x.1.as_micros()) as f64;
+
+        let total_time = total_gc_time + total_inst_time;
+        println!(
+            "total execution time {} microsecs  gc time {} microsecs",
+            total_time, total_gc_time
+        );
+
+        println!("Inst          total %    ave.time / inst");
+        for (i, prof) in self.profile.inst_profile.iter().enumerate() {
+            if prof.0 != 0 {
+                println!(
+                    "{:12} {:>6.2} % {:>10.2} nanosecs",
+                    inst_to_inst_name(i as u8),
+                    prof.1.as_micros() as f64 / total_time * 100.0,
+                    prof.1.as_nanos() as f64 / prof.0 as f64
+                );
+            }
+        }
+        println!("# GC performance");
+        println!("State    count        total time");
+        let prof = self.profile.gc_profile;
+        println!(
+            "Init  {:>8}  {:>10.2} millisecs",
+            prof[0].0,
+            prof[0].1.as_millis() as f64
+        );
+        println!(
+            "Mark  {:>8}  {:>10.2} millisecs",
+            prof[1].0,
+            prof[1].1.as_millis() as f64
+        );
+        println!(
+            "Sweep {:>8}  {:>10.2} millisecs",
+            prof[2].0,
+            prof[2].1.as_millis() as f64
+        );
+    }
+
+    /// Return from JS function.
+    /// 1. Pop a Value from the stack of the current execution context.
+    /// 2. Pop an ExecContext from the context stack.
+    /// 3. Set current execution context to the ExecContext.
+    /// 4. Push the Value to the stack of new current execution context.
+    pub fn unwind_context(&mut self) {
+        let prev_context = self.saved_context.pop().unwrap();
+        let return_value = if self.current_context.call_mode == CallMode::ModuleCall {
+            self.current_context
                 .lex_env()
                 .get_value("module")
                 .unwrap()
                 .get_object_info()
-                .get_property_by_str_key("exports")
-                .into()
-        } else if cur_frame.constructor_call && !ret_val.is_object() {
-            cur_frame.this.into()
+                .get_property("exports")
         } else {
-            ret_val_boxed
+            let ret_val_boxed = self.current_context.stack.pop().unwrap();
+            let ret_val: Value = ret_val_boxed.into();
+            if self.current_context.constructor_call && !ret_val.is_object() {
+                self.current_context.this
+            } else {
+                ret_val
+            }
         };
-        self.stack.push(return_value);
-        *cur_frame = frame;
+        self.current_context = prev_context;
+        self.current_context.stack.push(return_value.into());
     }
 
-    pub fn unwind_frame(&mut self, cur_frame: &mut exec_context::ExecContext) {
-        let frame = self.saved_frame.pop().unwrap();
-        self.stack.truncate(frame.saved_stack_len);
-        *cur_frame = frame;
-    }
-
-    fn push_env(&mut self, id: usize, cur_frame: &mut exec_context::ExecContext) -> VMResult {
+    fn push_env(&mut self, id: usize) -> VMResult {
         let lex_names = self.constant_table.get(id).as_lex_env_info().clone();
-        let outer = cur_frame.lexical_environment;
+        let outer = self.current_context.lexical_environment;
 
         let lex_env = self.create_lexical_environment(&lex_names, outer);
 
-        cur_frame
+        self.current_context
             .saved_lexical_environment
-            .push(cur_frame.lexical_environment);
-        cur_frame.lexical_environment = lex_env;
+            .push(self.current_context.lexical_environment);
+        self.current_context.lexical_environment = lex_env;
 
         Ok(())
     }
@@ -971,9 +986,9 @@ impl VM {
         let mut properties = FxHashMap::default();
 
         for i in 0..len {
-            let prop: Value = self.stack.pop().unwrap().into();
+            let prop: Value = self.current_context.stack.pop().unwrap().into();
             let name = prop.to_string();
-            let val: Value = self.stack.pop().unwrap().into();
+            let val: Value = self.current_context.stack.pop().unwrap().into();
             if let Some(kind) = special_properties.get(&i) {
                 let AccessorProperty { get, set, .. } = properties
                     .entry(name)
@@ -1004,7 +1019,7 @@ impl VM {
         }
 
         let obj = self.factory.object(properties);
-        self.stack.push(obj.into());
+        self.current_context.stack.push(obj.into());
 
         Ok(())
     }
@@ -1012,7 +1027,7 @@ impl VM {
     fn create_array(&mut self, len: usize) -> VMResult {
         let mut elems = vec![];
         for _ in 0..len {
-            let val: Value = self.stack.pop().unwrap().into();
+            let val: Value = self.current_context.stack.pop().unwrap().into();
             elems.push(Property::Data(DataProperty {
                 val,
                 writable: true,
@@ -1022,25 +1037,20 @@ impl VM {
         }
 
         let ary = self.factory.array(elems);
-        self.stack.push(ary.into());
+        self.current_context.stack.push(ary.into());
 
         Ok(())
     }
 
-    fn enter_constructor(
-        &mut self,
-        callee: Value,
-        args: &[Value],
-        cur_frame: &mut exec_context::ExecContext,
-    ) -> VMResult {
+    fn enter_constructor(&mut self, callee: Value, args: &[Value]) -> VMResult {
         let this = Value::Object(self.factory.alloc(ObjectInfo {
             kind: ObjectKind::Ordinary,
-            prototype: callee.get_property_by_str_key("prototype"),
+            prototype: callee.get_property("prototype"),
             property: FxHashMap::default(),
             sym_property: FxHashMap::default(),
         }));
 
-        self.enter_function(callee, args, this, cur_frame, true)
+        self.enter_function(callee, args, this, true)
     }
 
     fn enter_function(
@@ -1048,29 +1058,34 @@ impl VM {
         callee: Value,
         args: &[Value],
         this: Value,
-        cur_frame: &mut exec_context::ExecContext,
         constructor_call: bool,
     ) -> VMResult {
         if !callee.is_function_object() {
-            return Err(cur_frame.error_type("Not a function"));
+            return Err(self.current_context.error_type("Not a function"));
         }
 
         let info = callee.as_function();
         let ret = match info.kind {
             FunctionObjectKind::Builtin(func) => gc_lock!(self, args, {
-                let val = func(self, args, this, cur_frame)?;
-                self.stack.push(val.into());
+                let val = func(self, args, this)?;
+                self.current_context.stack.push(val.into());
                 Ok(())
             }),
             FunctionObjectKind::User(ref user_func) => {
                 if self.is_trace {
-                    println!("--> call function",);
-                    println!(
-                        "  module_id:{} func_id:{}",
-                        user_func.module_func_id, user_func.id
+                    self.profile.trace_string = format!(
+                        "{}\n--> call {}\n  module_id:{:?} func_id:{:?}",
+                        self.profile.trace_string,
+                        if constructor_call {
+                            "constructor"
+                        } else {
+                            "function"
+                        },
+                        self.current_context.module_func_id,
+                        self.current_context.func_id
                     );
                 };
-                self.enter_user_function(user_func.clone(), args, this, cur_frame, constructor_call)
+                self.enter_user_function(user_func.clone(), args, this, constructor_call)
             }
         };
         ret
@@ -1128,20 +1143,20 @@ impl VM {
 
     fn create_function_environment(
         &mut self,
-        var_names: &Vec<String>,
-        params: &Vec<FunctionParameter>,
+        user_func: &UserFunctionInfo,
         args: &[Value],
         this: Value,
-        outer: Option<exec_context::LexicalEnvironmentRef>,
     ) -> exec_context::LexicalEnvironmentRef {
         let env = exec_context::LexicalEnvironment {
             record: exec_context::EnvironmentRecord::Function {
                 record: {
                     let mut record = FxHashMap::default();
-                    for name in var_names {
+                    for name in &user_func.var_names {
                         record.insert(name.clone(), Value::undefined());
                     }
-                    for (i, FunctionParameter { name, rest_param }) in params.iter().enumerate() {
+                    for (i, FunctionParameter { name, rest_param }) in
+                        user_func.params.iter().enumerate()
+                    {
                         record.insert(
                             name.clone(),
                             if *rest_param {
@@ -1162,27 +1177,31 @@ impl VM {
                 },
                 this,
             },
-            outer,
+            outer: user_func.outer,
         };
 
         exec_context::LexicalEnvironmentRef(self.factory.alloc(env))
     }
 
-    /// Prepare a new frame before invoking function.
-    /// 1. save current frame to the frame stack.
-    /// 2. set `this`.
-    /// 3. create a new function environment.
-    /// 4. prepare function objects defined inner the function, and register them to the lexical environment.
-    /// 5. generate a new frame, and return it.
-    pub fn prepare_frame_for_function_invokation(
+    /// Prepare a new context before invoking function.
+    /// 1. Push current context to the context stack.
+    /// 2. Set `this`.
+    /// 3. Create a new function environment.
+    /// 4. Prepare function objects defined inner the function, and register them to the lexical environment.
+    /// 5. Generate a new context, and set the current context (running execution context) to it.
+    pub fn prepare_context_for_function_invokation(
         &mut self,
         user_func: &UserFunctionInfo,
         args: &[Value],
         this: Value,
-        cur_frame: &exec_context::ExecContext,
-    ) -> Result<exec_context::ExecContext, RuntimeError> {
-        self.saved_frame
-            .push(cur_frame.clone().saved_stack_len(self.stack.len()));
+        mode: CallMode,
+        constructor_call: bool,
+    ) -> Result<(), RuntimeError> {
+        let context = std::mem::replace(
+            &mut self.current_context,
+            exec_context::ExecContext::empty(),
+        );
+        self.saved_context.push(context);
 
         let this = if user_func.this_mode == ThisMode::Lexical {
             // Arrow function
@@ -1191,13 +1210,7 @@ impl VM {
             this
         };
 
-        let var_env_ref = self.create_function_environment(
-            &user_func.var_names,
-            &user_func.params,
-            args,
-            this,
-            user_func.outer,
-        );
+        let var_env_ref = self.create_function_environment(&user_func, args, this);
 
         let mut lex_env_ref = self.create_lexical_environment(&user_func.lex_names, var_env_ref);
 
@@ -1208,17 +1221,19 @@ impl VM {
             lex_env_ref.set_value(name, func)?;
         }
 
-        let user_func = user_func.clone();
-
-        Ok(exec_context::ExecContext::new(
-            user_func.code,
+        let context = exec_context::ExecContext::new(
+            user_func.code.clone(),
             var_env_ref,
             lex_env_ref,
-            user_func.exception_table,
+            user_func.exception_table.clone(),
             this,
+            mode,
         )
-        .func_id(user_func.id)
-        .module_func_id(user_func.module_func_id))
+        .func_id(user_func.func_id)
+        .module_func_id(user_func.module_func_id)
+        .constructor_call(constructor_call);
+        self.current_context = context;
+        Ok(())
     }
 
     fn enter_user_function(
@@ -1226,18 +1241,19 @@ impl VM {
         user_func: UserFunctionInfo,
         args: &[Value],
         this: Value,
-        cur_frame: &mut exec_context::ExecContext,
         constructor_call: bool,
     ) -> VMResult {
         if !user_func.constructible && constructor_call {
-            return Err(cur_frame.error_type("Not a constructor"));
+            return Err(self.current_context.error_type("Not a constructor"));
         }
 
-        let frame = self
-            .prepare_frame_for_function_invokation(&user_func, args, this, cur_frame)?
-            .constructor_call(constructor_call);
-
-        *cur_frame = frame;
+        self.prepare_context_for_function_invokation(
+            &user_func,
+            args,
+            this,
+            CallMode::OrdinaryCall,
+            constructor_call,
+        )?;
 
         Ok(())
     }

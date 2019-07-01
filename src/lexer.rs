@@ -232,8 +232,8 @@ impl Lexer {
         }
 
         match self.peek_char()? {
-            'a'...'z' | 'A'...'Z' | '_' | '$' => self.read_identifier(),
-            '0'...'9' => self.read_number(),
+            'a'..='z' | 'A'..='Z' | '_' | '$' => self.read_identifier(),
+            '0'..='9' => self.read_number(),
             '\'' | '\"' => self.read_string_literal(),
             '\n' => self.read_line_terminator(),
             c if c.is_whitespace() => {
@@ -305,12 +305,12 @@ impl Lexer {
                     'x' | 'X' => kind = NumLiteralKind::Hex,
                     'b' | 'B' => kind = NumLiteralKind::Bin,
                     'o' | 'O' => kind = NumLiteralKind::Oct,
-                    '0'...'7' => {
+                    '0'..='7' => {
                         kind = NumLiteralKind::OldOct;
                         num_literal.push(c);
                     }
                     '.' => num_literal.push('.'),
-                    '8'...'9' => num_literal.push(c),
+                    '8'..='9' => num_literal.push(c),
                     _ => return Ok(Token::new_number(0.0, pos)),
                 }
                 self.take_char()?;
@@ -328,12 +328,12 @@ impl Lexer {
         }
 
         num_literal += match kind {
-            NumLiteralKind::Hex => read_num!('0'...'9', 'a'...'f'),
-            NumLiteralKind::Oct => read_num!('0'...'7'),
-            NumLiteralKind::Bin => read_num!('0'...'1'),
+            NumLiteralKind::Hex => read_num!('0'..='9', 'a'..='f'),
+            NumLiteralKind::Oct => read_num!('0'..='7'),
+            NumLiteralKind::Bin => read_num!('0'..='1'),
             NumLiteralKind::OldOct => self.take_char_while(|c| match c {
-                '0'...'7' => true,
-                '8'...'9' => {
+                '0'..='7' => true,
+                '8'..='9' => {
                     kind = NumLiteralKind::Dec;
                     true
                 }
@@ -371,7 +371,7 @@ impl Lexer {
         num_literal
             .chars()
             .fold(0, |n, c| match c.to_ascii_lowercase() {
-                '0'...'9' | 'A'...'F' | 'a'...'f' => n * 16 + c.to_digit(16).unwrap() as i64,
+                '0'..='9' | 'A'..='F' | 'a'..='f' => n * 16 + c.to_digit(16).unwrap() as i64,
                 _ => n,
             })
     }
@@ -380,7 +380,7 @@ impl Lexer {
         num_literal
             .chars()
             .fold(0, |n, c| match c.to_ascii_lowercase() {
-                '0'...'7' => n * 8 + c.to_digit(8).unwrap() as i64,
+                '0'..='7' => n * 8 + c.to_digit(8).unwrap() as i64,
                 _ => n,
             })
     }

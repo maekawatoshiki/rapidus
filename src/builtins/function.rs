@@ -1,5 +1,4 @@
 use crate::vm::{
-    exec_context::ExecContext,
     jsvalue::{function::UserFunctionInfo, value::Value},
     vm::{Factory, VMValueResult, VM},
 };
@@ -13,24 +12,14 @@ pub fn function(factory: &mut Factory) -> Value {
 }
 
 // TODO: https://www.ecma-international.org/ecma-262/9.0/index.html#sec-function-constructor
-pub fn function_constructor(
-    vm: &mut VM,
-    _args: &[Value],
-    _this: Value,
-    cur_frame: &mut ExecContext,
-) -> VMValueResult {
-    let info = UserFunctionInfo::new(cur_frame.module_func_id);
+pub fn function_constructor(vm: &mut VM, _args: &[Value], _this: Value) -> VMValueResult {
+    let info = UserFunctionInfo::new(&mut vm.factory, vm.current_context.module_func_id);
     let func = vm.factory.function(None, info);
     Ok(func)
 }
 
-pub fn function_prototype_call(
-    vm: &mut VM,
-    args: &[Value],
-    this: Value,
-    cur_frame: &mut ExecContext,
-) -> VMValueResult {
+pub fn function_prototype_call(vm: &mut VM, args: &[Value], this: Value) -> VMValueResult {
     let this_arg = *args.get(0).unwrap_or(&Value::undefined());
     let func = this;
-    vm.call_function(func, args.get(1..).unwrap_or(&[]), this_arg, cur_frame)
+    vm.call_function(func, args.get(1..).unwrap_or(&[]), this_arg)
 }

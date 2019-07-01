@@ -1,12 +1,12 @@
 #![macro_use]
+use crate::vm::jsvalue::function::UserFunctionInfo;
 use crate::bytecode_gen::ByteCode;
 use crate::gc;
-use crate::vm::codegen::FunctionInfo;
 use crate::vm::error::ErrorKind;
 use crate::vm::error::RuntimeError;
 use crate::vm::jsvalue::function::Exception;
-use crate::vm::jsvalue::value::Value;
-use crate::vm::vm::{Factory, VMResult};
+use crate::vm::jsvalue::value::{BoxedValue, Value};
+use crate::vm::vm::{CallMode, Factory, FunctionId, VMResult};
 use rustc_hash::FxHashMap;
 use std::ops::{Deref, DerefMut};
 
@@ -15,21 +15,22 @@ pub struct LexicalEnvironmentRef(pub *mut LexicalEnvironment);
 
 #[derive(Debug, Clone)]
 pub struct ExecContext {
-    pub func_id: usize, // 0 => global scope, n => function id
-    pub module_func_id: usize,
+    pub func_id: FunctionId, // 0 => global scope, n => function id
+    pub module_func_id: FunctionId,
     pub pc: usize,
     pub current_inst_pc: usize,
-    pub saved_stack_len: usize,
+    pub stack: Vec<BoxedValue>,
     pub bytecode: ByteCode,
     pub exception_table: Vec<Exception>,
     /// This value in the context.
     pub this: Value,
     /// If true, calling JS function as a constructor.
     pub constructor_call: bool,
+    pub call_mode: CallMode,
     /// If true, calling JS function as a module.
-    pub module_call: bool,
+    //    pub module_call: bool,
     /// If true, calling JS function from native function.
-    pub escape: bool,
+    //    pub escape: bool,
     pub variable_environment: LexicalEnvironmentRef,
     pub lexical_environment: LexicalEnvironmentRef,
     pub saved_lexical_environment: Vec<LexicalEnvironmentRef>,
@@ -65,21 +66,38 @@ impl ExecContext {
         lex_env: LexicalEnvironmentRef,
         exception_table: Vec<Exception>,
         this: Value,
+        call_mode: CallMode,
     ) -> Self {
         ExecContext {
-            func_id: 0,
-            module_func_id: 0,
+            func_id: FunctionId::default(),
+            module_func_id: FunctionId::default(),
             pc: 0,
             current_inst_pc: 0,
-            saved_stack_len: 0,
+            stack: vec![],
             bytecode,
             exception_table,
             this,
             constructor_call: false,
-            module_call: false,
-            escape: false,
+            call_mode,
             variable_environment: var_env,
             lexical_environment: lex_env,
+            saved_lexical_environment: vec![],
+        }
+    }
+    pub fn empty() -> Self {
+        ExecContext {
+            func_id: FunctionId::default(),
+            module_func_id: FunctionId::default(),
+            pc: 0,
+            current_inst_pc: 0,
+            stack: vec![],
+            bytecode: vec![],
+            exception_table: vec![],
+            this: Value::undefined(),
+            constructor_call: false,
+            call_mode: CallMode::OrdinaryCall,
+            variable_environment: LexicalEnvironmentRef::new_null(),
+            lexical_environment: LexicalEnvironmentRef::new_null(),
             saved_lexical_environment: vec![],
         }
     }
@@ -92,37 +110,22 @@ impl ExecContext {
         &mut *self.lexical_environment
     }
 
-    pub fn escape(mut self) -> Self {
-        self.escape = true;
-        self
-    }
-
     pub fn constructor_call(mut self, is_constructor: bool) -> Self {
         self.constructor_call = is_constructor;
         self
     }
 
-    pub fn module_call(mut self, is_module: bool) -> Self {
-        self.module_call = is_module;
-        self
-    }
-
-    pub fn saved_stack_len(mut self, saved_stack_len: usize) -> Self {
-        self.saved_stack_len = saved_stack_len;
-        self
-    }
-
-    pub fn func_id(mut self, id: usize) -> Self {
+    pub fn func_id(mut self, id: FunctionId) -> Self {
         self.func_id = id;
         self
     }
 
-    pub fn module_func_id(mut self, id: usize) -> Self {
+    pub fn module_func_id(mut self, id: FunctionId) -> Self {
         self.module_func_id = id;
         self
     }
 
-    pub fn append_function(&mut self, memory_allocator: &mut gc::MemoryAllocator, f: Value) {
+    fn append_function(&mut self, memory_allocator: &mut gc::MemoryAllocator, f: Value) {
         let mut val = f.copy_object(memory_allocator);
         let name = val.as_function().name.clone().unwrap();
         val.set_function_outer_environment(self.lexical_environment);
@@ -131,12 +134,12 @@ impl ExecContext {
         self.initial_trace(&mut memory_allocator.roots);
     }
 
-    pub fn append_variable_to_var_env(&mut self, name: String) {
+    fn append_variable_to_var_env(&mut self, name: String) {
         let var_env = &mut self.variable_environment;
         var_env.set_own_value(name, Value::undefined()).unwrap(); // TODO: unwrap()
     }
 
-    pub fn append_variable_to_lex_env(&mut self, name: String) {
+    fn append_variable_to_lex_env(&mut self, name: String) {
         let lex_env = &mut self.lexical_environment;
         lex_env.set_own_value(name, Value::uninitialized()).unwrap(); // TODO: unwrap()
     }
@@ -144,7 +147,7 @@ impl ExecContext {
     pub fn append_from_function_info(
         &mut self,
         memory_allocator: &mut gc::MemoryAllocator,
-        info: &FunctionInfo,
+        info: &UserFunctionInfo,
     ) {
         for f in &info.func_decls {
             self.append_function(memory_allocator, *f);
@@ -250,7 +253,7 @@ impl LexicalEnvironment {
             },
             EnvironmentRecord::Global(obj) | EnvironmentRecord::Object(obj) => {
                 if obj.has_own_property(name.as_str()) {
-                    let val = obj.get_property_by_str_key(name.as_str());
+                    let val = obj.get_property(name.as_str());
                     if val == Value::uninitialized() {
                         return Err(RuntimeError::reference(format!(
                             "'{}' is not defined",
@@ -284,7 +287,7 @@ impl LexicalEnvironment {
                 None => {}
             },
             EnvironmentRecord::Global(obj) | EnvironmentRecord::Object(obj) => {
-                obj.set_property_by_string_key(name, val);
+                obj.set_property(name, val);
                 return Ok(());
             }
         };
@@ -307,7 +310,7 @@ impl LexicalEnvironment {
                 record.insert(name.into(), val);
             }
             EnvironmentRecord::Global(obj) | EnvironmentRecord::Object(obj) => {
-                obj.set_property_by_string_key(name, val);
+                obj.set_property(name, val);
             }
         };
         return Ok(());

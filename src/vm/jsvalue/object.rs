@@ -73,7 +73,7 @@ impl ObjectInfo {
         self.prototype
     }
 
-    pub fn get_property(
+    pub fn get_property_by_value(
         &self,
         factory: &mut Factory,
         key: Value,
@@ -87,7 +87,7 @@ impl ObjectInfo {
             let id = key.get_symbol_info().id;
             return match self.sym_property.get(&id) {
                 Some(prop) => Ok(*prop),
-                None => self.prototype.get_property(factory, key),
+                None => self.prototype.get_property_by_value(factory, key),
             };
         }
 
@@ -119,19 +119,19 @@ impl ObjectInfo {
                 if proto.is_null() {
                     return Ok(Property::new_data_simple(Value::undefined()));
                 };
-                proto.get_property(factory, key)
+                proto.get_property_by_value(factory, key)
             }
         }
     }
 
-    pub fn get_property_by_str_key(&self, key: &str) -> Value {
+    pub fn get_property(&self, key: &str) -> Value {
         match self.property.get(key) {
             Some(prop) => prop.as_data().val,
-            None => self.prototype.get_property_by_str_key(key),
+            None => self.prototype.get_property(key),
         }
     }
 
-    pub fn set_property_by_string_key(&mut self, key: String, val: Value) {
+    pub fn set_property(&mut self, key: String, val: Value) {
         let property = self
             .property
             .entry(key)
@@ -142,7 +142,7 @@ impl ObjectInfo {
         }
     }
 
-    pub fn set_property(
+    pub fn set_property_by_value(
         &mut self,
         allocator: &mut MemoryAllocator,
         key: Value,

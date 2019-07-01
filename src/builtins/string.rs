@@ -1,16 +1,10 @@
 use crate::vm::{
-    exec_context::ExecContext,
     jsvalue::value::{Property, Value},
     vm::VMValueResult,
     vm::VM,
 };
 
-pub fn string_prototype_split(
-    vm: &mut VM,
-    args: &[Value],
-    this: Value,
-    _cur_frame: &mut ExecContext,
-) -> VMValueResult {
+pub fn string_prototype_split(vm: &mut VM, args: &[Value], this: Value) -> VMValueResult {
     let string = this.into_str();
     let separator_ = args.get(0).map(|x| *x).unwrap_or(Value::undefined());
     if separator_.is_undefined() {
@@ -28,12 +22,7 @@ pub fn string_prototype_split(
     Ok(ary)
 }
 
-pub fn string_prototype_index_of(
-    _vm: &mut VM,
-    args: &[Value],
-    this: Value,
-    _cur_frame: &mut ExecContext,
-) -> VMValueResult {
+pub fn string_prototype_index_of(_vm: &mut VM, args: &[Value], this: Value) -> VMValueResult {
     let string = this.into_str();
     let search_string = args.get(0).unwrap_or(&Value::undefined()).to_string();
     let position = args.get(1).unwrap_or(&Value::Number(0.0)).into_number() as usize;

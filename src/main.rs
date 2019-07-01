@@ -1,12 +1,11 @@
-extern crate rapidus;
+#![feature(test)]
+//extern crate rapidus;
 use rapidus::parser;
-use rapidus::{vm, vm::exec_context, vm::jsvalue::value::Value, vm::vm::VM};
-
-extern crate libc;
-
-extern crate rustyline;
-
+use rapidus::{vm, vm::exec_context, vm::vm::VM};
 extern crate clap;
+extern crate libc;
+extern crate rustyline;
+extern crate test;
 use clap::{App, Arg};
 
 const VERSION_STR: &'static str = env!("CARGO_PKG_VERSION");
@@ -22,18 +21,24 @@ fn main() {
                 .long("debug"),
         )
         .arg(
+            Arg::with_name("profile")
+                .help("Collect and print performance profile")
+                .long("profile"),
+        )
+        .arg(
             Arg::with_name("trace")
-                .help("Trace bytecode execution for debugging")
+                .help("Tracing execution")
                 .long("trace"),
         )
         .arg(Arg::with_name("file").help("Input file name").index(1));
     let app_matches = app.clone().get_matches();
     let is_debug = app_matches.is_present("debug");
+    let is_profile = app_matches.is_present("profile");
     let is_trace = app_matches.is_present("trace");
     let file_name = match app_matches.value_of("file") {
         Some(file_name) => file_name,
         None => {
-            repl(is_trace);
+            repl(is_profile, is_trace);
             return;
         }
     };
@@ -56,11 +61,14 @@ fn main() {
     };
 
     let mut vm = VM::new();
+    if is_profile {
+        vm = vm.profile();
+    }
     if is_trace {
         vm = vm.trace();
     }
-    let mut iseq = vec![];
-    let global_info = match vm.compile(&node, &mut iseq, false, 0) {
+
+    let global_info = match vm.compile(&node, false) {
         Ok(ok) => ok,
         Err(vm::codegen::Error { msg, token_pos, .. }) => {
             parser.show_error_at(token_pos, msg);
@@ -70,30 +78,27 @@ fn main() {
 
     if is_debug {
         println!("Codegen:");
-        rapidus::bytecode_gen::show_inst_seq(&iseq, &vm.constant_table);
+        rapidus::bytecode_gen::show_inst_seq(&global_info.code, &vm.constant_table);
     };
 
     let script_info = parser.into_script_info();
-    vm.script_info.push((0, script_info));
-    if let Err(e) = vm.run_global(global_info, iseq) {
+    vm.script_info
+        .push((global_info.module_func_id, script_info));
+    if let Err(e) = vm.run_global(global_info) {
         vm.show_error_message(e);
-    }
-
-    if is_debug {
-        for (i, val_boxed) in vm.stack.iter().enumerate() {
-            let val: Value = (*val_boxed).into();
-            println!("stack remaining: [{}]: {:?}", i, val);
-        }
     }
 }
 
-fn repl(is_trace: bool) {
+fn repl(is_profile: bool, is_trace: bool) {
     let mut rl = rustyline::Editor::<()>::new();
     let mut vm = VM::new();
+    if is_profile {
+        vm = vm.profile();
+    }
     if is_trace {
         vm = vm.trace();
     }
-    let mut global_frame: Option<exec_context::ExecContext> = None;
+    let mut global_context: Option<exec_context::ExecContext> = None;
 
     loop {
         let mut parser;
@@ -113,8 +118,7 @@ fn repl(is_trace: bool) {
             match parser.parse_all() {
                 Ok(node) => {
                     // compile and execute
-                    let mut iseq = vec![];
-                    let global_info = match vm.compile(&node, &mut iseq, true, 0) {
+                    let global_info = match vm.compile(&node, true) {
                         Ok(ok) => ok,
                         Err(vm::codegen::Error { msg, token_pos, .. }) => {
                             parser.show_error_at(token_pos, msg);
@@ -122,39 +126,35 @@ fn repl(is_trace: bool) {
                         }
                     };
 
-                    match global_frame {
-                        Some(ref mut frame) => {
-                            frame.bytecode = iseq;
-                            frame.exception_table = global_info.exception_table.clone();
-                            frame.append_from_function_info(
+                    match global_context {
+                        Some(ref mut context) => {
+                            context.append_from_function_info(
                                 &mut vm.factory.memory_allocator,
                                 &global_info,
-                            )
-                        }
-                        None => global_frame = Some(vm.create_global_frame(global_info, iseq)),
-                    }
-
-                    let script_info = parser.into_script_info();
-                    vm.script_info = vec![(0, script_info)];
-                    if let Err(e) = vm.run(global_frame.clone().unwrap()) {
-                        let val = e.to_value(&mut vm.factory);
-                        if val.is_error_object() {
-                            println!(
-                                "Error: {}",
-                                val.get_property_by_str_key("message").to_string()
                             );
-                        } else {
-                            println!("Thrown: {}", val.to_string())
-                        };
-                        break;
+                            context.module_func_id = global_info.module_func_id;
+                            context.func_id = global_info.func_id;
+                            context.bytecode = global_info.code;
+                            context.exception_table = global_info.exception_table;
+                        }
+                        None => global_context = Some(vm.create_global_context(global_info)),
                     }
 
-                    if vm.stack.len() != 0 {
-                        let val: Value = vm.stack[0].into();
-                        println!("{}", val.debug_string(true));
-                        vm.stack = vec![];
-                    }
+                    vm.current_context = global_context.clone().unwrap();
+                    let script_info = parser.into_script_info();
+                    vm.script_info = vec![(vm.current_context.module_func_id, script_info)];
 
+                    match vm.run() {
+                        Ok(val) => println!("{}", val.debug_string(true)),
+                        Err(e) => {
+                            let val = e.to_value(&mut vm.factory);
+                            if val.is_error_object() {
+                                println!("Error: {}", val.get_property("message"));
+                            } else {
+                                println!("Thrown: {}", val.to_string())
+                            };
+                        }
+                    }
                     break;
                 }
                 Err(parser::Error::UnexpectedEOF(_)) => match rl.readline("... ") {
@@ -321,6 +321,21 @@ mod tests {
     }
 
     #[test]
+    fn test_module() {
+        assert_file("test_module_caller")
+    }
+
+    #[test]
+    fn function_methods() {
+        assert_file("function_methods")
+    }
+
+    #[test]
+    fn string_methods() {
+        assert_file("string_methods")
+    }
+
+    #[test]
     fn runtime_error1() {
         runtime_error("let a = {}; a.b.c");
     }
@@ -343,5 +358,11 @@ mod tests {
     #[test]
     fn runtime_error5() {
         runtime_error("let a = {}; a(5)");
+    }
+
+    use test::Bencher;
+    #[bench]
+    fn bench_fibo(b: &mut Bencher) {
+        b.iter(|| assert_file("fibo"));
     }
 }
