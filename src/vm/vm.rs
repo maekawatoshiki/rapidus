@@ -9,7 +9,7 @@ use crate::vm::{
     codegen::CodeGenerator,
     constant,
     error::*,
-    exec_context,
+    exec_context::{EnvironmentRecord, ExecContext, LexicalEnvironment, LexicalEnvironmentRef},
     jsvalue::function::{DestinationKind, ThisMode},
     jsvalue::prototype::ObjectPrototypes,
     jsvalue::symbol::GlobalSymbolRegistry,
@@ -24,11 +24,11 @@ pub type VMValueResult = Result<Value, RuntimeError>;
 
 pub struct VM {
     pub factory: Factory,
-    pub global_environment: exec_context::LexicalEnvironmentRef,
+    pub global_environment: LexicalEnvironmentRef,
     pub constant_table: constant::ConstantTable,
     pub global_symbol_registry: GlobalSymbolRegistry,
-    pub current_context: exec_context::ExecContext,
-    pub saved_context: Vec<exec_context::ExecContext>,
+    pub current_context: ExecContext,
+    pub saved_context: Vec<ExecContext>,
     ///func_id, ToSourcePos
     pub to_source_map: FxHashMap<FunctionId, codegen::ToSourcePos>,
     pub is_profile: bool,
@@ -70,14 +70,14 @@ impl VM {
         let mut memory_allocator = gc::MemoryAllocator::new();
         let object_prototypes = ObjectPrototypes::new(&mut memory_allocator);
         let mut factory = Factory::new(memory_allocator, object_prototypes);
-        let global_env = exec_context::LexicalEnvironment::new_global_initialized(&mut factory);
-        let global_environment = exec_context::LexicalEnvironmentRef(factory.alloc(global_env));
+        let global_env = LexicalEnvironment::new_global_initialized(&mut factory);
+        let global_environment = LexicalEnvironmentRef(factory.alloc(global_env));
         VM {
             global_environment,
             factory,
             constant_table: constant::ConstantTable::new(),
             global_symbol_registry: GlobalSymbolRegistry::new(),
-            current_context: exec_context::ExecContext::empty(),
+            current_context: ExecContext::empty(),
             saved_context: vec![],
             to_source_map: FxHashMap::default(),
             is_profile: false,
@@ -142,24 +142,23 @@ impl VM {
         res
     }
 
-    pub fn create_global_context(
-        &mut self,
-        global_info: UserFunctionInfo,
-    ) -> exec_context::ExecContext {
+    pub fn create_global_context(&mut self, global_info: UserFunctionInfo) -> ExecContext {
         let global_env_ref = self.global_environment;
 
         let var_env = self.create_variable_environment(&global_info.var_names, global_env_ref);
 
         let mut lex_env = self.create_lexical_environment(&global_info.lex_names, var_env);
 
-        for val in global_info.func_decls {
-            let mut val = val.copy_object(&mut self.factory.memory_allocator);
-            let name = val.as_function().name.clone().unwrap();
+        for func_info in global_info.func_decls {
+            let name = func_info.func_name.clone().unwrap();
+            let mut val = self
+                .factory
+                .function(func_info.func_name.clone(), func_info);
             val.set_function_outer_environment(lex_env);
             lex_env.set_value(name, val).unwrap();
         }
 
-        let context = exec_context::ExecContext::new(
+        let context = ExecContext::new(
             global_info.code,
             var_env,
             lex_env,
@@ -187,21 +186,24 @@ impl VM {
 
         match info.kind {
             FunctionObjectKind::Builtin(func) => gc_lock!(self, args, func(self, args, this)),
-            FunctionObjectKind::User(ref user_func) => {
-                self.call_user_function(user_func, args, this, false)
-            }
+            FunctionObjectKind::User {
+                ref info,
+                outer_env,
+            } => self.call_user_function(info, outer_env, args, this, false),
         }
     }
 
     fn call_user_function(
         &mut self,
         user_func: &UserFunctionInfo,
+        outer_env: Option<LexicalEnvironmentRef>,
         args: &[Value],
         this: Value,
         constructor_call: bool,
     ) -> VMValueResult {
         self.prepare_context_for_function_invokation(
             user_func,
+            outer_env,
             args,
             this,
             CallMode::FromNative,
@@ -869,7 +871,7 @@ impl VM {
         } else {
             let duration =
                 self.profile.instant.elapsed() - self.profile.prev_time - self.profile.gc_stop_time;
-            println!("VM start up time {} msec", duration.as_millis());
+            println!("VM start up time {} microsec", duration.as_micros());
         }
         self.profile.start_flag = true;
 
@@ -1085,7 +1087,10 @@ impl VM {
                 self.current_context.stack.push(val.into());
                 Ok(())
             }),
-            FunctionObjectKind::User(ref user_func) => {
+            FunctionObjectKind::User {
+                ref info,
+                outer_env,
+            } => {
                 if self.is_trace {
                     self.profile.trace_string = format!(
                         "{}\n--> call {}\n  module_id:{:?} func_id:{:?}",
@@ -1099,7 +1104,7 @@ impl VM {
                         self.current_context.func_id
                     );
                 };
-                self.enter_user_function(user_func.clone(), args, this, constructor_call)
+                self.enter_user_function(info.clone(), outer_env, args, this, constructor_call)
             }
         };
         ret
@@ -1108,13 +1113,13 @@ impl VM {
     fn create_declarative_environment<F>(
         &mut self,
         f: F,
-        outer: Option<exec_context::LexicalEnvironmentRef>,
-    ) -> exec_context::LexicalEnvironmentRef
+        outer: Option<LexicalEnvironmentRef>,
+    ) -> LexicalEnvironmentRef
     where
         F: Fn(&mut VM, &mut FxHashMap<String, Value>),
     {
-        let env = exec_context::LexicalEnvironment {
-            record: exec_context::EnvironmentRecord::Declarative({
+        let env = LexicalEnvironment {
+            record: EnvironmentRecord::Declarative({
                 let mut record = FxHashMap::default();
                 f(self, &mut record);
                 record
@@ -1122,14 +1127,14 @@ impl VM {
             outer,
         };
 
-        exec_context::LexicalEnvironmentRef(self.factory.alloc(env))
+        LexicalEnvironmentRef(self.factory.alloc(env))
     }
 
     fn create_variable_environment(
         &mut self,
         var_names: &Vec<String>,
-        outer_env_ref: exec_context::LexicalEnvironmentRef,
-    ) -> exec_context::LexicalEnvironmentRef {
+        outer_env_ref: LexicalEnvironmentRef,
+    ) -> LexicalEnvironmentRef {
         self.create_declarative_environment(
             |_, record| {
                 for name in var_names {
@@ -1143,8 +1148,8 @@ impl VM {
     fn create_lexical_environment(
         &mut self,
         lex_names: &Vec<String>,
-        outer_env_ref: exec_context::LexicalEnvironmentRef,
-    ) -> exec_context::LexicalEnvironmentRef {
+        outer_env_ref: LexicalEnvironmentRef,
+    ) -> LexicalEnvironmentRef {
         self.create_declarative_environment(
             |_, record| {
                 for name in lex_names {
@@ -1158,11 +1163,12 @@ impl VM {
     fn create_function_environment(
         &mut self,
         user_func: &UserFunctionInfo,
+        outer_env: Option<LexicalEnvironmentRef>,
         args: &[Value],
         this: Value,
-    ) -> exec_context::LexicalEnvironmentRef {
-        let env = exec_context::LexicalEnvironment {
-            record: exec_context::EnvironmentRecord::Function {
+    ) -> LexicalEnvironmentRef {
+        let env = LexicalEnvironment {
+            record: EnvironmentRecord::Function {
                 record: {
                     let mut record = FxHashMap::default();
                     for name in &user_func.var_names {
@@ -1191,10 +1197,10 @@ impl VM {
                 },
                 this,
             },
-            outer: user_func.outer,
+            outer: outer_env,
         };
 
-        exec_context::LexicalEnvironmentRef(self.factory.alloc(env))
+        LexicalEnvironmentRef(self.factory.alloc(env))
     }
 
     /// Prepare a new context before invoking function.
@@ -1206,36 +1212,36 @@ impl VM {
     pub fn prepare_context_for_function_invokation(
         &mut self,
         user_func: &UserFunctionInfo,
+        outer_env: Option<LexicalEnvironmentRef>,
         args: &[Value],
         this: Value,
         mode: CallMode,
         constructor_call: bool,
     ) -> Result<(), RuntimeError> {
-        let context = std::mem::replace(
-            &mut self.current_context,
-            exec_context::ExecContext::empty(),
-        );
+        let context = std::mem::replace(&mut self.current_context, ExecContext::empty());
         self.saved_context.push(context);
 
         let this = if user_func.this_mode == ThisMode::Lexical {
             // Arrow function
-            user_func.outer.unwrap().get_this_binding()
+            outer_env.unwrap().get_this_binding()
         } else {
             this
         };
 
-        let var_env_ref = self.create_function_environment(&user_func, args, this);
+        let var_env_ref = self.create_function_environment(&user_func, outer_env, args, this);
 
         let mut lex_env_ref = self.create_lexical_environment(&user_func.lex_names, var_env_ref);
 
-        for func in &user_func.func_decls {
-            let mut func = func.copy_object(&mut self.factory.memory_allocator);
-            let name = func.as_function().name.clone().unwrap();
+        for func_info in &user_func.func_decls {
+            let name = func_info.func_name.clone().unwrap();
+            let mut func = self
+                .factory
+                .function(func_info.func_name.clone(), func_info.clone());
             func.set_function_outer_environment(lex_env_ref);
             lex_env_ref.set_value(name, func)?;
         }
 
-        let context = exec_context::ExecContext::new(
+        let context = ExecContext::new(
             user_func.code.clone(),
             var_env_ref,
             lex_env_ref,
@@ -1253,6 +1259,7 @@ impl VM {
     fn enter_user_function(
         &mut self,
         user_func: UserFunctionInfo,
+        outer_env: Option<LexicalEnvironmentRef>,
         args: &[Value],
         this: Value,
         constructor_call: bool,
@@ -1263,6 +1270,7 @@ impl VM {
 
         self.prepare_context_for_function_invokation(
             &user_func,
+            outer_env,
             args,
             this,
             CallMode::OrdinaryCall,

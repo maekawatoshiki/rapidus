@@ -129,7 +129,7 @@ fn repl(is_profile: bool, is_trace: bool) {
                     match global_context {
                         Some(ref mut context) => {
                             context.append_from_function_info(
-                                &mut vm.factory.memory_allocator,
+                                &mut vm.factory,
                                 &global_info,
                             );
                             context.module_func_id = global_info.module_func_id;

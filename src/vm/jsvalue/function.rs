@@ -1,4 +1,4 @@
-use super::value::*;
+//use super::value::*;
 use crate::builtin::BuiltinFuncTy;
 use crate::bytecode_gen::ByteCode;
 use crate::vm::exec_context::LexicalEnvironmentRef;
@@ -12,7 +12,11 @@ pub struct FunctionObjectInfo {
 
 #[derive(Clone)]
 pub enum FunctionObjectKind {
-    User(UserFunctionInfo),
+    User {
+        /// Internal slot \[\[Environment\]\]
+        outer_env: Option<LexicalEnvironmentRef>,
+        info: UserFunctionInfo,
+    },
     Builtin(BuiltinFuncTy),
 }
 
@@ -36,7 +40,7 @@ pub struct UserFunctionInfo {
     pub lex_names: Vec<String>,
 
     /// Declared functions to initialize
-    pub func_decls: Vec<Value>,
+    pub func_decls: Vec<UserFunctionInfo>,
 
     /// Bytecode to execute
     pub code: ByteCode,
@@ -49,10 +53,6 @@ pub struct UserFunctionInfo {
 
     /// Internal slot \[\[ThisMode\]\]
     pub this_mode: ThisMode,
-
-    /// Internal slot \[\[Environment\]\]
-    // TODO: Should rename 'outer' to 'environment'?
-    pub outer: Option<LexicalEnvironmentRef>,
 }
 
 #[derive(Clone, Debug, Copy, PartialEq)]
@@ -98,7 +98,6 @@ impl UserFunctionInfo {
             this_mode: ThisMode::Global,
             code: vec![0x0c, 0x28], // [PUSH_UNDEFINED][RETURN]
             exception_table: vec![],
-            outer: None,
         }
     }
 
@@ -115,17 +114,16 @@ impl UserFunctionInfo {
             this_mode: ThisMode::Global,
             code: vec![0x0c, 0x28], // [PUSH_UNDEFINED][RETURN]
             exception_table: vec![],
-            outer: None,
         }
     }
 }
 
 impl FunctionObjectInfo {
-    pub fn set_outer_environment(&mut self, outer_env: LexicalEnvironmentRef) {
+    pub fn set_outer_environment(&mut self, env: LexicalEnvironmentRef) {
         match self.kind {
-            FunctionObjectKind::User(UserFunctionInfo { ref mut outer, .. }) => {
-                *outer = Some(outer_env)
-            }
+            FunctionObjectKind::User {
+                ref mut outer_env, ..
+            } => *outer_env = Some(env),
             _ => {}
         }
     }
@@ -137,7 +135,7 @@ impl ::std::fmt::Debug for FunctionObjectKind {
             f,
             "{}",
             match self {
-                FunctionObjectKind::User(user_func) => format!("{:?}", user_func),
+                FunctionObjectKind::User { info, .. } => format!("{:?}", info),
                 FunctionObjectKind::Builtin(_) => "[BuiltinFunction]".to_string(),
             }
         )

@@ -414,23 +414,12 @@ impl GcTarget for object::Property {
 
 impl GcTarget for object::ObjectKind {
     fn initial_trace(&self, markset: &mut MarkSet) {
-        fn trace_user_function_info(
-            markset: &mut MarkSet,
-            user_func_info: &function::UserFunctionInfo,
-        ) {
-            for func_decl in &user_func_info.func_decls {
-                func_decl.initial_trace(markset);
-            }
-
-            if let Some(outer) = user_func_info.outer {
-                mark!(markset, outer.as_ptr());
-            }
-        }
-
         match self {
             object::ObjectKind::Function(func_info) => match func_info.kind {
-                function::FunctionObjectKind::User(ref user_func_info) => {
-                    trace_user_function_info(markset, user_func_info)
+                function::FunctionObjectKind::User{outer_env, ..} => {
+                    if let Some(env) = outer_env {
+                        mark!(markset, env.as_ptr());
+                    }
                 }
                 function::FunctionObjectKind::Builtin(_) => {}
             },
@@ -446,24 +435,12 @@ impl GcTarget for object::ObjectKind {
     }
 
     fn trace(&self, allocator: &mut MemoryAllocator, markset: &mut MarkSet) {
-        fn trace_user_function_info(
-            allocator: &mut MemoryAllocator,
-            markset: &mut MarkSet,
-            user_func_info: &function::UserFunctionInfo,
-        ) {
-            for func_decl in &user_func_info.func_decls {
-                func_decl.trace(allocator, markset);
-            }
-
-            if let Some(outer) = user_func_info.outer {
-                mark_if_white!(allocator, markset, outer.as_ptr());
-            }
-        }
-
         match self {
             object::ObjectKind::Function(func_info) => match func_info.kind {
-                function::FunctionObjectKind::User(ref user_func_info) => {
-                    trace_user_function_info(allocator, markset, user_func_info)
+                function::FunctionObjectKind::User{outer_env, ..} => {
+                    if let Some(env) = outer_env {
+                    mark_if_white!(allocator, markset, env.as_ptr());
+                    }
                 }
                 function::FunctionObjectKind::Builtin(_) => {}
             },

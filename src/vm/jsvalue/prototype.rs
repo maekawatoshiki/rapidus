@@ -29,7 +29,7 @@ impl ObjectPrototypes {
             let function_prototype = Value::Object(allocator.alloc(ObjectInfo {
                 kind: ObjectKind::Function(FunctionObjectInfo {
                     name: None,
-                    kind: FunctionObjectKind::User(UserFunctionInfo::default()),
+                    kind: FunctionObjectKind::User{ info: UserFunctionInfo::default(), outer_env: None },
                 }),
                 prototype: object_prototype,
                 property: make_property_map!(),

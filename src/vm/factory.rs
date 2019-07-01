@@ -90,7 +90,7 @@ impl Factory {
             ),
             kind: ObjectKind::Function(FunctionObjectInfo {
                 name: name,
-                kind: FunctionObjectKind::User(info)
+                kind: FunctionObjectKind::User{info, outer_env: None},
             }),
             sym_property: FxHashMap::default(),
         }));

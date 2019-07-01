@@ -1,7 +1,7 @@
 #![macro_use]
 use crate::vm::jsvalue::function::UserFunctionInfo;
 use crate::bytecode_gen::ByteCode;
-use crate::gc;
+//use crate::gc;
 use crate::vm::error::ErrorKind;
 use crate::vm::error::RuntimeError;
 use crate::vm::jsvalue::function::Exception;
@@ -125,13 +125,13 @@ impl ExecContext {
         self
     }
 
-    fn append_function(&mut self, memory_allocator: &mut gc::MemoryAllocator, f: Value) {
-        let mut val = f.copy_object(memory_allocator);
-        let name = val.as_function().name.clone().unwrap();
+    fn append_function(&mut self, factory: &mut Factory, info: UserFunctionInfo) {
+        let name = info.func_name.clone().unwrap();
+        let mut val = factory.function(info.func_name.clone(),info);
         val.set_function_outer_environment(self.lexical_environment);
         self.lex_env_mut().set_own_value(name, val).unwrap();
         use crate::gc::GcTarget;
-        self.initial_trace(&mut memory_allocator.roots);
+        self.initial_trace(&mut factory.memory_allocator.roots);
     }
 
     fn append_variable_to_var_env(&mut self, name: String) {
@@ -146,11 +146,11 @@ impl ExecContext {
 
     pub fn append_from_function_info(
         &mut self,
-        memory_allocator: &mut gc::MemoryAllocator,
+        factory: &mut Factory,
         info: &UserFunctionInfo,
     ) {
         for f in &info.func_decls {
-            self.append_function(memory_allocator, *f);
+            self.append_function(factory, f.clone());
         }
 
         for name in &info.var_names {

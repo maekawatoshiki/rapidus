@@ -43,7 +43,7 @@ pub struct FunctionInfo {
     pub param_names: Vec<String>,
     pub var_names: Vec<String>,
     pub lex_names: Vec<String>,
-    pub func_decls: Vec<Value>,
+    pub func_decls: Vec<UserFunctionInfo>,
     pub level: Vec<Level>,
     pub exception_table: Vec<Exception>,
     pub to_source_pos: ToSourcePos,
@@ -89,11 +89,7 @@ impl<'a> CodeGenerator<'a> {
         }
     }
 
-    pub fn compile(
-        &mut self,
-        node: &Node,
-        use_value: bool,
-    ) -> Result<UserFunctionInfo, Error> {
+    pub fn compile(&mut self, node: &Node, use_value: bool) -> Result<UserFunctionInfo, Error> {
         let mut iseq = vec![];
         self.visit(node, &mut iseq, use_value)?;
         self.bytecode_generator.append_return(&mut iseq);
@@ -115,7 +111,6 @@ impl<'a> CodeGenerator<'a> {
             this_mode: ThisMode::Global,
             code: iseq,
             exception_table: function_info.exception_table,
-            outer: None,
         })
     }
 }
@@ -590,9 +585,9 @@ impl<'a> CodeGenerator<'a> {
         params: &FormalParameters,
         body: &Node,
     ) -> CodeGenResult {
-        let func = self.visit_function(Some(name.clone()), params, body, true)?;
+        let func_info = self.visit_function(Some(name.clone()), params, body, true)?;
         self.current_function().var_names.push(name.clone());
-        self.current_function().func_decls.push(func);
+        self.current_function().func_decls.push(func_info);
         Ok(())
     }
 
@@ -609,8 +604,9 @@ impl<'a> CodeGenerator<'a> {
             return Ok(());
         }
 
-        let func = self.visit_function(name.clone(), params, body, arrow_function)?;
-        self.bytecode_generator.append_push_const(func, iseq);
+        let func_info = self.visit_function(name.clone(), params, body, arrow_function)?;
+        let val = self.factory.function(func_info.func_name.clone(), func_info);
+        self.bytecode_generator.append_push_const(val, iseq);
         self.bytecode_generator.append_set_outer_env(iseq);
 
         Ok(())
@@ -622,7 +618,7 @@ impl<'a> CodeGenerator<'a> {
         params: &FormalParameters,
         body: &Node,
         arrow_function: bool,
-    ) -> Result<Value, Error> {
+    ) -> Result<UserFunctionInfo, Error> {
         self.function_stack
             .push(FunctionInfo::new(name, self.module_func_id));
 
@@ -653,11 +649,10 @@ impl<'a> CodeGenerator<'a> {
 
         let func_id = self.factory.new_func_id();
 
-        self.to_source_map.insert(func_id, function_info.to_source_pos);
+        self.to_source_map
+            .insert(func_id, function_info.to_source_pos);
 
-        Ok(self.factory.function(
-            function_info.name.clone(),
-            UserFunctionInfo {
+        Ok(UserFunctionInfo {
                 func_name: function_info.name,
                 func_id,
                 module_func_id: self.module_func_id,
@@ -673,9 +668,8 @@ impl<'a> CodeGenerator<'a> {
                 },
                 code: func_iseq,
                 exception_table: function_info.exception_table,
-                outer: None,
-            },
-        ))
+            }
+        )
     }
 
     pub fn visit_var_decl(
