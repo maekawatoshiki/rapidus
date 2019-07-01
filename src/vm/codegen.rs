@@ -104,6 +104,7 @@ impl<'a> CodeGenerator<'a> {
             .insert(module_id, function_info.to_source_pos.clone());
 
         Ok(UserFunctionInfo {
+            func_name: None,
             func_id: module_id,
             module_func_id: module_id,
             params: vec![],
@@ -655,8 +656,9 @@ impl<'a> CodeGenerator<'a> {
         self.to_source_map.insert(func_id, function_info.to_source_pos);
 
         Ok(self.factory.function(
-            function_info.name,
+            function_info.name.clone(),
             UserFunctionInfo {
+                func_name: function_info.name,
                 func_id,
                 module_func_id: self.module_func_id,
                 params,

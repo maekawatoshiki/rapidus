@@ -18,6 +18,8 @@ pub enum FunctionObjectKind {
 
 #[derive(Clone, Debug)]
 pub struct UserFunctionInfo {
+    pub func_name: Option<String>,
+
     /// Unique id for many purposes
     pub func_id: FunctionId,
 
@@ -85,6 +87,7 @@ pub enum DestinationKind {
 impl UserFunctionInfo {
     pub fn new(factory: &mut Factory, module_func_id: FunctionId) -> Self {
         UserFunctionInfo {
+            func_name: None,
             func_id: factory.new_func_id(),
             module_func_id,
             params: vec![],
@@ -101,6 +104,7 @@ impl UserFunctionInfo {
 
     pub fn default() -> Self {
         UserFunctionInfo {
+            func_name: None,
             func_id: FunctionId::default(),
             module_func_id: FunctionId::default(),
             params: vec![],
