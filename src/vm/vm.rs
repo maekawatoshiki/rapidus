@@ -866,6 +866,10 @@ impl VM {
                     self.profile.trace_string,
                 );
             }
+        } else {
+            let duration =
+                self.profile.instant.elapsed() - self.profile.prev_time - self.profile.gc_stop_time;
+            println!("VM start up time {} msec", duration.as_millis());
         }
         self.profile.start_flag = true;
 
@@ -904,16 +908,14 @@ impl VM {
             .fold(0, |acc, x| acc + x.1.as_micros()) as f64;
 
         let total_time = total_gc_time + total_inst_time;
-        println!(
-            "total execution time {} microsecs  gc time {} microsecs",
-            total_time, total_gc_time
-        );
+        println!("total execution time: {:>10} microsecs", total_time);
+        println!("gc time:              {:>10} microsecs", total_gc_time);
 
         println!("Inst          total %    ave.time / inst");
         for (i, prof) in self.profile.inst_profile.iter().enumerate() {
             if prof.0 != 0 {
                 println!(
-                    "{:12} {:>6.2} % {:>10.2} nanosecs",
+                    "{:12} {:>6.2} % {:>10.0} nsecs",
                     inst_to_inst_name(i as u8),
                     prof.1.as_micros() as f64 / total_time * 100.0,
                     prof.1.as_nanos() as f64 / prof.0 as f64
@@ -921,6 +923,18 @@ impl VM {
             }
         }
         println!("# GC performance");
+        println!(
+            "total allocated:    {:>8} bytes",
+            self.factory.memory_allocator.total_allocated_size
+        );
+        println!(
+            "total collected:    {:>8} bytes",
+            self.factory.memory_allocator.total_collected_size
+        );
+        println!(
+            "currently allocated:{:>8} bytes",
+            self.factory.memory_allocator.allocated_size
+        );
         println!("State    count        total time");
         let prof = self.profile.gc_profile;
         println!(

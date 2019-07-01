@@ -33,7 +33,9 @@ impl Hash for GcTargetKey {
 #[derive(Debug)]
 pub struct MemoryAllocator {
     allocated_memory: MarkMap,
-    allocated_size: usize,
+    pub allocated_size: usize,
+    pub total_allocated_size: usize,
+    pub total_collected_size: usize,
     pub roots: MarkSet,
     locked: MarkSet,
     pub state: GCState,
@@ -72,6 +74,8 @@ impl MemoryAllocator {
         MemoryAllocator {
             allocated_memory: MarkMap::default(),
             allocated_size: 0,
+            total_allocated_size: 0,
+            total_collected_size: 0,
             roots: MarkSet::default(),
             locked: MarkSet::default(),
             state: GCState::Initial,
@@ -84,6 +88,7 @@ impl MemoryAllocator {
         let data_size = mem::size_of_val(&data);
         let ptr = Box::into_raw(Box::new(data));
         self.allocated_size += data_size;
+        self.total_allocated_size += data_size;
         self.allocated_memory.insert(GcTargetKey(ptr), self.white);
         ptr
     }
@@ -165,6 +170,7 @@ impl MemoryAllocator {
                 // println!("before {:?}", self.allocated_memory.len());
 
                 let white = self.white;
+                let mut size = 0;
                 self.allocated_memory.retain(|obj, mark| {
                     if mark == &MarkState::Black || mark == &MarkState::NeverReleased {
                         *mark = white;
@@ -173,10 +179,11 @@ impl MemoryAllocator {
                     if mark == &white {
                         return true;
                     }
-                    unsafe { Box::from_raw(obj.0).free() };
+                    size = unsafe { Box::from_raw(obj.0).free() };
                     false
                 });
-
+                self.total_collected_size += size;
+                self.allocated_size -= size;
                 // println!("now allocated objects: {:?}", self.allocated_memory.len());
 
                 GCState::Initial
