@@ -1,6 +1,6 @@
 #![macro_use]
-use crate::vm::jsvalue::function::UserFunctionInfo;
 use crate::bytecode_gen::ByteCode;
+use crate::vm::jsvalue::function::{FuncInfoRef, UserFunctionInfo};
 //use crate::gc;
 use crate::vm::error::ErrorKind;
 use crate::vm::error::RuntimeError;
@@ -125,9 +125,9 @@ impl ExecContext {
         self
     }
 
-    fn append_function(&mut self, factory: &mut Factory, info: UserFunctionInfo) {
+    fn append_function(&mut self, factory: &mut Factory, info: FuncInfoRef) {
         let name = info.func_name.clone().unwrap();
-        let mut val = factory.function(info.func_name.clone(),info);
+        let mut val = factory.function(info.func_name.clone(), info);
         val.set_function_outer_environment(self.lexical_environment);
         self.lex_env_mut().set_own_value(name, val).unwrap();
         use crate::gc::GcTarget;
@@ -144,13 +144,9 @@ impl ExecContext {
         lex_env.set_own_value(name, Value::uninitialized()).unwrap(); // TODO: unwrap()
     }
 
-    pub fn append_from_function_info(
-        &mut self,
-        factory: &mut Factory,
-        info: &UserFunctionInfo,
-    ) {
+    pub fn append_from_function_info(&mut self, factory: &mut Factory, info: &UserFunctionInfo) {
         for f in &info.func_decls {
-            self.append_function(factory, f.clone());
+            self.append_function(factory, *f);
         }
 
         for name in &info.var_names {

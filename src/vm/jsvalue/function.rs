@@ -15,7 +15,7 @@ pub enum FunctionObjectKind {
     User {
         /// Internal slot \[\[Environment\]\]
         outer_env: Option<LexicalEnvironmentRef>,
-        info: UserFunctionInfo,
+        info: FuncInfoRef,
     },
     Builtin(BuiltinFuncTy),
 }
@@ -40,7 +40,7 @@ pub struct UserFunctionInfo {
     pub lex_names: Vec<String>,
 
     /// Declared functions to initialize
-    pub func_decls: Vec<UserFunctionInfo>,
+    pub func_decls: Vec<FuncInfoRef>,
 
     /// Bytecode to execute
     pub code: ByteCode,
@@ -60,7 +60,7 @@ pub struct FuncInfoRef(*mut UserFunctionInfo);
 
 impl UserFunctionInfo {
     pub fn as_ref(&mut self) -> FuncInfoRef {
-        FuncInfoRef::new(self)
+        FuncInfoRef::new(&mut *self as *mut UserFunctionInfo)
     }
 }
 
@@ -69,8 +69,8 @@ impl FuncInfoRef {
         self.0
     }
 
-    pub fn new(info: &mut UserFunctionInfo) -> FuncInfoRef {
-        FuncInfoRef(&mut *info as *mut UserFunctionInfo)
+    pub fn new(info: *mut UserFunctionInfo) -> FuncInfoRef {
+        FuncInfoRef(info)
     }
 }
 
@@ -78,7 +78,10 @@ impl std::ops::Deref for FuncInfoRef {
     type Target = UserFunctionInfo;
 
     fn deref(&self) -> &UserFunctionInfo {
-        unsafe { &*self.as_ptr() }
+        //println!("deref");
+        let refs = unsafe { &*self.as_ptr() };
+        //println!("derefed {}", refs.func_id.0);
+        refs
     }
 }
 

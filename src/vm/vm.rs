@@ -67,9 +67,9 @@ macro_rules! gc_lock {
 
 impl VM {
     pub fn new() -> Self {
-        let mut memory_allocator = gc::MemoryAllocator::new();
-        let object_prototypes = ObjectPrototypes::new(&mut memory_allocator);
-        let mut factory = Factory::new(memory_allocator, object_prototypes);
+        let memory_allocator = gc::MemoryAllocator::new();
+        let mut factory = Factory::new(memory_allocator, ObjectPrototypes::dummy());
+        factory.object_prototypes = ObjectPrototypes::new(&mut factory);
         let global_env = LexicalEnvironment::new_global_initialized(&mut factory);
         let global_environment = LexicalEnvironmentRef(factory.alloc(global_env));
         VM {
@@ -127,11 +127,7 @@ impl VM {
         self.profile.gc_profile[i].1 += stop_time;
     }
 
-    pub fn compile(
-        &mut self,
-        node: &Node,
-        use_value: bool,
-    ) -> Result<UserFunctionInfo, codegen::Error> {
+    pub fn compile(&mut self, node: &Node, use_value: bool) -> Result<FuncInfoRef, codegen::Error> {
         let func_id = self.factory.new_func_id();
         let mut code_generator =
             CodeGenerator::new(&mut self.constant_table, &mut self.factory, func_id);
@@ -142,27 +138,25 @@ impl VM {
         res
     }
 
-    pub fn create_global_context(&mut self, global_info: UserFunctionInfo) -> ExecContext {
+    pub fn create_global_context(&mut self, global_info: FuncInfoRef) -> ExecContext {
         let global_env_ref = self.global_environment;
 
         let var_env = self.create_variable_environment(&global_info.var_names, global_env_ref);
 
         let mut lex_env = self.create_lexical_environment(&global_info.lex_names, var_env);
 
-        for func_info in global_info.func_decls {
-            let name = func_info.func_name.clone().unwrap();
-            let mut val = self
-                .factory
-                .function(func_info.func_name.clone(), func_info);
+        for info in &global_info.func_decls {
+            let name = info.func_name.clone().unwrap();
+            let mut val = self.factory.function(info.func_name.clone(), *info);
             val.set_function_outer_environment(lex_env);
             lex_env.set_value(name, val).unwrap();
         }
 
         let context = ExecContext::new(
-            global_info.code,
+            global_info.code.clone(),
             var_env,
             lex_env,
-            global_info.exception_table,
+            global_info.exception_table.clone(),
             global_env_ref.get_global_object(),
             CallMode::OrdinaryCall,
         );
@@ -170,7 +164,9 @@ impl VM {
         context
     }
 
-    pub fn run_global(&mut self, func_info: UserFunctionInfo) -> VMResult {
+    pub fn run_global(&mut self, func_info: FuncInfoRef) -> VMResult {
+        println!("global {:?}", func_info);
+        self.factory.print_user_func_info();
         self.current_context = self.create_global_context(func_info);
         self.run()?;
 
@@ -186,16 +182,15 @@ impl VM {
 
         match info.kind {
             FunctionObjectKind::Builtin(func) => gc_lock!(self, args, func(self, args, this)),
-            FunctionObjectKind::User {
-                ref info,
-                outer_env,
-            } => self.call_user_function(info, outer_env, args, this, false),
+            FunctionObjectKind::User { info, outer_env } => {
+                self.call_user_function(info, outer_env, args, this, false)
+            }
         }
     }
 
     fn call_user_function(
         &mut self,
-        user_func: &UserFunctionInfo,
+        user_func: FuncInfoRef,
         outer_env: Option<LexicalEnvironmentRef>,
         args: &[Value],
         this: Value,
@@ -1162,7 +1157,7 @@ impl VM {
 
     fn create_function_environment(
         &mut self,
-        user_func: &UserFunctionInfo,
+        user_func: FuncInfoRef,
         outer_env: Option<LexicalEnvironmentRef>,
         args: &[Value],
         this: Value,
@@ -1211,7 +1206,7 @@ impl VM {
     /// 5. Generate a new context, and set the current context (running execution context) to it.
     pub fn prepare_context_for_function_invokation(
         &mut self,
-        user_func: &UserFunctionInfo,
+        user_func: FuncInfoRef,
         outer_env: Option<LexicalEnvironmentRef>,
         args: &[Value],
         this: Value,
@@ -1228,15 +1223,13 @@ impl VM {
             this
         };
 
-        let var_env_ref = self.create_function_environment(&user_func, outer_env, args, this);
+        let var_env_ref = self.create_function_environment(user_func, outer_env, args, this);
 
         let mut lex_env_ref = self.create_lexical_environment(&user_func.lex_names, var_env_ref);
 
-        for func_info in &user_func.func_decls {
-            let name = func_info.func_name.clone().unwrap();
-            let mut func = self
-                .factory
-                .function(func_info.func_name.clone(), func_info.clone());
+        for info in &user_func.func_decls {
+            let name = info.func_name.clone().unwrap();
+            let mut func = self.factory.function(info.func_name.clone(), *info);
             func.set_function_outer_environment(lex_env_ref);
             lex_env_ref.set_value(name, func)?;
         }
@@ -1258,7 +1251,7 @@ impl VM {
 
     fn enter_user_function(
         &mut self,
-        user_func: UserFunctionInfo,
+        user_func: FuncInfoRef,
         outer_env: Option<LexicalEnvironmentRef>,
         args: &[Value],
         this: Value,
@@ -1269,7 +1262,7 @@ impl VM {
         }
 
         self.prepare_context_for_function_invokation(
-            &user_func,
+            user_func,
             outer_env,
             args,
             this,

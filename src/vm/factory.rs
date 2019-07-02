@@ -3,14 +3,14 @@ use crate::gc;
 use crate::vm::{
     jsvalue::prototype::ObjectPrototypes,
     jsvalue::value::{
-        ArrayObjectInfo, ErrorObjectInfo, FunctionObjectInfo, FunctionObjectKind, ObjectInfo,
-        ObjectKind, Property, SymbolInfo, UserFunctionInfo, Value,
+        ArrayObjectInfo, ErrorObjectInfo, FuncInfoRef, FunctionObjectInfo, FunctionObjectKind,
+        ObjectInfo, ObjectKind, Property, SymbolInfo, UserFunctionInfo, Value,
     },
 };
 use rustc_hash::FxHashMap;
 
 #[derive(Clone, Hash, Copy)]
-pub struct FunctionId(usize);
+pub struct FunctionId(pub usize);
 
 impl PartialEq for FunctionId {
     fn eq(&self, other: &FunctionId) -> bool {
@@ -35,32 +35,89 @@ impl std::fmt::Debug for FunctionId {
 pub struct Factory {
     pub memory_allocator: gc::MemoryAllocator,
     pub object_prototypes: ObjectPrototypes,
+    pub user_func_info: Vec<Option<UserFunctionInfo>>,
     pub next_func_id: usize,
 }
 
 impl Factory {
     pub fn new(memory_allocator: gc::MemoryAllocator, object_prototypes: ObjectPrototypes) -> Self {
-        Factory {
+        let mut factory = Factory {
             memory_allocator,
             object_prototypes,
-            next_func_id: 0,
-        }
+            user_func_info: vec![None; 30],
+            next_func_id: 1,
+        };
+        factory.user_func_info[0] = Some(UserFunctionInfo::default());
+        factory
     }
 
     pub fn alloc<T: gc::GcTarget + 'static>(&mut self, data: T) -> *mut T {
         self.memory_allocator.alloc(data)
     }
+}
 
+impl Factory {
     pub fn new_func_id(&mut self) -> FunctionId {
         let id = self.next_func_id;
         self.next_func_id = id + 1;
         FunctionId(id)
     }
 
-    pub fn main_func_id(&mut self) -> FunctionId {
+    pub fn default_func_id(&mut self) -> FunctionId {
         FunctionId(0)
     }
 
+    pub fn add_new_user_func_info(
+        &mut self,
+        func_id: FunctionId,
+        user_func_info: UserFunctionInfo,
+    ) -> FuncInfoRef {
+        let len = self.user_func_info.len();
+        if func_id.0 < len {
+            if self.user_func_info[func_id.0].is_some() {
+                panic!("already exists!");
+            }
+            self.user_func_info[func_id.0] = Some(user_func_info);
+        } else if func_id.0 == len {
+            self.user_func_info.push(Some(user_func_info));
+        } else {
+            self.user_func_info.resize(func_id.0, None);
+            self.user_func_info.push(Some(user_func_info));
+        }
+        let func_ref = self.get_user_func_info(func_id);
+        println!("add func({:?}) {:?}", func_id, func_ref);
+        func_ref
+    }
+
+    pub fn get_user_func_info(&mut self, func_id: FunctionId) -> FuncInfoRef {
+        if func_id.0 >= self.user_func_info.len() {
+            panic!("FunctionId is not exists.");
+        }
+        if let Some(ref mut info) = self.user_func_info[func_id.0] {
+            info.as_ref()
+        } else {
+            panic!("None!");
+        }
+    }
+
+    pub fn get_default_user_func_info(&mut self) -> FuncInfoRef {
+        if let Some(ref mut info) = self.user_func_info[0] {
+            info.as_ref()
+        } else {
+            unreachable!();
+        }
+    }
+
+    pub fn print_user_func_info(&mut self) {
+        for i in 0..self.user_func_info.len() {
+            if let Some(info) = &mut self.user_func_info[i] {
+                println!("  {:?}", info.as_ref());
+            }
+        }
+    }
+}
+
+impl Factory {
     /// Generate Value for a string.
     pub fn string(&mut self, body: impl Into<String>) -> Value {
         Value::String(self.alloc(std::ffi::CString::new(body.into()).unwrap()))
@@ -77,7 +134,7 @@ impl Factory {
     }
 
     /// Generate Value for a JS function.
-    pub fn function(&mut self, name: Option<String>, info: UserFunctionInfo) -> Value {
+    pub fn function(&mut self, name: Option<String>, info: FuncInfoRef) -> Value {
         let name_prop = self.string(name.clone().unwrap_or("".to_string()));
         let prototype = self.object(FxHashMap::default());
 
