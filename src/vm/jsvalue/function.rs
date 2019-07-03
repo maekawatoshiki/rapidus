@@ -72,6 +72,10 @@ impl FuncInfoRef {
     pub fn new(info: *mut UserFunctionInfo) -> FuncInfoRef {
         FuncInfoRef(info)
     }
+
+    pub fn default() -> FuncInfoRef {
+        FuncInfoRef(std::ptr::null_mut() as *mut UserFunctionInfo)
+    }
 }
 
 impl std::ops::Deref for FuncInfoRef {

@@ -117,7 +117,7 @@ impl<'a> CodeGenerator<'a> {
 
         Ok(self
             .factory
-            .add_new_user_func_info(module_id, user_func_info))
+            .alloc_user_func_info(module_id, user_func_info))
     }
 }
 
@@ -678,7 +678,7 @@ impl<'a> CodeGenerator<'a> {
             exception_table: function_info.exception_table,
         };
 
-        let func_ref = self.factory.add_new_user_func_info(func_id, user_func_info);
+        let func_ref = self.factory.alloc_user_func_info(func_id, user_func_info);
 
         Ok(func_ref)
     }

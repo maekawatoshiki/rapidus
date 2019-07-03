@@ -35,7 +35,7 @@ impl std::fmt::Debug for FunctionId {
 pub struct Factory {
     pub memory_allocator: gc::MemoryAllocator,
     pub object_prototypes: ObjectPrototypes,
-    pub user_func_info: Vec<Option<UserFunctionInfo>>,
+    pub func_refs: Vec<Option<FuncInfoRef>>,
     pub next_func_id: usize,
 }
 
@@ -44,10 +44,12 @@ impl Factory {
         let mut factory = Factory {
             memory_allocator,
             object_prototypes,
-            user_func_info: vec![None; 30],
+            func_refs: vec![None; 30],
             next_func_id: 1,
         };
-        factory.user_func_info[0] = Some(UserFunctionInfo::default());
+        let func_ref =
+            factory.alloc_user_func_info(FunctionId::default(), UserFunctionInfo::default());
+        factory.func_refs[0] = Some(func_ref);
         factory
     }
 
@@ -67,51 +69,50 @@ impl Factory {
         FunctionId(0)
     }
 
-    pub fn add_new_user_func_info(
+    pub fn alloc_user_func_info(
         &mut self,
         func_id: FunctionId,
         user_func_info: UserFunctionInfo,
     ) -> FuncInfoRef {
-        let len = self.user_func_info.len();
+        let func_ref = FuncInfoRef::new(Box::into_raw(Box::new(user_func_info)));
+        let len = self.func_refs.len();
         if func_id.0 < len {
-            if self.user_func_info[func_id.0].is_some() {
+            if self.func_refs[func_id.0].is_some() {
                 panic!("already exists!");
             }
-            self.user_func_info[func_id.0] = Some(user_func_info);
+            self.func_refs[func_id.0] = Some(func_ref);
         } else if func_id.0 == len {
-            self.user_func_info.push(Some(user_func_info));
+            self.func_refs.push(Some(func_ref));
         } else {
-            self.user_func_info.resize(func_id.0, None);
-            self.user_func_info.push(Some(user_func_info));
+            self.func_refs.resize(func_id.0, None);
+            self.func_refs.push(Some(func_ref));
         }
-        let func_ref = self.get_user_func_info(func_id);
-        println!("add func({:?}) {:?}", func_id, func_ref);
         func_ref
     }
 
-    pub fn get_user_func_info(&mut self, func_id: FunctionId) -> FuncInfoRef {
-        if func_id.0 >= self.user_func_info.len() {
+    pub fn get_func_ref(&self, func_id: FunctionId) -> FuncInfoRef {
+        if func_id.0 >= self.func_refs.len() {
             panic!("FunctionId is not exists.");
         }
-        if let Some(ref mut info) = self.user_func_info[func_id.0] {
-            info.as_ref()
+        if let Some(func_ref) = self.func_refs[func_id.0] {
+            func_ref
         } else {
             panic!("None!");
         }
     }
 
-    pub fn get_default_user_func_info(&mut self) -> FuncInfoRef {
-        if let Some(ref mut info) = self.user_func_info[0] {
-            info.as_ref()
+    pub fn get_default_func_ref(&self) -> FuncInfoRef {
+        if let Some(func_ref) = self.func_refs[0] {
+            func_ref
         } else {
             unreachable!();
         }
     }
 
-    pub fn print_user_func_info(&mut self) {
-        for i in 0..self.user_func_info.len() {
-            if let Some(info) = &mut self.user_func_info[i] {
-                println!("  {:?}", info.as_ref());
+    pub fn print_func_refs(&self) {
+        for i in 0..self.func_refs.len() {
+            if let Some(info) = self.func_refs[i] {
+                println!("  {:?}", info);
             }
         }
     }

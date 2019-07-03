@@ -1,10 +1,10 @@
 #![macro_use]
-use crate::bytecode_gen::ByteCode;
+//use crate::bytecode_gen::ByteCode;
 use crate::vm::jsvalue::function::{FuncInfoRef, UserFunctionInfo};
 //use crate::gc;
 use crate::vm::error::ErrorKind;
 use crate::vm::error::RuntimeError;
-use crate::vm::jsvalue::function::Exception;
+//use crate::vm::jsvalue::function::Exception;
 use crate::vm::jsvalue::value::{BoxedValue, Value};
 use crate::vm::vm::{CallMode, Factory, FunctionId, VMResult};
 use rustc_hash::FxHashMap;
@@ -20,8 +20,9 @@ pub struct ExecContext {
     pub pc: usize,
     pub current_inst_pc: usize,
     pub stack: Vec<BoxedValue>,
-    pub bytecode: ByteCode,
-    pub exception_table: Vec<Exception>,
+    pub func_ref: FuncInfoRef,
+    //pub bytecode: ByteCode,
+    //pub exception_table: Vec<Exception>,
     /// This value in the context.
     pub this: Value,
     /// If true, calling JS function as a constructor.
@@ -61,10 +62,9 @@ pub enum EnvironmentRecord {
 
 impl ExecContext {
     pub fn new(
-        bytecode: ByteCode,
         var_env: LexicalEnvironmentRef,
         lex_env: LexicalEnvironmentRef,
-        exception_table: Vec<Exception>,
+        func_ref: FuncInfoRef,
         this: Value,
         call_mode: CallMode,
     ) -> Self {
@@ -74,8 +74,7 @@ impl ExecContext {
             pc: 0,
             current_inst_pc: 0,
             stack: vec![],
-            bytecode,
-            exception_table,
+            func_ref,
             this,
             constructor_call: false,
             call_mode,
@@ -91,8 +90,7 @@ impl ExecContext {
             pc: 0,
             current_inst_pc: 0,
             stack: vec![],
-            bytecode: vec![],
-            exception_table: vec![],
+            func_ref: FuncInfoRef::default(),
             this: Value::undefined(),
             constructor_call: false,
             call_mode: CallMode::OrdinaryCall,

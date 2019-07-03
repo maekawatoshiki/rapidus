@@ -15,7 +15,7 @@ pub fn function(factory: &mut Factory) -> Value {
 pub fn function_constructor(vm: &mut VM, _args: &[Value], _this: Value) -> VMValueResult {
     let user_func_info = UserFunctionInfo::new(&mut vm.factory, vm.current_context.module_func_id);
     let func_id = vm.factory.new_func_id();
-    let func_info = vm.factory.add_new_user_func_info(func_id, user_func_info);
+    let func_info = vm.factory.alloc_user_func_info(func_id, user_func_info);
     let func = vm.factory.function(None, func_info);
     Ok(func)
 }

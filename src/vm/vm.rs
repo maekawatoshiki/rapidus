@@ -153,10 +153,9 @@ impl VM {
         }
 
         let context = ExecContext::new(
-            global_info.code.clone(),
             var_env,
             lex_env,
-            global_info.exception_table.clone(),
+            global_info,
             global_env_ref.get_global_object(),
             CallMode::OrdinaryCall,
         );
@@ -165,8 +164,6 @@ impl VM {
     }
 
     pub fn run_global(&mut self, func_info: FuncInfoRef) -> VMResult {
-        println!("global {:?}", func_info);
-        self.factory.print_user_func_info();
         self.current_context = self.create_global_context(func_info);
         self.run()?;
 
@@ -311,7 +308,7 @@ impl VM {
 
 macro_rules! read_int8 {
     ($vm:expr, $var:ident, $ty:ty) => {
-        let $var = $vm.current_context.bytecode[$vm.current_context.pc] as $ty;
+        let $var = $vm.current_context.func_ref.code[$vm.current_context.pc] as $ty;
         $vm.current_context.pc += 1;
     };
 }
@@ -319,7 +316,7 @@ macro_rules! read_int8 {
 macro_rules! read_int32 {
     ($vm:expr, $var:ident, $ty:ty) => {
         let $var = {
-            let iseq = &$vm.current_context.bytecode;
+            let iseq = &$vm.current_context.func_ref.code;
             let pc = $vm.current_context.pc;
             ((iseq[pc as usize + 3] as $ty) << 24)
                 + ((iseq[pc as usize + 2] as $ty) << 16)
@@ -343,7 +340,7 @@ impl VM {
             let mut trycatch_found = false;
             let save_error_info = vm.current_context.error_unknown();
             loop {
-                for exception in &vm.current_context.exception_table {
+                for exception in &vm.current_context.func_ref.exception_table {
                     let in_range = exception.start <= vm.current_context.pc
                         && vm.current_context.pc < exception.end;
                     if !in_range {
@@ -417,7 +414,7 @@ impl VM {
                 }};
             }
 
-            let inst = self.current_context.bytecode[self.current_context.pc];
+            let inst = self.current_context.func_ref.code[self.current_context.pc];
             self.profile.current_inst = inst;
             match inst {
                 // TODO: Macro for bin ops?
@@ -822,7 +819,7 @@ impl VM {
                 _ => {
                     print!("Not yet implemented VMInst: ");
                     show_inst(
-                        &self.current_context.bytecode,
+                        &self.current_context.func_ref.code,
                         self.current_context.pc,
                         &self.constant_table,
                     );
@@ -874,7 +871,7 @@ impl VM {
             self.profile.trace_string = format!(
                 "{} {}",
                 crate::bytecode_gen::show_inst(
-                    &self.current_context.bytecode,
+                    &self.current_context.func_ref.code,
                     self.current_context.current_inst_pc,
                     &self.constant_table,
                 ),
@@ -1235,10 +1232,9 @@ impl VM {
         }
 
         let context = ExecContext::new(
-            user_func.code.clone(),
             var_env_ref,
             lex_env_ref,
-            user_func.exception_table.clone(),
+            user_func,
             this,
             mode,
         )

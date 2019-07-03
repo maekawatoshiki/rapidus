@@ -134,8 +134,7 @@ fn repl(is_profile: bool, is_trace: bool) {
                             );
                             context.module_func_id = global_info.module_func_id;
                             context.func_id = global_info.func_id;
-                            context.bytecode = global_info.code.clone();
-                            context.exception_table = global_info.exception_table.clone();
+                            context.func_ref = global_info;
                         }
                         None => global_context = Some(vm.create_global_context(global_info)),
                     }

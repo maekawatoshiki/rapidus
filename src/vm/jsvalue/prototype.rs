@@ -24,13 +24,13 @@ impl ObjectPrototypes {
             property: make_property_map!(),
             sym_property: FxHashMap::default(),
         }));
-        let default_func_info = factory.get_default_user_func_info();
+        let default_func_ref = factory.get_default_func_ref();
         // https://www.ecma-international.org/ecma-262/9.0/index.html#sec-properties-of-the-function-prototype-object
         let function_prototype = {
             let function_prototype = Value::Object(factory.alloc(ObjectInfo {
                 kind: ObjectKind::Function(FunctionObjectInfo {
                     name: None,
-                    kind: FunctionObjectKind::User{ info: default_func_info, outer_env: None },
+                    kind: FunctionObjectKind::User{ info: default_func_ref, outer_env: None },
                 }),
                 prototype: object_prototype,
                 property: make_property_map!(),
