@@ -105,7 +105,7 @@ impl MemoryAllocator {
         saved_context: &Vec<exec_context::ExecContext>,
     ) {
         self.counter += 1;
-        if self.counter < 20 {
+        if self.counter < 1 {
             return;
         };
         self.counter = 0;

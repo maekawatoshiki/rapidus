@@ -6,16 +6,11 @@ use crate::parser::ScriptInfo;
 pub use crate::vm::exec_context::{
     EnvironmentRecord, ExecContext, LexicalEnvironment, LexicalEnvironmentRef,
 };
-pub use crate::vm::jsvalue::function::{DestinationKind, ThisMode, FunctionParameter};
 pub use crate::vm::factory::{Factory, FunctionId};
+pub use crate::vm::jsvalue::function::{DestinationKind, FunctionParameter, ThisMode};
 use crate::vm::{
-    codegen,
-    codegen::CodeGenerator,
-    constant,
-    error::*,
-    jsvalue::prototype::ObjectPrototypes,
-    jsvalue::symbol::GlobalSymbolRegistry,
-    jsvalue::value::*,
+    codegen, codegen::CodeGenerator, constant, error::*, jsvalue::prototype::ObjectPrototypes,
+    jsvalue::symbol::GlobalSymbolRegistry, jsvalue::value::*,
 };
 use rustc_hash::FxHashMap;
 use std::time::{Duration, Instant};
@@ -60,9 +55,9 @@ pub enum CallMode {
 
 macro_rules! gc_lock {
     ($vm:ident, $targets:expr, $($body:tt)*) => { {
-        for arg in $targets { $vm.factory.memory_allocator.lock(*arg) }
+        //for arg in $targets { $vm.factory.memory_allocator.lock(*arg) }
         let ret = { $($body)* };
-        for arg in $targets { $vm.factory.memory_allocator.unlock(*arg) }
+        //for arg in $targets { $vm.factory.memory_allocator.unlock(*arg) }
         ret
     } }
 }
@@ -143,9 +138,13 @@ impl VM {
     pub fn create_global_context(&mut self, global_info: FuncInfoRef) -> ExecContext {
         let global_env_ref = self.global_environment;
 
-        let var_env = self.factory.create_variable_environment(&global_info.var_names, global_env_ref);
+        let var_env = self
+            .factory
+            .create_variable_environment(&global_info.var_names, global_env_ref);
 
-        let mut lex_env = self.factory.create_lexical_environment(&global_info.lex_names, var_env);
+        let mut lex_env = self
+            .factory
+            .create_lexical_environment(&global_info.lex_names, var_env);
 
         for info in &global_info.func_decls {
             let name = info.func_name.clone().unwrap();
@@ -799,11 +798,12 @@ impl VM {
                         break;
                     };
                     self.unwind_context();
-                    // TODO: GC schedule
-                    self.gc_mark();
+
                     if call_mode == CallMode::FromNative {
                         break;
                     }
+                    // If call from built-in func, do not GC.
+                    self.gc_mark();
 
                     if self.is_trace {
                         self.profile.trace_string = format!(
@@ -1132,9 +1132,13 @@ impl VM {
             this
         };
 
-        let var_env_ref = self.factory.create_function_environment(user_func, outer_env, args, this);
+        let var_env_ref = self
+            .factory
+            .create_function_environment(user_func, outer_env, args, this);
 
-        let mut lex_env_ref = self.factory.create_lexical_environment(&user_func.lex_names, var_env_ref);
+        let mut lex_env_ref = self
+            .factory
+            .create_lexical_environment(&user_func.lex_names, var_env_ref);
 
         for info in &user_func.func_decls {
             let name = info.func_name.clone().unwrap();
