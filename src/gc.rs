@@ -179,7 +179,7 @@ impl MemoryAllocator {
                     if mark == &white {
                         return true;
                     }
-                    size = unsafe { Box::from_raw(obj.0).free() };
+                    size += unsafe { Box::from_raw(obj.0).free() };
                     false
                 });
                 self.total_collected_size += size;
