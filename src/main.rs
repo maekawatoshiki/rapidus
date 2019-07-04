@@ -129,8 +129,6 @@ fn repl(is_profile: bool, is_trace: bool) {
                     match global_context {
                         Some(ref mut context) => {
                             context.append_from_function_info(&mut vm.factory, &global_info);
-                            context.module_func_id = global_info.module_func_id;
-                            context.func_id = global_info.func_id;
                             context.func_ref = global_info;
                         }
                         None => global_context = Some(vm.create_global_context(global_info)),
@@ -138,7 +136,7 @@ fn repl(is_profile: bool, is_trace: bool) {
 
                     vm.current_context = global_context.clone().unwrap();
                     let script_info = parser.into_script_info();
-                    vm.script_info = vec![(vm.current_context.module_func_id, script_info)];
+                    vm.script_info = vec![(vm.current_context.func_ref.module_func_id, script_info)];
 
                     match vm.run() {
                         Ok(val) => println!("{}", val.debug_string(true)),

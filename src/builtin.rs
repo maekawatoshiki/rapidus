@@ -148,7 +148,7 @@ pub fn require(vm: &mut VM, args: &[Value], _this: Value) -> VMValueResult {
         println!("--> call module");
         println!(
             "  module_id:{:?} func_id:{:?}",
-            vm.current_context.module_func_id, vm.current_context.func_id
+            vm.current_context.func_ref.module_func_id, vm.current_context.func_ref.func_id
         );
     };
 

@@ -6,6 +6,7 @@ use crate::vm::{
         ArrayObjectInfo, ErrorObjectInfo, FuncInfoRef, FunctionObjectInfo, FunctionObjectKind,
         ObjectInfo, ObjectKind, Property, SymbolInfo, UserFunctionInfo, Value,
     },
+    vm::{LexicalEnvironmentRef, LexicalEnvironment, EnvironmentRecord, FunctionParameter},
 };
 use rustc_hash::FxHashMap;
 
@@ -135,8 +136,12 @@ impl Factory {
     }
 
     /// Generate Value for a JS function.
-    pub fn function(&mut self, name: Option<String>, info: FuncInfoRef) -> Value {
-        let name_prop = self.string(name.clone().unwrap_or("".to_string()));
+    pub fn function(
+        &mut self,
+        info: FuncInfoRef,
+        outer_env: impl Into<Option<LexicalEnvironmentRef>>,
+    ) -> Value {
+        let name_prop = self.string(info.func_name.clone().unwrap_or("".to_string()));
         let prototype = self.object(FxHashMap::default());
 
         let f = Value::Object(self.alloc(ObjectInfo {
@@ -147,8 +152,8 @@ impl Factory {
                 prototype => true , false, false: prototype
             ),
             kind: ObjectKind::Function(FunctionObjectInfo {
-                name: name,
-                kind: FunctionObjectKind::User{info, outer_env: None},
+                name: info.func_name.clone(),
+                kind: FunctionObjectKind::User{info, outer_env: outer_env.into()},
             }),
             sym_property: FxHashMap::default(),
         }));
@@ -227,4 +232,100 @@ impl Factory {
         ary.get_property("prototype").set_constructor(ary);
         ary
     }
+}
+
+impl Factory {
+    pub fn create_declarative_environment<F>(
+        &mut self,
+        f: F,
+        outer: Option<LexicalEnvironmentRef>,
+    ) -> LexicalEnvironmentRef
+    where
+        F: Fn(&mut Factory, &mut FxHashMap<String, Value>),
+    {
+        let env = LexicalEnvironment {
+            record: EnvironmentRecord::Declarative({
+                let mut record = FxHashMap::default();
+                f(self, &mut record);
+                record
+            }),
+            outer,
+        };
+
+        LexicalEnvironmentRef(self.alloc(env))
+    }
+
+    pub fn create_variable_environment(
+        &mut self,
+        var_names: &Vec<String>,
+        outer_env_ref: LexicalEnvironmentRef,
+    ) -> LexicalEnvironmentRef {
+        self.create_declarative_environment(
+            |_, record| {
+                for name in var_names {
+                    record.insert(name.clone(), Value::undefined());
+                }
+            },
+            Some(outer_env_ref),
+        )
+    }
+
+    pub fn create_lexical_environment(
+        &mut self,
+        lex_names: &Vec<String>,
+        outer_env_ref: LexicalEnvironmentRef,
+    ) -> LexicalEnvironmentRef {
+        self.create_declarative_environment(
+            |_, record| {
+                for name in lex_names {
+                    record.insert(name.clone(), Value::uninitialized());
+                }
+            },
+            Some(outer_env_ref),
+        )
+    }
+
+    pub fn create_function_environment(
+        &mut self,
+        user_func: FuncInfoRef,
+        outer_env: Option<LexicalEnvironmentRef>,
+        args: &[Value],
+        this: Value,
+    ) -> LexicalEnvironmentRef {
+        let env = LexicalEnvironment {
+            record: EnvironmentRecord::Function {
+                record: {
+                    let mut record = FxHashMap::default();
+                    for name in &user_func.var_names {
+                        record.insert(name.clone(), Value::undefined());
+                    }
+                    for (i, FunctionParameter { name, rest_param }) in
+                        user_func.params.iter().enumerate()
+                    {
+                        record.insert(
+                            name.clone(),
+                            if *rest_param {
+                                self.array(
+                                    (*args)
+                                        .get(i..)
+                                        .unwrap_or(&vec![])
+                                        .iter()
+                                        .map(|elem| Property::new_data_simple(*elem))
+                                        .collect::<Vec<Property>>(),
+                                )
+                            } else {
+                                *args.get(i).unwrap_or(&Value::undefined())
+                            },
+                        );
+                    }
+                    record
+                },
+                this,
+            },
+            outer: outer_env,
+        };
+
+        LexicalEnvironmentRef(self.alloc(env))
+    }
+
 }

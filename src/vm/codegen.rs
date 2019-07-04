@@ -613,7 +613,7 @@ impl<'a> CodeGenerator<'a> {
         let func_info = self.visit_function(name.clone(), params, body, arrow_function)?;
         let val = self
             .factory
-            .function(func_info.func_name.clone(), func_info);
+            .function(func_info, None);
         self.bytecode_generator.append_push_const(val, iseq);
         self.bytecode_generator.append_set_outer_env(iseq);
 

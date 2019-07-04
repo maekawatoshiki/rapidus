@@ -6,7 +6,7 @@ use crate::vm::error::ErrorKind;
 use crate::vm::error::RuntimeError;
 //use crate::vm::jsvalue::function::Exception;
 use crate::vm::jsvalue::value::{BoxedValue, Value};
-use crate::vm::vm::{CallMode, Factory, FunctionId, VMResult};
+use crate::vm::vm::{CallMode, Factory, VMResult};
 use rustc_hash::FxHashMap;
 use std::ops::{Deref, DerefMut};
 
@@ -15,8 +15,8 @@ pub struct LexicalEnvironmentRef(pub *mut LexicalEnvironment);
 
 #[derive(Debug, Clone)]
 pub struct ExecContext {
-    pub func_id: FunctionId, // 0 => global scope, n => function id
-    pub module_func_id: FunctionId,
+    //pub func_id: FunctionId, // 0 => global scope, n => function id
+    //pub module_func_id: FunctionId,
     pub pc: usize,
     pub current_inst_pc: usize,
     pub stack: Vec<BoxedValue>,
@@ -69,8 +69,6 @@ impl ExecContext {
         call_mode: CallMode,
     ) -> Self {
         ExecContext {
-            func_id: FunctionId::default(),
-            module_func_id: FunctionId::default(),
             pc: 0,
             current_inst_pc: 0,
             stack: vec![],
@@ -85,8 +83,6 @@ impl ExecContext {
     }
     pub fn empty() -> Self {
         ExecContext {
-            func_id: FunctionId::default(),
-            module_func_id: FunctionId::default(),
             pc: 0,
             current_inst_pc: 0,
             stack: vec![],
@@ -113,20 +109,9 @@ impl ExecContext {
         self
     }
 
-    pub fn func_id(mut self, id: FunctionId) -> Self {
-        self.func_id = id;
-        self
-    }
-
-    pub fn module_func_id(mut self, id: FunctionId) -> Self {
-        self.module_func_id = id;
-        self
-    }
-
     fn append_function(&mut self, factory: &mut Factory, info: FuncInfoRef) {
         let name = info.func_name.clone().unwrap();
-        let mut val = factory.function(info.func_name.clone(), info);
-        val.set_function_outer_environment(self.lexical_environment);
+        let val = factory.function(info, self.lexical_environment);
         self.lex_env_mut().set_own_value(name, val).unwrap();
         use crate::gc::GcTarget;
         self.initial_trace(&mut factory.memory_allocator.roots);

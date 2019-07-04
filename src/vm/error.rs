@@ -30,8 +30,8 @@ impl RuntimeError {
         RuntimeError {
             kind,
             inst_pc: context.current_inst_pc,
-            func_id: context.func_id,
-            module_func_id: context.module_func_id,
+            func_id: context.func_ref.func_id,
+            module_func_id: context.func_ref.module_func_id,
         }
     }
 
@@ -53,8 +53,8 @@ impl RuntimeError {
     }
 
     pub fn error_add_info(mut self, context: &ExecContext) -> RuntimeError {
-        self.func_id = context.func_id;
-        self.module_func_id = context.module_func_id;
+        self.func_id = context.func_ref.func_id;
+        self.module_func_id = context.func_ref.module_func_id;
         self.inst_pc = context.pc;
         self
     }

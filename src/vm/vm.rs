@@ -3,14 +3,16 @@ use crate::bytecode_gen::{inst_to_inst_name, show_inst, VMInst};
 use crate::gc;
 use crate::node::Node;
 use crate::parser::ScriptInfo;
+pub use crate::vm::exec_context::{
+    EnvironmentRecord, ExecContext, LexicalEnvironment, LexicalEnvironmentRef,
+};
+pub use crate::vm::jsvalue::function::{DestinationKind, ThisMode, FunctionParameter};
 pub use crate::vm::factory::{Factory, FunctionId};
 use crate::vm::{
     codegen,
     codegen::CodeGenerator,
     constant,
     error::*,
-    exec_context::{EnvironmentRecord, ExecContext, LexicalEnvironment, LexicalEnvironmentRef},
-    jsvalue::function::{DestinationKind, ThisMode},
     jsvalue::prototype::ObjectPrototypes,
     jsvalue::symbol::GlobalSymbolRegistry,
     jsvalue::value::*,
@@ -141,14 +143,13 @@ impl VM {
     pub fn create_global_context(&mut self, global_info: FuncInfoRef) -> ExecContext {
         let global_env_ref = self.global_environment;
 
-        let var_env = self.create_variable_environment(&global_info.var_names, global_env_ref);
+        let var_env = self.factory.create_variable_environment(&global_info.var_names, global_env_ref);
 
-        let mut lex_env = self.create_lexical_environment(&global_info.lex_names, var_env);
+        let mut lex_env = self.factory.create_lexical_environment(&global_info.lex_names, var_env);
 
         for info in &global_info.func_decls {
             let name = info.func_name.clone().unwrap();
-            let mut val = self.factory.function(info.func_name.clone(), *info);
-            val.set_function_outer_environment(lex_env);
+            let val = self.factory.function(*info, lex_env);
             lex_env.set_value(name, val).unwrap();
         }
 
@@ -420,11 +421,16 @@ impl VM {
                 // TODO: Macro for bin ops?
                 VMInst::ADD => {
                     self.current_context.pc += 1;
-                    let rhs: Value = self.current_context.stack.pop().unwrap().into();
-                    let lhs: Value = self.current_context.stack.pop().unwrap().into();
-                    self.current_context
-                        .stack
-                        .push(lhs.add(&mut self.factory.memory_allocator, rhs).into());
+                    let rhs = self.current_context.stack.pop().unwrap();
+                    let lhs = self.current_context.stack.pop().unwrap();
+
+                    let rhs_val: Value = rhs.into();
+                    let lhs_val: Value = lhs.into();
+                    self.current_context.stack.push(
+                        lhs_val
+                            .add(&mut self.factory.memory_allocator, rhs_val)
+                            .into(),
+                    );
                 }
                 VMInst::SUB => {
                     self.current_context.pc += 1;
@@ -711,13 +717,13 @@ impl VM {
                     self.current_context.pc += 1;
                     read_int32!(self, id, usize);
                     self.create_object(id)?;
-                    self.gc_mark();
+                    //self.gc_mark();
                 }
                 VMInst::CREATE_ARRAY => {
                     self.current_context.pc += 1;
                     read_int32!(self, len, usize);
                     self.create_array(len)?;
-                    self.gc_mark();
+                    //self.gc_mark();
                 }
                 VMInst::DOUBLE => {
                     self.current_context.pc += 1;
@@ -803,8 +809,8 @@ impl VM {
                         self.profile.trace_string = format!(
                             "{}\n<-- return\n  module_id:{:?} func_id:{:?}",
                             self.profile.trace_string,
-                            self.current_context.module_func_id,
-                            self.current_context.func_id
+                            self.current_context.func_ref.module_func_id,
+                            self.current_context.func_ref.func_id
                         );
                     };
                 }
@@ -978,7 +984,7 @@ impl VM {
         let lex_names = self.constant_table.get(id).as_lex_env_info().clone();
         let outer = self.current_context.lexical_environment;
 
-        let lex_env = self.create_lexical_environment(&lex_names, outer);
+        let lex_env = self.factory.create_lexical_environment(&lex_names, outer);
 
         self.current_context
             .saved_lexical_environment
@@ -1091,107 +1097,14 @@ impl VM {
                         } else {
                             "function"
                         },
-                        self.current_context.module_func_id,
-                        self.current_context.func_id
+                        self.current_context.func_ref.module_func_id,
+                        self.current_context.func_ref.func_id
                     );
                 };
                 self.enter_user_function(info.clone(), outer_env, args, this, constructor_call)
             }
         };
         ret
-    }
-
-    fn create_declarative_environment<F>(
-        &mut self,
-        f: F,
-        outer: Option<LexicalEnvironmentRef>,
-    ) -> LexicalEnvironmentRef
-    where
-        F: Fn(&mut VM, &mut FxHashMap<String, Value>),
-    {
-        let env = LexicalEnvironment {
-            record: EnvironmentRecord::Declarative({
-                let mut record = FxHashMap::default();
-                f(self, &mut record);
-                record
-            }),
-            outer,
-        };
-
-        LexicalEnvironmentRef(self.factory.alloc(env))
-    }
-
-    fn create_variable_environment(
-        &mut self,
-        var_names: &Vec<String>,
-        outer_env_ref: LexicalEnvironmentRef,
-    ) -> LexicalEnvironmentRef {
-        self.create_declarative_environment(
-            |_, record| {
-                for name in var_names {
-                    record.insert(name.clone(), Value::undefined());
-                }
-            },
-            Some(outer_env_ref),
-        )
-    }
-
-    fn create_lexical_environment(
-        &mut self,
-        lex_names: &Vec<String>,
-        outer_env_ref: LexicalEnvironmentRef,
-    ) -> LexicalEnvironmentRef {
-        self.create_declarative_environment(
-            |_, record| {
-                for name in lex_names {
-                    record.insert(name.clone(), Value::uninitialized());
-                }
-            },
-            Some(outer_env_ref),
-        )
-    }
-
-    fn create_function_environment(
-        &mut self,
-        user_func: FuncInfoRef,
-        outer_env: Option<LexicalEnvironmentRef>,
-        args: &[Value],
-        this: Value,
-    ) -> LexicalEnvironmentRef {
-        let env = LexicalEnvironment {
-            record: EnvironmentRecord::Function {
-                record: {
-                    let mut record = FxHashMap::default();
-                    for name in &user_func.var_names {
-                        record.insert(name.clone(), Value::undefined());
-                    }
-                    for (i, FunctionParameter { name, rest_param }) in
-                        user_func.params.iter().enumerate()
-                    {
-                        record.insert(
-                            name.clone(),
-                            if *rest_param {
-                                self.factory.array(
-                                    (*args)
-                                        .get(i..)
-                                        .unwrap_or(&vec![])
-                                        .iter()
-                                        .map(|elem| Property::new_data_simple(*elem))
-                                        .collect::<Vec<Property>>(),
-                                )
-                            } else {
-                                *args.get(i).unwrap_or(&Value::undefined())
-                            },
-                        );
-                    }
-                    record
-                },
-                this,
-            },
-            outer: outer_env,
-        };
-
-        LexicalEnvironmentRef(self.factory.alloc(env))
     }
 
     /// Prepare a new context before invoking function.
@@ -1219,27 +1132,18 @@ impl VM {
             this
         };
 
-        let var_env_ref = self.create_function_environment(user_func, outer_env, args, this);
+        let var_env_ref = self.factory.create_function_environment(user_func, outer_env, args, this);
 
-        let mut lex_env_ref = self.create_lexical_environment(&user_func.lex_names, var_env_ref);
+        let mut lex_env_ref = self.factory.create_lexical_environment(&user_func.lex_names, var_env_ref);
 
         for info in &user_func.func_decls {
             let name = info.func_name.clone().unwrap();
-            let mut func = self.factory.function(info.func_name.clone(), *info);
-            func.set_function_outer_environment(lex_env_ref);
+            let func = self.factory.function(*info, lex_env_ref);
             lex_env_ref.set_value(name, func)?;
         }
 
-        let context = ExecContext::new(
-            var_env_ref,
-            lex_env_ref,
-            user_func,
-            this,
-            mode,
-        )
-        .func_id(user_func.func_id)
-        .module_func_id(user_func.module_func_id)
-        .constructor_call(constructor_call);
+        let context = ExecContext::new(var_env_ref, lex_env_ref, user_func, this, mode)
+            .constructor_call(constructor_call);
         self.current_context = context;
         Ok(())
     }
