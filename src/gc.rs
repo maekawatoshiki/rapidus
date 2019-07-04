@@ -105,7 +105,7 @@ impl MemoryAllocator {
         saved_context: &Vec<exec_context::ExecContext>,
     ) {
         self.counter += 1;
-        if self.counter < 100 {
+        if self.counter < 20 {
             return;
         };
         self.counter = 0;
@@ -416,7 +416,7 @@ impl GcTarget for object::ObjectKind {
     fn initial_trace(&self, markset: &mut MarkSet) {
         match self {
             object::ObjectKind::Function(func_info) => match func_info.kind {
-                function::FunctionObjectKind::User{outer_env, ..} => {
+                function::FunctionObjectKind::User { outer_env, .. } => {
                     if let Some(env) = outer_env {
                         mark!(markset, env.as_ptr());
                     }
@@ -437,9 +437,9 @@ impl GcTarget for object::ObjectKind {
     fn trace(&self, allocator: &mut MemoryAllocator, markset: &mut MarkSet) {
         match self {
             object::ObjectKind::Function(func_info) => match func_info.kind {
-                function::FunctionObjectKind::User{outer_env, ..} => {
+                function::FunctionObjectKind::User { outer_env, .. } => {
                     if let Some(env) = outer_env {
-                    mark_if_white!(allocator, markset, env.as_ptr());
+                        mark_if_white!(allocator, markset, env.as_ptr());
                     }
                 }
                 function::FunctionObjectKind::Builtin(_) => {}

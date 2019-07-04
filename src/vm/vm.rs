@@ -918,15 +918,15 @@ impl VM {
         }
         println!("# GC performance");
         println!(
-            "total allocated:    {:>8} bytes",
+            "total allocated:  {:>12} bytes",
             self.factory.memory_allocator.total_allocated_size
         );
         println!(
-            "total collected:    {:>8} bytes",
+            "total collected:  {:>12} bytes",
             self.factory.memory_allocator.total_collected_size
         );
         println!(
-            "currently allocated:{:>8} bytes",
+            "finally allocated:{:>12} bytes",
             self.factory.memory_allocator.allocated_size
         );
         println!("State    count        total time");
@@ -963,8 +963,7 @@ impl VM {
                 .get_object_info()
                 .get_property("exports")
         } else {
-            let ret_val_boxed = self.current_context.stack.pop().unwrap();
-            let ret_val: Value = ret_val_boxed.into();
+            let ret_val: Value = self.current_context.stack.pop().unwrap().into();
             if self.current_context.constructor_call && !ret_val.is_object() {
                 self.current_context.this
             } else {
