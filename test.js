@@ -5,6 +5,9 @@ for (let i = 0; i < 1000; i++) {
 }
 console.log(array.prototype)
 array.map(e => {
-  e.double = e.index * 2
+  dummy()
+  return (e.double = e.index * 2)
 })
 console.log(array[500])
+
+function dummy() {}

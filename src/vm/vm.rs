@@ -26,6 +26,7 @@ pub struct VM {
     pub global_symbol_registry: GlobalSymbolRegistry,
     pub current_context: ExecContext,
     pub saved_context: Vec<ExecContext>,
+    pub is_called_from_native: bool,
     ///func_id, ToSourcePos
     pub to_source_map: FxHashMap<FunctionId, codegen::ToSourcePos>,
     pub is_profile: bool,
@@ -53,15 +54,6 @@ pub enum CallMode {
     FromNative,
 }
 
-macro_rules! gc_lock {
-    ($vm:ident, $targets:expr, $($body:tt)*) => { {
-        //for arg in $targets { $vm.factory.memory_allocator.lock(*arg) }
-        let ret = { $($body)* };
-        //for arg in $targets { $vm.factory.memory_allocator.unlock(*arg) }
-        ret
-    } }
-}
-
 impl VM {
     pub fn new() -> Self {
         let memory_allocator = gc::MemoryAllocator::new();
@@ -76,6 +68,7 @@ impl VM {
             global_symbol_registry: GlobalSymbolRegistry::new(),
             current_context: ExecContext::empty(),
             saved_context: vec![],
+            is_called_from_native: false,
             to_source_map: FxHashMap::default(),
             is_profile: false,
             is_trace: false,
@@ -178,7 +171,7 @@ impl VM {
         let info = callee.as_function();
 
         match info.kind {
-            FunctionObjectKind::Builtin(func) => gc_lock!(self, args, func(self, args, this)),
+            FunctionObjectKind::Builtin(func) => func(self, args, this),
             FunctionObjectKind::User { info, outer_env } => {
                 self.call_user_function(info, outer_env, args, this, false)
             }
@@ -201,8 +194,12 @@ impl VM {
             CallMode::FromNative,
             constructor_call,
         )?;
-
-        self.run()
+        // if called from builtin func, do not GC.
+        let save = self.is_called_from_native;
+        self.is_called_from_native = true;
+        let res = self.run();
+        self.is_called_from_native = save;
+        res
     }
 
     fn get_property_to_stack_top(&mut self, parent: Value, key: Value) -> VMResult {
@@ -422,7 +419,16 @@ impl VM {
                     self.current_context.pc += 1;
                     let rhs = self.current_context.stack.pop().unwrap();
                     let lhs = self.current_context.stack.pop().unwrap();
+                    /*
+                    let res: f64 =
+                        unsafe { std::mem::transmute(rhs): f64 + std::mem::transmute(lhs): f64 };
 
+                    if !res.is_nan() {
+                        self.current_context
+                            .stack
+                            .push(unsafe { std::mem::transmute(res) });
+                    } else {
+                        */
                     let rhs_val: Value = rhs.into();
                     let lhs_val: Value = lhs.into();
                     self.current_context.stack.push(
@@ -430,6 +436,7 @@ impl VM {
                             .add(&mut self.factory.memory_allocator, rhs_val)
                             .into(),
                     );
+                    //}
                 }
                 VMInst::SUB => {
                     self.current_context.pc += 1;
@@ -803,7 +810,9 @@ impl VM {
                         break;
                     }
                     // If call from built-in func, do not GC.
-                    self.gc_mark();
+                    if !self.is_called_from_native {
+                        self.gc_mark()
+                    };
 
                     if self.is_trace {
                         self.profile.trace_string = format!(
@@ -925,11 +934,12 @@ impl VM {
         println!("# GC performance");
         println!(
             "total allocated:  {:>12} bytes",
-            self.factory.memory_allocator.total_allocated_size
+            self.factory.memory_allocator.allocated_size
+                + self.factory.memory_allocator.collected_size
         );
         println!(
             "total collected:  {:>12} bytes",
-            self.factory.memory_allocator.total_collected_size
+            self.factory.memory_allocator.collected_size
         );
         println!(
             "finally allocated:{:>12} bytes",
@@ -1079,11 +1089,11 @@ impl VM {
 
         let info = callee.as_function();
         let ret = match info.kind {
-            FunctionObjectKind::Builtin(func) => gc_lock!(self, args, {
+            FunctionObjectKind::Builtin(func) => {
                 let val = func(self, args, this)?;
                 self.current_context.stack.push(val.into());
                 Ok(())
-            }),
+            }
             FunctionObjectKind::User {
                 ref info,
                 outer_env,

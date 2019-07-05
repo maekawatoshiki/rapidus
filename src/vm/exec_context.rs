@@ -113,7 +113,6 @@ impl ExecContext {
         let name = info.func_name.clone().unwrap();
         let val = factory.function(info, self.lexical_environment);
         self.lex_env_mut().set_own_value(name, val).unwrap();
-        use crate::gc::GcTarget;
         self.initial_trace(&mut factory.memory_allocator.roots);
     }
 
