@@ -1,12 +1,12 @@
 #![macro_use]
-use crate::vm::jsvalue::function::UserFunctionInfo;
-use crate::bytecode_gen::ByteCode;
-use crate::gc;
+//use crate::bytecode_gen::ByteCode;
+use crate::vm::jsvalue::function::{FuncInfoRef, UserFunctionInfo};
+//use crate::gc;
 use crate::vm::error::ErrorKind;
 use crate::vm::error::RuntimeError;
-use crate::vm::jsvalue::function::Exception;
+//use crate::vm::jsvalue::function::Exception;
 use crate::vm::jsvalue::value::{BoxedValue, Value};
-use crate::vm::vm::{CallMode, Factory, FunctionId, VMResult};
+use crate::vm::vm::{CallMode, Factory, VMResult};
 use rustc_hash::FxHashMap;
 use std::ops::{Deref, DerefMut};
 
@@ -15,13 +15,14 @@ pub struct LexicalEnvironmentRef(pub *mut LexicalEnvironment);
 
 #[derive(Debug, Clone)]
 pub struct ExecContext {
-    pub func_id: FunctionId, // 0 => global scope, n => function id
-    pub module_func_id: FunctionId,
+    //pub func_id: FunctionId, // 0 => global scope, n => function id
+    //pub module_func_id: FunctionId,
     pub pc: usize,
     pub current_inst_pc: usize,
     pub stack: Vec<BoxedValue>,
-    pub bytecode: ByteCode,
-    pub exception_table: Vec<Exception>,
+    pub func_ref: FuncInfoRef,
+    //pub bytecode: ByteCode,
+    //pub exception_table: Vec<Exception>,
     /// This value in the context.
     pub this: Value,
     /// If true, calling JS function as a constructor.
@@ -61,21 +62,17 @@ pub enum EnvironmentRecord {
 
 impl ExecContext {
     pub fn new(
-        bytecode: ByteCode,
         var_env: LexicalEnvironmentRef,
         lex_env: LexicalEnvironmentRef,
-        exception_table: Vec<Exception>,
+        func_ref: FuncInfoRef,
         this: Value,
         call_mode: CallMode,
     ) -> Self {
         ExecContext {
-            func_id: FunctionId::default(),
-            module_func_id: FunctionId::default(),
             pc: 0,
             current_inst_pc: 0,
             stack: vec![],
-            bytecode,
-            exception_table,
+            func_ref,
             this,
             constructor_call: false,
             call_mode,
@@ -86,13 +83,10 @@ impl ExecContext {
     }
     pub fn empty() -> Self {
         ExecContext {
-            func_id: FunctionId::default(),
-            module_func_id: FunctionId::default(),
             pc: 0,
             current_inst_pc: 0,
             stack: vec![],
-            bytecode: vec![],
-            exception_table: vec![],
+            func_ref: FuncInfoRef::default(),
             this: Value::undefined(),
             constructor_call: false,
             call_mode: CallMode::OrdinaryCall,
@@ -115,23 +109,11 @@ impl ExecContext {
         self
     }
 
-    pub fn func_id(mut self, id: FunctionId) -> Self {
-        self.func_id = id;
-        self
-    }
-
-    pub fn module_func_id(mut self, id: FunctionId) -> Self {
-        self.module_func_id = id;
-        self
-    }
-
-    fn append_function(&mut self, memory_allocator: &mut gc::MemoryAllocator, f: Value) {
-        let mut val = f.copy_object(memory_allocator);
-        let name = val.as_function().name.clone().unwrap();
-        val.set_function_outer_environment(self.lexical_environment);
+    fn append_function(&mut self, factory: &mut Factory, info: FuncInfoRef) {
+        let name = info.func_name.clone().unwrap();
+        let val = factory.function(info, self.lexical_environment);
         self.lex_env_mut().set_own_value(name, val).unwrap();
-        use crate::gc::GcTarget;
-        self.initial_trace(&mut memory_allocator.roots);
+        self.initial_trace(&mut factory.memory_allocator.roots);
     }
 
     fn append_variable_to_var_env(&mut self, name: String) {
@@ -144,13 +126,9 @@ impl ExecContext {
         lex_env.set_own_value(name, Value::uninitialized()).unwrap(); // TODO: unwrap()
     }
 
-    pub fn append_from_function_info(
-        &mut self,
-        memory_allocator: &mut gc::MemoryAllocator,
-        info: &UserFunctionInfo,
-    ) {
+    pub fn append_from_function_info(&mut self, factory: &mut Factory, info: &UserFunctionInfo) {
         for f in &info.func_decls {
-            self.append_function(memory_allocator, *f);
+            self.append_function(factory, *f);
         }
 
         for name in &info.var_names {

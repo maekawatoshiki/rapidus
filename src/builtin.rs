@@ -114,7 +114,7 @@ pub fn require(vm: &mut VM, args: &[Value], _this: Value) -> VMValueResult {
     })?;
 
     use crate::vm::codegen::Error;
-    let mut module_info = vm.compile(&node, true).map_err(|codegen_err| {
+    let module_info = vm.compile(&node, true).map_err(|codegen_err| {
         let Error { msg, token_pos, .. } = codegen_err;
         parser.show_error_at(token_pos, msg);
         vm.current_context
@@ -123,10 +123,10 @@ pub fn require(vm: &mut VM, args: &[Value], _this: Value) -> VMValueResult {
     let id = module_info.module_func_id;
     let script_info = parser.into_script_info();
     vm.script_info.push((id, script_info));
-    module_info.outer = Some(vm.global_environment);
 
     vm.prepare_context_for_function_invokation(
-        &module_info,
+        module_info,
+        Some(vm.global_environment),
         args: &[Value],
         Value::undefined(),
         CallMode::ModuleCall,
@@ -148,7 +148,7 @@ pub fn require(vm: &mut VM, args: &[Value], _this: Value) -> VMValueResult {
         println!("--> call module");
         println!(
             "  module_id:{:?} func_id:{:?}",
-            vm.current_context.module_func_id, vm.current_context.func_id
+            vm.current_context.func_ref.module_func_id, vm.current_context.func_ref.func_id
         );
     };
 

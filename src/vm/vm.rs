@@ -3,17 +3,14 @@ use crate::bytecode_gen::{inst_to_inst_name, show_inst, VMInst};
 use crate::gc;
 use crate::node::Node;
 use crate::parser::ScriptInfo;
+pub use crate::vm::exec_context::{
+    EnvironmentRecord, ExecContext, LexicalEnvironment, LexicalEnvironmentRef,
+};
 pub use crate::vm::factory::{Factory, FunctionId};
+pub use crate::vm::jsvalue::function::{DestinationKind, FunctionParameter, ThisMode};
 use crate::vm::{
-    codegen,
-    codegen::CodeGenerator,
-    constant,
-    error::*,
-    exec_context,
-    jsvalue::function::{DestinationKind, ThisMode},
-    jsvalue::prototype::ObjectPrototypes,
-    jsvalue::symbol::GlobalSymbolRegistry,
-    jsvalue::value::*,
+    codegen, codegen::CodeGenerator, constant, error::*, jsvalue::prototype::ObjectPrototypes,
+    jsvalue::symbol::GlobalSymbolRegistry, jsvalue::value::*,
 };
 use rustc_hash::FxHashMap;
 use std::time::{Duration, Instant};
@@ -24,11 +21,12 @@ pub type VMValueResult = Result<Value, RuntimeError>;
 
 pub struct VM {
     pub factory: Factory,
-    pub global_environment: exec_context::LexicalEnvironmentRef,
+    pub global_environment: LexicalEnvironmentRef,
     pub constant_table: constant::ConstantTable,
     pub global_symbol_registry: GlobalSymbolRegistry,
-    pub current_context: exec_context::ExecContext,
-    pub saved_context: Vec<exec_context::ExecContext>,
+    pub current_context: ExecContext,
+    pub saved_context: Vec<ExecContext>,
+    pub is_called_from_native: bool,
     ///func_id, ToSourcePos
     pub to_source_map: FxHashMap<FunctionId, codegen::ToSourcePos>,
     pub is_profile: bool,
@@ -56,29 +54,21 @@ pub enum CallMode {
     FromNative,
 }
 
-macro_rules! gc_lock {
-    ($vm:ident, $targets:expr, $($body:tt)*) => { {
-        for arg in $targets { $vm.factory.memory_allocator.lock(*arg) }
-        let ret = { $($body)* };
-        for arg in $targets { $vm.factory.memory_allocator.unlock(*arg) }
-        ret
-    } }
-}
-
 impl VM {
     pub fn new() -> Self {
-        let mut memory_allocator = gc::MemoryAllocator::new();
-        let object_prototypes = ObjectPrototypes::new(&mut memory_allocator);
-        let mut factory = Factory::new(memory_allocator, object_prototypes);
-        let global_env = exec_context::LexicalEnvironment::new_global_initialized(&mut factory);
-        let global_environment = exec_context::LexicalEnvironmentRef(factory.alloc(global_env));
+        let memory_allocator = gc::MemoryAllocator::new();
+        let mut factory = Factory::new(memory_allocator, ObjectPrototypes::dummy());
+        factory.object_prototypes = ObjectPrototypes::new(&mut factory);
+        let global_env = LexicalEnvironment::new_global_initialized(&mut factory);
+        let global_environment = LexicalEnvironmentRef(factory.alloc(global_env));
         VM {
             global_environment,
             factory,
             constant_table: constant::ConstantTable::new(),
             global_symbol_registry: GlobalSymbolRegistry::new(),
-            current_context: exec_context::ExecContext::empty(),
+            current_context: ExecContext::empty(),
             saved_context: vec![],
+            is_called_from_native: false,
             to_source_map: FxHashMap::default(),
             is_profile: false,
             is_trace: false,
@@ -127,11 +117,7 @@ impl VM {
         self.profile.gc_profile[i].1 += stop_time;
     }
 
-    pub fn compile(
-        &mut self,
-        node: &Node,
-        use_value: bool,
-    ) -> Result<UserFunctionInfo, codegen::Error> {
+    pub fn compile(&mut self, node: &Node, use_value: bool) -> Result<FuncInfoRef, codegen::Error> {
         let func_id = self.factory.new_func_id();
         let mut code_generator =
             CodeGenerator::new(&mut self.constant_table, &mut self.factory, func_id);
@@ -142,28 +128,27 @@ impl VM {
         res
     }
 
-    pub fn create_global_context(
-        &mut self,
-        global_info: UserFunctionInfo,
-    ) -> exec_context::ExecContext {
+    pub fn create_global_context(&mut self, global_info: FuncInfoRef) -> ExecContext {
         let global_env_ref = self.global_environment;
 
-        let var_env = self.create_variable_environment(&global_info.var_names, global_env_ref);
+        let var_env = self
+            .factory
+            .create_variable_environment(&global_info.var_names, global_env_ref);
 
-        let mut lex_env = self.create_lexical_environment(&global_info.lex_names, var_env);
+        let mut lex_env = self
+            .factory
+            .create_lexical_environment(&global_info.lex_names, var_env);
 
-        for val in global_info.func_decls {
-            let mut val = val.copy_object(&mut self.factory.memory_allocator);
-            let name = val.as_function().name.clone().unwrap();
-            val.set_function_outer_environment(lex_env);
+        for info in &global_info.func_decls {
+            let name = info.func_name.clone().unwrap();
+            let val = self.factory.function(*info, lex_env);
             lex_env.set_value(name, val).unwrap();
         }
 
-        let context = exec_context::ExecContext::new(
-            global_info.code,
+        let context = ExecContext::new(
             var_env,
             lex_env,
-            global_info.exception_table,
+            global_info,
             global_env_ref.get_global_object(),
             CallMode::OrdinaryCall,
         );
@@ -171,7 +156,7 @@ impl VM {
         context
     }
 
-    pub fn run_global(&mut self, func_info: UserFunctionInfo) -> VMResult {
+    pub fn run_global(&mut self, func_info: FuncInfoRef) -> VMResult {
         self.current_context = self.create_global_context(func_info);
         self.run()?;
 
@@ -186,29 +171,35 @@ impl VM {
         let info = callee.as_function();
 
         match info.kind {
-            FunctionObjectKind::Builtin(func) => gc_lock!(self, args, func(self, args, this)),
-            FunctionObjectKind::User(ref user_func) => {
-                self.call_user_function(user_func, args, this, false)
+            FunctionObjectKind::Builtin(func) => func(self, args, this),
+            FunctionObjectKind::User { info, outer_env } => {
+                self.call_user_function(info, outer_env, args, this, false)
             }
         }
     }
 
     fn call_user_function(
         &mut self,
-        user_func: &UserFunctionInfo,
+        user_func: FuncInfoRef,
+        outer_env: Option<LexicalEnvironmentRef>,
         args: &[Value],
         this: Value,
         constructor_call: bool,
     ) -> VMValueResult {
         self.prepare_context_for_function_invokation(
             user_func,
+            outer_env,
             args,
             this,
             CallMode::FromNative,
             constructor_call,
         )?;
-
-        self.run()
+        // if called from builtin func, do not GC.
+        let save = self.is_called_from_native;
+        self.is_called_from_native = true;
+        let res = self.run();
+        self.is_called_from_native = save;
+        res
     }
 
     fn get_property_to_stack_top(&mut self, parent: Value, key: Value) -> VMResult {
@@ -314,7 +305,7 @@ impl VM {
 
 macro_rules! read_int8 {
     ($vm:expr, $var:ident, $ty:ty) => {
-        let $var = $vm.current_context.bytecode[$vm.current_context.pc] as $ty;
+        let $var = $vm.current_context.func_ref.code[$vm.current_context.pc] as $ty;
         $vm.current_context.pc += 1;
     };
 }
@@ -322,7 +313,7 @@ macro_rules! read_int8 {
 macro_rules! read_int32 {
     ($vm:expr, $var:ident, $ty:ty) => {
         let $var = {
-            let iseq = &$vm.current_context.bytecode;
+            let iseq = &$vm.current_context.func_ref.code;
             let pc = $vm.current_context.pc;
             ((iseq[pc as usize + 3] as $ty) << 24)
                 + ((iseq[pc as usize + 2] as $ty) << 16)
@@ -346,7 +337,7 @@ impl VM {
             let mut trycatch_found = false;
             let save_error_info = vm.current_context.error_unknown();
             loop {
-                for exception in &vm.current_context.exception_table {
+                for exception in &vm.current_context.func_ref.exception_table {
                     let in_range = exception.start <= vm.current_context.pc
                         && vm.current_context.pc < exception.end;
                     if !in_range {
@@ -420,17 +411,32 @@ impl VM {
                 }};
             }
 
-            let inst = self.current_context.bytecode[self.current_context.pc];
+            let inst = self.current_context.func_ref.code[self.current_context.pc];
             self.profile.current_inst = inst;
             match inst {
                 // TODO: Macro for bin ops?
                 VMInst::ADD => {
                     self.current_context.pc += 1;
-                    let rhs: Value = self.current_context.stack.pop().unwrap().into();
-                    let lhs: Value = self.current_context.stack.pop().unwrap().into();
-                    self.current_context
-                        .stack
-                        .push(lhs.add(&mut self.factory.memory_allocator, rhs).into());
+                    let rhs = self.current_context.stack.pop().unwrap();
+                    let lhs = self.current_context.stack.pop().unwrap();
+                    /*
+                    let res: f64 =
+                        unsafe { std::mem::transmute(rhs): f64 + std::mem::transmute(lhs): f64 };
+
+                    if !res.is_nan() {
+                        self.current_context
+                            .stack
+                            .push(unsafe { std::mem::transmute(res) });
+                    } else {
+                        */
+                    let rhs_val: Value = rhs.into();
+                    let lhs_val: Value = lhs.into();
+                    self.current_context.stack.push(
+                        lhs_val
+                            .add(&mut self.factory.memory_allocator, rhs_val)
+                            .into(),
+                    );
+                    //}
                 }
                 VMInst::SUB => {
                     self.current_context.pc += 1;
@@ -717,13 +723,13 @@ impl VM {
                     self.current_context.pc += 1;
                     read_int32!(self, id, usize);
                     self.create_object(id)?;
-                    self.gc_mark();
+                    //self.gc_mark();
                 }
                 VMInst::CREATE_ARRAY => {
                     self.current_context.pc += 1;
                     read_int32!(self, len, usize);
                     self.create_array(len)?;
-                    self.gc_mark();
+                    //self.gc_mark();
                 }
                 VMInst::DOUBLE => {
                     self.current_context.pc += 1;
@@ -799,18 +805,21 @@ impl VM {
                         break;
                     };
                     self.unwind_context();
-                    // TODO: GC schedule
-                    self.gc_mark();
+
                     if call_mode == CallMode::FromNative {
                         break;
                     }
+                    // If call from built-in func, do not GC.
+                    if !self.is_called_from_native {
+                        self.gc_mark()
+                    };
 
                     if self.is_trace {
                         self.profile.trace_string = format!(
                             "{}\n<-- return\n  module_id:{:?} func_id:{:?}",
                             self.profile.trace_string,
-                            self.current_context.module_func_id,
-                            self.current_context.func_id
+                            self.current_context.func_ref.module_func_id,
+                            self.current_context.func_ref.func_id
                         );
                     };
                 }
@@ -825,7 +834,7 @@ impl VM {
                 _ => {
                     print!("Not yet implemented VMInst: ");
                     show_inst(
-                        &self.current_context.bytecode,
+                        &self.current_context.func_ref.code,
                         self.current_context.pc,
                         &self.constant_table,
                     );
@@ -866,6 +875,10 @@ impl VM {
                     self.profile.trace_string,
                 );
             }
+        } else {
+            let duration =
+                self.profile.instant.elapsed() - self.profile.prev_time - self.profile.gc_stop_time;
+            println!("VM start up time {} microsec", duration.as_micros());
         }
         self.profile.start_flag = true;
 
@@ -873,7 +886,7 @@ impl VM {
             self.profile.trace_string = format!(
                 "{} {}",
                 crate::bytecode_gen::show_inst(
-                    &self.current_context.bytecode,
+                    &self.current_context.func_ref.code,
                     self.current_context.current_inst_pc,
                     &self.constant_table,
                 ),
@@ -904,16 +917,14 @@ impl VM {
             .fold(0, |acc, x| acc + x.1.as_micros()) as f64;
 
         let total_time = total_gc_time + total_inst_time;
-        println!(
-            "total execution time {} microsecs  gc time {} microsecs",
-            total_time, total_gc_time
-        );
+        println!("total execution time: {:>10} microsecs", total_time);
+        println!("gc time:              {:>10} microsecs", total_gc_time);
 
         println!("Inst          total %    ave.time / inst");
         for (i, prof) in self.profile.inst_profile.iter().enumerate() {
             if prof.0 != 0 {
                 println!(
-                    "{:12} {:>6.2} % {:>10.2} nanosecs",
+                    "{:12} {:>6.2} % {:>10.0} nsecs",
                     inst_to_inst_name(i as u8),
                     prof.1.as_micros() as f64 / total_time * 100.0,
                     prof.1.as_nanos() as f64 / prof.0 as f64
@@ -921,6 +932,19 @@ impl VM {
             }
         }
         println!("# GC performance");
+        println!(
+            "total allocated:  {:>12} bytes",
+            self.factory.memory_allocator.allocated_size
+                + self.factory.memory_allocator.collected_size
+        );
+        println!(
+            "total collected:  {:>12} bytes",
+            self.factory.memory_allocator.collected_size
+        );
+        println!(
+            "finally allocated:{:>12} bytes",
+            self.factory.memory_allocator.allocated_size
+        );
         println!("State    count        total time");
         let prof = self.profile.gc_profile;
         println!(
@@ -955,8 +979,7 @@ impl VM {
                 .get_object_info()
                 .get_property("exports")
         } else {
-            let ret_val_boxed = self.current_context.stack.pop().unwrap();
-            let ret_val: Value = ret_val_boxed.into();
+            let ret_val: Value = self.current_context.stack.pop().unwrap().into();
             if self.current_context.constructor_call && !ret_val.is_object() {
                 self.current_context.this
             } else {
@@ -971,7 +994,7 @@ impl VM {
         let lex_names = self.constant_table.get(id).as_lex_env_info().clone();
         let outer = self.current_context.lexical_environment;
 
-        let lex_env = self.create_lexical_environment(&lex_names, outer);
+        let lex_env = self.factory.create_lexical_environment(&lex_names, outer);
 
         self.current_context
             .saved_lexical_environment
@@ -1066,12 +1089,15 @@ impl VM {
 
         let info = callee.as_function();
         let ret = match info.kind {
-            FunctionObjectKind::Builtin(func) => gc_lock!(self, args, {
+            FunctionObjectKind::Builtin(func) => {
                 let val = func(self, args, this)?;
                 self.current_context.stack.push(val.into());
                 Ok(())
-            }),
-            FunctionObjectKind::User(ref user_func) => {
+            }
+            FunctionObjectKind::User {
+                ref info,
+                outer_env,
+            } => {
                 if self.is_trace {
                     self.profile.trace_string = format!(
                         "{}\n--> call {}\n  module_id:{:?} func_id:{:?}",
@@ -1081,106 +1107,14 @@ impl VM {
                         } else {
                             "function"
                         },
-                        self.current_context.module_func_id,
-                        self.current_context.func_id
+                        self.current_context.func_ref.module_func_id,
+                        self.current_context.func_ref.func_id
                     );
                 };
-                self.enter_user_function(user_func.clone(), args, this, constructor_call)
+                self.enter_user_function(info.clone(), outer_env, args, this, constructor_call)
             }
         };
         ret
-    }
-
-    fn create_declarative_environment<F>(
-        &mut self,
-        f: F,
-        outer: Option<exec_context::LexicalEnvironmentRef>,
-    ) -> exec_context::LexicalEnvironmentRef
-    where
-        F: Fn(&mut VM, &mut FxHashMap<String, Value>),
-    {
-        let env = exec_context::LexicalEnvironment {
-            record: exec_context::EnvironmentRecord::Declarative({
-                let mut record = FxHashMap::default();
-                f(self, &mut record);
-                record
-            }),
-            outer,
-        };
-
-        exec_context::LexicalEnvironmentRef(self.factory.alloc(env))
-    }
-
-    fn create_variable_environment(
-        &mut self,
-        var_names: &Vec<String>,
-        outer_env_ref: exec_context::LexicalEnvironmentRef,
-    ) -> exec_context::LexicalEnvironmentRef {
-        self.create_declarative_environment(
-            |_, record| {
-                for name in var_names {
-                    record.insert(name.clone(), Value::undefined());
-                }
-            },
-            Some(outer_env_ref),
-        )
-    }
-
-    fn create_lexical_environment(
-        &mut self,
-        lex_names: &Vec<String>,
-        outer_env_ref: exec_context::LexicalEnvironmentRef,
-    ) -> exec_context::LexicalEnvironmentRef {
-        self.create_declarative_environment(
-            |_, record| {
-                for name in lex_names {
-                    record.insert(name.clone(), Value::uninitialized());
-                }
-            },
-            Some(outer_env_ref),
-        )
-    }
-
-    fn create_function_environment(
-        &mut self,
-        user_func: &UserFunctionInfo,
-        args: &[Value],
-        this: Value,
-    ) -> exec_context::LexicalEnvironmentRef {
-        let env = exec_context::LexicalEnvironment {
-            record: exec_context::EnvironmentRecord::Function {
-                record: {
-                    let mut record = FxHashMap::default();
-                    for name in &user_func.var_names {
-                        record.insert(name.clone(), Value::undefined());
-                    }
-                    for (i, FunctionParameter { name, rest_param }) in
-                        user_func.params.iter().enumerate()
-                    {
-                        record.insert(
-                            name.clone(),
-                            if *rest_param {
-                                self.factory.array(
-                                    (*args)
-                                        .get(i..)
-                                        .unwrap_or(&vec![])
-                                        .iter()
-                                        .map(|elem| Property::new_data_simple(*elem))
-                                        .collect::<Vec<Property>>(),
-                                )
-                            } else {
-                                *args.get(i).unwrap_or(&Value::undefined())
-                            },
-                        );
-                    }
-                    record
-                },
-                this,
-            },
-            outer: user_func.outer,
-        };
-
-        exec_context::LexicalEnvironmentRef(self.factory.alloc(env))
     }
 
     /// Prepare a new context before invoking function.
@@ -1191,54 +1125,47 @@ impl VM {
     /// 5. Generate a new context, and set the current context (running execution context) to it.
     pub fn prepare_context_for_function_invokation(
         &mut self,
-        user_func: &UserFunctionInfo,
+        user_func: FuncInfoRef,
+        outer_env: Option<LexicalEnvironmentRef>,
         args: &[Value],
         this: Value,
         mode: CallMode,
         constructor_call: bool,
     ) -> Result<(), RuntimeError> {
-        let context = std::mem::replace(
-            &mut self.current_context,
-            exec_context::ExecContext::empty(),
-        );
+        let context = std::mem::replace(&mut self.current_context, ExecContext::empty());
         self.saved_context.push(context);
 
         let this = if user_func.this_mode == ThisMode::Lexical {
             // Arrow function
-            user_func.outer.unwrap().get_this_binding()
+            outer_env.unwrap().get_this_binding()
         } else {
             this
         };
 
-        let var_env_ref = self.create_function_environment(&user_func, args, this);
+        let var_env_ref = self
+            .factory
+            .create_function_environment(user_func, outer_env, args, this);
 
-        let mut lex_env_ref = self.create_lexical_environment(&user_func.lex_names, var_env_ref);
+        let mut lex_env_ref = self
+            .factory
+            .create_lexical_environment(&user_func.lex_names, var_env_ref);
 
-        for func in &user_func.func_decls {
-            let mut func = func.copy_object(&mut self.factory.memory_allocator);
-            let name = func.as_function().name.clone().unwrap();
-            func.set_function_outer_environment(lex_env_ref);
+        for info in &user_func.func_decls {
+            let name = info.func_name.clone().unwrap();
+            let func = self.factory.function(*info, lex_env_ref);
             lex_env_ref.set_value(name, func)?;
         }
 
-        let context = exec_context::ExecContext::new(
-            user_func.code.clone(),
-            var_env_ref,
-            lex_env_ref,
-            user_func.exception_table.clone(),
-            this,
-            mode,
-        )
-        .func_id(user_func.func_id)
-        .module_func_id(user_func.module_func_id)
-        .constructor_call(constructor_call);
+        let context = ExecContext::new(var_env_ref, lex_env_ref, user_func, this, mode)
+            .constructor_call(constructor_call);
         self.current_context = context;
         Ok(())
     }
 
     fn enter_user_function(
         &mut self,
-        user_func: UserFunctionInfo,
+        user_func: FuncInfoRef,
+        outer_env: Option<LexicalEnvironmentRef>,
         args: &[Value],
         this: Value,
         constructor_call: bool,
@@ -1248,7 +1175,8 @@ impl VM {
         }
 
         self.prepare_context_for_function_invokation(
-            &user_func,
+            user_func,
+            outer_env,
             args,
             this,
             CallMode::OrdinaryCall,

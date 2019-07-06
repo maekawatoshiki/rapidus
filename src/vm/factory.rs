@@ -3,14 +3,15 @@ use crate::gc;
 use crate::vm::{
     jsvalue::prototype::ObjectPrototypes,
     jsvalue::value::{
-        ArrayObjectInfo, ErrorObjectInfo, FunctionObjectInfo, FunctionObjectKind, ObjectInfo,
-        ObjectKind, Property, SymbolInfo, UserFunctionInfo, Value,
+        ArrayObjectInfo, ErrorObjectInfo, FuncInfoRef, FunctionObjectInfo, FunctionObjectKind,
+        ObjectInfo, ObjectKind, Property, SymbolInfo, UserFunctionInfo, Value,
     },
+    vm::{LexicalEnvironmentRef, LexicalEnvironment, EnvironmentRecord, FunctionParameter},
 };
 use rustc_hash::FxHashMap;
 
 #[derive(Clone, Hash, Copy)]
-pub struct FunctionId(usize);
+pub struct FunctionId(pub usize);
 
 impl PartialEq for FunctionId {
     fn eq(&self, other: &FunctionId) -> bool {
@@ -35,32 +36,90 @@ impl std::fmt::Debug for FunctionId {
 pub struct Factory {
     pub memory_allocator: gc::MemoryAllocator,
     pub object_prototypes: ObjectPrototypes,
+    pub func_refs: Vec<Option<FuncInfoRef>>,
     pub next_func_id: usize,
 }
 
 impl Factory {
     pub fn new(memory_allocator: gc::MemoryAllocator, object_prototypes: ObjectPrototypes) -> Self {
-        Factory {
+        let mut factory = Factory {
             memory_allocator,
             object_prototypes,
-            next_func_id: 0,
-        }
+            func_refs: vec![None; 30],
+            next_func_id: 1,
+        };
+        let func_ref =
+            factory.alloc_user_func_info(FunctionId::default(), UserFunctionInfo::default());
+        factory.func_refs[0] = Some(func_ref);
+        factory
     }
 
     pub fn alloc<T: gc::GcTarget + 'static>(&mut self, data: T) -> *mut T {
         self.memory_allocator.alloc(data)
     }
+}
 
+impl Factory {
     pub fn new_func_id(&mut self) -> FunctionId {
         let id = self.next_func_id;
         self.next_func_id = id + 1;
         FunctionId(id)
     }
 
-    pub fn main_func_id(&mut self) -> FunctionId {
+    pub fn default_func_id(&mut self) -> FunctionId {
         FunctionId(0)
     }
 
+    pub fn alloc_user_func_info(
+        &mut self,
+        func_id: FunctionId,
+        user_func_info: UserFunctionInfo,
+    ) -> FuncInfoRef {
+        let func_ref = FuncInfoRef::new(Box::into_raw(Box::new(user_func_info)));
+        let len = self.func_refs.len();
+        if func_id.0 < len {
+            if self.func_refs[func_id.0].is_some() {
+                panic!("already exists!");
+            }
+            self.func_refs[func_id.0] = Some(func_ref);
+        } else if func_id.0 == len {
+            self.func_refs.push(Some(func_ref));
+        } else {
+            self.func_refs.resize(func_id.0, None);
+            self.func_refs.push(Some(func_ref));
+        }
+        func_ref
+    }
+
+    pub fn get_func_ref(&self, func_id: FunctionId) -> FuncInfoRef {
+        if func_id.0 >= self.func_refs.len() {
+            panic!("FunctionId is not exists.");
+        }
+        if let Some(func_ref) = self.func_refs[func_id.0] {
+            func_ref
+        } else {
+            panic!("None!");
+        }
+    }
+
+    pub fn get_default_func_ref(&self) -> FuncInfoRef {
+        if let Some(func_ref) = self.func_refs[0] {
+            func_ref
+        } else {
+            unreachable!();
+        }
+    }
+
+    pub fn print_func_refs(&self) {
+        for i in 0..self.func_refs.len() {
+            if let Some(info) = self.func_refs[i] {
+                println!("  {:?}", info);
+            }
+        }
+    }
+}
+
+impl Factory {
     /// Generate Value for a string.
     pub fn string(&mut self, body: impl Into<String>) -> Value {
         Value::String(self.alloc(std::ffi::CString::new(body.into()).unwrap()))
@@ -77,8 +136,12 @@ impl Factory {
     }
 
     /// Generate Value for a JS function.
-    pub fn function(&mut self, name: Option<String>, info: UserFunctionInfo) -> Value {
-        let name_prop = self.string(name.clone().unwrap_or("".to_string()));
+    pub fn function(
+        &mut self,
+        info: FuncInfoRef,
+        outer_env: impl Into<Option<LexicalEnvironmentRef>>,
+    ) -> Value {
+        let name_prop = self.string(info.func_name.clone().unwrap_or("".to_string()));
         let prototype = self.object(FxHashMap::default());
 
         let f = Value::Object(self.alloc(ObjectInfo {
@@ -89,8 +152,8 @@ impl Factory {
                 prototype => true , false, false: prototype
             ),
             kind: ObjectKind::Function(FunctionObjectInfo {
-                name: name,
-                kind: FunctionObjectKind::User(info)
+                name: info.func_name.clone(),
+                kind: FunctionObjectKind::User{info, outer_env: outer_env.into()},
             }),
             sym_property: FxHashMap::default(),
         }));
@@ -169,4 +232,100 @@ impl Factory {
         ary.get_property("prototype").set_constructor(ary);
         ary
     }
+}
+
+impl Factory {
+    pub fn create_declarative_environment<F>(
+        &mut self,
+        f: F,
+        outer: Option<LexicalEnvironmentRef>,
+    ) -> LexicalEnvironmentRef
+    where
+        F: Fn(&mut Factory, &mut FxHashMap<String, Value>),
+    {
+        let env = LexicalEnvironment {
+            record: EnvironmentRecord::Declarative({
+                let mut record = FxHashMap::default();
+                f(self, &mut record);
+                record
+            }),
+            outer,
+        };
+
+        LexicalEnvironmentRef(self.alloc(env))
+    }
+
+    pub fn create_variable_environment(
+        &mut self,
+        var_names: &Vec<String>,
+        outer_env_ref: LexicalEnvironmentRef,
+    ) -> LexicalEnvironmentRef {
+        self.create_declarative_environment(
+            |_, record| {
+                for name in var_names {
+                    record.insert(name.clone(), Value::undefined());
+                }
+            },
+            Some(outer_env_ref),
+        )
+    }
+
+    pub fn create_lexical_environment(
+        &mut self,
+        lex_names: &Vec<String>,
+        outer_env_ref: LexicalEnvironmentRef,
+    ) -> LexicalEnvironmentRef {
+        self.create_declarative_environment(
+            |_, record| {
+                for name in lex_names {
+                    record.insert(name.clone(), Value::uninitialized());
+                }
+            },
+            Some(outer_env_ref),
+        )
+    }
+
+    pub fn create_function_environment(
+        &mut self,
+        user_func: FuncInfoRef,
+        outer_env: Option<LexicalEnvironmentRef>,
+        args: &[Value],
+        this: Value,
+    ) -> LexicalEnvironmentRef {
+        let env = LexicalEnvironment {
+            record: EnvironmentRecord::Function {
+                record: {
+                    let mut record = FxHashMap::default();
+                    for name in &user_func.var_names {
+                        record.insert(name.clone(), Value::undefined());
+                    }
+                    for (i, FunctionParameter { name, rest_param }) in
+                        user_func.params.iter().enumerate()
+                    {
+                        record.insert(
+                            name.clone(),
+                            if *rest_param {
+                                self.array(
+                                    (*args)
+                                        .get(i..)
+                                        .unwrap_or(&vec![])
+                                        .iter()
+                                        .map(|elem| Property::new_data_simple(*elem))
+                                        .collect::<Vec<Property>>(),
+                                )
+                            } else {
+                                *args.get(i).unwrap_or(&Value::undefined())
+                            },
+                        );
+                    }
+                    record
+                },
+                this,
+            },
+            outer: outer_env,
+        };
+
+        LexicalEnvironmentRef(self.alloc(env))
+    }
+
 }

@@ -13,7 +13,6 @@ pub mod id;
 pub mod lexer;
 pub mod node;
 pub mod parser;
-pub mod test;
 pub mod token;
 
 extern crate ansi_term;

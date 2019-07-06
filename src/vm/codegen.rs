@@ -5,7 +5,9 @@ use crate::node::{
 };
 use crate::vm::constant::{ConstantTable, SpecialProperties, SpecialPropertyKind};
 use crate::vm::factory::FunctionId;
-use crate::vm::jsvalue::function::{DestinationKind, Exception, ThisMode, UserFunctionInfo};
+use crate::vm::jsvalue::function::{
+    DestinationKind, Exception, FuncInfoRef, ThisMode, UserFunctionInfo,
+};
 use crate::vm::jsvalue::value;
 use crate::vm::jsvalue::value::Value;
 use crate::vm::vm::Factory;
@@ -43,7 +45,7 @@ pub struct FunctionInfo {
     pub param_names: Vec<String>,
     pub var_names: Vec<String>,
     pub lex_names: Vec<String>,
-    pub func_decls: Vec<Value>,
+    pub func_decls: Vec<FuncInfoRef>,
     pub level: Vec<Level>,
     pub exception_table: Vec<Exception>,
     pub to_source_pos: ToSourcePos,
@@ -89,11 +91,7 @@ impl<'a> CodeGenerator<'a> {
         }
     }
 
-    pub fn compile(
-        &mut self,
-        node: &Node,
-        use_value: bool,
-    ) -> Result<UserFunctionInfo, Error> {
+    pub fn compile(&mut self, node: &Node, use_value: bool) -> Result<FuncInfoRef, Error> {
         let mut iseq = vec![];
         self.visit(node, &mut iseq, use_value)?;
         self.bytecode_generator.append_return(&mut iseq);
@@ -103,7 +101,8 @@ impl<'a> CodeGenerator<'a> {
         self.to_source_map
             .insert(module_id, function_info.to_source_pos.clone());
 
-        Ok(UserFunctionInfo {
+        let user_func_info = UserFunctionInfo {
+            func_name: None,
             func_id: module_id,
             module_func_id: module_id,
             params: vec![],
@@ -114,8 +113,11 @@ impl<'a> CodeGenerator<'a> {
             this_mode: ThisMode::Global,
             code: iseq,
             exception_table: function_info.exception_table,
-            outer: None,
-        })
+        };
+
+        Ok(self
+            .factory
+            .alloc_user_func_info(module_id, user_func_info))
     }
 }
 
@@ -589,9 +591,9 @@ impl<'a> CodeGenerator<'a> {
         params: &FormalParameters,
         body: &Node,
     ) -> CodeGenResult {
-        let func = self.visit_function(Some(name.clone()), params, body, true)?;
+        let func_info = self.visit_function(Some(name.clone()), params, body, true)?;
         self.current_function().var_names.push(name.clone());
-        self.current_function().func_decls.push(func);
+        self.current_function().func_decls.push(func_info);
         Ok(())
     }
 
@@ -608,8 +610,11 @@ impl<'a> CodeGenerator<'a> {
             return Ok(());
         }
 
-        let func = self.visit_function(name.clone(), params, body, arrow_function)?;
-        self.bytecode_generator.append_push_const(func, iseq);
+        let func_info = self.visit_function(name.clone(), params, body, arrow_function)?;
+        let val = self
+            .factory
+            .function(func_info, None);
+        self.bytecode_generator.append_push_const(val, iseq);
         self.bytecode_generator.append_set_outer_env(iseq);
 
         Ok(())
@@ -621,7 +626,7 @@ impl<'a> CodeGenerator<'a> {
         params: &FormalParameters,
         body: &Node,
         arrow_function: bool,
-    ) -> Result<Value, Error> {
+    ) -> Result<FuncInfoRef, Error> {
         self.function_stack
             .push(FunctionInfo::new(name, self.module_func_id));
 
@@ -652,28 +657,30 @@ impl<'a> CodeGenerator<'a> {
 
         let func_id = self.factory.new_func_id();
 
-        self.to_source_map.insert(func_id, function_info.to_source_pos);
+        self.to_source_map
+            .insert(func_id, function_info.to_source_pos);
 
-        Ok(self.factory.function(
-            function_info.name,
-            UserFunctionInfo {
-                func_id,
-                module_func_id: self.module_func_id,
-                params,
-                var_names: function_info.var_names,
-                lex_names: function_info.lex_names,
-                func_decls: function_info.func_decls,
-                constructible: arrow_function,
-                this_mode: if arrow_function {
-                    ThisMode::Global
-                } else {
-                    ThisMode::Lexical
-                },
-                code: func_iseq,
-                exception_table: function_info.exception_table,
-                outer: None,
+        let user_func_info = UserFunctionInfo {
+            func_name: function_info.name,
+            func_id,
+            module_func_id: self.module_func_id,
+            params,
+            var_names: function_info.var_names,
+            lex_names: function_info.lex_names,
+            func_decls: function_info.func_decls,
+            constructible: arrow_function,
+            this_mode: if arrow_function {
+                ThisMode::Global
+            } else {
+                ThisMode::Lexical
             },
-        ))
+            code: func_iseq,
+            exception_table: function_info.exception_table,
+        };
+
+        let func_ref = self.factory.alloc_user_func_info(func_id, user_func_info);
+
+        Ok(func_ref)
     }
 
     pub fn visit_var_decl(

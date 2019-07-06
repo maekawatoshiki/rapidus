@@ -1,7 +1,7 @@
 use crate::vm::{
-    constant, exec_context,
-    exec_context::{EnvironmentRecord, ExecContext, LexicalEnvironment},
+    constant,
     jsvalue::{function, object, prototype, value::Value},
+    vm::*,
 };
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::hash::{Hash, Hasher};
@@ -33,7 +33,8 @@ impl Hash for GcTargetKey {
 #[derive(Debug)]
 pub struct MemoryAllocator {
     allocated_memory: MarkMap,
-    allocated_size: usize,
+    pub allocated_size: usize,
+    pub collected_size: usize,
     pub roots: MarkSet,
     locked: MarkSet,
     pub state: GCState,
@@ -72,6 +73,7 @@ impl MemoryAllocator {
         MemoryAllocator {
             allocated_memory: MarkMap::default(),
             allocated_size: 0,
+            collected_size: 0,
             roots: MarkSet::default(),
             locked: MarkSet::default(),
             state: GCState::Initial,
@@ -92,25 +94,22 @@ impl MemoryAllocator {
 impl MemoryAllocator {
     pub fn mark(
         &mut self,
-        global: exec_context::LexicalEnvironmentRef,
+        global: LexicalEnvironmentRef,
         object_prototypes: &prototype::ObjectPrototypes,
         constant_table: &constant::ConstantTable,
-        //stack: &Vec<BoxedValue>,
-        cur_context: &exec_context::ExecContext,
-        saved_context: &Vec<exec_context::ExecContext>,
+        cur_context: &ExecContext,
+        saved_context: &Vec<ExecContext>,
     ) {
         self.counter += 1;
         if self.counter < 100 {
             return;
         };
         self.counter = 0;
+
         let mut markset = MarkSet::default();
 
         self.state = match self.state {
             GCState::Initial => {
-                // println!("initial");
-                // println!("before {:?}", self.allocated_memory);
-
                 markset.insert(GcTargetKey(global.as_ptr()));
                 global.initial_trace(&mut markset);
 
@@ -123,18 +122,11 @@ impl MemoryAllocator {
                 object_prototypes.array.initial_trace(&mut markset);
 
                 constant_table.initial_trace(&mut markset);
-                /*
-                                for val_boxed in stack {
-                                    let val: Value = (*val_boxed).into();
-                                    val.initial_trace(&mut markset);
-                                }
-                */
+
                 for context in saved_context {
                     context.initial_trace(&mut markset);
                     context.this.initial_trace(&mut markset);
                 }
-
-                // println!("initial mark: {:?}", markset);
 
                 self.white = self.white.flip_white();
 
@@ -143,28 +135,23 @@ impl MemoryAllocator {
                 GCState::Marking
             }
             GCState::Marking => {
-                // println!("start marking: {:?}", markset);
                 let roots = std::mem::replace(&mut self.roots, FxHashSet::default());
                 for root in roots {
                     self.allocated_memory.insert(root, MarkState::Black);
                     unsafe { &*root.0 }.trace(self, &mut markset);
                 }
 
-                // println!("marking: {:?}", markset);
-
                 self.roots = markset;
 
                 if self.roots.len() == 0 {
-                    // println!("all marked: {:?}", self.allocated_memory);
                     GCState::ReadyToSweep
                 } else {
                     GCState::Marking
                 }
             }
             GCState::ReadyToSweep => {
-                // println!("before {:?}", self.allocated_memory.len());
-
                 let white = self.white;
+                let mut size = 0;
                 self.allocated_memory.retain(|obj, mark| {
                     if mark == &MarkState::Black || mark == &MarkState::NeverReleased {
                         *mark = white;
@@ -173,11 +160,11 @@ impl MemoryAllocator {
                     if mark == &white {
                         return true;
                     }
-                    unsafe { Box::from_raw(obj.0).free() };
+                    size += unsafe { Box::from_raw(obj.0).free() };
                     false
                 });
-
-                // println!("now allocated objects: {:?}", self.allocated_memory.len());
+                self.collected_size += size;
+                self.allocated_size -= size;
 
                 GCState::Initial
             }
@@ -240,8 +227,8 @@ macro_rules! mark_if_white {
     }};
 }
 
-impl GcTarget for ExecContext {
-    fn initial_trace(&self, markset: &mut MarkSet) {
+impl ExecContext {
+    pub fn initial_trace(&self, markset: &mut MarkSet) {
         mark!(markset, self.lexical_environment.as_ptr());
         mark!(markset, self.variable_environment.as_ptr());
         for env in &self.saved_lexical_environment {
@@ -252,7 +239,7 @@ impl GcTarget for ExecContext {
             val.initial_trace(markset);
         }
     }
-
+    /*
     fn trace(&self, allocator: &mut MemoryAllocator, markset: &mut MarkSet) {
         mark_if_white!(allocator, markset, self.lexical_environment.as_ptr());
         mark_if_white!(allocator, markset, self.variable_environment.as_ptr());
@@ -260,15 +247,12 @@ impl GcTarget for ExecContext {
             mark_if_white!(allocator, markset, env.as_ptr());
         }
     }
-
-    fn free(&self) -> usize {
-        mem::size_of::<exec_context::ExecContext>()
-    }
+    */
 }
 
 impl GcTarget for LexicalEnvironment {
     fn initial_trace(&self, markset: &mut MarkSet) {
-        fn trace_record(record: &exec_context::EnvironmentRecord, markset: &mut MarkSet) {
+        fn trace_record(record: &EnvironmentRecord, markset: &mut MarkSet) {
             match record {
                 EnvironmentRecord::Declarative(record)
                 | EnvironmentRecord::Function { record, .. }
@@ -293,7 +277,7 @@ impl GcTarget for LexicalEnvironment {
     fn trace(&self, allocator: &mut MemoryAllocator, markset: &mut MarkSet) {
         fn trace_record(
             allocator: &mut MemoryAllocator,
-            record: &exec_context::EnvironmentRecord,
+            record: &EnvironmentRecord,
             markset: &mut MarkSet,
         ) {
             match record {
@@ -331,7 +315,7 @@ impl GcTarget for ::std::ffi::CString {
     }
 }
 
-impl GcTarget for Value {
+impl Value {
     fn initial_trace(&self, markset: &mut MarkSet) {
         match self {
             Value::Object(obj) => {
@@ -350,10 +334,6 @@ impl GcTarget for Value {
             Value::String(s) => mark_if_white!(allocator, markset, *s),
             _ => {}
         }
-    }
-
-    fn free(&self) -> usize {
-        mem::size_of::<Value>()
     }
 }
 
@@ -377,7 +357,7 @@ impl GcTarget for object::ObjectInfo {
     }
 }
 
-impl GcTarget for object::Property {
+impl object::Property {
     fn initial_trace(&self, markset: &mut MarkSet) {
         match self {
             object::Property::Data(object::DataProperty { val, .. }) => val.initial_trace(markset),
@@ -399,31 +379,16 @@ impl GcTarget for object::Property {
             }
         }
     }
-
-    fn free(&self) -> usize {
-        mem::size_of::<object::Property>()
-    }
 }
 
-impl GcTarget for object::ObjectKind {
+impl object::ObjectKind {
     fn initial_trace(&self, markset: &mut MarkSet) {
-        fn trace_user_function_info(
-            markset: &mut MarkSet,
-            user_func_info: &function::UserFunctionInfo,
-        ) {
-            for func_decl in &user_func_info.func_decls {
-                func_decl.initial_trace(markset);
-            }
-
-            if let Some(outer) = user_func_info.outer {
-                mark!(markset, outer.as_ptr());
-            }
-        }
-
         match self {
             object::ObjectKind::Function(func_info) => match func_info.kind {
-                function::FunctionObjectKind::User(ref user_func_info) => {
-                    trace_user_function_info(markset, user_func_info)
+                function::FunctionObjectKind::User { outer_env, .. } => {
+                    if let Some(env) = outer_env {
+                        mark!(markset, env.as_ptr());
+                    }
                 }
                 function::FunctionObjectKind::Builtin(_) => {}
             },
@@ -439,24 +404,12 @@ impl GcTarget for object::ObjectKind {
     }
 
     fn trace(&self, allocator: &mut MemoryAllocator, markset: &mut MarkSet) {
-        fn trace_user_function_info(
-            allocator: &mut MemoryAllocator,
-            markset: &mut MarkSet,
-            user_func_info: &function::UserFunctionInfo,
-        ) {
-            for func_decl in &user_func_info.func_decls {
-                func_decl.trace(allocator, markset);
-            }
-
-            if let Some(outer) = user_func_info.outer {
-                mark_if_white!(allocator, markset, outer.as_ptr());
-            }
-        }
-
         match self {
             object::ObjectKind::Function(func_info) => match func_info.kind {
-                function::FunctionObjectKind::User(ref user_func_info) => {
-                    trace_user_function_info(allocator, markset, user_func_info)
+                function::FunctionObjectKind::User { outer_env, .. } => {
+                    if let Some(env) = outer_env {
+                        mark_if_white!(allocator, markset, env.as_ptr());
+                    }
                 }
                 function::FunctionObjectKind::Builtin(_) => {}
             },
@@ -470,13 +423,9 @@ impl GcTarget for object::ObjectKind {
             object::ObjectKind::Ordinary => {}
         }
     }
-
-    fn free(&self) -> usize {
-        mem::size_of::<object::ObjectKind>()
-    }
 }
 
-impl GcTarget for constant::ConstantTable {
+impl constant::ConstantTable {
     fn initial_trace(&self, markset: &mut MarkSet) {
         for const_ in &self.table {
             match const_ {
@@ -484,13 +433,5 @@ impl GcTarget for constant::ConstantTable {
                 _ => {}
             }
         }
-    }
-
-    fn trace(&self, _allocator: &mut MemoryAllocator, _markset: &mut MarkSet) {
-        panic!()
-    }
-
-    fn free(&self) -> usize {
-        panic!()
     }
 }

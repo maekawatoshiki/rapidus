@@ -1,6 +1,8 @@
-use crate::parser;
-use crate::vm;
-use crate::vm::jsvalue::value::Value;
+#![feature(test)]
+extern crate test;
+use rapidus::parser;
+use rapidus::vm;
+use rapidus::vm::jsvalue::value::Value;
 use std::fs::OpenOptions;
 use std::io::Read;
 
@@ -11,7 +13,7 @@ use std::io::Read;
 
 pub fn test_file(file_name: impl Into<String>, answer: impl Into<String>) {
     let file_name = file_name.into();
-    println!("{}", format!("test/{}.js", file_name));
+    println!("{}", format!("tests/test/{}.js", file_name));
     compare_scripts(load_file(file_name), answer.into());
 }
 
@@ -19,7 +21,7 @@ pub fn test_file(file_name: impl Into<String>, answer: impl Into<String>) {
 /// ### Panic
 /// Panic if the given code returned Err.
 pub fn assert_file(file_name: &str) {
-    println!("{}", format!("test/{}.js", file_name));
+    println!("{}", format!("tests/test/{}.js", file_name));
     execute_script(load_file(file_name));
 }
 
@@ -27,7 +29,7 @@ fn load_file(file_name: impl Into<String>) -> String {
     let mut file_body = String::new();
     match OpenOptions::new()
         .read(true)
-        .open(format!("test/{}.js", file_name.into()))
+        .open(format!("tests/test/{}.js", file_name.into()))
     {
         Ok(mut file) => match file.read_to_string(&mut file_body).ok() {
             Some(x) => x,
@@ -88,4 +90,170 @@ fn compare_scripts(text: String, answer: String) {
     println!("ans:  {}", res_answer);
 
     assert_eq!(res_text, res_answer);
+}
+
+#[test]
+fn vm_test() {
+    execute_script("for(var i = 0; i < 4; i++){ i }".to_string());
+}
+
+#[test]
+fn string_test1() {
+    test_code("'死して屍拾う者なし'[4]", "'拾'");
+}
+
+#[test]
+fn string_test2() {
+    test_code("'死して屍拾う者なし'.length", "9");
+}
+#[test]
+fn operator_test() {
+    test_code("+(5>3)+60%7+(3>=5)+!!5+(-6)", "0");
+}
+
+#[test]
+fn operator_test2() {
+    assert_file("operator");
+}
+
+#[test]
+fn this_test() {
+    test_file("this", "[1,101,124]");
+}
+
+#[test]
+fn prototype_test() {
+    assert_file("prototypes");
+}
+
+#[test]
+fn accessor_property() {
+    assert_file("accessor_property");
+}
+
+#[test]
+fn trinity() {
+    assert_file("trinity");
+}
+
+#[test]
+fn closure() {
+    assert_file("closure");
+}
+
+#[test]
+fn trycatch() {
+    assert_file("trycatch");
+}
+
+#[test]
+fn r#typeof() {
+    assert_file("typeof");
+}
+
+#[test]
+fn exotic_cmp() {
+    assert_file("exotic_cmp")
+}
+
+#[test]
+fn r#while() {
+    assert_file("while")
+}
+
+#[test]
+fn r#for() {
+    assert_file("for")
+}
+
+#[test]
+fn r#if() {
+    assert_file("if")
+}
+
+#[test]
+fn arrow_function() {
+    test_code("let f = (x) => { return x * x }; f(5)", "25");
+    test_code("let f = x => { return x * x }; f(6)", "36");
+}
+
+#[test]
+fn symbol() {
+    assert_file("symbol")
+}
+
+#[test]
+fn array() {
+    assert_file("array")
+}
+
+#[test]
+fn env() {
+    assert_file("env")
+}
+
+#[test]
+fn new_call_member() {
+    assert_file("new_call_member")
+}
+
+#[test]
+fn assert() {
+    assert_file("assert")
+}
+
+#[test]
+fn fibo() {
+    assert_file("fibo")
+}
+
+#[test]
+fn fact() {
+    assert_file("fact")
+}
+
+#[test]
+fn test_module() {
+    assert_file("test_module_caller")
+}
+
+#[test]
+fn function_methods() {
+    assert_file("function_methods")
+}
+
+#[test]
+fn string_methods() {
+    assert_file("string_methods")
+}
+
+#[test]
+fn runtime_error1() {
+    runtime_error("let a = {}; a.b.c");
+}
+
+#[test]
+fn runtime_error2() {
+    runtime_error("let a = {}; a.b.c = 5");
+}
+
+#[test]
+fn runtime_error3() {
+    runtime_error("let a = {}; a(5)");
+}
+
+#[test]
+fn runtime_error4() {
+    runtime_error("let a = {}; a.b(5)");
+}
+
+#[test]
+fn runtime_error5() {
+    runtime_error("let a = {}; a(5)");
+}
+
+use test::Bencher;
+#[bench]
+fn bench_fibo(b: &mut Bencher) {
+    b.iter(|| assert_file("fibo"));
 }

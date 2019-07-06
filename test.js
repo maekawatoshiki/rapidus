@@ -1,3 +1,13 @@
-//throw new Error('abscent')
-let a = [1, 2, 3, [4, 5], 5]
-a(400)
+/* eslint-disable no-console */
+let array = []
+for (let i = 0; i < 1000; i++) {
+  array.push({ index: i })
+}
+console.log(array.prototype)
+array.map(e => {
+  dummy()
+  return (e.double = e.index * 2)
+})
+console.log(array[500])
+
+function dummy() {}

@@ -1,4 +1,4 @@
-let assert = cond => {
+function assert(cond) {
   if (!cond) throw 'err'
 }
 
