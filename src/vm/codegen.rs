@@ -115,9 +115,7 @@ impl<'a> CodeGenerator<'a> {
             exception_table: function_info.exception_table,
         };
 
-        Ok(self
-            .factory
-            .alloc_user_func_info(module_id, user_func_info))
+        Ok(self.factory.alloc_user_func_info(module_id, user_func_info))
     }
 }
 
@@ -187,11 +185,14 @@ impl<'a> CodeGenerator<'a> {
                     self.bytecode_generator.append_pop(iseq);
                 }
             }
-            // NodeBase::Undefined => {
-            //     if use_value {
-            //         self.bytecode_generator.append_push_undefined(iseq);
-            //     }
-            // }
+            NodeBase::Spread(ref name) => {
+                self.bytecode_generator.append_get_value(name, iseq);
+                if !use_value {
+                    self.bytecode_generator.append_pop(iseq);
+                } else {
+                    self.bytecode_generator.append_spread(iseq);
+                }
+            }
             NodeBase::Null => {
                 if use_value {
                     self.bytecode_generator.append_push_null(iseq);
@@ -611,9 +612,7 @@ impl<'a> CodeGenerator<'a> {
         }
 
         let func_info = self.visit_function(name.clone(), params, body, arrow_function)?;
-        let val = self
-            .factory
-            .function(func_info, None);
+        let val = self.factory.function(func_info, None);
         self.bytecode_generator.append_push_const(val, iseq);
         self.bytecode_generator.append_set_outer_env(iseq);
 
@@ -1106,12 +1105,12 @@ impl<'a> CodeGenerator<'a> {
     }
 
     fn visit_array_literal(&mut self, elems: &Vec<Node>, iseq: &mut ByteCode) -> CodeGenResult {
+        self.bytecode_generator.append_push_seperator(iseq);
         for elem in elems.iter().rev() {
             self.visit(elem, iseq, true)?;
         }
 
-        self.bytecode_generator
-            .append_create_array(elems.len() as usize, iseq);
+        self.bytecode_generator.append_create_array(iseq);
 
         Ok(())
     }

@@ -1159,7 +1159,7 @@ impl Parser {
             }
 
             if self.lexer.next_if(Kind::Symbol(Symbol::Spread)) {
-                let ident = self.lexer.peek_skip_lineterminator()?;
+                let ident = self.lexer.next_skip_lineterminator()?;
                 if let Kind::Identifier(name) = ident.kind {
                     elements.push(Node::new(NodeBase::Spread(name), ident.pos));
                 } else {

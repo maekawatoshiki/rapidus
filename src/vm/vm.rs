@@ -632,6 +632,10 @@ impl VM {
                     self.current_context.pc += 1;
                     self.current_context.stack.push(Value::undefined().into());
                 }
+                VMInst::PUSH_SEPERATOR => {
+                    self.current_context.pc += 1;
+                    self.current_context.stack.push(Value::seperator().into());
+                }
                 VMInst::PUSH_THIS => {
                     self.current_context.pc += 1;
                     self.current_context
@@ -645,6 +649,19 @@ impl VM {
                 VMInst::PUSH_TRUE => {
                     self.current_context.pc += 1;
                     self.current_context.stack.push(Value::Bool(1).into());
+                }
+                VMInst::SPREAD => {
+                    self.current_context.pc += 1;
+                    let val: Value = self.current_context.stack.pop().unwrap().into();
+                    if !val.is_array_object() {
+                        type_error!("Not an array")
+                    }
+                    let ary = val.as_array_mut();
+                    let len = ary.get_length();
+                    for i in 0..len {
+                        let val = ary.get_element(len - i - 1).as_data().val;
+                        self.current_context.stack.push(val.into());
+                    }
                 }
                 VMInst::GET_MEMBER => {
                     self.current_context.pc += 1;
@@ -727,8 +744,7 @@ impl VM {
                 }
                 VMInst::CREATE_ARRAY => {
                     self.current_context.pc += 1;
-                    read_int32!(self, len, usize);
-                    self.create_array(len)?;
+                    self.create_array()?;
                     //self.gc_mark();
                 }
                 VMInst::DOUBLE => {
@@ -1047,10 +1063,13 @@ impl VM {
         Ok(())
     }
 
-    fn create_array(&mut self, len: usize) -> VMResult {
+    fn create_array(&mut self) -> VMResult {
         let mut elems = vec![];
-        for _ in 0..len {
+        loop {
             let val: Value = self.current_context.stack.pop().unwrap().into();
+            if val.is_seperator() {
+                break;
+            }
             elems.push(Property::Data(DataProperty {
                 val,
                 writable: true,
