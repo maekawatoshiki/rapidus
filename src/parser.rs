@@ -1158,10 +1158,16 @@ impl Parser {
                 return Err(Error::UnexpectedEOF("']' may be needed".to_string()));
             }
 
-            if let Ok(elem) = self.read_assignment_expression() {
-                elements.push(elem);
+            if self.lexer.next_if(Kind::Symbol(Symbol::Spread)) {
+                let ident = self.lexer.peek_skip_lineterminator()?;
+                if let Kind::Identifier(name) = ident.kind {
+                    elements.push(Node::new(NodeBase::Spread(name), ident.pos));
+                } else {
+                    return Err(Error::Expect(ident.pos, "Expect identifier.".to_string()));
+                }
+            } else {
+                elements.push(self.read_assignment_expression()?);
             }
-
             self.lexer.next_if(Kind::Symbol(Symbol::Comma));
         }
 
@@ -1480,7 +1486,7 @@ impl Parser {
             params.push(
                 if self
                     .lexer
-                    .next_if_skip_lineterminator(Kind::Symbol(Symbol::Rest))?
+                    .next_if_skip_lineterminator(Kind::Symbol(Symbol::Spread))?
                 {
                     rest_param = true;
                     self.read_function_rest_parameter()?

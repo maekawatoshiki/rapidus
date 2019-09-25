@@ -75,6 +75,7 @@ pub enum NodeBase {
     Array(Vec<Node>),
     Object(Vec<PropertyDefinition>),
     Identifier(String),
+    Spread(String),
     This,
     // Arguments,
     // Undefined,
