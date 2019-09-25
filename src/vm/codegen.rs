@@ -1061,6 +1061,7 @@ impl<'a> CodeGenerator<'a> {
         properties: &Vec<PropertyDefinition>,
         iseq: &mut ByteCode,
     ) -> CodeGenResult {
+        self.bytecode_generator.append_push_seperator(iseq);
         let mut special_properties = SpecialProperties::default();
         let len = properties.len();
 

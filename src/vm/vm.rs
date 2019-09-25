@@ -1021,11 +1021,15 @@ impl VM {
     }
 
     fn create_object(&mut self, id: usize) -> VMResult {
-        let (len, special_properties) = self.constant_table.get(id).as_object_literal_info();
+        let (_, special_properties) = self.constant_table.get(id).as_object_literal_info();
         let mut properties = FxHashMap::default();
 
-        for i in 0..len {
+        let mut i = 0;
+        loop {
             let prop: Value = self.current_context.stack.pop().unwrap().into();
+            if prop.is_seperator() {
+                break;
+            }
             let name = prop.to_string();
             let val: Value = self.current_context.stack.pop().unwrap().into();
             if let Some(kind) = special_properties.get(&i) {
@@ -1055,6 +1059,7 @@ impl VM {
                     }),
                 );
             }
+            i += 1;
         }
 
         let obj = self.factory.object(properties);
