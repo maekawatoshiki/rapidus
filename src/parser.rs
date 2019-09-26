@@ -1158,13 +1158,13 @@ impl Parser {
                 return Err(Error::UnexpectedEOF("']' may be needed".to_string()));
             }
 
-            if self.lexer.next_if(Kind::Symbol(Symbol::Spread)) {
-                let ident = self.lexer.next_skip_lineterminator()?;
-                if let Kind::Identifier(name) = ident.kind {
-                    elements.push(Node::new(NodeBase::Spread(name), ident.pos));
-                } else {
-                    return Err(Error::Expect(ident.pos, "Expect identifier.".to_string()));
-                }
+            if self
+                .lexer
+                .next_if_skip_lineterminator(Kind::Symbol(Symbol::Spread))?
+            {
+                let node = self.read_assignment_expression()?;
+                let pos = node.pos;
+                elements.push(Node::new(NodeBase::Spread(Box::new(node)), pos));
             } else {
                 elements.push(self.read_assignment_expression()?);
             }

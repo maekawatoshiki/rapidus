@@ -185,8 +185,8 @@ impl<'a> CodeGenerator<'a> {
                     self.bytecode_generator.append_pop(iseq);
                 }
             }
-            NodeBase::Spread(ref name) => {
-                self.bytecode_generator.append_get_value(name, iseq);
+            NodeBase::Spread(ref node) => {
+                self.visit(node, iseq, true)?;
                 if !use_value {
                     self.bytecode_generator.append_pop(iseq);
                 } else {
@@ -1091,6 +1091,9 @@ impl<'a> CodeGenerator<'a> {
                     self.visit(&node, iseq, true)?;
                     self.bytecode_generator
                         .append_push_const(self.factory.string(name.clone()), iseq);
+                }
+                PropertyDefinition::Spread(_node) => {
+                    unimplemented!();
                 }
             }
         }

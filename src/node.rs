@@ -25,6 +25,7 @@ pub enum PropertyDefinition {
     IdentifierReference(String),
     Property(String, Node),
     MethodDefinition(MethodDefinitionKind, String, Node),
+    Spread(String),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -75,7 +76,7 @@ pub enum NodeBase {
     Array(Vec<Node>),
     Object(Vec<PropertyDefinition>),
     Identifier(String),
-    Spread(String),
+    Spread(Box<Node>),
     This,
     // Arguments,
     // Undefined,
