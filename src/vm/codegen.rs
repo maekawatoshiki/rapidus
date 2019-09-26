@@ -190,7 +190,7 @@ impl<'a> CodeGenerator<'a> {
                 if !use_value {
                     self.bytecode_generator.append_pop(iseq);
                 } else {
-                    self.bytecode_generator.append_spread(iseq);
+                    self.bytecode_generator.append_spread_array(iseq);
                 }
             }
             NodeBase::Null => {
@@ -1092,8 +1092,10 @@ impl<'a> CodeGenerator<'a> {
                     self.bytecode_generator
                         .append_push_const(self.factory.string(name.clone()), iseq);
                 }
-                PropertyDefinition::Spread(_node) => {
-                    unimplemented!();
+                PropertyDefinition::Spread(node) => {
+                    special_properties.insert(len - i - 1, SpecialPropertyKind::Spread);
+                    self.visit(&node, iseq, true)?;
+                    self.bytecode_generator.append_push_null(iseq);
                 }
             }
         }

@@ -25,7 +25,7 @@ pub enum PropertyDefinition {
     IdentifierReference(String),
     Property(String, Node),
     MethodDefinition(MethodDefinitionKind, String, Node),
-    Spread(String),
+    Spread(Node),
 }
 
 #[derive(Clone, Debug, PartialEq)]

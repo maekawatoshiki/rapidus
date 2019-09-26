@@ -20,6 +20,7 @@ pub type SpecialProperties = FxHashMap<usize, SpecialPropertyKind>;
 pub enum SpecialPropertyKind {
     Getter,
     Setter,
+    Spread,
 }
 
 #[derive(Clone, Debug, PartialEq)]

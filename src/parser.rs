@@ -1221,6 +1221,14 @@ impl Parser {
             }
         }
 
+        if self
+            .lexer
+            .next_if_skip_lineterminator(Kind::Symbol(Symbol::Spread))?
+        {
+            let node = self.read_assignment_expression()?;
+            return Ok(PropertyDefinition::Spread(node));
+        }
+
         let tok = self.lexer.next_skip_lineterminator()?;
 
         if self

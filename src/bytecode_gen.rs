@@ -91,8 +91,12 @@ impl<'a> ByteCodeGenerator<'a> {
         iseq.push(VMInst::PUSH_UNDEFINED);
     }
 
-    pub fn append_spread(&self, iseq: &mut ByteCode) {
-        iseq.push(VMInst::SPREAD);
+    pub fn append_spread_array(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::SPREAD_ARRAY);
+    }
+
+    pub fn append_spread_obj(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::SPREAD_OBJ);
     }
 
     pub fn append_lnot(&self, iseq: &mut ByteCode) {
@@ -466,7 +470,8 @@ pub fn inst_to_inst_name(inst: u8) -> &'static str {
         VMInst::TYPEOF => "Typeof",
         VMInst::EXP => "Exp",
         VMInst::PUSH_SEPERATOR => "PushSeperator",
-        VMInst::SPREAD => "Spread",
+        VMInst::SPREAD_ARRAY => "SpreadArray",
+        VMInst::SPREAD_OBJ => "SpreadObj",
         _ => "???",
     }
 }
@@ -486,7 +491,8 @@ pub mod VMInst {
     pub const PUSH_ARGUMENTS: u8 = 0x0b;
     pub const PUSH_UNDEFINED: u8 = 0x0c;
     pub const PUSH_SEPERATOR: u8 = 0x01;
-    pub const SPREAD: u8 = 0x48;
+    pub const SPREAD_ARRAY: u8 = 0x48;
+    pub const SPREAD_OBJ: u8 = 0x49;
     pub const DOUBLE: u8 = 0x29;
     pub const POP: u8 = 0x2a;
     pub const LNOT: u8 = 0x0d;
@@ -549,9 +555,8 @@ pub mod VMInst {
             PUSH_FALSE | END | PUSH_TRUE | PUSH_THIS | ADD | SUB | MUL | DIV | REM | LT | EXP
             | PUSH_ARGUMENTS | NEG | POSI | GT | LE | GE | EQ | NE | GET_MEMBER | RETURN | SNE
             | ZFSHR | POP | DOUBLE | AND | COND_OP | OR | SEQ | SET_MEMBER | LNOT
-            | PUSH_UNDEFINED | LAND | SHR | SHL | XOR | LOR | NOT | CREATE_ARRAY | SPREAD => {
-                Some(1)
-            }
+            | PUSH_UNDEFINED | LAND | SHR | SHL | XOR | LOR | NOT | CREATE_ARRAY | SPREAD_ARRAY
+            | SPREAD_OBJ => Some(1),
             _ => None,
         }
     }

@@ -650,11 +650,11 @@ impl VM {
                     self.current_context.pc += 1;
                     self.current_context.stack.push(Value::Bool(1).into());
                 }
-                VMInst::SPREAD => {
+                VMInst::SPREAD_ARRAY => {
                     self.current_context.pc += 1;
                     let val: Value = self.current_context.stack.pop().unwrap().into();
                     if !val.is_array_object() {
-                        type_error!("Not an array")
+                        type_error!("Not an array.")
                     }
                     let ary = val.as_array_mut();
                     let len = ary.get_length();
@@ -663,6 +663,7 @@ impl VM {
                         self.current_context.stack.push(val.into());
                     }
                 }
+                VMInst::SPREAD_OBJ => {}
                 VMInst::GET_MEMBER => {
                     self.current_context.pc += 1;
                     let property: Value = self.current_context.stack.pop().unwrap().into();
@@ -1032,20 +1033,38 @@ impl VM {
             }
             let name = prop.to_string();
             let val: Value = self.current_context.stack.pop().unwrap().into();
+            use constant::SpecialPropertyKind::*;
             if let Some(kind) = special_properties.get(&i) {
-                let AccessorProperty { get, set, .. } = properties
-                    .entry(name)
-                    .or_insert(Property::Accessor(AccessorProperty {
-                        get: Value::undefined(),
-                        set: Value::undefined(),
-                        // TODO
-                        enumerable: true,
-                        configurable: true,
-                    }))
-                    .as_accessor_mut();
-                match kind {
-                    constant::SpecialPropertyKind::Getter => *get = val,
-                    constant::SpecialPropertyKind::Setter => *set = val,
+                if *kind == Spread {
+                    if val.is_object() {
+                        let map = val.get_object_properties().unwrap();
+                        for (name, prop) in map {
+                            properties.insert(name.clone(), prop.clone());
+                        }
+                        if val.is_array_object() {
+                            let ary = val.as_array_mut();
+                            let len = ary.get_length();
+                            for i in 0..len {
+                                properties.insert(i.to_string(), ary.get_element(i));
+                            }
+                        }
+                    }
+                } else {
+                    let AccessorProperty { get, set, .. } = properties
+                        .entry(name)
+                        .or_insert(Property::Accessor(AccessorProperty {
+                            get: Value::undefined(),
+                            set: Value::undefined(),
+                            // TODO
+                            enumerable: true,
+                            configurable: true,
+                        }))
+                        .as_accessor_mut();
+                    match kind {
+                        Getter => *get = val,
+                        Setter => *set = val,
+                        Spread => {}
+                    }
                 }
             } else {
                 properties.insert(
