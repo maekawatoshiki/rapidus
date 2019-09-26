@@ -5,13 +5,8 @@ use rustc_hash::FxHashMap;
 pub enum Constant {
     String(String),
     Value(Value),
-    LexicalEnvironmentInfo {
-        names: Vec<String>,
-    },
-    ObjectLiteralInfo {
-        len: usize,
-        special_properties: SpecialProperties,
-    },
+    LexicalEnvironmentInfo { names: Vec<String> },
+    ObjectLiteralInfo(SpecialProperties),
 }
 
 pub type SpecialProperties = FxHashMap<usize, SpecialPropertyKind>;
@@ -59,26 +54,21 @@ impl ConstantTable {
         id
     }
 
-    pub fn add_object_literal_info(
-        &mut self,
-        len: usize,
-        special_properties: SpecialProperties,
-    ) -> usize {
+    pub fn add_object_literal_info(&mut self, special_properties: SpecialProperties) -> usize {
+        use Constant::ObjectLiteralInfo;
         for (i, constant) in self.table.iter().enumerate() {
             match constant {
-                Constant::ObjectLiteralInfo {
-                    len: len_,
-                    special_properties: special_properties_,
-                } if &special_properties == special_properties_ && &len == len_ => return i,
+                ObjectLiteralInfo(special_properties_)
+                    if &special_properties == special_properties_ =>
+                {
+                    return i
+                }
                 _ => {}
             }
         }
 
         let id = self.table.len();
-        self.table.push(Constant::ObjectLiteralInfo {
-            len,
-            special_properties,
-        });
+        self.table.push(ObjectLiteralInfo(special_properties));
         id
     }
 
@@ -126,12 +116,9 @@ impl Constant {
         }
     }
 
-    pub fn as_object_literal_info(&self) -> (usize, SpecialProperties) {
+    pub fn as_object_literal_info(&self) -> SpecialProperties {
         match self {
-            Constant::ObjectLiteralInfo {
-                len,
-                special_properties,
-            } => (*len, special_properties.clone()),
+            Constant::ObjectLiteralInfo(special_properties) => special_properties.clone(),
             _ => panic!(),
         }
     }

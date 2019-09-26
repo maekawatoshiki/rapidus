@@ -663,7 +663,6 @@ impl VM {
                         self.current_context.stack.push(val.into());
                     }
                 }
-                VMInst::SPREAD_OBJ => {}
                 VMInst::GET_MEMBER => {
                     self.current_context.pc += 1;
                     let property: Value = self.current_context.stack.pop().unwrap().into();
@@ -1022,7 +1021,7 @@ impl VM {
     }
 
     fn create_object(&mut self, id: usize) -> VMResult {
-        let (_, special_properties) = self.constant_table.get(id).as_object_literal_info();
+        let special_properties = self.constant_table.get(id).as_object_literal_info();
         let mut properties = FxHashMap::default();
 
         let mut i = 0;

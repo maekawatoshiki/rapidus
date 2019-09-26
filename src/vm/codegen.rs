@@ -1064,36 +1064,43 @@ impl<'a> CodeGenerator<'a> {
         self.bytecode_generator.append_push_seperator(iseq);
         let mut special_properties = SpecialProperties::default();
         let len = properties.len();
-
-        for (i, property) in properties.iter().enumerate() {
+        for (i, property) in properties.iter().rev().enumerate() {
+            use MethodDefinitionKind::*;
+            use PropertyDefinition::*;
+            use SpecialPropertyKind::*;
             match property {
-                PropertyDefinition::IdentifierReference(name) => {
+                // { name }
+                IdentifierReference(name) => {
                     self.save_source_pos(iseq);
                     self.bytecode_generator.append_get_value(name, iseq);
                     self.bytecode_generator
                         .append_push_const(self.factory.string(name.clone()), iseq);
                 }
-                PropertyDefinition::Property(name, node) => {
-                    self.visit(&node, iseq, true)?;
+                // { name: val }
+                Property(name, val) => {
+                    self.visit(&val, iseq, true)?;
                     self.bytecode_generator
                         .append_push_const(self.factory.string(name.clone()), iseq);
                 }
-                PropertyDefinition::MethodDefinition(kind, name, node) => {
+                // { get name(){ node }}
+                // { set name(){ node }}
+                MethodDefinition(kind, name, node) => {
                     match kind {
-                        MethodDefinitionKind::Ordinary => {}
-                        MethodDefinitionKind::Set => {
-                            special_properties.insert(len - i - 1, SpecialPropertyKind::Setter);
+                        Ordinary => {}
+                        Set => {
+                            special_properties.insert(len - i - 1, Setter);
                         }
-                        MethodDefinitionKind::Get => {
-                            special_properties.insert(len - i - 1, SpecialPropertyKind::Getter);
+                        Get => {
+                            special_properties.insert(len - i - 1, Getter);
                         }
                     };
                     self.visit(&node, iseq, true)?;
                     self.bytecode_generator
                         .append_push_const(self.factory.string(name.clone()), iseq);
                 }
-                PropertyDefinition::Spread(node) => {
-                    special_properties.insert(len - i - 1, SpecialPropertyKind::Spread);
+                // { ...node }
+                SpreadObject(node) => {
+                    special_properties.insert(len - i - 1, Spread);
                     self.visit(&node, iseq, true)?;
                     self.bytecode_generator.append_push_null(iseq);
                 }
@@ -1103,7 +1110,7 @@ impl<'a> CodeGenerator<'a> {
         let id = self
             .bytecode_generator
             .constant_table
-            .add_object_literal_info(len, special_properties);
+            .add_object_literal_info(special_properties);
 
         self.bytecode_generator.append_create_object(id, iseq);
 
