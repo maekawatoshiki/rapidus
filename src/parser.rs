@@ -1158,10 +1158,16 @@ impl Parser {
                 return Err(Error::UnexpectedEOF("']' may be needed".to_string()));
             }
 
-            if let Ok(elem) = self.read_assignment_expression() {
-                elements.push(elem);
+            if self
+                .lexer
+                .next_if_skip_lineterminator(Kind::Symbol(Symbol::Spread))?
+            {
+                let node = self.read_assignment_expression()?;
+                let pos = node.pos;
+                elements.push(Node::new(NodeBase::Spread(Box::new(node)), pos));
+            } else {
+                elements.push(self.read_assignment_expression()?);
             }
-
             self.lexer.next_if(Kind::Symbol(Symbol::Comma));
         }
 
@@ -1213,6 +1219,14 @@ impl Parser {
                 Kind::String(s) => s,
                 _ => unimplemented!(),
             }
+        }
+
+        if self
+            .lexer
+            .next_if_skip_lineterminator(Kind::Symbol(Symbol::Spread))?
+        {
+            let node = self.read_assignment_expression()?;
+            return Ok(PropertyDefinition::SpreadObject(node));
         }
 
         let tok = self.lexer.next_skip_lineterminator()?;
@@ -1480,7 +1494,7 @@ impl Parser {
             params.push(
                 if self
                     .lexer
-                    .next_if_skip_lineterminator(Kind::Symbol(Symbol::Rest))?
+                    .next_if_skip_lineterminator(Kind::Symbol(Symbol::Spread))?
                 {
                     rest_param = true;
                     self.read_function_rest_parameter()?

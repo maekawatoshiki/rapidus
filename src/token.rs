@@ -108,7 +108,7 @@ pub enum Symbol {
     AssignLAnd,
     AssignLOr,
     Hash,
-    Rest,
+    Spread,
     FatArrow,
 }
 

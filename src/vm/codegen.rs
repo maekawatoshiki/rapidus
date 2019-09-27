@@ -115,9 +115,7 @@ impl<'a> CodeGenerator<'a> {
             exception_table: function_info.exception_table,
         };
 
-        Ok(self
-            .factory
-            .alloc_user_func_info(module_id, user_func_info))
+        Ok(self.factory.alloc_user_func_info(module_id, user_func_info))
     }
 }
 
@@ -187,11 +185,14 @@ impl<'a> CodeGenerator<'a> {
                     self.bytecode_generator.append_pop(iseq);
                 }
             }
-            // NodeBase::Undefined => {
-            //     if use_value {
-            //         self.bytecode_generator.append_push_undefined(iseq);
-            //     }
-            // }
+            NodeBase::Spread(ref node) => {
+                self.visit(node, iseq, true)?;
+                if !use_value {
+                    self.bytecode_generator.append_pop(iseq);
+                } else {
+                    self.bytecode_generator.append_spread_array(iseq);
+                }
+            }
             NodeBase::Null => {
                 if use_value {
                     self.bytecode_generator.append_push_null(iseq);
@@ -611,9 +612,7 @@ impl<'a> CodeGenerator<'a> {
         }
 
         let func_info = self.visit_function(name.clone(), params, body, arrow_function)?;
-        let val = self
-            .factory
-            .function(func_info, None);
+        let val = self.factory.function(func_info, None);
         self.bytecode_generator.append_push_const(val, iseq);
         self.bytecode_generator.append_set_outer_env(iseq);
 
@@ -1062,35 +1061,48 @@ impl<'a> CodeGenerator<'a> {
         properties: &Vec<PropertyDefinition>,
         iseq: &mut ByteCode,
     ) -> CodeGenResult {
+        self.bytecode_generator.append_push_seperator(iseq);
         let mut special_properties = SpecialProperties::default();
         let len = properties.len();
-
-        for (i, property) in properties.iter().enumerate() {
+        for (i, property) in properties.iter().rev().enumerate() {
+            use MethodDefinitionKind::*;
+            use PropertyDefinition::*;
+            use SpecialPropertyKind::*;
             match property {
-                PropertyDefinition::IdentifierReference(name) => {
+                // { name }
+                IdentifierReference(name) => {
                     self.save_source_pos(iseq);
                     self.bytecode_generator.append_get_value(name, iseq);
                     self.bytecode_generator
                         .append_push_const(self.factory.string(name.clone()), iseq);
                 }
-                PropertyDefinition::Property(name, node) => {
-                    self.visit(&node, iseq, true)?;
+                // { name: val }
+                Property(name, val) => {
+                    self.visit(&val, iseq, true)?;
                     self.bytecode_generator
                         .append_push_const(self.factory.string(name.clone()), iseq);
                 }
-                PropertyDefinition::MethodDefinition(kind, name, node) => {
+                // { get name(){ node }}
+                // { set name(){ node }}
+                MethodDefinition(kind, name, node) => {
                     match kind {
-                        MethodDefinitionKind::Ordinary => {}
-                        MethodDefinitionKind::Set => {
-                            special_properties.insert(len - i - 1, SpecialPropertyKind::Setter);
+                        Ordinary => {}
+                        Set => {
+                            special_properties.insert(len - i - 1, Setter);
                         }
-                        MethodDefinitionKind::Get => {
-                            special_properties.insert(len - i - 1, SpecialPropertyKind::Getter);
+                        Get => {
+                            special_properties.insert(len - i - 1, Getter);
                         }
                     };
                     self.visit(&node, iseq, true)?;
                     self.bytecode_generator
                         .append_push_const(self.factory.string(name.clone()), iseq);
+                }
+                // { ...node }
+                SpreadObject(node) => {
+                    special_properties.insert(len - i - 1, Spread);
+                    self.visit(&node, iseq, true)?;
+                    self.bytecode_generator.append_push_null(iseq);
                 }
             }
         }
@@ -1098,7 +1110,7 @@ impl<'a> CodeGenerator<'a> {
         let id = self
             .bytecode_generator
             .constant_table
-            .add_object_literal_info(len, special_properties);
+            .add_object_literal_info(special_properties);
 
         self.bytecode_generator.append_create_object(id, iseq);
 
@@ -1106,12 +1118,12 @@ impl<'a> CodeGenerator<'a> {
     }
 
     fn visit_array_literal(&mut self, elems: &Vec<Node>, iseq: &mut ByteCode) -> CodeGenResult {
+        self.bytecode_generator.append_push_seperator(iseq);
         for elem in elems.iter().rev() {
             self.visit(elem, iseq, true)?;
         }
 
-        self.bytecode_generator
-            .append_create_array(elems.len() as usize, iseq);
+        self.bytecode_generator.append_create_array(iseq);
 
         Ok(())
     }

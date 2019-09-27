@@ -632,6 +632,10 @@ impl VM {
                     self.current_context.pc += 1;
                     self.current_context.stack.push(Value::undefined().into());
                 }
+                VMInst::PUSH_SEPERATOR => {
+                    self.current_context.pc += 1;
+                    self.current_context.stack.push(Value::seperator().into());
+                }
                 VMInst::PUSH_THIS => {
                     self.current_context.pc += 1;
                     self.current_context
@@ -645,6 +649,19 @@ impl VM {
                 VMInst::PUSH_TRUE => {
                     self.current_context.pc += 1;
                     self.current_context.stack.push(Value::Bool(1).into());
+                }
+                VMInst::SPREAD_ARRAY => {
+                    self.current_context.pc += 1;
+                    let val: Value = self.current_context.stack.pop().unwrap().into();
+                    if !val.is_array_object() {
+                        type_error!("Not an array.")
+                    }
+                    let ary = val.as_array_mut();
+                    let len = ary.get_length();
+                    for i in 0..len {
+                        let val = ary.get_element(len - i - 1).as_data().val;
+                        self.current_context.stack.push(val.into());
+                    }
                 }
                 VMInst::GET_MEMBER => {
                     self.current_context.pc += 1;
@@ -727,8 +744,7 @@ impl VM {
                 }
                 VMInst::CREATE_ARRAY => {
                     self.current_context.pc += 1;
-                    read_int32!(self, len, usize);
-                    self.create_array(len)?;
+                    self.create_array()?;
                     //self.gc_mark();
                 }
                 VMInst::DOUBLE => {
@@ -1005,27 +1021,49 @@ impl VM {
     }
 
     fn create_object(&mut self, id: usize) -> VMResult {
-        let (len, special_properties) = self.constant_table.get(id).as_object_literal_info();
+        let special_properties = self.constant_table.get(id).as_object_literal_info();
         let mut properties = FxHashMap::default();
 
-        for i in 0..len {
+        let mut i = 0;
+        loop {
             let prop: Value = self.current_context.stack.pop().unwrap().into();
+            if prop.is_seperator() {
+                break;
+            }
             let name = prop.to_string();
             let val: Value = self.current_context.stack.pop().unwrap().into();
+            use constant::SpecialPropertyKind::*;
             if let Some(kind) = special_properties.get(&i) {
-                let AccessorProperty { get, set, .. } = properties
-                    .entry(name)
-                    .or_insert(Property::Accessor(AccessorProperty {
-                        get: Value::undefined(),
-                        set: Value::undefined(),
-                        // TODO
-                        enumerable: true,
-                        configurable: true,
-                    }))
-                    .as_accessor_mut();
-                match kind {
-                    constant::SpecialPropertyKind::Getter => *get = val,
-                    constant::SpecialPropertyKind::Setter => *set = val,
+                if *kind == Spread {
+                    if val.is_object() {
+                        let map = val.get_object_properties().unwrap();
+                        for (name, prop) in map {
+                            properties.insert(name.clone(), prop.clone());
+                        }
+                        if val.is_array_object() {
+                            let ary = val.as_array_mut();
+                            let len = ary.get_length();
+                            for i in 0..len {
+                                properties.insert(i.to_string(), ary.get_element(i));
+                            }
+                        }
+                    }
+                } else {
+                    let AccessorProperty { get, set, .. } = properties
+                        .entry(name)
+                        .or_insert(Property::Accessor(AccessorProperty {
+                            get: Value::undefined(),
+                            set: Value::undefined(),
+                            // TODO
+                            enumerable: true,
+                            configurable: true,
+                        }))
+                        .as_accessor_mut();
+                    match kind {
+                        Getter => *get = val,
+                        Setter => *set = val,
+                        Spread => {}
+                    }
                 }
             } else {
                 properties.insert(
@@ -1039,6 +1077,7 @@ impl VM {
                     }),
                 );
             }
+            i += 1;
         }
 
         let obj = self.factory.object(properties);
@@ -1047,10 +1086,13 @@ impl VM {
         Ok(())
     }
 
-    fn create_array(&mut self, len: usize) -> VMResult {
+    fn create_array(&mut self) -> VMResult {
         let mut elems = vec![];
-        for _ in 0..len {
+        loop {
             let val: Value = self.current_context.stack.pop().unwrap().into();
+            if val.is_seperator() {
+                break;
+            }
             elems.push(Property::Data(DataProperty {
                 val,
                 writable: true,

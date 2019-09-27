@@ -188,6 +188,11 @@ fn array() {
 }
 
 #[test]
+fn spread_op() {
+    assert_file("spread_op")
+}
+
+#[test]
 fn env() {
     assert_file("env")
 }

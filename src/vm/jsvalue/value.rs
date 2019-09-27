@@ -16,6 +16,7 @@ pub const UNINITIALIZED: i32 = 0;
 pub const EMPTY: i32 = 1;
 pub const NULL: i32 = 2;
 pub const UNDEFINED: i32 = 3;
+pub const SEPERATOR: i32 = 4;
 
 #[derive(Debug, Clone, PartialEq, Copy)]
 pub enum PreferredType {
@@ -126,6 +127,7 @@ impl std::fmt::Display for Value {
             Value::Other(EMPTY) => write!(f, "UNINITIALIZED"),
             Value::Other(NULL) => write!(f, "NULL"),
             Value::Other(UNDEFINED) => write!(f, "UNDEFINED"),
+            Value::Other(SEPERATOR) => write!(f, "SEPERATER"),
             Value::Other(i) => write!(f, "Other({})", i),
             Value::Object(ref info) => {
                 let info = ObjectRef(*info);
@@ -142,20 +144,29 @@ impl std::fmt::Display for Value {
 }
 
 impl Value {
+    #[inline]
     pub const fn null() -> Self {
         Value::Other(NULL)
     }
 
+    #[inline]
     pub const fn undefined() -> Self {
         Value::Other(UNDEFINED)
     }
 
+    #[inline]
     pub const fn uninitialized() -> Self {
         Value::Other(UNINITIALIZED)
     }
 
+    #[inline]
     pub const fn empty() -> Self {
         Value::Other(EMPTY)
+    }
+
+    #[inline]
+    pub const fn seperator() -> Self {
+        Value::Other(SEPERATOR)
     }
 
     #[inline]
@@ -208,6 +219,13 @@ impl Value {
     pub fn is_empty(&self) -> bool {
         match self {
             Value::Other(EMPTY) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_seperator(&self) -> bool {
+        match self {
+            Value::Other(SEPERATOR) => true,
             _ => false,
         }
     }

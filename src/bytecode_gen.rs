@@ -27,9 +27,8 @@ impl<'a> ByteCodeGenerator<'a> {
         self.append_int32(len as i32, iseq);
     }
 
-    pub fn append_create_array(&self, len: usize, iseq: &mut ByteCode) {
+    pub fn append_create_array(&self, iseq: &mut ByteCode) {
         iseq.push(VMInst::CREATE_ARRAY);
-        self.append_int32(len as i32, iseq);
     }
 
     pub fn append_push_int8(&self, n: i8, iseq: &mut ByteCode) {
@@ -76,6 +75,10 @@ impl<'a> ByteCodeGenerator<'a> {
         iseq.push(VMInst::PUSH_NULL);
     }
 
+    pub fn append_push_seperator(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::PUSH_SEPERATOR);
+    }
+
     pub fn append_push_this(&self, iseq: &mut ByteCode) {
         iseq.push(VMInst::PUSH_THIS);
     }
@@ -86,6 +89,10 @@ impl<'a> ByteCodeGenerator<'a> {
 
     pub fn append_push_undefined(&self, iseq: &mut ByteCode) {
         iseq.push(VMInst::PUSH_UNDEFINED);
+    }
+
+    pub fn append_spread_array(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::SPREAD_ARRAY);
     }
 
     pub fn append_lnot(&self, iseq: &mut ByteCode) {
@@ -324,10 +331,6 @@ pub fn show_inst(code: &ByteCode, i: usize, const_table: &constant::ConstantTabl
                 let int32 = read_int32(code, i + 1);
                 format!("CreateObject {}", int32)
             }
-            VMInst::CREATE_ARRAY => {
-                let int32 = read_int32(code, i + 1);
-                format!("CreateArray {}", int32)
-            }
             VMInst::PUSH_INT8 => {
                 let int8 = code[i + 1] as i32;
                 format!("PushInt8 {}", int8)
@@ -350,11 +353,6 @@ pub fn show_inst(code: &ByteCode, i: usize, const_table: &constant::ConstantTabl
                 let int32 = read_int32(code, i + 1);
                 format!("Jmp {:05}", i as i32 + int32 + 5)
             }
-            /*VMInst::JMP_UNWIND => {
-                let dest = read_int32(code, i + 1);
-                let pop = read_int32(code, i + 5);
-                format!("JmpUnwind {:05} {}", i as i32 + dest + 5, pop)
-            }*/
             VMInst::CALL => {
                 let int32 = read_int32(code, i + 1);
                 format!("Call {}", int32)
@@ -363,12 +361,6 @@ pub fn show_inst(code: &ByteCode, i: usize, const_table: &constant::ConstantTabl
                 let int32 = read_int32(code, i + 1);
                 format!("CallMethod {}", int32)
             }
-            VMInst::RETURN => format!("Return"),
-            VMInst::DOUBLE => format!("Double"),
-            VMInst::POP => format!("Pop"),
-            VMInst::LAND => format!("LogAnd"),
-            VMInst::LOR => format!("LogOr"),
-            //VMInst::UPDATE_PARENT_SCOPE => format!("UpdateParentScope"),
             VMInst::GET_VALUE => {
                 let int32 = read_int32(code, i + 1);
                 let name = const_table.get(int32 as usize).as_string();
@@ -473,6 +465,8 @@ pub fn inst_to_inst_name(inst: u8) -> &'static str {
         VMInst::RETURN_SUB => "ReturnSub",
         VMInst::TYPEOF => "Typeof",
         VMInst::EXP => "Exp",
+        VMInst::PUSH_SEPERATOR => "PushSeperator",
+        VMInst::SPREAD_ARRAY => "SpreadArray",
         _ => "???",
     }
 }
@@ -491,6 +485,8 @@ pub mod VMInst {
     pub const PUSH_THIS: u8 = 0x0a;
     pub const PUSH_ARGUMENTS: u8 = 0x0b;
     pub const PUSH_UNDEFINED: u8 = 0x0c;
+    pub const PUSH_SEPERATOR: u8 = 0x01;
+    pub const SPREAD_ARRAY: u8 = 0x48;
     pub const DOUBLE: u8 = 0x29;
     pub const POP: u8 = 0x2a;
     pub const LNOT: u8 = 0x0d;
@@ -546,14 +542,16 @@ pub mod VMInst {
     pub fn get_inst_size(inst: u8) -> Option<usize> {
         match inst {
             THROW | RETURN_SUB | SET_OUTER_ENV | POP_ENV | TYPEOF | PUSH_NULL => Some(1),
-            CONSTRUCT | CREATE_OBJECT | PUSH_CONST | PUSH_INT32 | CREATE_ARRAY | JMP_IF_FALSE
-            | RETURN_TRY | DECL_VAR | LOOP_START | JMP | SET_VALUE | GET_VALUE | CALL | JMP_SUB
+            CONSTRUCT | CREATE_OBJECT | PUSH_CONST | PUSH_INT32 | JMP_IF_FALSE | RETURN_TRY
+            | DECL_VAR | LOOP_START | JMP | SET_VALUE | GET_VALUE | CALL | JMP_SUB
             | CALL_METHOD | PUSH_ENV | DECL_LET | DECL_CONST => Some(5),
             PUSH_INT8 => Some(2),
             PUSH_FALSE | END | PUSH_TRUE | PUSH_THIS | ADD | SUB | MUL | DIV | REM | LT | EXP
             | PUSH_ARGUMENTS | NEG | POSI | GT | LE | GE | EQ | NE | GET_MEMBER | RETURN | SNE
             | ZFSHR | POP | DOUBLE | AND | COND_OP | OR | SEQ | SET_MEMBER | LNOT
-            | PUSH_UNDEFINED | LAND | SHR | SHL | XOR | LOR | NOT => Some(1),
+            | PUSH_UNDEFINED | LAND | SHR | SHL | XOR | LOR | NOT | CREATE_ARRAY | SPREAD_ARRAY => {
+                Some(1)
+            }
             _ => None,
         }
     }

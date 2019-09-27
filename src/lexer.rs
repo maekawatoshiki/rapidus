@@ -618,7 +618,7 @@ impl Lexer {
             '.' => {
                 if self.take_char_if('.')? {
                     symbol = if self.take_char_if('.')? {
-                        Symbol::Rest
+                        Symbol::Spread
                     } else {
                         return Err(Error::General(pos, "Invalid token".to_string()));
                     }
