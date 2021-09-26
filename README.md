@@ -1,7 +1,7 @@
 # Rapidus
 
 [![Build](https://github.com/maekawatoshiki/rapidus/actions/workflows/rust.yml/badge.svg)](https://github.com/maekawatoshiki/rapidus/actions/workflows/rust.yml)
-[![codecov](https://codecov.io/gh/maekawatoshiki/rapidus/branch/master/graph/badge.svg)](https://codecov.io/gh/maekawatoshiki/rapidus/branch/master)
+[![codecov](https://codecov.io/gh/maekawatoshiki/rapidus/branch/main/graph/badge.svg)](https://codecov.io/gh/maekawatoshiki/rapidus/branch/main)
 [![](http://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
 JavaScript engine implemented in Rust, now aiming at ES5.
