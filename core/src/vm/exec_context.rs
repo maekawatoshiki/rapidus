@@ -1,12 +1,12 @@
 #![macro_use]
-//use crate::bytecode_gen::ByteCode;
-use crate::vm::jsvalue::function::{FuncInfoRef, UserFunctionInfo};
-//use crate::gc;
-use crate::vm::error::ErrorKind;
-use crate::vm::error::RuntimeError;
-//use crate::vm::jsvalue::function::Exception;
-use crate::vm::jsvalue::value::{BoxedValue, Value};
-use crate::vm::vm::{CallMode, Factory, VMResult};
+use crate::builtin;
+use crate::builtins;
+use crate::vm::{
+    error::{ErrorKind, RuntimeError},
+    jsvalue::function::{FuncInfoRef, UserFunctionInfo},
+    jsvalue::value::{BoxedValue, Value},
+    vm::{CallMode, Factory, VMResult},
+};
 use rustc_hash::FxHashMap;
 use std::ops::{Deref, DerefMut};
 
@@ -177,13 +177,11 @@ impl LexicalEnvironment {
     }
 
     pub fn new_global_initialized(factory: &mut Factory) -> Self {
-        use crate::builtin::{deep_seq, parse_float, require};
-        use crate::builtins;
-
         let log = factory.builtin_function("log", builtins::console::console_log);
-        let parse_float = factory.builtin_function("parseFloat", parse_float);
-        let require = factory.builtin_function("require", require);
-        let deep_seq = factory.builtin_function("__assert_deep_seq", deep_seq);
+        let parse_float = factory.builtin_function("parseFloat", builtin::parse_float);
+        let parse_int = factory.builtin_function("parseInt", builtin::parse_int);
+        let require = factory.builtin_function("require", builtin::require);
+        let deep_seq = factory.builtin_function("__assert_deep_seq", builtin::deep_seq);
         let console = make_normal_object!(factory,
             log => true, false, true: log
         );
@@ -202,6 +200,7 @@ impl LexicalEnvironment {
                 require    => true, false, true: require,
                 __assert_deep_seq    => true, false, true: deep_seq,
                 parseFloat => true, false, true: parse_float,
+                parseInt   => true, false, true: parse_int,
                 console    => true, false, true: console,
                 Object     => true, false, true: object_constructor,
                 Function   => true, false, true: function_constructor,

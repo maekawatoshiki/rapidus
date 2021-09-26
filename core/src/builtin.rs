@@ -11,6 +11,34 @@ pub fn parse_float(_vm: &mut VM, args: &[Value], _this: Value) -> VMValueResult 
     Ok(val)
 }
 
+/// https://tc39.es/ecma262/#sec-parseint-string-radix
+pub fn parse_int(vm: &mut VM, args: &[Value], _this: Value) -> VMValueResult {
+    let input_string = args.get(0).unwrap_or(&Value::undefined()).to_string();
+    // TODO: We have to trim `input_string` and handle it as a hex value if it starts with '0x' or
+    // '0X'.
+    let radix = args
+        .get(1)
+        .unwrap_or(&Value::undefined())
+        .to_int32(&mut vm.factory.memory_allocator);
+    let radix = if radix != 0 {
+        if radix < 2 || radix > 36 {
+            return Ok(Value::Number(f64::NAN));
+        }
+        radix as u32
+    } else {
+        10
+    };
+    let z = input_string
+        .split(|c: char| !c.is_digit(radix))
+        .next()
+        .unwrap_or("");
+    if z.is_empty() {
+        return Ok(Value::Number(f64::NAN));
+    }
+    let val = Value::Number(i64::from_str_radix(z, radix).unwrap() as f64);
+    Ok(val)
+}
+
 pub fn deep_seq(vm: &mut VM, args: &[Value], _this: Value) -> VMValueResult {
     if args.len() != 2 {
         return Err(vm

@@ -740,12 +740,12 @@ impl VM {
                     self.current_context.pc += 1;
                     read_int32!(self, id, usize);
                     self.create_object(id)?;
-                    //self.gc_mark();
+                    self.gc_mark();
                 }
                 VMInst::CREATE_ARRAY => {
                     self.current_context.pc += 1;
                     self.create_array()?;
-                    //self.gc_mark();
+                    self.gc_mark();
                 }
                 VMInst::DOUBLE => {
                     self.current_context.pc += 1;
