@@ -9,7 +9,7 @@ use rapidus_ast::{
 use std::fs::OpenOptions;
 use std::io::Read;
 use std::path::Path;
-use token::{get_string_for_symbol, Keyword, Kind, Symbol, Token};
+use token::{Keyword, Kind, Symbol, Token};
 
 macro_rules! expect {
     ($self:ident, $kind:expr, $msg:expr) => {{
@@ -1300,10 +1300,10 @@ impl Parser {
 macro_rules! skip_symbol_or_error {
     ($lexer: expr, $symbol: path) => {
         if !$lexer.next_if_skip_lineterminator(Kind::Symbol($symbol))? {
-            return Err(Error::UnexpectedToken(
-                $lexer.get_current_pos(),
-                format!("expected {}", get_string_for_symbol($symbol)),
-            ));
+            return Err(Error::UnexpectedToken($lexer.get_current_pos(), {
+                let name: String = $symbol.into();
+                format!("expected {}", name)
+            }));
         };
     };
 }
