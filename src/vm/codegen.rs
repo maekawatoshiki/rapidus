@@ -1426,6 +1426,10 @@ impl ToSourcePos {
         self.table.push((bp, np));
     }
 
+    pub fn func_id(&self) -> FunctionId {
+        self.module_func_id
+    }
+
     pub fn get_node_pos(&self, bytecode_offset: usize) -> Option<usize> {
         for (bp, np) in &self.table {
             if *bp == bytecode_offset {

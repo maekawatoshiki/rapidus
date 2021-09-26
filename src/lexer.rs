@@ -37,7 +37,7 @@ pub struct Lexer {
 impl Lexer {
     pub fn new(code: String) -> Lexer {
         Lexer {
-            code: code,
+            code,
             pos: 0,
             line: 1,
             buf: VecDeque::new(),

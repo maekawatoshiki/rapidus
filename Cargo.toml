@@ -20,11 +20,7 @@ chrono = "0.4"
 stopwatch = "0.0.7"
 nanbox = "0.2.0"
 
-[profile.dev]
-codegen-units = 16
-
 [profile.release]
-codegen-units = 16
 opt-level = 3
 debug = false
 lto = true

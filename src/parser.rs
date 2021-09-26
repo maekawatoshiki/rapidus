@@ -570,7 +570,7 @@ impl Parser {
         self.read_expression()
     }
 
-    /// https://tc39.github.io/ecma262/#prod-Expression
+    // https://tc39.github.io/ecma262/#prod-Expression
     expression!(read_expression, read_assignment_expression, [Symbol::Comma]);
 
     /// https://tc39.github.io/ecma262/#prod-AssignmentExpression
@@ -672,70 +672,70 @@ impl Parser {
         Ok(lhs)
     }
 
-    /// https://tc39.github.io/ecma262/#prod-LogicalORExpression
+    // https://tc39.github.io/ecma262/#prod-LogicalORExpression
     expression!(
         read_logical_or_expression,
         read_logical_and_expression,
         [Symbol::LOr]
     );
 
-    /// https://tc39.github.io/ecma262/#prod-LogicalANDExpression
+    // https://tc39.github.io/ecma262/#prod-LogicalANDExpression
     expression!(
         read_logical_and_expression,
         read_bitwise_or_expression,
         [Symbol::LAnd]
     );
 
-    /// https://tc39.github.io/ecma262/#prod-BitwiseORExpression
+    // https://tc39.github.io/ecma262/#prod-BitwiseORExpression
     expression!(
         read_bitwise_or_expression,
         read_bitwise_xor_expression,
         [Symbol::Or]
     );
 
-    /// https://tc39.github.io/ecma262/#prod-BitwiseXORExpression
+    // https://tc39.github.io/ecma262/#prod-BitwiseXORExpression
     expression!(
         read_bitwise_xor_expression,
         read_bitwise_and_expression,
         [Symbol::Xor]
     );
 
-    /// https://tc39.github.io/ecma262/#prod-BitwiseANDExpression
+    // https://tc39.github.io/ecma262/#prod-BitwiseANDExpression
     expression!(
         read_bitwise_and_expression,
         read_equality_expression,
         [Symbol::And]
     );
 
-    /// https://tc39.github.io/ecma262/#prod-EqualityExpression
+    // https://tc39.github.io/ecma262/#prod-EqualityExpression
     expression!(
         read_equality_expression,
         read_relational_expression,
         [Symbol::Eq, Symbol::Ne, Symbol::SEq, Symbol::SNe]
     );
 
-    /// https://tc39.github.io/ecma262/#prod-RelationalExpression
+    // https://tc39.github.io/ecma262/#prod-RelationalExpression
     expression!(
         read_relational_expression,
         read_shift_expression,
         [Symbol::Lt, Symbol::Gt, Symbol::Le, Symbol::Ge]
     );
 
-    /// https://tc39.github.io/ecma262/#prod-ShiftExpression
+    // https://tc39.github.io/ecma262/#prod-ShiftExpression
     expression!(
         read_shift_expression,
         read_additive_expression,
         [Symbol::Shl, Symbol::Shr, Symbol::ZFShr]
     );
 
-    /// https://tc39.github.io/ecma262/#prod-AdditiveExpression
+    // https://tc39.github.io/ecma262/#prod-AdditiveExpression
     expression!(
         read_additive_expression,
         read_multiplicate_expression,
         [Symbol::Add, Symbol::Sub]
     );
 
-    /// https://tc39.github.io/ecma262/#prod-MultiplicativeExpression
+    // https://tc39.github.io/ecma262/#prod-MultiplicativeExpression
     expression!(
         read_multiplicate_expression,
         read_exponentiation_expression,

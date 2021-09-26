@@ -1,5 +1,4 @@
 #![feature(box_patterns)]
-#![feature(repeat_generic_slice)]
 #![feature(type_ascription)]
 #[macro_use]
 pub mod util;
