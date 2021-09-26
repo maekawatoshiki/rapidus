@@ -1,0 +1,45 @@
+name: Rust
+
+on: [push, pull_request]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: nightly
+    - name: Install dependencies
+      env: 
+        ACCEPT_EULA: Y
+      run:  |
+            rustup override set nightly && \
+            wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add - && \
+            sudo sh -c 'echo "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-12 main" >> /etc/apt/sources.list' && \
+            sudo sh -c 'echo "deb-src http://apt.llvm.org/focal/ llvm-toolchain-focal-12 main" >> /etc/apt/sources.list' && \
+            sudo -E apt-get update && \
+            # sudo -E dpkg --configure -a && \
+            # sudo -E dpkg --remove containers-common && \
+            # sudo -E apt-get upgrade -y && \
+            sudo -E apt-get install -y zlib1g-dev apt-utils && \
+            sudo -E apt-get install -y opt libedit-dev build-essential make && \
+            sudo -E apt-get install -y cmake pkg-config jq && \
+            sudo -E apt-get install -y libcurl4-openssl-dev libelf-dev libdw-dev binutils-dev libiberty-dev && \
+            cargo install cargo-kcov && \
+            cargo kcov --print-install-kcov-sh | sh
+    - name: Run kcov
+      working-directory: ./
+      run: |
+            cargo clean && cargo test; \
+            REPORT=$(find ./target/debug -maxdepth 2 -regex '.+/deps/.*' -a ! -regex '.+\.\(d\|rlib\|rmeta\|so\)'); \
+            for file in $REPORT; do \
+              echo $file; \
+              kcov --include-pattern=rapidus/src --exclude-pattern=/.cargo ./target/cov "$file"; \
+              bash <(curl -s https://codecov.io/bash) -s ../target/cov; \
+            done
