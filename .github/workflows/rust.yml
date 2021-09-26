@@ -1,4 +1,4 @@
-name: Rust
+name: Build
 
 on: [push, pull_request]
 
@@ -41,5 +41,5 @@ jobs:
             for file in $REPORT; do \
               echo $file; \
               kcov --include-pattern=rapidus/src --exclude-pattern=/.cargo ./target/cov "$file"; \
-              bash <(curl -s https://codecov.io/bash) -s ../target/cov; \
+              bash <(curl -s https://codecov.io/bash) -s ./target/cov; \
             done
