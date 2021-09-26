@@ -1,21 +1,12 @@
 # Rapidus
 
-[![CircleCI](https://circleci.com/gh/maekawatoshiki/rapidus.svg?style=shield)](https://circleci.com/gh/maekawatoshiki/rapidus)
+[![Build](https://github.com/maekawatoshiki/rapidus/actions/workflows/rust.yml/badge.svg)](https://github.com/maekawatoshiki/rapidus/actions/workflows/rust.yml)
 [![codecov](https://codecov.io/gh/maekawatoshiki/rapidus/branch/master/graph/badge.svg)](https://codecov.io/gh/maekawatoshiki/rapidus/branch/master)
 [![](http://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
-A toy JavaScript engine (now aiming for ES6).
+JavaScript engine implemented in Rust, now aiming at ES5.
 
-# What's this branch?
-
-In this branch:
-
-- Develop the new generation of Rapidus (old gen in master branch)
-- Some information in this README may vary from the fact
-
-Issues are always welcome
-
-
+Big thanks to [boa](https://github.com/boa-dev/boa).
 
 # Rapidus on WASM
 
@@ -243,11 +234,3 @@ Hello World from Rust DLL!
 
 7. Now everything can be possible from Rust!
 
-## Use Dockerfile
-
-- Docker image: uint256/rapidus
-
-```sh
-$ docker build -t rapidus:0.1.1 .
-$ docker run -it rapidus:0.1.1
-```
