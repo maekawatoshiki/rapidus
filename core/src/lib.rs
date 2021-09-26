@@ -9,10 +9,6 @@ pub mod builtins;
 pub mod bytecode_gen;
 pub mod gc;
 pub mod id;
-pub mod lexer;
-pub mod node;
-pub mod parser;
-pub mod token;
 
 extern crate ansi_term;
 extern crate chrono;

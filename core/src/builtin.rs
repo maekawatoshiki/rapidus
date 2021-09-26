@@ -102,7 +102,7 @@ pub fn require(vm: &mut VM, args: &[Value], _this: Value) -> VMValueResult {
         }
     };
 
-    use crate::parser::Parser;
+    use rapidus_parser::Parser;
     let mut parser = Parser::load_module(file_name.clone())
         .map_err(|e| return vm.current_context.error_general(format!("{:?}", e)))?;
     let absolute_path = parser.file_name.clone();

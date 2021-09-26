@@ -2,9 +2,11 @@
 name = "rapidus-core"
 version = "0.1.1"
 authors = ["uint256_t <maekawatoshiki@github.com>"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
+rapidus-parser = { path = "../parser" }
+rapidus-ast = { path = "../ast" }
 clap = "*"
 bitflags = "*"
 libc = "0.2"

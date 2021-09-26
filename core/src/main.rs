@@ -1,11 +1,8 @@
-#![feature(test)]
-//extern crate rapidus;
-use rapidus_core::parser;
 use rapidus_core::{bytecode_gen, vm, vm::exec_context, vm::vm::VM};
+use rapidus_parser as parser;
 extern crate clap;
 extern crate libc;
 extern crate rustyline;
-extern crate test;
 use clap::{App, Arg};
 
 const VERSION_STR: &'static str = env!("CARGO_PKG_VERSION");

@@ -1,5 +1,5 @@
-use crate::parser::Error;
 use crate::token::{convert_reserved_keyword, Kind, Symbol, Token};
+use crate::Error;
 
 use std::collections::VecDeque;
 

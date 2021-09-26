@@ -1,8 +1,6 @@
 use crate::builtins::console::debug_print;
 use crate::bytecode_gen::{inst_to_inst_name, show_inst, VMInst};
 use crate::gc;
-use crate::node::Node;
-use crate::parser::ScriptInfo;
 pub use crate::vm::exec_context::{
     EnvironmentRecord, ExecContext, LexicalEnvironment, LexicalEnvironmentRef,
 };
@@ -12,6 +10,8 @@ use crate::vm::{
     codegen, codegen::CodeGenerator, constant, error::*, jsvalue::prototype::ObjectPrototypes,
     jsvalue::symbol::GlobalSymbolRegistry, jsvalue::value::*,
 };
+use rapidus_ast::Node;
+use rapidus_parser::ScriptInfo;
 use rustc_hash::FxHashMap;
 use std::time::{Duration, Instant};
 

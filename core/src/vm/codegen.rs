@@ -1,8 +1,4 @@
 use crate::bytecode_gen::{ByteCode, ByteCodeGenerator, VMInst};
-use crate::node::{
-    BinOp, FormalParameter, FormalParameters, MethodDefinitionKind, Node, NodeBase,
-    PropertyDefinition, UnaryOp, VarKind,
-};
 use crate::vm::constant::{ConstantTable, SpecialProperties, SpecialPropertyKind};
 use crate::vm::factory::FunctionId;
 use crate::vm::jsvalue::function::{
@@ -11,6 +7,10 @@ use crate::vm::jsvalue::function::{
 use crate::vm::jsvalue::value;
 use crate::vm::jsvalue::value::Value;
 use crate::vm::vm::Factory;
+use rapidus_ast::{
+    BinOp, FormalParameter, FormalParameters, MethodDefinitionKind, Node, NodeBase,
+    PropertyDefinition, UnaryOp, VarKind,
+};
 use rustc_hash::FxHashMap;
 
 pub type CodeGenResult = Result<(), Error>;

@@ -1,14 +1,15 @@
-pub use crate::lexer;
-use crate::node::{
+pub mod lexer;
+pub mod token;
+
+use ansi_term::Colour;
+use rapidus_ast::{
     BinOp, FormalParameter, FormalParameters, MethodDefinitionKind, Node, NodeBase,
     PropertyDefinition, UnaryOp, VarKind,
 };
-use crate::token::{get_string_for_symbol, Keyword, Kind, Symbol, Token};
 use std::fs::OpenOptions;
 use std::io::Read;
 use std::path::Path;
-
-use ansi_term::Colour;
+use token::{get_string_for_symbol, Keyword, Kind, Symbol, Token};
 
 macro_rules! expect {
     ($self:ident, $kind:expr, $msg:expr) => {{
@@ -117,7 +118,7 @@ impl Parser {
             "{}: line {}: {}\n{}",
             Colour::Red.bold().paint("SyntaxError"),
             line,
-            msg.into(): String,
+            msg.into(),
             source_at_err_point,
         );
     }
@@ -1698,7 +1699,7 @@ fn object() {
 
 #[test]
 fn simple_expr_5arith() {
-    use crate::node::BinOp;
+    use rapidus_ast::BinOp;
 
     let mut parser = Parser::new("test", "31 + 26 / 3 - 1 * 20 % 3".to_string());
     assert_eq!(
@@ -1818,7 +1819,7 @@ fn simple_expr_rel() {
 
 #[test]
 fn simple_expr_cond() {
-    use crate::node::BinOp;
+    use rapidus_ast::BinOp;
 
     let mut parser = Parser::new("test", "n == 1 ? 2 : max".to_string());
     assert_eq!(
@@ -1846,7 +1847,7 @@ fn simple_expr_cond() {
 
 #[test]
 fn simple_expr_logical_or() {
-    use crate::node::BinOp;
+    use rapidus_ast::BinOp;
 
     for (input, op) in [("1 || 0", BinOp::LOr), ("1 && 0", BinOp::LAnd)].iter() {
         let mut parser = Parser::new("test", input.to_string());
@@ -1869,7 +1870,7 @@ fn simple_expr_logical_or() {
 
 #[test]
 fn simple_expr_bitwise_and() {
-    use crate::node::BinOp;
+    use rapidus_ast::BinOp;
 
     for (input, op) in [
         ("1 & 3", BinOp::And),
@@ -1898,7 +1899,7 @@ fn simple_expr_bitwise_and() {
 
 #[test]
 fn simple_expr_shift() {
-    use crate::node::BinOp;
+    use rapidus_ast::BinOp;
 
     for (input, op) in [
         ("1 << 2", BinOp::Shl),
@@ -2283,7 +2284,7 @@ fn return_() {
 
 #[test]
 fn if_() {
-    use crate::node::BinOp;
+    use rapidus_ast::BinOp;
 
     let mut parser = Parser::new(
         "test",
