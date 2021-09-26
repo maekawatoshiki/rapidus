@@ -1,4 +1,4 @@
-var assert = require('assert').deepStrictEqual
+var assert = require('./tests/assert').deepStrictEqual
 
 assert(Object.prototype.constructor === Object, true)
 assert(Function.prototype.constructor === Function, true)

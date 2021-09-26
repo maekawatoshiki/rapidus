@@ -1,4 +1,4 @@
-let assert = require('assert').deepStrictEqual
+let assert = require('./tests/assert').deepStrictEqual
 
 var a = [1, 2, 'three', 4]
 assert(a[2], 'three')

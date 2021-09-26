@@ -1,4 +1,4 @@
-let assert = require('assert').deepStrictEqual
+let assert = require('./tests/assert').deepStrictEqual
 // Simple assert ever
 
 assert([] == 0, true)
