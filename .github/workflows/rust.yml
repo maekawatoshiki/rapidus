@@ -34,12 +34,12 @@ jobs:
             cargo install cargo-kcov && \
             cargo kcov --print-install-kcov-sh | sh
     - name: Run kcov
-      working-directory: ./
+      working-directory: ./core
       run: |
             cargo clean && cargo test; \
-            REPORT=$(find ./target/debug -maxdepth 2 -regex '.+/deps/.*' -a ! -regex '.+\.\(d\|rlib\|rmeta\|so\)'); \
+            REPORT=$(find ../target/debug -maxdepth 2 -regex '.+/deps/.*' -a ! -regex '.+\.\(d\|rlib\|rmeta\|so\)'); \
             for file in $REPORT; do \
               echo $file; \
-              kcov --include-pattern=rapidus/src --exclude-pattern=/.cargo ./target/cov "$file"; \
-              bash <(curl -s https://codecov.io/bash) -s ./target/cov; \
+              kcov --include-pattern=rapidus/src --exclude-pattern=/.cargo ../target/cov "$file"; \
+              bash <(curl -s https://codecov.io/bash) -s ../target/cov; \
             done

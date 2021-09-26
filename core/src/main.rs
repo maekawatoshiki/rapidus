@@ -1,7 +1,7 @@
 #![feature(test)]
 //extern crate rapidus;
-use rapidus::parser;
-use rapidus::{vm, vm::exec_context, vm::vm::VM};
+use rapidus_core::parser;
+use rapidus_core::{bytecode_gen, vm, vm::exec_context, vm::vm::VM};
 extern crate clap;
 extern crate libc;
 extern crate rustyline;
@@ -78,7 +78,7 @@ fn main() {
 
     if is_debug {
         println!("Codegen:");
-        rapidus::bytecode_gen::show_inst_seq(&global_info.code, &vm.constant_table);
+        bytecode_gen::show_inst_seq(&global_info.code, &vm.constant_table);
     };
 
     let script_info = parser.into_script_info();
@@ -136,7 +136,8 @@ fn repl(is_profile: bool, is_trace: bool) {
 
                     vm.current_context = global_context.clone().unwrap();
                     let script_info = parser.into_script_info();
-                    vm.script_info = vec![(vm.current_context.func_ref.module_func_id, script_info)];
+                    vm.script_info =
+                        vec![(vm.current_context.func_ref.module_func_id, script_info)];
 
                     match vm.run() {
                         Ok(val) => println!("{}", val.debug_string(true)),
