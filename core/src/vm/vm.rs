@@ -173,13 +173,14 @@ impl VM {
         match info.kind {
             FunctionObjectKind::Builtin(func) => func(self, args, this),
             FunctionObjectKind::User { info, outer_env } => {
-                self.call_user_function(info, outer_env, args, this, false)
+                self.call_user_function(callee, info, outer_env, args, this, false)
             }
         }
     }
 
     fn call_user_function(
         &mut self,
+        callee: Value,
         user_func: FuncInfoRef,
         outer_env: Option<LexicalEnvironmentRef>,
         args: &[Value],
@@ -187,6 +188,7 @@ impl VM {
         constructor_call: bool,
     ) -> VMValueResult {
         self.prepare_context_for_function_invokation(
+            callee,
             user_func,
             outer_env,
             args,
@@ -1151,7 +1153,14 @@ impl VM {
                         self.current_context.func_ref.func_id
                     );
                 };
-                self.enter_user_function(info.clone(), outer_env, args, this, constructor_call)
+                self.enter_user_function(
+                    callee,
+                    info.clone(),
+                    outer_env,
+                    args,
+                    this,
+                    constructor_call,
+                )
             }
         };
         ret
@@ -1165,6 +1174,7 @@ impl VM {
     /// 5. Generate a new context, and set the current context (running execution context) to it.
     pub fn prepare_context_for_function_invokation(
         &mut self,
+        callee: Value,
         user_func: FuncInfoRef,
         outer_env: Option<LexicalEnvironmentRef>,
         args: &[Value],
@@ -1184,7 +1194,7 @@ impl VM {
 
         let var_env_ref = self
             .factory
-            .create_function_environment(user_func, outer_env, args, this);
+            .create_function_environment(callee, user_func, outer_env, args, this);
 
         let mut lex_env_ref = self
             .factory
@@ -1204,6 +1214,7 @@ impl VM {
 
     fn enter_user_function(
         &mut self,
+        callee: Value,
         user_func: FuncInfoRef,
         outer_env: Option<LexicalEnvironmentRef>,
         args: &[Value],
@@ -1215,6 +1226,7 @@ impl VM {
         }
 
         self.prepare_context_for_function_invokation(
+            callee,
             user_func,
             outer_env,
             args,

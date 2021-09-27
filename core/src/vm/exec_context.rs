@@ -81,6 +81,7 @@ impl ExecContext {
             saved_lexical_environment: vec![],
         }
     }
+
     pub fn empty() -> Self {
         ExecContext {
             pc: 0,

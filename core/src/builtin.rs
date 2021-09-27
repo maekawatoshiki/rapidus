@@ -158,6 +158,7 @@ pub fn require(vm: &mut VM, args: &[Value], _this: Value) -> VMValueResult {
     vm.script_info.push((id, script_info));
 
     vm.prepare_context_for_function_invokation(
+        Value::undefined(), // TODO: wrong?
         module_info,
         Some(vm.global_environment),
         args: &[Value],

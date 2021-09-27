@@ -2,11 +2,14 @@ use crate::builtin::BuiltinFuncTy;
 use crate::gc;
 use crate::vm::{
     jsvalue::prototype::ObjectPrototypes,
-    jsvalue::value::{
-        ArrayObjectInfo, ErrorObjectInfo, FuncInfoRef, FunctionObjectInfo, FunctionObjectKind,
-        ObjectInfo, ObjectKind, Property, SymbolInfo, UserFunctionInfo, Value,
+    jsvalue::{
+        object::DataProperty,
+        value::{
+            ArrayObjectInfo, ErrorObjectInfo, FuncInfoRef, FunctionObjectInfo, FunctionObjectKind,
+            ObjectInfo, ObjectKind, Property, SymbolInfo, UserFunctionInfo, Value,
+        },
     },
-    vm::{LexicalEnvironmentRef, LexicalEnvironment, EnvironmentRecord, FunctionParameter},
+    vm::{EnvironmentRecord, FunctionParameter, LexicalEnvironment, LexicalEnvironmentRef},
 };
 use rustc_hash::FxHashMap;
 
@@ -287,18 +290,45 @@ impl Factory {
 
     pub fn create_function_environment(
         &mut self,
+        callee: Value,
         user_func: FuncInfoRef,
         outer_env: Option<LexicalEnvironmentRef>,
         args: &[Value],
         this: Value,
     ) -> LexicalEnvironmentRef {
+        let arguments = self.object({
+            let mut props: FxHashMap<String, Property> = args
+                .iter()
+                .enumerate()
+                .map(|(i, &arg)| {
+                    (
+                        Value::Number(i as f64).to_string(),
+                        DataProperty::new(arg)
+                            .set_writable()
+                            .set_configurable()
+                            .into(),
+                    )
+                })
+                .collect();
+            props.insert(
+                "length".to_string(),
+                Property::new_data(
+                    DataProperty::new(Value::Number(args.len() as f64))
+                        .set_writable()
+                        .set_configurable(),
+                ),
+            );
+            props.insert(
+                "callee".to_string(),
+                Property::new_data(DataProperty::new(callee).set_writable().set_configurable()),
+            );
+            props
+        });
         let env = LexicalEnvironment {
             record: EnvironmentRecord::Function {
                 record: {
                     let mut record = FxHashMap::default();
-                    for name in &user_func.var_names {
-                        record.insert(name.clone(), Value::undefined());
-                    }
+                    record.insert("arguments".to_string(), arguments);
                     for (i, FunctionParameter { name, rest_param }) in
                         user_func.params.iter().enumerate()
                     {
@@ -327,5 +357,4 @@ impl Factory {
 
         LexicalEnvironmentRef(self.alloc(env))
     }
-
 }

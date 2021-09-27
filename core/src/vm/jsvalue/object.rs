@@ -256,3 +256,35 @@ impl Property {
         }
     }
 }
+
+impl DataProperty {
+    pub fn new(val: Value) -> Self {
+        Self {
+            val,
+            writable: false,
+            enumerable: false,
+            configurable: false,
+        }
+    }
+
+    pub fn set_writable(mut self) -> Self {
+        self.writable = true;
+        self
+    }
+
+    pub fn set_enumerate(mut self) -> Self {
+        self.enumerable = true;
+        self
+    }
+
+    pub fn set_configurable(mut self) -> Self {
+        self.configurable = true;
+        self
+    }
+}
+
+impl From<DataProperty> for Property {
+    fn from(data: DataProperty) -> Self {
+        Property::Data(data)
+    }
+}
