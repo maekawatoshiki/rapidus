@@ -231,8 +231,7 @@ impl VM {
                 if get.is_undefined() {
                     return Ok(Value::undefined());
                 }
-                self.call_function(get, &[], parent)?;
-                Ok(self.current_context.stack.pop().unwrap().into(): Value)
+                Ok(self.call_function(get, &[], parent)?)
             }
         }
     }
@@ -242,7 +241,6 @@ impl VM {
             parent.set_property_by_value(&mut self.factory.memory_allocator, key, val)?;
         if let Some(setter) = maybe_setter {
             self.call_function(setter, &[val], parent)?;
-            self.current_context.stack.pop().unwrap(); // Pop undefined (setter's return value)
         }
         Ok(())
     }

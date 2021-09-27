@@ -191,7 +191,7 @@ temperature.current = 19
 temperature.current = 25
 temperature.current = 15
 temperature.current = 34
-console.log( temperature.average )
+console.log("average =", temperature.average )
 
 ary = []
 ary[3] = 123

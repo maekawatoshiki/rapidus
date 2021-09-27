@@ -638,7 +638,6 @@ impl<'a> CodeGenerator<'a> {
         self.bytecode_generator.append_return(&mut func_iseq);
 
         let params = params
-            .clone()
             .iter()
             .map(
                 |FormalParameter {
