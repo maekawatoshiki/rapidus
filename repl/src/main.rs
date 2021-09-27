@@ -1,7 +1,6 @@
 use rapidus_core::{bytecode_gen, vm, vm::exec_context, vm::vm::VM};
 use rapidus_parser as parser;
 extern crate clap;
-extern crate libc;
 extern crate rustyline;
 use clap::{App, Arg};
 

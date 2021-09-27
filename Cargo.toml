@@ -2,4 +2,6 @@
 members = [
   "core",
   "parser",
+  "ast",
+  "repl",
 ]

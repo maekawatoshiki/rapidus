@@ -19,7 +19,6 @@ extern crate libloading;
 extern crate nix;
 extern crate rand;
 extern crate rustc_hash;
-extern crate rustyline;
 extern crate stopwatch;
 #[macro_use]
 extern crate nanbox;

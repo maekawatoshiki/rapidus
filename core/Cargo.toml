@@ -7,7 +7,6 @@ edition = "2021"
 [dependencies]
 rapidus-parser = { path = "../parser" }
 rapidus-ast = { path = "../ast" }
-clap = "*"
 bitflags = "*"
 libc = "0.2"
 rand = "0.5.5"
@@ -16,7 +15,6 @@ ansi_term = "0.9.0"
 nix = "*"
 encoding = "*"
 rustc-hash = "*"
-rustyline = "4.1.0"
 libloading = "0.5"
 chrono = "0.4"
 stopwatch = "0.0.7"
