@@ -23,7 +23,6 @@ pub enum Kind {
 #[derive(Clone, Debug, PartialEq, Copy)]
 pub enum Keyword {
     Abstract,
-    Arguments,
     Break,
     Case,
     Catch,
@@ -116,7 +115,7 @@ impl Token {
     pub fn new_number(f: f64, pos: usize) -> Token {
         Token {
             kind: Kind::Number(f),
-            pos: pos,
+            pos,
             prev_pos: 0,
         }
     }
@@ -124,7 +123,7 @@ impl Token {
     pub fn new_identifier(ident: String, pos: usize) -> Token {
         Token {
             kind: Kind::Identifier(ident),
-            pos: pos,
+            pos,
             prev_pos: 0,
         }
     }
@@ -132,7 +131,7 @@ impl Token {
     pub fn new_keyword(keyword: Keyword, pos: usize) -> Token {
         Token {
             kind: Kind::Keyword(keyword),
-            pos: pos,
+            pos,
             prev_pos: 0,
         }
     }
@@ -140,7 +139,7 @@ impl Token {
     pub fn new_string(s: String, pos: usize) -> Token {
         Token {
             kind: Kind::String(s),
-            pos: pos,
+            pos,
             prev_pos: 0,
         }
     }
@@ -148,7 +147,7 @@ impl Token {
     pub fn new_symbol(symbol: Symbol, pos: usize) -> Token {
         Token {
             kind: Kind::Symbol(symbol),
-            pos: pos,
+            pos,
             prev_pos: 0,
         }
     }
@@ -156,7 +155,7 @@ impl Token {
     pub fn new_line_terminator(pos: usize) -> Token {
         Token {
             kind: Kind::LineTerminator,
-            pos: pos,
+            pos,
             prev_pos: 0,
         }
     }
@@ -214,7 +213,6 @@ impl Keyword {
     pub fn to_str(self) -> &'static str {
         match self {
             Keyword::Abstract => "abstract",
-            Keyword::Arguments => "arguments",
             Keyword::Break => "break",
             Keyword::Case => "case",
             Keyword::Catch => "catch",
@@ -250,7 +248,6 @@ impl Keyword {
 pub fn convert_reserved_keyword(keyword: &str) -> Option<Keyword> {
     match keyword {
         "abstract" => Some(Keyword::Abstract),
-        "arguments" => Some(Keyword::Arguments),
         "break" => Some(Keyword::Break),
         "case" => Some(Keyword::Case),
         "catch" => Some(Keyword::Catch),

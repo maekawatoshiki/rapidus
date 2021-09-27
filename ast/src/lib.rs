@@ -89,10 +89,7 @@ pub enum NodeBase {
 
 impl Node {
     pub fn new(base: NodeBase, pos: usize) -> Node {
-        Node {
-            base: base,
-            pos: pos,
-        }
+        Node { base, pos }
     }
     /*
     pub fn definitely_returns(&self) -> bool {
