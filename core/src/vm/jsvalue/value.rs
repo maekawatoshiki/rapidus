@@ -133,6 +133,7 @@ impl std::fmt::Display for Value {
                 let info = ObjectRef(*info);
                 match info.kind {
                     ObjectKind::Ordinary => write!(f, "Object"),
+                    ObjectKind::Arguments => write!(f, "Arguments"),
                     ObjectKind::Function(_) => write!(f, "Function"),
                     ObjectKind::Array(_) => write!(f, "Array"),
                     ObjectKind::Symbol(_) => write!(f, "Symbol"),
@@ -673,6 +674,7 @@ impl Value {
                 let info = unsafe { &*info };
                 match info.kind {
                     ObjectKind::Ordinary => Some(self),
+                    ObjectKind::Arguments => Some(self),
                     ObjectKind::Function(_) => None,
                     ObjectKind::Array(_) => None,
                     ObjectKind::Error(_) => None,
@@ -916,6 +918,7 @@ impl Value {
                     ObjectKind::Array(_) => "object",
                     ObjectKind::Symbol(_) => "symbol",
                     ObjectKind::Error(_) => "error",
+                    ObjectKind::Arguments => "object",
                     ObjectKind::Ordinary => "object",
                 }
             }
@@ -999,6 +1002,16 @@ impl Value {
                             .sort_by(|(key1, _), (key2, _)| key1.as_str().cmp(key2.as_str()));
 
                         format!("{{ {} }}", property_string(sorted_key_val))
+                    }
+                    ObjectKind::Arguments => {
+                        let mut sorted_key_val =
+                            (&obj_info.property)
+                                .iter()
+                                .collect::<Vec<(&String, &Property)>>();
+                        sorted_key_val
+                            .sort_by(|(key1, _), (key2, _)| key1.as_str().cmp(key2.as_str()));
+
+                        format!("[Arguments] {{ {} }}", property_string(sorted_key_val))
                     }
                     ObjectKind::Symbol(ref info) => format!(
                         "Symbol({})",

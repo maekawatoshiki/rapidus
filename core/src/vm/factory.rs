@@ -139,6 +139,16 @@ impl Factory {
         }))
     }
 
+    /// Generate Value for an `arguments` object.
+    pub fn arguments(&mut self, property: FxHashMap<String, Property>) -> Value {
+        Value::Object(self.alloc(Object {
+            kind: ObjectKind::Arguments,
+            prototype: self.object_prototypes.object,
+            property,
+            sym_property: FxHashMap::default(),
+        }))
+    }
+
     /// Generate Value for a JS function.
     pub fn function(
         &mut self,
@@ -301,7 +311,7 @@ impl Factory {
 
         let not_arrow_func = user_func.this_mode != ThisMode::Lexical;
         if not_arrow_func {
-            let arguments = self.object({
+            let arguments = self.arguments({
                 let mut props: FxHashMap<String, Property> = args
                     .iter()
                     .enumerate()

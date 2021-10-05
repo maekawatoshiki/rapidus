@@ -93,6 +93,19 @@ pub fn debug_print(val: &Value, nest: bool) {
 
                     print!("}}");
                 }
+                ObjectKind::Arguments => {
+                    print!("[Arguments] {{ ");
+
+                    let mut key_val = (&obj_info.property)
+                        .iter()
+                        .filter(|(name, _prop)| name.chars().all(|c| c.is_ascii_digit()))
+                        .collect::<Vec<_>>();
+                    key_val.sort_by(|(key1, _), (key2, _)| key1.cmp(key2));
+
+                    show_obj(key_val);
+
+                    print!("}}");
+                }
                 ObjectKind::Symbol(ref info) => print!(
                     "Symbol({})",
                     info.description.as_ref().unwrap_or(&"".to_string())

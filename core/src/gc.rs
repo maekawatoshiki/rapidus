@@ -399,6 +399,7 @@ impl object::ObjectKind {
             }
             object::ObjectKind::Symbol(_) => {}
             object::ObjectKind::Error(_) => {}
+            object::ObjectKind::Arguments => {}
             object::ObjectKind::Ordinary => {}
         }
     }
@@ -420,6 +421,7 @@ impl object::ObjectKind {
             }
             object::ObjectKind::Symbol(_) => {}
             object::ObjectKind::Error(_) => {}
+            object::ObjectKind::Arguments => {}
             object::ObjectKind::Ordinary => {}
         }
     }

@@ -38,6 +38,7 @@ pub enum ObjectKind {
     Array(ArrayObjectInfo),
     Symbol(SymbolInfo),
     Error(ErrorObjectInfo),
+    Arguments,
     Ordinary,
 }
 
