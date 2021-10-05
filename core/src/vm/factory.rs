@@ -329,6 +329,9 @@ impl Factory {
                 record: {
                     let mut record = FxHashMap::default();
                     record.insert("arguments".to_string(), arguments);
+                    for name in &user_func.var_names {
+                        record.insert(name.clone(), Value::undefined());
+                    }
                     for (i, FunctionParameter { name, rest_param }) in
                         user_func.params.iter().enumerate()
                     {
