@@ -1108,7 +1108,7 @@ impl VM {
     }
 
     fn enter_constructor(&mut self, callee: Value, args: &[Value]) -> VMResult {
-        let this = Value::Object(self.factory.alloc(ObjectInfo {
+        let this = Value::Object(self.factory.alloc(Object {
             kind: ObjectKind::Ordinary,
             prototype: callee.get_property("prototype"),
             property: FxHashMap::default(),

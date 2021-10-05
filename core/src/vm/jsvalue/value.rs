@@ -31,7 +31,7 @@ make_nanbox! {
         Number(f64),
         Bool(u8), // 0 | 1 = false | true
         String(*mut CString), // TODO: Using CString is good for JIT. However, we need better one instead.
-        Object(*mut ObjectInfo),
+        Object(*mut Object),
         // Symbol(*mut SymbolInfo),
         Other(i32) // UNINITIALIZED | EMPTY | NULL | UNDEFINED
     }
@@ -75,7 +75,7 @@ macro_rules! make_property_map {
 macro_rules! make_normal_object {
     ($factory:expr) => { {
         Value::Object($factory.alloc(
-            crate::vm::jsvalue::object::ObjectInfo {
+            crate::vm::jsvalue::object::Object {
                 kind: crate::vm::jsvalue::object::ObjectKind::Ordinary,
                 prototype: $factory.object_prototypes.object,
                 property: rustc_hash::FxHashMap::default(),
@@ -85,7 +85,7 @@ macro_rules! make_normal_object {
     } };
     ($memory_allocator:expr, $object_prototypes:expr) => { {
         Value::Object($memory_allocator.alloc(
-            ObjectInfo {
+            Object {
                 kind: ObjectKind::Ordinary,
                 prototype: $object_prototypes.object,
                 property: FxHashMap::default(),
@@ -95,7 +95,7 @@ macro_rules! make_normal_object {
     } };
     ($memory_allocator:expr, $object_prototypes:expr, $($property_name:ident => $x:ident, $y:ident, $z:ident : $val:expr),*) => { {
         Value::Object($memory_allocator.alloc(
-            ObjectInfo {
+            Object {
                 kind: ObjectKind::Ordinary,
                 prototype: $object_prototypes.object,
                 property: make_property_map_sub!($($property_name, $val, $x, $y, $z),* ),
@@ -105,7 +105,7 @@ macro_rules! make_normal_object {
     } };
     ($factory:expr, $($property_name:ident => $x:ident, $y:ident, $z:ident : $val:expr),*) => { {
         Value::Object($factory.alloc(
-            crate::vm::jsvalue::object::ObjectInfo {
+            crate::vm::jsvalue::object::Object {
                 kind: crate::vm::jsvalue::object::ObjectKind::Ordinary,
                 prototype: $factory.object_prototypes.object,
                 property: make_property_map_sub!($($property_name, $val, $x, $y, $z),* ),
@@ -186,7 +186,7 @@ impl Value {
     ) -> Self {
         let name: String = name.into();
         let name_prop = Value::string(memory_allocator, name.clone());
-        Value::Object(memory_allocator.alloc(ObjectInfo {
+        Value::Object(memory_allocator.alloc(Object {
             kind: ObjectKind::Function(FunctionObjectInfo {
                 name: Some(name),
                 kind: FunctionObjectKind::Builtin(func),

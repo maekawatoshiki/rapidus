@@ -5,7 +5,7 @@ use crate::vm::vm::Factory;
 pub use rustc_hash::FxHashMap;
 
 #[derive(Clone, Debug)]
-pub struct ObjectInfo {
+pub struct Object {
     /// Kind
     pub kind: ObjectKind,
     /// Internal slot \[\[Prototype\]\]
@@ -17,17 +17,17 @@ pub struct ObjectInfo {
 }
 
 #[derive(Debug, Clone)]
-pub struct ObjectRef(pub *mut ObjectInfo);
+pub struct ObjectRef(pub *mut Object);
 
 impl std::ops::Deref for ObjectRef {
-    type Target = ObjectInfo;
+    type Target = Object;
     fn deref(&self) -> &Self::Target {
         unsafe { &*self.0 }
     }
 }
 
 impl std::ops::DerefMut for ObjectRef {
-    fn deref_mut(&mut self) -> &mut ObjectInfo {
+    fn deref_mut(&mut self) -> &mut Object {
         unsafe { &mut *self.0 }
     }
 }
@@ -63,7 +63,7 @@ pub struct AccessorProperty {
     pub configurable: bool,
 }
 
-impl ObjectInfo {
+impl Object {
     pub fn has_own_property(&self, key: &str) -> bool {
         self.property.contains_key(key)
     }

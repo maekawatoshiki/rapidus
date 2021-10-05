@@ -337,7 +337,7 @@ impl Value {
     }
 }
 
-impl GcTarget for object::ObjectInfo {
+impl GcTarget for object::Object {
     fn initial_trace(&self, markset: &mut MarkSet) {
         self.kind.initial_trace(markset);
         for (_, property) in &self.property {
@@ -353,7 +353,7 @@ impl GcTarget for object::ObjectInfo {
     }
 
     fn free(&self) -> usize {
-        mem::size_of::<object::ObjectInfo>()
+        mem::size_of::<object::Object>()
     }
 }
 

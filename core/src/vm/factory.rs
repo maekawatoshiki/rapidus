@@ -7,7 +7,7 @@ use crate::vm::{
         object::DataProperty,
         value::{
             ArrayObjectInfo, ErrorObjectInfo, FuncInfoRef, FunctionObjectInfo, FunctionObjectKind,
-            ObjectInfo, ObjectKind, Property, SymbolInfo, UserFunctionInfo, Value,
+            Object, ObjectKind, Property, SymbolInfo, UserFunctionInfo, Value,
         },
     },
     vm::{EnvironmentRecord, FunctionParameter, LexicalEnvironment, LexicalEnvironmentRef},
@@ -131,7 +131,7 @@ impl Factory {
 
     /// Generate Value for an object.
     pub fn object(&mut self, property: FxHashMap<String, Property>) -> Value {
-        Value::Object(self.alloc(ObjectInfo {
+        Value::Object(self.alloc(Object {
             kind: ObjectKind::Ordinary,
             prototype: self.object_prototypes.object,
             property,
@@ -148,7 +148,7 @@ impl Factory {
         let name_prop = self.string(info.func_name.clone().unwrap_or("".to_string()));
         let prototype = self.object(FxHashMap::default());
 
-        let f = Value::Object(self.alloc(ObjectInfo {
+        let f = Value::Object(self.alloc(Object {
             prototype: self.object_prototypes.function,
             property: make_property_map!(
                 length    => false, false, true : Value::Number(info.params.len() as f64), /* TODO: rest param */
@@ -178,7 +178,7 @@ impl Factory {
     ) -> Value {
         let name: String = name.into();
         let name_prop = self.string(name.clone());
-        Value::Object(self.alloc(ObjectInfo {
+        Value::Object(self.alloc(Object {
             kind: ObjectKind::Function(FunctionObjectInfo {
                 name: Some(name),
                 kind: FunctionObjectKind::Builtin(func),
@@ -193,7 +193,7 @@ impl Factory {
     }
 
     pub fn array(&mut self, elems: Vec<Property>) -> Value {
-        Value::Object(self.alloc(ObjectInfo {
+        Value::Object(self.alloc(Object {
             kind: ObjectKind::Array(ArrayObjectInfo { elems }),
             prototype: self.object_prototypes.array,
             property: make_property_map!(),
@@ -202,7 +202,7 @@ impl Factory {
     }
 
     pub fn symbol(&mut self, description: Option<String>) -> Value {
-        Value::Object(self.alloc(ObjectInfo {
+        Value::Object(self.alloc(Object {
             kind: ObjectKind::Symbol(SymbolInfo {
                 id: crate::id::get_unique_id(),
                 description,
@@ -215,7 +215,7 @@ impl Factory {
 
     pub fn error(&mut self, message: impl Into<String>) -> Value {
         let message = self.string(message.into());
-        Value::Object(self.alloc(ObjectInfo {
+        Value::Object(self.alloc(Object {
             kind: ObjectKind::Error(ErrorObjectInfo::new()),
             prototype: self.object_prototypes.error,
             property: make_property_map!(

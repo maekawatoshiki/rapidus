@@ -1,6 +1,6 @@
 #![macro_use]
-use super::value::*;
 use super::value::Value;
+use super::value::*;
 use crate::builtins;
 use crate::builtins::{array, function};
 use crate::vm::vm::Factory;
@@ -18,7 +18,7 @@ pub struct ObjectPrototypes {
 
 impl ObjectPrototypes {
     pub fn new(factory: &mut Factory) -> Self {
-        let object_prototype = Value::Object(factory.alloc(ObjectInfo {
+        let object_prototype = Value::Object(factory.alloc(Object {
             kind: ObjectKind::Ordinary,
             prototype: Value::null(),
             property: make_property_map!(),
@@ -27,10 +27,13 @@ impl ObjectPrototypes {
         let default_func_ref = factory.get_default_func_ref();
         // https://www.ecma-international.org/ecma-262/9.0/index.html#sec-properties-of-the-function-prototype-object
         let function_prototype = {
-            let function_prototype = Value::Object(factory.alloc(ObjectInfo {
+            let function_prototype = Value::Object(factory.alloc(Object {
                 kind: ObjectKind::Function(FunctionObjectInfo {
                     name: None,
-                    kind: FunctionObjectKind::User{ info: default_func_ref, outer_env: None },
+                    kind: FunctionObjectKind::User {
+                        info: default_func_ref,
+                        outer_env: None,
+                    },
                 }),
                 prototype: object_prototype,
                 property: make_property_map!(),
@@ -66,7 +69,7 @@ impl ObjectPrototypes {
                 builtins::string::string_prototype_split,
             );
 
-            Value::Object(factory.alloc(ObjectInfo {
+            Value::Object(factory.alloc(Object {
                 kind: ObjectKind::Ordinary,
                 prototype: object_prototype,
                 property: make_property_map!(indexOf: index_of, split: split),
@@ -96,7 +99,7 @@ impl ObjectPrototypes {
                 array::array_prototype_join,
             );
 
-            Value::Object(factory.alloc(ObjectInfo {
+            Value::Object(factory.alloc(Object {
                 kind: ObjectKind::Array(ArrayObjectInfo { elems: vec![] }),
                 prototype: object_prototype,
                 property: make_property_map!(
@@ -110,7 +113,7 @@ impl ObjectPrototypes {
         };
 
         let symbol_prototype = {
-            Value::Object(factory.alloc(ObjectInfo {
+            Value::Object(factory.alloc(Object {
                 kind: ObjectKind::Ordinary,
                 prototype: object_prototype,
                 // TODO: https://tc39.github.io/ecma262/#sec-properties-of-the-symbol-prototype-object
@@ -120,7 +123,7 @@ impl ObjectPrototypes {
         };
 
         let error_prototype = {
-            Value::Object(factory.alloc(ObjectInfo {
+            Value::Object(factory.alloc(Object {
                 kind: ObjectKind::Error(ErrorObjectInfo {
                     stack_trace: "".to_string(),
                 }),
@@ -143,12 +146,12 @@ impl ObjectPrototypes {
 
     pub fn dummy() -> Self {
         ObjectPrototypes {
-    object: Value::undefined(),
-    function: Value::undefined(),
-    string: Value::undefined(),
-    array: Value::undefined(),
-    symbol: Value::undefined(),
-    error: Value::undefined(),
-    }
+            object: Value::undefined(),
+            function: Value::undefined(),
+            string: Value::undefined(),
+            array: Value::undefined(),
+            symbol: Value::undefined(),
+            error: Value::undefined(),
+        }
     }
 }
