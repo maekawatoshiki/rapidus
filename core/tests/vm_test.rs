@@ -1,8 +1,8 @@
 #![feature(test)]
 extern crate test;
-use rapidus::parser;
-use rapidus::vm;
-use rapidus::vm::jsvalue::value::Value;
+use rapidus_core::vm;
+use rapidus_core::vm::jsvalue::value::Value;
+use rapidus_parser as parser;
 use std::fs::OpenOptions;
 use std::io::Read;
 
@@ -255,6 +255,16 @@ fn runtime_error4() {
 #[test]
 fn runtime_error5() {
     runtime_error("let a = {}; a(5)");
+}
+
+#[test]
+fn runtime_error6() {
+    runtime_error("let a = x => y; a(1)");
+}
+
+#[test]
+fn runtime_error7() {
+    runtime_error("let a = x => arguments[0]; a(1)");
 }
 
 use test::Bencher;
