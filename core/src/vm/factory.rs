@@ -3,6 +3,7 @@ use crate::gc;
 use crate::vm::{
     jsvalue::prototype::ObjectPrototypes,
     jsvalue::{
+        function::ThisMode,
         object::DataProperty,
         value::{
             ArrayObjectInfo, ErrorObjectInfo, FuncInfoRef, FunctionObjectInfo, FunctionObjectKind,
@@ -296,65 +297,65 @@ impl Factory {
         args: &[Value],
         this: Value,
     ) -> LexicalEnvironmentRef {
-        let arguments = self.object({
-            let mut props: FxHashMap<String, Property> = args
-                .iter()
-                .enumerate()
-                .map(|(i, &arg)| {
-                    (
-                        Value::Number(i as f64).to_string(),
-                        DataProperty::new(arg)
+        let mut record = FxHashMap::default();
+
+        let not_arrow_func = user_func.this_mode != ThisMode::Lexical;
+        if not_arrow_func {
+            let arguments = self.object({
+                let mut props: FxHashMap<String, Property> = args
+                    .iter()
+                    .enumerate()
+                    .map(|(i, &arg)| {
+                        (
+                            Value::Number(i as f64).to_string(),
+                            DataProperty::new(arg)
+                                .set_writable()
+                                .set_configurable()
+                                .into(),
+                        )
+                    })
+                    .collect();
+                props.insert(
+                    "length".to_string(),
+                    Property::new_data(
+                        DataProperty::new(Value::Number(args.len() as f64))
                             .set_writable()
-                            .set_configurable()
-                            .into(),
+                            .set_configurable(),
+                    ),
+                );
+                props.insert(
+                    "callee".to_string(),
+                    Property::new_data(DataProperty::new(callee).set_writable().set_configurable()),
+                );
+                props
+            });
+            record.insert("arguments".to_string(), arguments);
+        }
+
+        for name in &user_func.var_names {
+            record.insert(name.clone(), Value::undefined());
+        }
+
+        for (i, FunctionParameter { name, rest_param }) in user_func.params.iter().enumerate() {
+            record.insert(
+                name.clone(),
+                if *rest_param {
+                    self.array(
+                        (*args)
+                            .get(i..)
+                            .unwrap_or(&vec![])
+                            .iter()
+                            .map(|elem| Property::new_data_simple(*elem))
+                            .collect::<Vec<Property>>(),
                     )
-                })
-                .collect();
-            props.insert(
-                "length".to_string(),
-                Property::new_data(
-                    DataProperty::new(Value::Number(args.len() as f64))
-                        .set_writable()
-                        .set_configurable(),
-                ),
-            );
-            props.insert(
-                "callee".to_string(),
-                Property::new_data(DataProperty::new(callee).set_writable().set_configurable()),
-            );
-            props
-        });
-        let env = LexicalEnvironment {
-            record: EnvironmentRecord::Function {
-                record: {
-                    let mut record = FxHashMap::default();
-                    record.insert("arguments".to_string(), arguments);
-                    for name in &user_func.var_names {
-                        record.insert(name.clone(), Value::undefined());
-                    }
-                    for (i, FunctionParameter { name, rest_param }) in
-                        user_func.params.iter().enumerate()
-                    {
-                        record.insert(
-                            name.clone(),
-                            if *rest_param {
-                                self.array(
-                                    (*args)
-                                        .get(i..)
-                                        .unwrap_or(&vec![])
-                                        .iter()
-                                        .map(|elem| Property::new_data_simple(*elem))
-                                        .collect::<Vec<Property>>(),
-                                )
-                            } else {
-                                *args.get(i).unwrap_or(&Value::undefined())
-                            },
-                        );
-                    }
-                    record
+                } else {
+                    *args.get(i).unwrap_or(&Value::undefined())
                 },
-                this,
-            },
+            );
+        }
+
+        let env = LexicalEnvironment {
+            record: EnvironmentRecord::Function { record, this },
             outer: outer_env,
         };
 

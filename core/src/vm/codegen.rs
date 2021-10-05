@@ -147,10 +147,10 @@ impl<'a> CodeGenerator<'a> {
                 self.visit_function_decl(name, params, &*body)?
             }
             NodeBase::FunctionExpr(ref name, ref params, ref body) => {
-                self.visit_function_expr(name, params, &*body, true, iseq, use_value)?
+                self.visit_function_expr(name, params, &*body, false, iseq, use_value)?
             }
             NodeBase::ArrowFunction(ref params, ref body) => {
-                self.visit_function_expr(&None, params, &*body, false, iseq, use_value)?
+                self.visit_function_expr(&None, params, &*body, true, iseq, use_value)?
             }
             NodeBase::VarDecl(ref name, ref init, ref kind) => {
                 self.visit_var_decl(node, name, init, kind, iseq)?
@@ -592,7 +592,7 @@ impl<'a> CodeGenerator<'a> {
         params: &FormalParameters,
         body: &Node,
     ) -> CodeGenResult {
-        let func_info = self.visit_function(Some(name.clone()), params, body, true)?;
+        let func_info = self.visit_function(Some(name.clone()), params, body, false)?;
         self.current_function().var_names.push(name.clone());
         self.current_function().func_decls.push(func_info);
         Ok(())
@@ -666,11 +666,11 @@ impl<'a> CodeGenerator<'a> {
             var_names: function_info.var_names,
             lex_names: function_info.lex_names,
             func_decls: function_info.func_decls,
-            constructible: arrow_function,
+            constructible: !arrow_function,
             this_mode: if arrow_function {
-                ThisMode::Global
-            } else {
                 ThisMode::Lexical
+            } else {
+                ThisMode::Global
             },
             code: func_iseq,
             exception_table: function_info.exception_table,
