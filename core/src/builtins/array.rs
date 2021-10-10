@@ -70,6 +70,22 @@ pub fn array_prototype_push(vm: &mut VM, args: &[Value], this: Value) -> VMValue
     Ok(val)
 }
 
+pub fn array_prototype_pop(vm: &mut VM, _args: &[Value], this: Value) -> VMValueResult {
+    if !this.is_array_object() {
+        return Err(vm.current_context.error_unknown());
+    }
+
+    let ary_info = this.as_array_mut();
+
+    let val = ary_info
+        .elems
+        .pop()
+        .map(|prop| prop.as_data().val)
+        .unwrap_or(Value::undefined());
+
+    Ok(val)
+}
+
 pub fn array_prototype_map(vm: &mut VM, args: &[Value], this: Value) -> VMValueResult {
     if !this.is_array_object() {
         return Err(vm.current_context.error_unknown());

@@ -85,6 +85,13 @@ impl ObjectPrototypes {
                 array::array_prototype_push,
             );
 
+            let pop = Value::builtin_function_with_proto(
+                &mut factory.memory_allocator,
+                function_prototype,
+                "pop",
+                array::array_prototype_pop,
+            );
+
             let map = Value::builtin_function_with_proto(
                 &mut factory.memory_allocator,
                 function_prototype,
@@ -106,6 +113,7 @@ impl ObjectPrototypes {
                     length => false, false, true : Value::Number(0.0),
                     join   => true,  false, true : join,
                     push   => true,  false, true : push,
+                    pop    => true,  false, true : pop,
                     map    => true,  false, true : map
                 ),
                 sym_property: FxHashMap::default(),
