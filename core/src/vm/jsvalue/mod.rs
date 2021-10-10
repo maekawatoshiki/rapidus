@@ -1,6 +1,7 @@
 #[macro_use]
 pub mod value;
 pub mod array;
+pub mod date;
 pub mod error;
 pub mod function;
 pub mod object;

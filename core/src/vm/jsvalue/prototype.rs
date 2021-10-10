@@ -12,6 +12,7 @@ pub struct ObjectPrototypes {
     pub function: Value,
     pub string: Value,
     pub array: Value,
+    pub date: Value,
     pub symbol: Value,
     pub error: Value,
 }
@@ -120,6 +121,15 @@ impl ObjectPrototypes {
             }))
         };
 
+        let date_prototype = {
+            Value::Object(factory.alloc(Object {
+                kind: ObjectKind::Date(DateObjectInfo::default()),
+                prototype: object_prototype,
+                property: make_property_map!(), // TODO
+                sym_property: FxHashMap::default(),
+            }))
+        };
+
         let symbol_prototype = {
             Value::Object(factory.alloc(Object {
                 kind: ObjectKind::Ordinary,
@@ -147,6 +157,7 @@ impl ObjectPrototypes {
             function: function_prototype,
             string: string_prototype,
             array: array_prototype,
+            date: date_prototype,
             symbol: symbol_prototype,
             error: error_prototype,
         }
@@ -158,6 +169,7 @@ impl ObjectPrototypes {
             function: Value::undefined(),
             string: Value::undefined(),
             array: Value::undefined(),
+            date: Value::undefined(),
             symbol: Value::undefined(),
             error: Value::undefined(),
         }

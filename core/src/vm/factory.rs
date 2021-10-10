@@ -6,8 +6,8 @@ use crate::vm::{
         function::ThisMode,
         object::DataProperty,
         value::{
-            ArrayObjectInfo, ErrorObjectInfo, FuncInfoRef, FunctionObjectInfo, FunctionObjectKind,
-            Object, ObjectKind, Property, SymbolInfo, UserFunctionInfo, Value,
+            ArrayObjectInfo, DateObjectInfo, ErrorObjectInfo, FuncInfoRef, FunctionObjectInfo,
+            FunctionObjectKind, Object, ObjectKind, Property, SymbolInfo, UserFunctionInfo, Value,
         },
     },
     vm::{EnvironmentRecord, FunctionParameter, LexicalEnvironment, LexicalEnvironmentRef},
@@ -206,6 +206,15 @@ impl Factory {
         Value::Object(self.alloc(Object {
             kind: ObjectKind::Array(ArrayObjectInfo { elems }),
             prototype: self.object_prototypes.array,
+            property: make_property_map!(),
+            sym_property: FxHashMap::default(),
+        }))
+    }
+
+    pub fn date(&mut self) -> Value {
+        Value::Object(self.alloc(Object {
+            kind: ObjectKind::Date(DateObjectInfo::default()),
+            prototype: self.object_prototypes.date,
             property: make_property_map!(),
             sym_property: FxHashMap::default(),
         }))

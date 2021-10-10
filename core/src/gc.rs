@@ -397,6 +397,7 @@ impl object::ObjectKind {
                     elem.initial_trace(markset)
                 }
             }
+            object::ObjectKind::Date(_) => {}
             object::ObjectKind::Symbol(_) => {}
             object::ObjectKind::Error(_) => {}
             object::ObjectKind::Arguments => {}
@@ -420,6 +421,7 @@ impl object::ObjectKind {
                 }
             }
             object::ObjectKind::Symbol(_) => {}
+            object::ObjectKind::Date(_) => {}
             object::ObjectKind::Error(_) => {}
             object::ObjectKind::Arguments => {}
             object::ObjectKind::Ordinary => {}

@@ -1,5 +1,6 @@
 use super::super::error;
 pub use super::array::ArrayObjectInfo;
+pub use super::date::DateObjectInfo;
 pub use super::error::*;
 pub use super::function::*;
 pub use super::object::*;
@@ -136,6 +137,7 @@ impl std::fmt::Display for Value {
                     ObjectKind::Arguments => write!(f, "Arguments"),
                     ObjectKind::Function(_) => write!(f, "Function"),
                     ObjectKind::Array(_) => write!(f, "Array"),
+                    ObjectKind::Date(_) => write!(f, "Date"),
                     ObjectKind::Symbol(_) => write!(f, "Symbol"),
                     ObjectKind::Error(_) => write!(f, "Error"),
                 }
@@ -677,6 +679,7 @@ impl Value {
                     ObjectKind::Arguments => Some(self),
                     ObjectKind::Function(_) => None,
                     ObjectKind::Array(_) => None,
+                    ObjectKind::Date(_) => None,
                     ObjectKind::Error(_) => None,
                     ObjectKind::Symbol(_) => Some(self), // TODO
                 }
@@ -916,6 +919,7 @@ impl Value {
                 match info.kind {
                     ObjectKind::Function(_) => "function",
                     ObjectKind::Array(_) => "object",
+                    ObjectKind::Date(_) => "object",
                     ObjectKind::Symbol(_) => "symbol",
                     ObjectKind::Error(_) => "error",
                     ObjectKind::Arguments => "object",
@@ -1026,6 +1030,10 @@ impl Value {
                         } else {
                             "[Function]".to_string()
                         }
+                    }
+                    ObjectKind::Date(ref _date) => {
+                        // TODO
+                        "[Date]".to_string()
                     }
                     ObjectKind::Array(ref ary_info) => {
                         let mut string = "[ ".to_string();

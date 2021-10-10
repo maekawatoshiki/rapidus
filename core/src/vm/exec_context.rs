@@ -189,6 +189,7 @@ impl LexicalEnvironment {
         let object_constructor = builtins::object::object(factory);
         let function_constructor = builtins::function::function(factory);
         let array_constructor = builtins::array::array(factory);
+        let date_constructor = builtins::date::date(factory);
         let symbol_constructor = builtins::symbol::symbol(factory);
         let error_constructor = builtins::error::error(factory);
         let math_object = builtins::math::math(factory);
@@ -206,6 +207,7 @@ impl LexicalEnvironment {
                 Object     => true, false, true: object_constructor,
                 Function   => true, false, true: function_constructor,
                 Array      => true, false, true: array_constructor,
+                Date       => true, false, true: date_constructor,
                 Symbol     => true, false, true: symbol_constructor,
                 Error      => true, false, true: error_constructor,
                 Math       => true, false, true: math_object

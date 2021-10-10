@@ -1,3 +1,16 @@
+use crate::vm::{
+    jsvalue::value::Value,
+    vm::{Factory, VMValueResult, VM},
+};
+
+pub fn date(factory: &mut Factory) -> Value {
+    factory.generate_builtin_constructor("Date", date_constructor, factory.object_prototypes.date)
+}
+
+pub fn date_constructor(vm: &mut VM, _args: &[Value], _this: Value) -> VMValueResult {
+    Ok(vm.factory.date())
+}
+
 // use chrono::Utc;
 // use vm::value::*;
 // use vm::{error::RuntimeError, vm::VM};

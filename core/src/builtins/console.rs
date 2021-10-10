@@ -120,6 +120,10 @@ pub fn debug_print(val: &Value, nest: bool) {
                         print!("[Function]");
                     }
                 }
+                ObjectKind::Date(ref _date) => {
+                    // TODO
+                    print!("[Date]")
+                }
                 ObjectKind::Array(ref ary_info) => {
                     print!("[ ");
 

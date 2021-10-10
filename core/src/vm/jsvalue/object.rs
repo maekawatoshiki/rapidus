@@ -36,6 +36,7 @@ impl std::ops::DerefMut for ObjectRef {
 pub enum ObjectKind {
     Function(FunctionObjectInfo),
     Array(ArrayObjectInfo),
+    Date(DateObjectInfo),
     Symbol(SymbolInfo),
     Error(ErrorObjectInfo),
     Arguments,
