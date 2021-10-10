@@ -1031,10 +1031,7 @@ impl Value {
                             "[Function]".to_string()
                         }
                     }
-                    ObjectKind::Date(ref _date) => {
-                        // TODO
-                        "[Date]".to_string()
-                    }
+                    ObjectKind::Date(ref date) => date.to_string(),
                     ObjectKind::Array(ref ary_info) => {
                         let mut string = "[ ".to_string();
 
