@@ -21,6 +21,15 @@ pub fn date_get_hours(vm: &mut VM, _args: &[Value], this: Value) -> VMValueResul
     Ok(Value::Number(date.utc().hour() as f64))
 }
 
+pub fn date_get_minutes(vm: &mut VM, _args: &[Value], this: Value) -> VMValueResult {
+    if !this.is_date_object() {
+        return Err(vm.current_context.error_unknown());
+    }
+
+    let date = this.as_date().unwrap();
+    Ok(Value::Number(date.utc().minute() as f64))
+}
+
 // use chrono::Utc;
 // use vm::value::*;
 // use vm::{error::RuntimeError, vm::VM};

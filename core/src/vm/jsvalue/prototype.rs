@@ -128,12 +128,20 @@ impl ObjectPrototypes {
             date::date_get_hours,
         );
 
+        let get_minutes = Value::builtin_function_with_proto(
+            &mut factory.memory_allocator,
+            function_prototype,
+            "getMinutes",
+            date::date_get_minutes,
+        );
+
         let date_prototype = {
             Value::Object(factory.alloc(Object {
                 kind: ObjectKind::Date(DateObjectInfo::default()),
                 prototype: object_prototype,
                 property: make_property_map!(
-                    getHours => true, false, true : get_hours
+                    getHours => true, false, true : get_hours,
+                    getMinutes => true, false, true : get_minutes
                 ),
                 sym_property: FxHashMap::default(),
             }))
