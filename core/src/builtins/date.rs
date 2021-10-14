@@ -2,6 +2,7 @@ use crate::vm::{
     jsvalue::value::Value,
     vm::{Factory, VMValueResult, VM},
 };
+use chrono::Timelike;
 
 pub fn date(factory: &mut Factory) -> Value {
     factory.generate_builtin_constructor("Date", date_constructor, factory.object_prototypes.date)
@@ -9,6 +10,15 @@ pub fn date(factory: &mut Factory) -> Value {
 
 pub fn date_constructor(vm: &mut VM, _args: &[Value], _this: Value) -> VMValueResult {
     Ok(vm.factory.date())
+}
+
+pub fn date_get_hours(vm: &mut VM, _args: &[Value], this: Value) -> VMValueResult {
+    if !this.is_date_object() {
+        return Err(vm.current_context.error_unknown());
+    }
+
+    let date = this.as_date().unwrap();
+    Ok(Value::Number(date.utc().hour() as f64))
 }
 
 // use chrono::Utc;

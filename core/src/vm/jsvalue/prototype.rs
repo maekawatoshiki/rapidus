@@ -2,7 +2,7 @@
 use super::value::Value;
 use super::value::*;
 use crate::builtins;
-use crate::builtins::{array, function};
+use crate::builtins::{array, date, function};
 use crate::vm::vm::Factory;
 use rustc_hash::FxHashMap;
 
@@ -121,11 +121,20 @@ impl ObjectPrototypes {
             }))
         };
 
+        let get_hours = Value::builtin_function_with_proto(
+            &mut factory.memory_allocator,
+            function_prototype,
+            "getHours",
+            date::date_get_hours,
+        );
+
         let date_prototype = {
             Value::Object(factory.alloc(Object {
                 kind: ObjectKind::Date(DateObjectInfo::default()),
                 prototype: object_prototype,
-                property: make_property_map!(), // TODO
+                property: make_property_map!(
+                    getHours => true, false, true : get_hours
+                ),
                 sym_property: FxHashMap::default(),
             }))
         };

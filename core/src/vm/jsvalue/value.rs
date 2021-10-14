@@ -260,6 +260,16 @@ impl Value {
         }
     }
 
+    pub fn is_date_object(&self) -> bool {
+        match self {
+            Value::Object(info) => match ObjectRef(*info).kind {
+                ObjectKind::Date(_) => true,
+                _ => false,
+            },
+            _ => false,
+        }
+    }
+
     /// Returns true if the value is an Error object.
     pub fn is_error_object(&self) -> bool {
         match self {
@@ -468,6 +478,19 @@ impl Value {
                 }
             }
             e => panic!("{:?}", e),
+        }
+    }
+
+    pub fn as_date(&self) -> Option<&DateObjectInfo> {
+        match self {
+            Value::Object(obj) => {
+                let obj = unsafe { &**obj };
+                match obj.kind {
+                    ObjectKind::Date(ref info) => Some(&info),
+                    _ => None,
+                }
+            }
+            _ => None,
         }
     }
 

@@ -12,6 +12,10 @@ impl Default for DateObjectInfo {
 }
 
 impl DateObjectInfo {
+    pub fn utc(&self) -> &DateTime<Utc> {
+        &self.utc
+    }
+
     pub fn to_string(&self) -> String {
         self.utc.to_rfc3339()
     }
