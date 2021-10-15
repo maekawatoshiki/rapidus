@@ -1,6 +1,6 @@
 //use super::value::*;
 use crate::builtin::BuiltinFuncTy;
-use crate::bytecode_gen::ByteCode;
+use crate::bytecode_gen::{ByteCode, VMInst};
 use crate::vm::exec_context::LexicalEnvironmentRef;
 use crate::vm::factory::{Factory, FunctionId};
 
@@ -130,7 +130,7 @@ impl UserFunctionInfo {
             func_decls: vec![],
             constructible: false,
             this_mode: ThisMode::Global,
-            code: vec![0x0c, 0x28], // [PUSH_UNDEFINED][RETURN]
+            code: vec![VMInst::PUSH_UNDEFINED, VMInst::RETURN],
             exception_table: vec![],
         }
     }
@@ -146,7 +146,7 @@ impl UserFunctionInfo {
             func_decls: vec![],
             constructible: false,
             this_mode: ThisMode::Global,
-            code: vec![0x0c, 0x28], // [PUSH_UNDEFINED][RETURN]
+            code: vec![VMInst::PUSH_UNDEFINED, VMInst::RETURN],
             exception_table: vec![],
         }
     }
