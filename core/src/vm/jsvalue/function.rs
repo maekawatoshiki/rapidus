@@ -1,5 +1,4 @@
-//use super::value::*;
-use crate::builtin::BuiltinFuncTy;
+use crate::builtins::BuiltinFuncTy;
 use crate::bytecode_gen::{ByteCode, VMInst};
 use crate::vm::exec_context::LexicalEnvironmentRef;
 use crate::vm::factory::{Factory, FunctionId};

@@ -1,5 +1,4 @@
 #![macro_use]
-use crate::builtin;
 use crate::builtins;
 use crate::vm::{
     error::{ErrorKind, RuntimeError},
@@ -179,10 +178,10 @@ impl LexicalEnvironment {
 
     pub fn new_global_initialized(factory: &mut Factory) -> Self {
         let log = factory.builtin_function("log", builtins::console::console_log);
-        let parse_float = factory.builtin_function("parseFloat", builtin::parse_float);
-        let parse_int = factory.builtin_function("parseInt", builtin::parse_int);
-        let require = factory.builtin_function("require", builtin::require);
-        let deep_seq = factory.builtin_function("__assert_deep_seq", builtin::deep_seq);
+        let parse_float = factory.builtin_function("parseFloat", builtins::parse_float);
+        let parse_int = factory.builtin_function("parseInt", builtins::parse_int);
+        let require = factory.builtin_function("require", builtins::require);
+        let deep_seq = factory.builtin_function("__assert_deep_seq", builtins::deep_seq);
         let console = make_normal_object!(factory,
             log => true, false, true: log
         );

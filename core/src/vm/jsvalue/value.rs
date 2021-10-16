@@ -6,7 +6,7 @@ pub use super::function::*;
 pub use super::object::*;
 pub use super::prototype::*;
 pub use super::symbol::*;
-use crate::builtin::BuiltinFuncTy;
+use crate::builtins::BuiltinFuncTy;
 use crate::gc;
 use crate::vm::exec_context::LexicalEnvironmentRef;
 use crate::vm::vm::Factory;

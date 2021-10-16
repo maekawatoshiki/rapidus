@@ -1,4 +1,4 @@
-use crate::builtin::BuiltinFuncTy;
+use crate::builtins::BuiltinFuncTy;
 use crate::gc;
 use crate::vm::{
     jsvalue::prototype::ObjectPrototypes,
@@ -181,11 +181,7 @@ impl Factory {
     }
 
     /// Generate Value for a built-in (native) function.
-    pub fn builtin_function(
-        &mut self,
-        name: impl Into<String>,
-        func: crate::builtin::BuiltinFuncTy,
-    ) -> Value {
+    pub fn builtin_function(&mut self, name: impl Into<String>, func: BuiltinFuncTy) -> Value {
         let name: String = name.into();
         let name_prop = self.string(name.clone());
         Value::Object(self.alloc(Object {

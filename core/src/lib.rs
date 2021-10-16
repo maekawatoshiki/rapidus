@@ -4,7 +4,7 @@
 pub mod util;
 #[macro_use]
 pub mod vm;
-pub mod builtin;
+// pub mod builtin;
 pub mod builtins;
 pub mod bytecode_gen;
 pub mod gc;
