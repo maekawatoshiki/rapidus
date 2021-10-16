@@ -49,9 +49,9 @@ pub struct Profiler {
 
 #[derive(Debug, Clone, PartialEq, Copy)]
 pub enum CallMode {
-    OrdinaryCall,
-    ModuleCall,
-    FromNative,
+    Ordinary,
+    Module,
+    Native,
 }
 
 impl VM {
@@ -150,7 +150,7 @@ impl VM {
             lex_env,
             global_info,
             global_env_ref.get_global_object(),
-            CallMode::OrdinaryCall,
+            CallMode::Ordinary,
         );
 
         context
@@ -193,7 +193,7 @@ impl VM {
             outer_env,
             args,
             this,
-            CallMode::FromNative,
+            CallMode::Native,
             constructor_call,
         )?;
         // if called from builtin func, do not GC.
@@ -822,7 +822,7 @@ impl VM {
                     };
                     self.unwind_context();
 
-                    if call_mode == CallMode::FromNative {
+                    if call_mode == CallMode::Native {
                         break;
                     }
                     // If call from built-in func, do not GC.
@@ -987,7 +987,7 @@ impl VM {
     /// 4. Push the Value to the stack of new current execution context.
     pub fn unwind_context(&mut self) {
         let prev_context = self.saved_context.pop().unwrap();
-        let return_value = if self.current_context.call_mode == CallMode::ModuleCall {
+        let return_value = if self.current_context.call_mode == CallMode::Module {
             self.current_context
                 .lex_env()
                 .get_value("module")
@@ -1231,7 +1231,7 @@ impl VM {
             outer_env,
             args,
             this,
-            CallMode::OrdinaryCall,
+            CallMode::Ordinary,
             constructor_call,
         )?;
 

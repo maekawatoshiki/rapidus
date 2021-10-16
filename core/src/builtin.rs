@@ -163,7 +163,7 @@ pub fn require(vm: &mut VM, args: &[Value], _this: Value) -> VMValueResult {
         Some(vm.global_environment),
         args: &[Value],
         Value::undefined(),
-        CallMode::ModuleCall,
+        CallMode::Module,
         false,
     )?;
 

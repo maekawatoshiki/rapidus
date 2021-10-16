@@ -90,7 +90,7 @@ impl ExecContext {
             func_ref: FuncInfoRef::default(),
             this: Value::undefined(),
             constructor_call: false,
-            call_mode: CallMode::OrdinaryCall,
+            call_mode: CallMode::Ordinary,
             variable_environment: LexicalEnvironmentRef::new_null(),
             lexical_environment: LexicalEnvironmentRef::new_null(),
             saved_lexical_environment: vec![],
