@@ -8,7 +8,7 @@ use crate::vm::jsvalue::value;
 use crate::vm::jsvalue::value::Value;
 use crate::vm::vm::Factory;
 use rapidus_ast::{
-    BinOp, FormalParameter, FormalParameters, MethodDefinitionKind, Node, NodeBase,
+    loc::SourceLoc, BinOp, FormalParameter, FormalParameters, MethodDefinitionKind, Node, NodeBase,
     PropertyDefinition, UnaryOp, VarKind,
 };
 use rustc_hash::FxHashMap;
@@ -18,7 +18,7 @@ pub type CodeGenResult = Result<(), Error>;
 #[derive(Clone, Debug)]
 pub struct Error {
     pub msg: String,
-    pub token_pos: usize,
+    pub loc: SourceLoc,
     pub kind: ErrorKind,
 }
 
@@ -34,8 +34,7 @@ pub struct CodeGenerator<'a> {
     pub factory: &'a mut Factory,
     pub function_stack: Vec<FunctionInfo>,
     pub to_source_map: FxHashMap<FunctionId, ToSourcePos>,
-    /// A position in the bytecode of the current node.
-    pub node_pos: usize,
+    pub loc: SourceLoc,
     pub module_func_id: FunctionId,
 }
 
@@ -55,7 +54,7 @@ pub struct FunctionInfo {
 #[derive(Debug, Clone)]
 /// Table of correspondence of an instruction pointer and char position on script.
 pub struct ToSourcePos {
-    table: Vec<(usize, usize)>,
+    table: Vec<(usize, SourceLoc)>,
     module_func_id: FunctionId,
 }
 
@@ -86,7 +85,7 @@ impl<'a> CodeGenerator<'a> {
             factory,
             function_stack: vec![FunctionInfo::new(None, module_func_id) /* = global */],
             to_source_map: FxHashMap::default(),
-            node_pos: 0,
+            loc: SourceLoc::default(),
             module_func_id,
         }
     }
@@ -123,7 +122,7 @@ impl<'a> CodeGenerator<'a> {
 
 impl<'a> CodeGenerator<'a> {
     fn visit(&mut self, node: &Node, iseq: &mut ByteCode, use_value: bool) -> CodeGenResult {
-        self.node_pos = node.pos;
+        self.loc = node.loc;
         match node.base {
             NodeBase::StatementList(ref node_list) => {
                 self.visit_statement_list(node_list, iseq, use_value)?
@@ -698,7 +697,7 @@ impl<'a> CodeGenerator<'a> {
                 if names.iter().find(|declared| *declared == &name).is_some() {
                     return Err(Error::new_general_error(
                         format!("Identifier '{}' has already been declared", name),
-                        node.pos,
+                        node.loc,
                     ));
                 }
                 names.push(name);
@@ -1151,7 +1150,7 @@ impl<'a> CodeGenerator<'a> {
             _ => {
                 return Err(Error::new_general_error(
                     "Reference error: Invalid left-hand side in assignment.".to_string(),
-                    dst.pos,
+                    dst.loc,
                 ));
             }
         }
@@ -1165,10 +1164,10 @@ impl<'a> CodeGenerator<'a> {
 
     /// Save the position in bytecode corresponds to the current node.
     fn save_source_pos(&mut self, iseq: &mut ByteCode) {
-        let node_pos = self.node_pos;
+        let loc = self.loc;
         self.current_function()
             .to_source_pos
-            .append(iseq.len(), node_pos);
+            .append(iseq.len(), loc);
     }
 
     fn unwind_try_or_catch(&mut self, iseq: &mut ByteCode) {
@@ -1209,18 +1208,18 @@ impl<'a> CodeGenerator<'a> {
 // Methods for Error handling
 
 impl Error {
-    pub fn new_general_error(msg: String, token_pos: usize) -> Self {
+    pub fn new_general_error(msg: String, loc: SourceLoc) -> Self {
         Error {
             msg,
-            token_pos,
+            loc,
             kind: ErrorKind::General,
         }
     }
 
-    pub fn new_unimplemented_error(msg: String, token_pos: usize) -> Self {
+    pub fn new_unimplemented_error(msg: String, loc: SourceLoc) -> Self {
         Error {
             msg,
-            token_pos,
+            loc,
             kind: ErrorKind::Unimplemented,
         }
     }
@@ -1421,15 +1420,15 @@ impl ToSourcePos {
         }
     }
 
-    pub fn append(&mut self, bp: usize, np: usize) {
-        self.table.push((bp, np));
+    pub fn append(&mut self, bp: usize, node_loc: SourceLoc) {
+        self.table.push((bp, node_loc));
     }
 
     pub fn func_id(&self) -> FunctionId {
         self.module_func_id
     }
 
-    pub fn get_node_pos(&self, bytecode_offset: usize) -> Option<usize> {
+    pub fn get_node_loc(&self, bytecode_offset: usize) -> Option<SourceLoc> {
         for (bp, np) in &self.table {
             if *bp == bytecode_offset {
                 return Some(*np);

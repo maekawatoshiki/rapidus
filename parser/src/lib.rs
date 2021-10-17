@@ -2,8 +2,9 @@ pub mod lexer;
 pub mod token;
 
 use ansi_term::Colour;
+use lexer::get_error_line;
 use rapidus_ast::{
-    BinOp, FormalParameter, FormalParameters, MethodDefinitionKind, Node, NodeBase,
+    loc::SourceLoc, BinOp, FormalParameter, FormalParameters, MethodDefinitionKind, Node, NodeBase,
     PropertyDefinition, UnaryOp, VarKind,
 };
 use std::fs::OpenOptions;
@@ -15,7 +16,7 @@ macro_rules! expect {
     ($self:ident, $kind:expr, $msg:expr) => {{
         let tok = $self.lexer.next_skip_lineterminator()?;
         if tok.kind != $kind {
-            return Err(Error::Expect(tok.pos, $msg.to_string()));
+            return Err(Error::Expect(tok.loc, $msg.to_string()));
         }
     }};
 }
@@ -24,7 +25,7 @@ macro_rules! expect_no_lineterminator {
     ($self:ident, $kind:expr, $msg:expr) => {{
         let tok = $self.lexer.next()?;
         if tok.kind != $kind {
-            return Err(Error::Expect(tok.pos, $msg.to_string()));
+            return Err(Error::Expect(tok.loc, $msg.to_string()));
         }
     }};
 }
@@ -33,12 +34,12 @@ macro_rules! expect_no_lineterminator {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Error {
     NormalEOF,
-    UnexpectedEOF(String),          // error msg
-    UnexpectedToken(usize, String), // position, error msg
-    UnsupportedFeature(usize),      // position
-    Expect(usize, String),          // position, error msg
-    InvalidToken(usize),
-    General(usize, String),
+    UnexpectedEOF(String),              // error msg
+    UnexpectedToken(SourceLoc, String), // position, error msg
+    UnsupportedFeature(SourceLoc),      // position
+    Expect(SourceLoc, String),          // position, error msg
+    InvalidToken(SourceLoc),
+    General(SourceLoc, String),
 }
 
 #[derive(Clone, Debug)]
@@ -54,8 +55,8 @@ pub struct ScriptInfo {
     pub file_name: String,
     /// Script text.
     pub code: String,
-    /// Correspondence between char postions and line numbers.
-    pub pos_line_list: Vec<(usize, usize)>,
+    // /// Correspondence between char postions and line numbers.
+    // pub pos_line_list: Vec<(usize, usize)>,
 }
 
 impl Parser {
@@ -78,7 +79,7 @@ impl Parser {
                 let msg = format!("{}", ioerr);
                 println!("Error: Cannot find module file. '{}'", &file_name);
                 println!("{}", msg);
-                return Err(Error::General(0, msg));
+                return Err(Error::General(SourceLoc::default(), msg));
             }
         };
 
@@ -93,7 +94,7 @@ impl Parser {
                 let msg = format!("{}", ioerr);
                 println!("Error: Cannot find module file. '{}'", &file_name);
                 println!("{}", msg);
-                return Err(Error::General(0, msg));
+                return Err(Error::General(SourceLoc::default(), msg));
             }
         };
 
@@ -104,22 +105,22 @@ impl Parser {
         ScriptInfo {
             file_name: self.file_name,
             code: self.lexer.code,
-            pos_line_list: self.lexer.pos_line_list,
+            // pos_line_list: self.lexer.pos_line_list,
         }
     }
 
     /// Display error position in the source script.
     /// ## Arguments
-    /// * `pos` - A char position in the source script.
-    /// * `msg` - An error message text.
-    pub fn show_error_at(&self, pos: usize, msg: impl Into<String>) {
-        let (source_at_err_point, _pos, line) = self.lexer.get_code_around_err_point(pos);
+    /// * `loc` - Source location in the source script.
+    /// * `msg` - Error message text.
+    pub fn show_error_at(&self, loc: SourceLoc, msg: impl Into<String>) {
+        let err_line = get_error_line(&self.lexer.code, loc);
         eprintln!(
             "{}: line {}: {}\n{}",
             Colour::Red.bold().paint("SyntaxError"),
-            line,
+            loc.line,
             msg.into(),
-            source_at_err_point,
+            err_line,
         );
     }
 
@@ -129,17 +130,17 @@ impl Parser {
     pub fn handle_error(&self, err: &Error) {
         match err {
             Error::NormalEOF => unreachable!(),
-            Error::Expect(pos, msg)
-            | Error::General(pos, msg)
-            | Error::UnexpectedToken(pos, msg) => {
-                self.show_error_at(*pos, msg.clone());
+            Error::Expect(loc, msg)
+            | Error::General(loc, msg)
+            | Error::UnexpectedToken(loc, msg) => {
+                self.show_error_at(*loc, msg.clone());
             }
             Error::UnexpectedEOF(msg) => {
-                self.show_error_at(self.lexer.pos, format!("unexpected EOF. {}", msg))
+                self.show_error_at(self.lexer.loc, format!("unexpected EOF. {}", msg))
             }
-            Error::InvalidToken(pos) => self.show_error_at(*pos, "Invalid token."),
-            Error::UnsupportedFeature(pos) => {
-                self.show_error_at(*pos, "Unsupported feature.");
+            Error::InvalidToken(loc) => self.show_error_at(*loc, "Invalid token."),
+            Error::UnsupportedFeature(loc) => {
+                self.show_error_at(*loc, "Unsupported feature.");
             }
         }
     }
@@ -176,15 +177,11 @@ impl Parser {
         break_when_closingbrase: bool,
         is_block_statement: bool,
     ) -> Result<Node, Error> {
-        let pos = if break_when_closingbrase {
-            self.lexer.get_prev_pos()
-        } else {
-            self.lexer.get_current_pos()
-        };
-
+        let loc = self.lexer.get_current_loc();
         let mut items = vec![];
 
         loop {
+            let loc = self.lexer.get_current_loc();
             match self
                 .lexer
                 .next_if_skip_lineterminator(Kind::Symbol(Symbol::ClosingBrace))
@@ -194,7 +191,7 @@ impl Parser {
                         break;
                     } else {
                         return Err(Error::UnexpectedToken(
-                            self.lexer.get_prev_pos(),
+                            loc,
                             "unexpected token '}'.".to_string(),
                         ));
                     }
@@ -231,9 +228,9 @@ impl Parser {
         }
 
         if is_block_statement {
-            Ok(Node::new(NodeBase::Block(items), pos))
+            Ok(Node::new(NodeBase::Block(items), loc))
         } else {
-            Ok(Node::new(NodeBase::StatementList(items), pos))
+            Ok(Node::new(NodeBase::StatementList(items), loc))
         }
     }
 
@@ -271,7 +268,7 @@ impl Parser {
                 let labeled_item = self.read_statement_list_item()?;
                 return Ok(Node::new(
                     NodeBase::Label(name.clone(), Box::new(labeled_item)),
-                    tok.pos,
+                    tok.loc,
                 ));
             }
         }
@@ -287,7 +284,7 @@ impl Parser {
             Kind::Keyword(Keyword::Try) => self.read_try_statement(),
             Kind::Keyword(Keyword::Throw) => self.read_throw_statement(),
             Kind::Symbol(Symbol::OpeningBrace) => self.read_block_statement(),
-            Kind::Symbol(Symbol::Semicolon) => return Ok(Node::new(NodeBase::Nope, tok.pos)),
+            Kind::Symbol(Symbol::Semicolon) => return Ok(Node::new(NodeBase::Nope, tok.loc)),
             _ => {
                 self.lexer.unget();
                 is_expression_statement = true;
@@ -306,7 +303,7 @@ impl Parser {
                         Kind::LineTerminator | Kind::Symbol(Symbol::ClosingBrace) => {}
                         _ => {
                             return Err(Error::UnexpectedToken(
-                                self.lexer.get_current_pos(),
+                                self.lexer.get_current_loc(),
                                 format!("unexpected token."),
                             ));
                         }
@@ -328,7 +325,7 @@ impl Parser {
 
     /// https://tc39.github.io/ecma262/#prod-VariableDeclarationList
     fn read_variable_declaration_list(&mut self) -> Result<Node, Error> {
-        let pos = self.lexer.get_prev_pos();
+        let pos = self.lexer.get_current_loc();
         let mut list = vec![];
 
         loop {
@@ -363,19 +360,19 @@ impl Parser {
         }
 
         Err(Error::Expect(
-            self.lexer.get_current_pos(),
+            self.lexer.get_current_loc(),
             "expect ';' or line terminator".to_string(),
         ))
     }
 
     /// https://tc39.github.io/ecma262/#prod-VariableDeclaration
     fn read_variable_declaration(&mut self) -> Result<Node, Error> {
-        let pos = self.lexer.get_current_pos();
+        let loc = self.lexer.get_current_loc();
         let name = match self.lexer.next_skip_lineterminator()?.kind {
             Kind::Identifier(name) => name,
             _ => {
                 return Err(Error::UnexpectedToken(
-                    self.lexer.get_prev_pos(),
+                    loc,
                     "Expect identifier.".to_string(),
                 ));
             }
@@ -387,10 +384,10 @@ impl Parser {
         {
             Ok(Node::new(
                 NodeBase::VarDecl(name, Some(Box::new(self.read_initializer()?)), VarKind::Var),
-                pos,
+                loc,
             ))
         } else {
-            Ok(Node::new(NodeBase::VarDecl(name, None, VarKind::Var), pos))
+            Ok(Node::new(NodeBase::VarDecl(name, None, VarKind::Var), loc))
         }
     }
 
@@ -402,26 +399,26 @@ impl Parser {
 
 impl Parser {
     fn read_if_statement(&mut self) -> Result<Node, Error> {
-        let pos = self.lexer.get_prev_pos();
+        let loc = self.lexer.get_current_loc();
         let oparen = self.lexer.next_skip_lineterminator()?;
         if oparen.kind != Kind::Symbol(Symbol::OpeningParen) {
-            return Err(Error::Expect(oparen.pos, "expect '('".to_string()));
+            return Err(Error::Expect(oparen.loc, "expect '('".to_string()));
         }
         let cond = self.read_expression()?;
         let cparen = self.lexer.next_skip_lineterminator()?;
         if cparen.kind != Kind::Symbol(Symbol::ClosingParen) {
-            return Err(Error::Expect(cparen.pos, "expect ')'".to_string()));
+            return Err(Error::Expect(cparen.loc, "expect ')'".to_string()));
         }
 
         let then_ = self.read_statement()?;
 
-        let pos_else = self.lexer.get_current_pos();
+        let loc_else = self.lexer.get_current_loc();
         if let Ok(expect_else_tok) = self.lexer.next_skip_lineterminator() {
             if expect_else_tok.kind == Kind::Keyword(Keyword::Else) {
                 let else_ = self.read_statement()?;
                 return Ok(Node::new(
                     NodeBase::If(Box::new(cond), Box::new(then_), Box::new(else_)),
-                    pos,
+                    loc,
                 ));
             } else {
                 self.lexer.unget();
@@ -432,16 +429,16 @@ impl Parser {
             NodeBase::If(
                 Box::new(cond),
                 Box::new(then_),
-                Box::new(Node::new(NodeBase::Nope, pos_else)),
+                Box::new(Node::new(NodeBase::Nope, loc_else)),
             ),
-            pos,
+            loc,
         ))
     }
 }
 
 impl Parser {
     fn read_while_statement(&mut self) -> Result<Node, Error> {
-        let pos = self.lexer.get_prev_pos();
+        let loc = self.lexer.get_current_loc();
 
         expect!(self, Kind::Symbol(Symbol::OpeningParen), "expect '('");
 
@@ -453,38 +450,47 @@ impl Parser {
 
         Ok(Node::new(
             NodeBase::While(Box::new(cond), Box::new(body)),
-            pos,
+            loc,
         ))
     }
 
     fn read_for_statement(&mut self) -> Result<Node, Error> {
-        let pos = self.lexer.get_prev_pos();
+        let loc = self.lexer.get_current_loc();
 
         expect!(self, Kind::Symbol(Symbol::OpeningParen), "expect '('");
 
-        let init = match self.lexer.peek(0)?.kind {
-            Kind::Keyword(Keyword::Var) => {
+        let init = match self.lexer.peek(0)? {
+            Token {
+                kind: Kind::Keyword(Keyword::Var),
+                ..
+            } => {
                 assert_eq!(self.lexer.next()?.kind, Kind::Keyword(Keyword::Var));
                 self.read_variable_declaration_list()?
             }
-            Kind::Keyword(Keyword::Let) | Kind::Keyword(Keyword::Const) => {
-                self.read_declaration()?
-            }
-            Kind::Symbol(Symbol::Semicolon) => Node::new(NodeBase::Nope, self.lexer.get_prev_pos()),
+            Token {
+                kind: Kind::Keyword(Keyword::Let) | Kind::Keyword(Keyword::Const),
+                ..
+            } => self.read_declaration()?,
+            Token {
+                kind: Kind::Symbol(Symbol::Semicolon),
+                loc,
+            } => Node::new(NodeBase::Nope, loc),
             _ => self.read_expression()?,
         };
         expect!(self, Kind::Symbol(Symbol::Semicolon), "expect ';'");
 
+        let loc_ = self.lexer.get_current_loc();
         let cond = if self.lexer.next_if(Kind::Symbol(Symbol::Semicolon)) {
-            Node::new(NodeBase::Boolean(true), self.lexer.get_prev_pos())
+            Node::new(NodeBase::Boolean(true), loc_)
         } else {
             let step = self.read_expression()?;
             expect!(self, Kind::Symbol(Symbol::Semicolon), "expect ';'");
             step
         };
 
+        let loc_ = self.lexer.get_current_loc();
         let step = if self.lexer.next_if(Kind::Symbol(Symbol::ClosingParen)) {
-            Node::new(NodeBase::Nope, self.lexer.get_prev_pos())
+            Node::new(NodeBase::Nope, loc_)
         } else {
             let step = self.read_expression()?;
             expect!(self, Kind::Symbol(Symbol::ClosingParen), "expect ')'");
@@ -500,45 +506,45 @@ impl Parser {
                 Box::new(step),
                 Box::new(body),
             ),
-            pos,
+            loc,
         );
 
-        Ok(Node::new(NodeBase::Block(vec![for_node]), pos))
+        Ok(Node::new(NodeBase::Block(vec![for_node]), loc))
     }
 }
 
 impl Parser {
     fn read_break_statement(&mut self) -> Result<Node, Error> {
-        let pos = self.lexer.get_prev_pos();
+        let loc = self.lexer.get_current_loc();
         let tok = self.lexer.next()?;
         match tok.kind {
             Kind::LineTerminator
             | Kind::Symbol(Symbol::Semicolon)
             | Kind::Symbol(Symbol::ClosingBrace) => {
                 self.lexer.unget();
-                Ok(Node::new(NodeBase::Break(None), pos))
+                Ok(Node::new(NodeBase::Break(None), loc))
             }
-            Kind::Identifier(name) => Ok(Node::new(NodeBase::Break(Some(name)), pos)),
+            Kind::Identifier(name) => Ok(Node::new(NodeBase::Break(Some(name)), loc)),
             _ => Err(Error::UnexpectedToken(
-                tok.pos,
+                tok.loc,
                 "expected ';', identifier or line terminator".to_string(),
             )),
         }
     }
 
     fn read_continue_statement(&mut self) -> Result<Node, Error> {
-        let pos = self.lexer.get_prev_pos();
+        let loc = self.lexer.get_current_loc();
         let tok = self.lexer.next()?;
         match tok.kind {
             Kind::LineTerminator
             | Kind::Symbol(Symbol::Semicolon)
             | Kind::Symbol(Symbol::ClosingBrace) => {
                 self.lexer.unget();
-                Ok(Node::new(NodeBase::Continue(None), pos))
+                Ok(Node::new(NodeBase::Continue(None), loc))
             }
-            Kind::Identifier(name) => Ok(Node::new(NodeBase::Continue(Some(name)), pos)),
+            Kind::Identifier(name) => Ok(Node::new(NodeBase::Continue(Some(name)), loc)),
             _ => Err(Error::UnexpectedToken(
-                tok.pos,
+                tok.loc,
                 "expected ';', identifier or line terminator".to_string(),
             )),
         }
@@ -552,12 +558,12 @@ macro_rules! expression { ( $name:ident, $lower:ident, [ $( $op:path ),* ] ) => 
             match tok.kind {
                 Kind::Symbol(ref op) if $( op == &$op )||* => {
                     self.lexer.next_skip_lineterminator().unwrap();
-                    let pos = self.lexer.get_current_pos();
+                    let loc = self.lexer.get_current_loc();
                     lhs = Node::new(NodeBase::BinaryOp(
                         Box::new(lhs),
                         Box::new(self. $lower ()?),
                         op.as_binop().unwrap(),
-                    ), pos);
+                    ), loc);
                 }
                 _ => break
             }
@@ -578,7 +584,7 @@ impl Parser {
     // TODO: Implement all features.
     fn read_assignment_expression(&mut self) -> Result<Node, Error> {
         self.lexer.skip_lineterminator()?;
-        let pos = self.lexer.get_current_pos();
+        let loc = self.lexer.get_current_loc();
 
         // Arrow function
         let next_token = self.lexer.peek(0)?;
@@ -610,7 +616,7 @@ impl Parser {
         if let Ok(tok) = self.lexer.next() {
             macro_rules! assignop {
                 ($op:ident) => {{
-                    let lhs_pos = lhs.pos;
+                    let lhs_loc = lhs.loc;
                     lhs = Node::new(
                         NodeBase::Assign(
                             Box::new(lhs.clone()),
@@ -620,22 +626,22 @@ impl Parser {
                                     Box::new(self.read_assignment_expression()?),
                                     BinOp::$op,
                                 ),
-                                pos,
+                                loc,
                             )),
                         ),
-                        lhs_pos,
+                        lhs_loc,
                     );
                 }};
             }
             match tok.kind {
                 Kind::Symbol(Symbol::Assign) => {
-                    let lhs_pos = lhs.pos;
+                    let lhs_loc = lhs.loc;
                     lhs = Node::new(
                         NodeBase::Assign(
                             Box::new(lhs),
                             Box::new(self.read_assignment_expression()?),
                         ),
-                        lhs_pos,
+                        lhs_loc,
                     )
                 }
                 Kind::Symbol(Symbol::AssignAdd) => assignop!(Add),
@@ -651,7 +657,7 @@ impl Parser {
 
     /// https://tc39.github.io/ecma262/#prod-ConditionalExpression
     fn read_conditional_expression(&mut self) -> Result<Node, Error> {
-        let pos = self.lexer.get_current_pos();
+        let loc = self.lexer.get_current_loc();
 
         let lhs = self.read_logical_or_expression()?;
 
@@ -663,7 +669,7 @@ impl Parser {
                     let else_ = self.read_assignment_expression()?;
                     return Ok(Node::new(
                         NodeBase::TernaryOp(Box::new(lhs), Box::new(then_), Box::new(else_)),
-                        pos,
+                        loc,
                     ));
                 }
                 _ => self.lexer.unget(),
@@ -748,7 +754,7 @@ impl Parser {
         if self.is_unary_expression() {
             return self.read_unary_expression();
         }
-        let pos = self.lexer.get_current_pos();
+        let loc = self.lexer.get_current_loc();
         let lhs = self.read_update_expression()?;
         if let Ok(tok) = self.lexer.next() {
             if let Kind::Symbol(Symbol::Exp) = tok.kind {
@@ -758,7 +764,7 @@ impl Parser {
                         Box::new(self.read_exponentiation_expression()?),
                         BinOp::Exp,
                     ),
-                    pos,
+                    loc,
                 ));
             } else {
                 self.lexer.unget();
@@ -785,36 +791,36 @@ impl Parser {
 
     /// https://tc39.github.io/ecma262/#prod-UnaryExpression
     fn read_unary_expression(&mut self) -> Result<Node, Error> {
-        let pos = self.lexer.get_current_pos();
+        let loc = self.lexer.get_current_loc();
         let tok = self.lexer.next()?;
         match tok.kind {
             Kind::Keyword(Keyword::Delete) => Ok(Node::new(
                 NodeBase::UnaryOp(Box::new(self.read_unary_expression()?), UnaryOp::Delete),
-                pos,
+                loc,
             )),
             Kind::Keyword(Keyword::Void) => Ok(Node::new(
                 NodeBase::UnaryOp(Box::new(self.read_unary_expression()?), UnaryOp::Void),
-                pos,
+                loc,
             )),
             Kind::Keyword(Keyword::Typeof) => Ok(Node::new(
                 NodeBase::UnaryOp(Box::new(self.read_unary_expression()?), UnaryOp::Typeof),
-                pos,
+                loc,
             )),
             Kind::Symbol(Symbol::Add) => Ok(Node::new(
                 NodeBase::UnaryOp(Box::new(self.read_unary_expression()?), UnaryOp::Plus),
-                pos,
+                loc,
             )),
             Kind::Symbol(Symbol::Sub) => Ok(Node::new(
                 NodeBase::UnaryOp(Box::new(self.read_unary_expression()?), UnaryOp::Minus),
-                pos,
+                loc,
             )),
             Kind::Symbol(Symbol::BitwiseNot) => Ok(Node::new(
                 NodeBase::UnaryOp(Box::new(self.read_unary_expression()?), UnaryOp::BitwiseNot),
-                pos,
+                loc,
             )),
             Kind::Symbol(Symbol::Not) => Ok(Node::new(
                 NodeBase::UnaryOp(Box::new(self.read_unary_expression()?), UnaryOp::Not),
-                pos,
+                loc,
             )),
             _ => {
                 self.lexer.unget();
@@ -830,30 +836,28 @@ impl Parser {
         match tok.kind {
             Kind::Symbol(Symbol::Inc) => {
                 self.lexer.next_skip_lineterminator().unwrap();
-                let pos = self.lexer.get_prev_pos();
                 return Ok(Node::new(
                     NodeBase::UnaryOp(
                         Box::new(self.read_left_hand_side_expression()?),
                         UnaryOp::PrInc,
                     ),
-                    pos,
+                    tok.loc,
                 ));
             }
             Kind::Symbol(Symbol::Dec) => {
                 self.lexer.next_skip_lineterminator().unwrap();
-                let pos = self.lexer.get_prev_pos();
                 return Ok(Node::new(
                     NodeBase::UnaryOp(
                         Box::new(self.read_left_hand_side_expression()?),
                         UnaryOp::PrDec,
                     ),
-                    pos,
+                    tok.loc,
                 ));
             }
             _ => {}
         }
 
-        let pos = self.lexer.get_current_pos();
+        let loc = self.lexer.get_current_loc();
         let e = self.read_left_hand_side_expression()?;
         if let Ok(tok) = self.lexer.peek(0) {
             match tok.kind {
@@ -861,14 +865,14 @@ impl Parser {
                     self.lexer.next().unwrap();
                     return Ok(Node::new(
                         NodeBase::UnaryOp(Box::new(e), UnaryOp::PoInc),
-                        pos,
+                        loc,
                     ));
                 }
                 Kind::Symbol(Symbol::Dec) => {
                     self.lexer.next().unwrap();
                     return Ok(Node::new(
                         NodeBase::UnaryOp(Box::new(e), UnaryOp::PoDec),
-                        pos,
+                        loc,
                     ));
                 }
                 _ => {}
@@ -899,7 +903,7 @@ impl Parser {
     /// https://tc39.github.io/ecma262/#prod-CallExpression
     // TODO: Implement all features.
     fn read_call_expression(&mut self, first_member_expr: Node) -> Result<Node, Error> {
-        let pos = first_member_expr.pos;
+        let loc = first_member_expr.loc;
         let mut lhs = first_member_expr;
         match self
             .lexer
@@ -907,7 +911,7 @@ impl Parser {
         {
             Ok(true) => {
                 let args = self.read_arguments()?;
-                lhs = Node::new(NodeBase::Call(Box::new(lhs), args), pos)
+                lhs = Node::new(NodeBase::Call(Box::new(lhs), args), loc)
             }
             _ => {
                 panic!("CallExpression MUST start with MemberExpression.");
@@ -915,33 +919,33 @@ impl Parser {
         };
 
         while let Ok(tok) = self.lexer.next_skip_lineterminator() {
-            let pos_ = self.lexer.get_current_pos();
+            let loc_ = self.lexer.get_current_loc();
             match tok.kind {
                 Kind::Symbol(Symbol::OpeningParen) => {
                     let args = self.read_arguments()?;
-                    lhs = Node::new(NodeBase::Call(Box::new(lhs), args), pos)
+                    lhs = Node::new(NodeBase::Call(Box::new(lhs), args), loc)
                 }
                 Kind::Symbol(Symbol::Point) => match self.lexer.next_skip_lineterminator()?.kind {
                     Kind::Identifier(name) => {
-                        lhs = Node::new(NodeBase::Member(Box::new(lhs), name), pos)
+                        lhs = Node::new(NodeBase::Member(Box::new(lhs), name), loc)
                     }
                     Kind::Keyword(kw) => {
                         lhs =
-                            Node::new(NodeBase::Member(Box::new(lhs), kw.to_str().to_owned()), pos)
+                            Node::new(NodeBase::Member(Box::new(lhs), kw.to_str().to_owned()), loc)
                     }
                     _ => {
-                        return Err(Error::Expect(pos_, "expect identifier".to_string()));
+                        return Err(Error::Expect(loc_, "expect identifier".to_string()));
                     }
                 },
                 Kind::Symbol(Symbol::OpeningBoxBracket) => {
                     let idx = self.read_expression()?;
                     if !self.lexer.next_if(Kind::Symbol(Symbol::ClosingBoxBracket)) {
                         return Err(Error::Expect(
-                            self.lexer.get_current_pos(),
+                            self.lexer.get_current_loc(),
                             "expect ']'".to_string(),
                         ));
                     }
-                    lhs = Node::new(NodeBase::Index(Box::new(lhs), Box::new(idx)), pos);
+                    lhs = Node::new(NodeBase::Index(Box::new(lhs), Box::new(idx)), loc);
                 }
                 _ => {
                     self.lexer.unget();
@@ -956,44 +960,44 @@ impl Parser {
     /// https://tc39.github.io/ecma262/#prod-CallExpression
     // TODO: Implement all features.
     fn read_member_expression(&mut self) -> Result<Node, Error> {
-        let pos = self.lexer.get_current_pos();
+        let loc = self.lexer.get_current_loc();
         let mut lhs = if self.lexer.peek_skip_lineterminator()?.kind == Kind::Keyword(Keyword::New)
         {
             self.lexer.next_skip_lineterminator()?;
-            let call_pos = self.lexer.get_current_pos();
+            let call_loc = self.lexer.get_current_loc();
             let lhs = self.read_member_expression()?;
             expect!(self, Kind::Symbol(Symbol::OpeningParen), "expect '('.");
             let args = self.read_arguments()?;
-            let call_node = Node::new(NodeBase::Call(Box::new(lhs), args), call_pos);
-            let new_node = Node::new(NodeBase::New(Box::new(call_node)), pos);
+            let call_node = Node::new(NodeBase::Call(Box::new(lhs), args), call_loc);
+            let new_node = Node::new(NodeBase::New(Box::new(call_node)), loc);
             new_node
         } else {
             self.read_primary_expression()?
         };
         while let Ok(tok) = self.lexer.next_skip_lineterminator() {
-            let pos_ = self.lexer.get_current_pos();
+            let loc_ = self.lexer.get_current_loc();
             match tok.kind {
                 Kind::Symbol(Symbol::Point) => match self.lexer.next_skip_lineterminator()?.kind {
                     Kind::Identifier(name) => {
-                        lhs = Node::new(NodeBase::Member(Box::new(lhs), name), pos)
+                        lhs = Node::new(NodeBase::Member(Box::new(lhs), name), loc)
                     }
                     Kind::Keyword(kw) => {
                         lhs =
-                            Node::new(NodeBase::Member(Box::new(lhs), kw.to_str().to_owned()), pos)
+                            Node::new(NodeBase::Member(Box::new(lhs), kw.to_str().to_owned()), loc)
                     }
                     _ => {
-                        return Err(Error::Expect(pos_, "expect identifier".to_string()));
+                        return Err(Error::Expect(loc_, "expect identifier".to_string()));
                     }
                 },
                 Kind::Symbol(Symbol::OpeningBoxBracket) => {
                     let idx = self.read_expression()?;
                     if !self.lexer.next_if(Kind::Symbol(Symbol::ClosingBoxBracket)) {
                         return Err(Error::Expect(
-                            self.lexer.get_current_pos(),
+                            self.lexer.get_current_loc(),
                             "expect ']'".to_string(),
                         ));
                     }
-                    lhs = Node::new(NodeBase::Index(Box::new(lhs), Box::new(idx)), pos);
+                    lhs = Node::new(NodeBase::Index(Box::new(lhs), Box::new(idx)), loc);
                 }
                 _ => {
                     self.lexer.unget();
@@ -1013,7 +1017,7 @@ impl Parser {
                 Ok(ref tok) if tok.kind == Kind::Symbol(Symbol::Comma) => {
                     if args.len() == 0 {
                         return Err(Error::UnexpectedToken(
-                            self.lexer.get_prev_pos(),
+                            tok.loc,
                             "Unexpected token.".to_string(),
                         ));
                     }
@@ -1024,12 +1028,9 @@ impl Parser {
                         break;
                     }
                 }
-                Ok(_) => {
+                Ok(ref tok) => {
                     if args.len() != 0 {
-                        return Err(Error::Expect(
-                            self.lexer.get_prev_pos(),
-                            "expect ',' or ')'.".to_string(),
-                        ));
+                        return Err(Error::Expect(tok.loc, "expect ',' or ')'.".to_string()));
                     } else {
                         self.lexer.unget();
                     }
@@ -1049,7 +1050,7 @@ impl Parser {
         let tok = self.lexer.next_skip_lineterminator()?;
 
         match tok.kind {
-            Kind::Keyword(Keyword::This) => Ok(Node::new(NodeBase::This, tok.pos)),
+            Kind::Keyword(Keyword::This) => Ok(Node::new(NodeBase::This, tok.loc)),
             // Kind::Keyword(Keyword::Arguments) => Ok(Node::new(NodeBase::Arguments, tok.pos)),
             Kind::Keyword(Keyword::Function) => self.read_function_expression(),
             Kind::Symbol(Symbol::OpeningParen) => {
@@ -1060,20 +1061,20 @@ impl Parser {
             Kind::Symbol(Symbol::OpeningBoxBracket) => self.read_array_literal(),
             Kind::Symbol(Symbol::OpeningBrace) => self.read_object_literal(),
             Kind::Identifier(ref i) if i == "true" => {
-                Ok(Node::new(NodeBase::Boolean(true), tok.pos))
+                Ok(Node::new(NodeBase::Boolean(true), tok.loc))
             }
             Kind::Identifier(ref i) if i == "false" => {
-                Ok(Node::new(NodeBase::Boolean(false), tok.pos))
+                Ok(Node::new(NodeBase::Boolean(false), tok.loc))
             }
             // Kind::Identifier(ref i) if i == "undefined" => {
             //     Ok(Node::new(NodeBase::Undefined, tok.pos))
             // }
-            Kind::Identifier(ref i) if i == "null" => Ok(Node::new(NodeBase::Null, tok.pos)),
-            Kind::Identifier(ident) => Ok(Node::new(NodeBase::Identifier(ident), tok.pos)),
-            Kind::String(s) => Ok(Node::new(NodeBase::String(s), tok.pos)),
-            Kind::Number(num) => Ok(Node::new(NodeBase::Number(num), tok.pos)),
+            Kind::Identifier(ref i) if i == "null" => Ok(Node::new(NodeBase::Null, tok.loc)),
+            Kind::Identifier(ident) => Ok(Node::new(NodeBase::Identifier(ident), tok.loc)),
+            Kind::String(s) => Ok(Node::new(NodeBase::String(s), tok.loc)),
+            Kind::Number(num) => Ok(Node::new(NodeBase::Number(num), tok.loc)),
             _ => Err(Error::UnexpectedToken(
-                tok.pos,
+                tok.loc,
                 format!("unexpected token."),
             )),
         }
@@ -1082,7 +1083,7 @@ impl Parser {
     /// https://www.ecma-international.org/ecma-262/6.0/#sec-arrow-function-definitions
     fn read_arrow_function(&mut self, is_parenthesized_param: bool) -> Result<Node, Error> {
         let params;
-        let params_pos = self.lexer.get_current_pos();
+        let params_loc = self.lexer.get_current_loc();
         if is_parenthesized_param {
             expect!(self, Kind::Symbol(Symbol::OpeningParen), "expect '('");
             params = self.read_formal_parameters()?;
@@ -1104,21 +1105,21 @@ impl Parser {
         {
             self.read_block()?
         } else {
-            let pos = self.lexer.get_current_pos();
+            let loc = self.lexer.get_current_loc();
             Node::new(
                 NodeBase::Return(Some(Box::new(self.read_assignment_expression()?))),
-                pos,
+                loc,
             )
         };
         Ok(Node::new(
             NodeBase::ArrowFunction(params, Box::new(body)),
-            params_pos,
+            params_loc,
         ))
     }
 
     /// https://tc39.github.io/ecma262/#prod-FunctionDeclaration
     fn read_function_expression(&mut self) -> Result<Node, Error> {
-        let pos = self.lexer.get_current_pos();
+        let loc = self.lexer.get_current_loc();
         let name = if let Kind::Identifier(name) = self.lexer.peek(0)?.kind {
             self.lexer.next()?;
             Some(name)
@@ -1136,19 +1137,19 @@ impl Parser {
 
         Ok(Node::new(
             NodeBase::FunctionExpr(name, params, Box::new(body)),
-            pos,
+            loc,
         ))
     }
 
     /// https://tc39.github.io/ecma262/#prod-ArrayLiteral
     fn read_array_literal(&mut self) -> Result<Node, Error> {
-        let pos = self.lexer.get_current_pos();
+        let loc = self.lexer.get_current_loc();
         let mut elements = vec![];
 
         loop {
             // TODO: Support all features.
             while self.lexer.next_if(Kind::Symbol(Symbol::Comma)) {
-                elements.push(Node::new(NodeBase::Nope, pos));
+                elements.push(Node::new(NodeBase::Nope, loc));
             }
 
             if self.lexer.next_if(Kind::Symbol(Symbol::ClosingBoxBracket)) {
@@ -1164,20 +1165,20 @@ impl Parser {
                 .next_if_skip_lineterminator(Kind::Symbol(Symbol::Spread))?
             {
                 let node = self.read_assignment_expression()?;
-                let pos = node.pos;
-                elements.push(Node::new(NodeBase::Spread(Box::new(node)), pos));
+                let loc = node.loc;
+                elements.push(Node::new(NodeBase::Spread(Box::new(node)), loc));
             } else {
                 elements.push(self.read_assignment_expression()?);
             }
             self.lexer.next_if(Kind::Symbol(Symbol::Comma));
         }
 
-        Ok(Node::new(NodeBase::Array(elements), pos))
+        Ok(Node::new(NodeBase::Array(elements), loc))
     }
 
     /// https://tc39.github.io/ecma262/#prod-ObjectLiteral
     fn read_object_literal(&mut self) -> Result<Node, Error> {
-        let pos = self.lexer.get_current_pos();
+        let loc = self.lexer.get_current_loc();
         let mut elements = vec![];
 
         loop {
@@ -1202,13 +1203,13 @@ impl Parser {
                 .next_if_skip_lineterminator(Kind::Symbol(Symbol::Comma))?
             {
                 return Err(Error::Expect(
-                    self.lexer.get_current_pos(),
+                    self.lexer.get_current_loc(),
                     "expect ',' or '}'.".to_string(),
                 ));
             }
         }
 
-        Ok(Node::new(NodeBase::Object(elements), pos))
+        Ok(Node::new(NodeBase::Object(elements), loc))
     }
 
     /// https://tc39.github.io/ecma262/#prod-PropertyDefinition
@@ -1266,7 +1267,7 @@ impl Parser {
         }
 
         Err(Error::Expect(
-            tok.pos,
+            tok.loc,
             "Expect property definition.".to_string(),
         ))
     }
@@ -1275,32 +1276,32 @@ impl Parser {
 impl Parser {
     /// https://tc39.github.io/ecma262/#prod-ReturnStatement
     fn read_return_statement(&mut self) -> Result<Node, Error> {
-        let pos = self.lexer.get_prev_pos();
+        let loc = self.lexer.get_current_loc();
 
         // no LineTerminator here
         if self.lexer.next_if(Kind::LineTerminator) {
-            return Ok(Node::new(NodeBase::Return(None), pos));
+            return Ok(Node::new(NodeBase::Return(None), loc));
         }
 
         if self.lexer.next_if(Kind::Symbol(Symbol::Semicolon)) {
-            return Ok(Node::new(NodeBase::Return(None), pos));
+            return Ok(Node::new(NodeBase::Return(None), loc));
         }
 
         if self.lexer.peek(0)?.kind == Kind::Symbol(Symbol::ClosingBrace) {
-            return Ok(Node::new(NodeBase::Return(None), pos));
+            return Ok(Node::new(NodeBase::Return(None), loc));
         }
 
         let expr = self.read_expression()?;
         self.lexer.next_if(Kind::Symbol(Symbol::Semicolon));
 
-        Ok(Node::new(NodeBase::Return(Some(Box::new(expr))), pos))
+        Ok(Node::new(NodeBase::Return(Some(Box::new(expr))), loc))
     }
 }
 
 macro_rules! skip_symbol_or_error {
     ($lexer: expr, $symbol: path) => {
         if !$lexer.next_if_skip_lineterminator(Kind::Symbol($symbol))? {
-            return Err(Error::UnexpectedToken($lexer.get_current_pos(), {
+            return Err(Error::UnexpectedToken($lexer.get_current_loc(), {
                 let name: String = $symbol.into();
                 format!("expected {}", name)
             }));
@@ -1311,23 +1312,23 @@ macro_rules! skip_symbol_or_error {
 impl Parser {
     /// http://www.ecma-international.org/ecma-262/9.0/index.html#sec-try-statement
     fn read_try_statement(&mut self) -> Result<Node, Error> {
-        let pos_try = self.lexer.get_prev_pos();
+        let loc_try = self.lexer.get_current_loc();
         skip_symbol_or_error!(self.lexer, Symbol::OpeningBrace);
         let try_clause = self.read_block_statement()?;
         let is_catch = self
             .lexer
             .next_if_skip_lineterminator(Kind::Keyword(Keyword::Catch))
             .unwrap_or(false);
-        let pos_catch = self.lexer.get_current_pos();
+        let loc_catch = self.lexer.get_current_loc();
         let (catch, param) = if is_catch {
             skip_symbol_or_error!(self.lexer, Symbol::OpeningParen);
             // TODO: should accept BindingPattern
-            let pos_param = self.lexer.get_current_pos();
+            let loc_param = self.lexer.get_current_loc();
             let catch_param = match self.lexer.next()?.kind {
-                Kind::Identifier(s) => Node::new(NodeBase::Identifier(s), pos_param),
+                Kind::Identifier(s) => Node::new(NodeBase::Identifier(s), loc_param),
                 _ => {
                     return Err(Error::UnexpectedToken(
-                        pos_param,
+                        loc_param,
                         "expected identifier.".to_string(),
                     ));
                 }
@@ -1337,20 +1338,20 @@ impl Parser {
             (self.read_block()?, catch_param)
         } else {
             (
-                Node::new(NodeBase::Nope, pos_catch),
-                Node::new(NodeBase::Nope, pos_catch),
+                Node::new(NodeBase::Nope, loc_catch),
+                Node::new(NodeBase::Nope, loc_catch),
             )
         };
         let is_finally = self
             .lexer
             .next_if_skip_lineterminator(Kind::Keyword(Keyword::Finally))
             .unwrap_or(false);
-        let pos_finally = self.lexer.get_current_pos();
+        let loc_finally = self.lexer.get_current_loc();
         let finally = if is_finally {
             skip_symbol_or_error!(self.lexer, Symbol::OpeningBrace);
             self.read_block_statement()?
         } else {
-            Node::new(NodeBase::Nope, pos_finally)
+            Node::new(NodeBase::Nope, loc_finally)
         };
 
         Ok(Node::new(
@@ -1360,7 +1361,7 @@ impl Parser {
                 Box::new(param),
                 Box::new(finally),
             ),
-            pos_try,
+            loc_try,
         ))
     }
 }
@@ -1368,27 +1369,26 @@ impl Parser {
 impl Parser {
     /// https://tc39.github.io/ecma262/#prod-ThrowStatement
     fn read_throw_statement(&mut self) -> Result<Node, Error> {
-        let pos_throw = self.lexer.get_prev_pos();
-        let pos = self.lexer.get_current_pos();
+        let loc = self.lexer.get_current_loc();
 
         // no LineTerminator here
         if self.lexer.next_if(Kind::LineTerminator) {
             return Err(Error::General(
-                pos,
+                loc,
                 "Illegal new line after throw".to_string(),
             ));
         }
 
         if self.lexer.next_if(Kind::Symbol(Symbol::Semicolon)) {
             return Err(Error::UnexpectedToken(
-                pos,
+                loc,
                 "Unexpected token ;".to_string(),
             ));
         }
 
         if self.lexer.peek(0)?.kind == Kind::Symbol(Symbol::ClosingBrace) {
             return Err(Error::UnexpectedToken(
-                pos,
+                loc,
                 "Unexpected token }".to_string(),
             ));
         }
@@ -1396,7 +1396,7 @@ impl Parser {
         let expr = self.read_expression()?;
         self.lexer.next_if(Kind::Symbol(Symbol::Semicolon));
 
-        Ok(Node::new(NodeBase::Throw(Box::new(expr)), pos_throw))
+        Ok(Node::new(NodeBase::Throw(Box::new(expr)), loc))
     }
 }
 
@@ -1413,7 +1413,7 @@ impl Parser {
 
     /// https://tc39.github.io/ecma262/#prod-LexicalDeclaration
     fn read_lexical_declaration(&mut self, is_const: bool) -> Result<Node, Error> {
-        let pos = self.lexer.get_current_pos();
+        let loc = self.lexer.get_current_loc();
         let var_kind = if is_const {
             VarKind::Const
         } else {
@@ -1423,12 +1423,12 @@ impl Parser {
         let mut list = vec![];
 
         loop {
-            let pos = self.lexer.get_current_pos();
+            let loc = self.lexer.get_current_loc();
             let name = match self.lexer.next_skip_lineterminator()?.kind {
                 Kind::Identifier(name) => name,
                 _ => {
                     return Err(Error::UnexpectedToken(
-                        self.lexer.get_prev_pos(),
+                        loc,
                         "Expect identifier.".to_string(),
                     ));
                 }
@@ -1440,9 +1440,9 @@ impl Parser {
             {
                 let init = Some(Box::new(self.read_initializer()?));
                 let decl = NodeBase::VarDecl(name, init, var_kind);
-                list.push(Node::new(decl, pos))
+                list.push(Node::new(decl, loc))
             } else {
-                list.push(Node::new(NodeBase::VarDecl(name, None, var_kind), pos))
+                list.push(Node::new(NodeBase::VarDecl(name, None, var_kind), loc))
             }
 
             if !self.variable_declaration_continuation()? {
@@ -1450,19 +1450,16 @@ impl Parser {
             }
         }
 
-        Ok(Node::new(NodeBase::StatementList(list), pos))
+        Ok(Node::new(NodeBase::StatementList(list), loc))
     }
 
     /// https://tc39.github.io/ecma262/#prod-FunctionDeclaration
     fn read_function_declaration(&mut self) -> Result<Node, Error> {
-        let pos = self.lexer.get_prev_pos();
+        let loc = self.lexer.get_current_loc();
         let name = if let Kind::Identifier(name) = self.lexer.next_skip_lineterminator()?.kind {
             name
         } else {
-            return Err(Error::Expect(
-                self.lexer.get_prev_pos(),
-                "expect function name".to_string(),
-            ));
+            return Err(Error::Expect(loc, "expect function name".to_string()));
         };
 
         expect!(self, Kind::Symbol(Symbol::OpeningParen), "expect '('");
@@ -1475,7 +1472,7 @@ impl Parser {
 
         Ok(Node::new(
             NodeBase::FunctionDecl(name, params, Box::new(body)),
-            pos,
+            loc,
         ))
     }
 
@@ -1510,7 +1507,7 @@ impl Parser {
 
             if rest_param {
                 return Err(Error::UnexpectedToken(
-                    self.lexer.get_current_pos(),
+                    self.lexer.get_current_loc(),
                     "rest parameter must be the last formal parameter".to_string(),
                 ));
             }
@@ -1523,12 +1520,12 @@ impl Parser {
 
     // TODO: Support all features: https://tc39.github.io/ecma262/#prod-FormalParameter
     fn read_formal_parameter(&mut self) -> Result<FormalParameter, Error> {
-        let pos = self.lexer.get_current_pos();
+        let loc = self.lexer.get_current_loc();
         let name = if let Kind::Identifier(name) = self.lexer.next_skip_lineterminator()?.kind {
             name
         } else {
             return Err(Error::Expect(
-                pos,
+                loc,
                 "expect identifier (unsupported feature)".to_string(),
             ));
         };
@@ -1537,13 +1534,13 @@ impl Parser {
     }
 
     fn read_function_rest_parameter(&mut self) -> Result<FormalParameter, Error> {
-        let pos = self.lexer.get_current_pos();
+        let loc = self.lexer.get_current_loc();
         Ok(FormalParameter::new(
             if let Kind::Identifier(name) = self.lexer.next()?.kind {
                 name
             } else {
                 return Err(Error::Expect(
-                    pos,
+                    loc,
                     "rest params: expect identifier".to_string(),
                 ));
             },
@@ -1556,137 +1553,59 @@ impl Parser {
 #[test]
 fn number() {
     let mut parser = Parser::new("test", "12345".to_string());
-    assert_eq!(
-        parser.parse_all().unwrap(),
-        Node::new(
-            NodeBase::StatementList(vec![Node::new(NodeBase::Number(12345.0), 0)]),
-            0
-        )
-    );
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
 }
 
 #[test]
 fn string() {
     let mut parser = Parser::new("test", "\"aaa\"".to_string());
-    assert_eq!(
-        parser.parse_all().unwrap(),
-        Node::new(
-            NodeBase::StatementList(vec![Node::new(NodeBase::String("aaa".to_string()), 0)]),
-            0
-        )
-    );
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
 }
 
 #[test]
 fn boolean() {
     let mut parser = Parser::new("test", "true; false".to_string());
-    assert_eq!(
-        parser.parse_all().unwrap(),
-        Node::new(
-            NodeBase::StatementList(vec![
-                Node::new(NodeBase::Boolean(true), 0),
-                Node::new(NodeBase::Boolean(false), 6)
-            ]),
-            0
-        )
-    );
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
 }
 
 #[test]
 fn identifier() {
     let mut parser = Parser::new("test", "variable".to_string());
-    assert_eq!(
-        parser.parse_all().unwrap(),
-        Node::new(
-            NodeBase::StatementList(vec![Node::new(
-                NodeBase::Identifier("variable".to_string()),
-                0,
-            )]),
-            0
-        )
-    );
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
 }
 
 #[test]
 fn array1() {
     let mut parser = Parser::new("test", "[1, 2]".to_string());
-    assert_eq!(
-        parser.parse_all().unwrap(),
-        Node::new(
-            NodeBase::StatementList(vec![Node::new(
-                NodeBase::Array(vec![
-                    Node::new(NodeBase::Number(1.0), 1),
-                    Node::new(NodeBase::Number(2.0), 4),
-                ]),
-                1,
-            )]),
-            0
-        )
-    );
-    for input in ["[1,2,"].iter() {
-        let mut parser = Parser::new("test", input.to_string());
-        parser.parse_all().expect_err("should be error");
-    }
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
 }
 
 #[test]
 fn array2() {
     let mut parser = Parser::new("test", "[]".to_string());
-    assert_eq!(
-        parser.parse_all().unwrap(),
-        Node::new(
-            NodeBase::StatementList(vec![Node::new(NodeBase::Array(vec![]), 1)]),
-            0
-        )
-    );
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
 }
 
 #[test]
 fn array3() {
     let mut parser = Parser::new("test", "[,,]".to_string());
-    assert_eq!(
-        parser.parse_all().unwrap(),
-        Node::new(
-            NodeBase::StatementList(vec![Node::new(
-                NodeBase::Array(vec![
-                    Node::new(NodeBase::Nope, 1),
-                    Node::new(NodeBase::Nope, 1),
-                ]),
-                1,
-            )]),
-            0
-        )
-    );
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
 }
 
 #[test]
-fn object() {
+fn array4() {
+    let mut parser = Parser::new("test", "[1,2,".to_string());
+    parser.parse_all().expect_err("should be error");
+}
+
+#[test]
+fn object1() {
     let mut parser = Parser::new("test", "a = {x: 123, 1.2: 456}".to_string());
-    assert_eq!(
-        parser.parse_all().unwrap(),
-        Node::new(
-            NodeBase::StatementList(vec![Node::new(
-                NodeBase::Assign(
-                    Box::new(Node::new(NodeBase::Identifier("a".to_string()), 0)),
-                    Box::new(Node::new(
-                        NodeBase::Object(vec![
-                            PropertyDefinition::Property(
-                                "x".to_string(),
-                                Node::new(NodeBase::Number(123.0), 8),
-                            ),
-                            PropertyDefinition::Property(
-                                "1.2".to_string(),
-                                Node::new(NodeBase::Number(456.0), 18),
-                            ),
-                        ]),
-                        5,
-                    )),
-                ),
-                0,
-            )]),
-            0
-        )
-    );
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
+}
+
+#[test]
+fn object2() {
     for input in ["a = {}", "a = {b}"].iter() {
         let mut parser = Parser::new("test", input.to_string());
         parser.parse_all().unwrap();
@@ -1699,262 +1618,115 @@ fn object() {
 
 #[test]
 fn simple_expr_5arith() {
-    use rapidus_ast::BinOp;
-
     let mut parser = Parser::new("test", "31 + 26 / 3 - 1 * 20 % 3".to_string());
-    assert_eq!(
-        parser.parse_all().unwrap(),
-        Node::new(
-            NodeBase::StatementList(vec![Node::new(
-                NodeBase::BinaryOp(
-                    Box::new(Node::new(
-                        NodeBase::BinaryOp(
-                            Box::new(Node::new(NodeBase::Number(31.0), 0)),
-                            Box::new(Node::new(
-                                NodeBase::BinaryOp(
-                                    Box::new(Node::new(NodeBase::Number(26.0), 5)),
-                                    Box::new(Node::new(NodeBase::Number(3.0), 10)),
-                                    BinOp::Div,
-                                ),
-                                10,
-                            )),
-                            BinOp::Add,
-                        ),
-                        5,
-                    )),
-                    Box::new(Node::new(
-                        NodeBase::BinaryOp(
-                            Box::new(Node::new(
-                                NodeBase::BinaryOp(
-                                    Box::new(Node::new(NodeBase::Number(1.0), 14)),
-                                    Box::new(Node::new(NodeBase::Number(20.0), 18)),
-                                    BinOp::Mul,
-                                ),
-                                18,
-                            )),
-                            Box::new(Node::new(NodeBase::Number(3.0), 23)),
-                            BinOp::Rem,
-                        ),
-                        23,
-                    )),
-                    BinOp::Sub,
-                ),
-                14,
-            )]),
-            0
-        )
-    );
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
 }
 
 #[test]
-fn simple_expr_eq() {
-    for (input, op, last_pos) in [
-        ("1 + 2 == 3", BinOp::Eq, 9),
-        ("1 + 2 != 3", BinOp::Ne, 9),
-        ("1 + 2 === 3", BinOp::SEq, 10),
-        ("1 + 2 !== 3", BinOp::SNe, 10),
-    ]
-    .iter()
-    {
-        let mut parser = Parser::new("test", input.to_string());
-        assert_eq!(
-            Node::new(
-                NodeBase::StatementList(vec![Node::new(
-                    NodeBase::BinaryOp(
-                        Box::new(Node::new(
-                            NodeBase::BinaryOp(
-                                Box::new(Node::new(NodeBase::Number(1.0), 0)),
-                                Box::new(Node::new(NodeBase::Number(2.0), 4)),
-                                BinOp::Add,
-                            ),
-                            4,
-                        )),
-                        Box::new(Node::new(NodeBase::Number(3.0), *last_pos)),
-                        op.clone(),
-                    ),
-                    *last_pos,
-                )]),
-                0
-            ),
-            parser.parse_all().unwrap()
-        );
-    }
+fn simple_expr_eq1() {
+    let mut parser = Parser::new("test", "1 + 2 == 3".to_string());
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
 }
 
 #[test]
-fn simple_expr_rel() {
-    //1 5 3 9 7 0
-    for (input, op, last_pos) in [
-        ("1 + 2 < 3", BinOp::Lt, 8),
-        ("1 + 2 > 3", BinOp::Gt, 8),
-        ("1 + 2 <= 3", BinOp::Le, 9),
-        ("1 + 2 >= 3", BinOp::Ge, 9),
-    ]
-    .iter()
-    {
-        let mut parser = Parser::new("test", input.to_string());
-        assert_eq!(
-            Node::new(
-                NodeBase::StatementList(vec![Node::new(
-                    NodeBase::BinaryOp(
-                        Box::new(Node::new(
-                            NodeBase::BinaryOp(
-                                Box::new(Node::new(NodeBase::Number(1.0), 0)),
-                                Box::new(Node::new(NodeBase::Number(2.0), 4)),
-                                BinOp::Add,
-                            ),
-                            4,
-                        )),
-                        Box::new(Node::new(NodeBase::Number(3.0), *last_pos)),
-                        op.clone(),
-                    ),
-                    *last_pos,
-                )]),
-                0
-            ),
-            parser.parse_all().unwrap(),
-        );
-    }
+fn simple_expr_eq2() {
+    let mut parser = Parser::new("test", "1 + 2 != 3".to_string());
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
+}
+
+#[test]
+fn simple_expr_eq3() {
+    let mut parser = Parser::new("test", "1 + 2 === 3".to_string());
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
+}
+
+#[test]
+fn simple_expr_eq4() {
+    let mut parser = Parser::new("test", "1 + 2 !== 3".to_string());
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
+}
+
+#[test]
+fn simple_expr_rel1() {
+    let mut parser = Parser::new("test", "1 + 2 < 3".to_string());
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
+}
+
+#[test]
+fn simple_expr_rel2() {
+    let mut parser = Parser::new("test", "1 + 2 > 3".to_string());
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
+}
+
+#[test]
+fn simple_expr_rel3() {
+    let mut parser = Parser::new("test", "1 + 2 <= 3".to_string());
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
+}
+
+#[test]
+fn simple_expr_rel4() {
+    let mut parser = Parser::new("test", "1 + 2 >= 3".to_string());
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
 }
 
 #[test]
 fn simple_expr_cond() {
-    use rapidus_ast::BinOp;
-
     let mut parser = Parser::new("test", "n == 1 ? 2 : max".to_string());
-    assert_eq!(
-        parser.parse_all().unwrap(),
-        Node::new(
-            NodeBase::StatementList(vec![Node::new(
-                NodeBase::TernaryOp(
-                    Box::new(Node::new(
-                        NodeBase::BinaryOp(
-                            Box::new(Node::new(NodeBase::Identifier("n".to_string()), 0)),
-                            Box::new(Node::new(NodeBase::Number(1.0), 5)),
-                            BinOp::Eq,
-                        ),
-                        5,
-                    )),
-                    Box::new(Node::new(NodeBase::Number(2.0), 9)),
-                    Box::new(Node::new(NodeBase::Identifier("max".to_string()), 13)),
-                ),
-                0,
-            )]),
-            0
-        )
-    );
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
 }
 
 #[test]
-fn simple_expr_logical_or() {
-    use rapidus_ast::BinOp;
-
-    for (input, op) in [("1 || 0", BinOp::LOr), ("1 && 0", BinOp::LAnd)].iter() {
-        let mut parser = Parser::new("test", input.to_string());
-        assert_eq!(
-            parser.parse_all().unwrap(),
-            Node::new(
-                NodeBase::StatementList(vec![Node::new(
-                    NodeBase::BinaryOp(
-                        Box::new(Node::new(NodeBase::Number(1.0), 0)),
-                        Box::new(Node::new(NodeBase::Number(0.0), 5)),
-                        op.clone(),
-                    ),
-                    5,
-                )]),
-                0
-            )
-        );
-    }
+fn simple_expr_logical_or1() {
+    let mut parser = Parser::new("test", "1 || 0".to_string());
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
+}
+#[test]
+fn simple_expr_logical_or2() {
+    let mut parser = Parser::new("test", "1 && 0".to_string());
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
 }
 
 #[test]
-fn simple_expr_bitwise_and() {
-    use rapidus_ast::BinOp;
-
-    for (input, op) in [
-        ("1 & 3", BinOp::And),
-        ("1 ^ 3", BinOp::Xor),
-        ("1 | 3", BinOp::Or),
-    ]
-    .iter()
-    {
-        let mut parser = Parser::new("test", input.to_string());
-        assert_eq!(
-            Node::new(
-                NodeBase::StatementList(vec![Node::new(
-                    NodeBase::BinaryOp(
-                        Box::new(Node::new(NodeBase::Number(1.0), 0)),
-                        Box::new(Node::new(NodeBase::Number(3.0), 4)),
-                        op.clone(),
-                    ),
-                    4,
-                )]),
-                0
-            ),
-            parser.parse_all().unwrap(),
-        );
-    }
+fn simple_expr_bitwise_and1() {
+    let mut parser = Parser::new("test", "1 & 3".to_string());
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
 }
 
 #[test]
-fn simple_expr_shift() {
-    use rapidus_ast::BinOp;
+fn simple_expr_bitwise_and2() {
+    let mut parser = Parser::new("test", "1 ^ 3".to_string());
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
+}
 
-    for (input, op) in [
-        ("1 << 2", BinOp::Shl),
-        ("1 >> 2", BinOp::Shr),
-        ("1 >>> 2", BinOp::ZFShr),
-    ]
-    .iter()
-    {
-        let mut parser = Parser::new("test", input.to_string());
-        assert_eq!(
-            Node::new(
-                NodeBase::StatementList(vec![Node::new(
-                    NodeBase::BinaryOp(
-                        Box::new(Node::new(NodeBase::Number(1.0), 0)),
-                        Box::new(Node::new(
-                            NodeBase::Number(2.0),
-                            if op == &BinOp::ZFShr { 6 } else { 5 },
-                        )),
-                        op.clone(),
-                    ),
-                    if op == &BinOp::ZFShr { 6 } else { 5 },
-                )]),
-                0
-            ),
-            parser.parse_all().unwrap(),
-        );
-    }
+#[test]
+fn simple_expr_bitwise_and3() {
+    let mut parser = Parser::new("test", "1 | 3".to_string());
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
+}
+
+#[test]
+fn simple_expr_shift1() {
+    let mut parser = Parser::new("test", "1 << 2".to_string());
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
+}
+
+#[test]
+fn simple_expr_shift2() {
+    let mut parser = Parser::new("test", "1 >> 2".to_string());
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
+}
+
+#[test]
+fn simple_expr_shift3() {
+    let mut parser = Parser::new("test", "1 >>> 2".to_string());
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
 }
 
 #[test]
 fn simple_expr_exp() {
-    for input in ["20**50**70"].iter() {
-        let mut parser = Parser::new("test", input.to_string());
-        assert_eq!(
-            parser.parse_all().unwrap(),
-            Node::new(
-                NodeBase::StatementList(vec![Node::new(
-                    NodeBase::BinaryOp(
-                        Box::new(Node::new(NodeBase::Number(20.0), 0)),
-                        Box::new(Node::new(
-                            NodeBase::BinaryOp(
-                                Box::new(Node::new(NodeBase::Number(50.0), 4)),
-                                Box::new(Node::new(NodeBase::Number(70.0), 8)),
-                                BinOp::Exp,
-                            ),
-                            4,
-                        )),
-                        BinOp::Exp,
-                    ),
-                    0,
-                )]),
-                0
-            )
-        );
-    }
+    let mut parser = Parser::new("test", "20**50**70".to_string());
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
 }
 
 #[test]
@@ -1970,142 +1742,136 @@ fn expression_statement() {
 }
 
 #[test]
-fn simple_expr_unary() {
-    for (input, op, pos, pos2) in [
-        ("delete a", UnaryOp::Delete, 7, 0),
-        ("void a", UnaryOp::Void, 5, 0),
-        ("typeof a", UnaryOp::Typeof, 7, 0),
-        ("+a", UnaryOp::Plus, 1, 0),
-        ("-a", UnaryOp::Minus, 1, 0),
-        ("~a", UnaryOp::BitwiseNot, 1, 0),
-        ("!a", UnaryOp::Not, 1, 0),
-        ("++a", UnaryOp::PrInc, 2, 0),
-        ("--a", UnaryOp::PrDec, 2, 0),
-        ("a++", UnaryOp::PoInc, 0, 0),
-        ("a--", UnaryOp::PoDec, 0, 0),
-    ]
-    .iter()
-    {
-        let mut parser = Parser::new("test", input.to_string());
-        assert_eq!(
-            parser.parse_all().unwrap(),
-            Node::new(
-                NodeBase::StatementList(vec![Node::new(
-                    NodeBase::UnaryOp(
-                        Box::new(Node::new(NodeBase::Identifier("a".to_string()), *pos)),
-                        op.clone(),
-                    ),
-                    *pos2,
-                )]),
-                0
-            ),
-        );
-    }
+fn simple_expr_unary1() {
+    let mut parser = Parser::new("test", "delete a".to_string());
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
 }
 
 #[test]
-#[rustfmt::skip]
-fn simple_expr_assign() {
-    let mut parser = Parser::new("test","v = 1".to_string());
-    macro_rules! f { ($expr:expr) => {
-        assert_eq!(
-            Node::new(NodeBase::StatementList(vec![Node::new(NodeBase::Assign(
-                Box::new(Node::new(NodeBase::Identifier("v".to_string()), 0)), Box::new($expr)
-            ), 0)]), 0),
-            parser.parse_all().unwrap()
-        );
-    } }
-    f!(Node::new(NodeBase::Number(1.0), 4));
-    parser = Parser::new("test","v += 1".to_string());
-    f!(Node::new(NodeBase::BinaryOp(Box::new(Node::new(NodeBase::Identifier("v".to_string()), 0)), 
-                                    Box::new(Node::new(NodeBase::Number(1.0), 5)), BinOp::Add), 0));
-    parser = Parser::new("test","v -= 1".to_string());
-    f!(Node::new(NodeBase::BinaryOp(Box::new(Node::new(NodeBase::Identifier("v".to_string()), 0)), 
-                                    Box::new(Node::new(NodeBase::Number(1.0), 5)), BinOp::Sub), 0));
-    parser = Parser::new("test","v *= 1".to_string());
-    f!(Node::new(NodeBase::BinaryOp(Box::new(Node::new(NodeBase::Identifier("v".to_string()), 0)), 
-                                    Box::new(Node::new(NodeBase::Number(1.0), 5)), BinOp::Mul), 0));
-    parser = Parser::new("test","v /= 1".to_string());
-    f!(Node::new(NodeBase::BinaryOp(Box::new(Node::new(NodeBase::Identifier("v".to_string()), 0)), 
-                                    Box::new(Node::new(NodeBase::Number(1.0), 5)), BinOp::Div), 0));
-    parser = Parser::new("test","v %= 1".to_string());
-    f!(Node::new(NodeBase::BinaryOp(Box::new(Node::new(NodeBase::Identifier("v".to_string()), 0)), 
-                                    Box::new(Node::new(NodeBase::Number(1.0), 5)), BinOp::Rem), 0));
+fn simple_expr_unary2() {
+    let mut parser = Parser::new("test", "void a".to_string());
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
+}
+
+#[test]
+fn simple_expr_unary3() {
+    let mut parser = Parser::new("test", "typeof a".to_string());
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
+}
+
+#[test]
+fn simple_expr_unary4() {
+    let mut parser = Parser::new("test", "+a".to_string());
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
+}
+
+#[test]
+fn simple_expr_unary5() {
+    let mut parser = Parser::new("test", "-a".to_string());
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
+}
+
+#[test]
+fn simple_expr_unary6() {
+    let mut parser = Parser::new("test", "~a".to_string());
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
+}
+
+#[test]
+fn simple_expr_unary7() {
+    let mut parser = Parser::new("test", "!a".to_string());
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
+}
+
+#[test]
+fn simple_expr_unary8() {
+    let mut parser = Parser::new("test", "++a".to_string());
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
+}
+
+#[test]
+fn simple_expr_unary9() {
+    let mut parser = Parser::new("test", "--a".to_string());
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
+}
+
+#[test]
+fn simple_expr_unary10() {
+    let mut parser = Parser::new("test", "a++".to_string());
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
+}
+
+#[test]
+fn simple_expr_unary11() {
+    let mut parser = Parser::new("test", "a--".to_string());
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
+}
+
+#[test]
+fn simple_expr_assign1() {
+    let mut parser = Parser::new("test", "v = 1".to_string());
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
+}
+
+#[test]
+fn simple_expr_assign2() {
+    let mut parser = Parser::new("test", "v += 1".to_string());
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
+}
+#[test]
+fn simple_expr_assign3() {
+    let mut parser = Parser::new("test", "v -= 1".to_string());
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
+}
+#[test]
+fn simple_expr_assign4() {
+    let mut parser = Parser::new("test", "v *= 1".to_string());
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
+}
+#[test]
+fn simple_expr_assign5() {
+    let mut parser = Parser::new("test", "v /= 1".to_string());
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
+}
+
+#[test]
+fn simple_expr_assign6() {
+    let mut parser = Parser::new("test", "v %= 1".to_string());
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
 }
 
 #[test]
 fn simple_expr_new() {
     let mut parser = Parser::new("test", "new f(1)".to_string());
-    assert_eq!(
-        parser.parse_all().unwrap(),
-        Node::new(
-            NodeBase::StatementList(vec![Node::new(
-                NodeBase::New(Box::new(Node::new(
-                    NodeBase::Call(
-                        Box::new(Node::new(NodeBase::Identifier("f".to_string()), 4)),
-                        vec![Node::new(NodeBase::Number(1.0), 6)],
-                    ),
-                    4,
-                ))),
-                0,
-            )]),
-            0
-        ),
-    );
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
 }
 
 #[test]
 fn simple_expr_parentheses() {
     let mut parser = Parser::new("test", "2 * (1 + 3)".to_string());
-    assert_eq!(
-        parser.parse_all().unwrap(),
-        Node::new(
-            NodeBase::StatementList(vec![Node::new(
-                NodeBase::BinaryOp(
-                    Box::new(Node::new(NodeBase::Number(2.0), 0)),
-                    Box::new(Node::new(
-                        NodeBase::BinaryOp(
-                            Box::new(Node::new(NodeBase::Number(1.0), 5)),
-                            Box::new(Node::new(NodeBase::Number(3.0), 9)),
-                            BinOp::Add,
-                        ),
-                        9,
-                    )),
-                    BinOp::Mul,
-                ),
-                4,
-            )]),
-            0
-        )
-    );
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
 }
 
 #[test]
-fn call() {
-    for (input, args) in [
-        ("f()", vec![]),
-        ("f(1, 2, 3)", vec![(1, 2), (2, 5), (3, 8)]),
-        ("f(1, 2,)", vec![(1, 2), (2, 5)]),
-    ]
-    .iter()
-    {
-        let mut parser = Parser::new("test", input.to_string());
-        assert_eq!(
-            parser.parse_all().unwrap(),
-            Node::new(
-                NodeBase::StatementList(vec![Node::new(
-                    NodeBase::Call(
-                        Box::new(Node::new(NodeBase::Identifier("f".to_string()), 0)),
-                        args.iter()
-                            .map(|(n, pos)| Node::new(NodeBase::Number(*n as f64), *pos))
-                            .collect(),
-                    ),
-                    0,
-                )]),
-                0
-            )
-        );
-    }
+fn call1() {
+    let mut parser = Parser::new("test", "f(1, 2,)".to_string());
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
+}
+
+#[test]
+fn call2() {
+    let mut parser = Parser::new("test", "f()".to_string());
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
+}
+
+#[test]
+fn call3() {
+    let mut parser = Parser::new("test", "f(1, 2, 3)".to_string());
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
+}
+
+#[test]
+fn call4() {
     for input in ["f(,)", "f(", "f(1", "f(1,", "f.7", "f[5", "f(1 a)"].iter() {
         let mut parser = Parser::new("test", input.to_string());
         parser.parse_all().expect_err("should be error");
@@ -2117,68 +1883,25 @@ fn call() {
 }
 
 #[test]
-fn member() {
-    for (input, node) in [
-        (
-            "a.b.c",
-            Node::new(
-                NodeBase::Member(
-                    Box::new(Node::new(
-                        NodeBase::Member(
-                            Box::new(Node::new(NodeBase::Identifier("a".to_string()), 0)),
-                            "b".to_string(),
-                        ),
-                        0,
-                    )),
-                    "c".to_string(),
-                ),
-                0,
-            ),
-        ),
-        (
-            "console.log",
-            Node::new(
-                NodeBase::Member(
-                    Box::new(Node::new(NodeBase::Identifier("console".to_string()), 0)),
-                    "log".to_string(),
-                ),
-                0,
-            ),
-        ),
-    ]
-    .iter()
-    {
-        let mut parser = Parser::new("test", input.to_string());
-        assert_eq!(
-            parser.parse_all().unwrap(),
-            Node::new(NodeBase::StatementList(vec![node.clone()]), 0)
-        );
-    }
+fn member1() {
+    let mut parser = Parser::new("test", "a.b.c".to_string());
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
 }
 
 #[test]
-fn var_decl() {
+fn member2() {
+    let mut parser = Parser::new("test", "console.log".to_string());
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
+}
+
+#[test]
+fn var_decl1() {
     let mut parser = Parser::new("test", "var a, b = 21".to_string());
-    assert_eq!(
-        parser.parse_all().unwrap(),
-        Node::new(
-            NodeBase::StatementList(vec![Node::new(
-                NodeBase::StatementList(vec![
-                    Node::new(NodeBase::VarDecl("a".to_string(), None, VarKind::Var), 4),
-                    Node::new(
-                        NodeBase::VarDecl(
-                            "b".to_string(),
-                            Some(Box::new(Node::new(NodeBase::Number(21.0), 11))),
-                            VarKind::Var,
-                        ),
-                        7,
-                    ),
-                ]),
-                0,
-            )]),
-            0
-        )
-    );
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
+}
+
+#[test]
+fn var_decl2() {
     for input in ["var 7"].iter() {
         let mut parser = Parser::new("test", input.to_string());
         parser.parse_all().expect_err("should be error");
@@ -2186,24 +1909,13 @@ fn var_decl() {
 }
 
 #[test]
-fn block() {
+fn block1() {
     let mut parser = Parser::new("test", "{ a=1 }".to_string());
-    assert_eq!(
-        parser.parse_all().unwrap(),
-        Node::new(
-            NodeBase::StatementList(vec![Node::new(
-                NodeBase::Block(vec![Node::new(
-                    NodeBase::Assign(
-                        Box::new(Node::new(NodeBase::Identifier("a".to_string()), 2)),
-                        Box::new(Node::new(NodeBase::Number(1.0), 4)),
-                    ),
-                    2,
-                )]),
-                0,
-            )]),
-            0
-        )
-    );
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
+}
+
+#[test]
+fn block2() {
     for input in ["{", "{ a", "{ a=", "{ a=1", "}", "{ 7z }", "{a=0 8k}"].iter() {
         let mut parser = Parser::new("test", input.to_string());
         parser.parse_all().expect_err("should be error");
@@ -2211,24 +1923,13 @@ fn block() {
 }
 
 #[test]
-fn break_() {
+fn break1() {
     let mut parser = Parser::new("test", "while(1){break}".to_string());
-    assert_eq!(
-        parser.parse_all().unwrap(),
-        Node::new(
-            NodeBase::StatementList(vec![Node::new(
-                NodeBase::While(
-                    Box::new(Node::new(NodeBase::Number(1.0), 6)),
-                    Box::new(Node::new(
-                        NodeBase::Block(vec![Node::new(NodeBase::Break(None), 9)]),
-                        8,
-                    )),
-                ),
-                0,
-            )]),
-            0
-        )
-    );
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
+}
+
+#[test]
+fn break2() {
     for input in ["while(1){break 7}"].iter() {
         let mut parser = Parser::new("test", input.to_string());
         parser.parse_all().expect_err("should be error");
@@ -2236,24 +1937,13 @@ fn break_() {
 }
 
 #[test]
-fn continue_() {
+fn continue1() {
     let mut parser = Parser::new("test", "while(1){continue}".to_string());
-    assert_eq!(
-        parser.parse_all().unwrap(),
-        Node::new(
-            NodeBase::StatementList(vec![Node::new(
-                NodeBase::While(
-                    Box::new(Node::new(NodeBase::Number(1.0), 6)),
-                    Box::new(Node::new(
-                        NodeBase::Block(vec![Node::new(NodeBase::Continue(None), 9)]),
-                        8,
-                    )),
-                ),
-                0,
-            )]),
-            0
-        )
-    );
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
+}
+
+#[test]
+fn continue2() {
     for input in ["while(1){continue 825}"].iter() {
         let mut parser = Parser::new("test", input.to_string());
         parser.parse_all().expect_err("should be error");
@@ -2261,84 +1951,38 @@ fn continue_() {
 }
 
 #[test]
-fn return_() {
-    for (input, node) in [
-        (
-            "return 1",
-            Node::new(
-                NodeBase::Return(Some(Box::new(Node::new(NodeBase::Number(1.0), 7)))),
-                0,
-            ),
-        ),
-        ("return;", Node::new(NodeBase::Return(None), 0)),
-    ]
-    .iter()
-    {
-        let mut parser = Parser::new("test", input.to_string());
-        assert_eq!(
-            parser.parse_all().unwrap(),
-            Node::new(NodeBase::StatementList(vec![node.clone()]), 0)
-        );
-    }
+fn return1() {
+    let mut parser = Parser::new("test", "return 1".to_string());
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
 }
 
 #[test]
-fn if_() {
-    use rapidus_ast::BinOp;
+fn return2() {
+    let mut parser = Parser::new("test", "return;".to_string());
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
+}
 
+#[test]
+fn if1() {
     let mut parser = Parser::new(
         "test",
-        "if (x <= 2) 
-            then_stmt 
-        else 
+        "if (x <= 2)
+            then_stmt
+        else
             else_stmt"
             .to_string(),
     );
-    assert_eq!(
-        parser.parse_all().unwrap(),
-        Node::new(
-            NodeBase::StatementList(vec![Node::new(
-                NodeBase::If(
-                    Box::new(Node::new(
-                        NodeBase::BinaryOp(
-                            Box::new(Node::new(NodeBase::Identifier("x".to_string()), 4)),
-                            Box::new(Node::new(NodeBase::Number(2.0), 9)),
-                            BinOp::Le,
-                        ),
-                        9,
-                    )),
-                    Box::new(Node::new(NodeBase::Identifier("then_stmt".to_string()), 25)),
-                    Box::new(Node::new(NodeBase::Identifier("else_stmt".to_string()), 62)),
-                ),
-                0,
-            )]),
-            0
-        )
-    );
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
+}
 
-    parser = Parser::new("test", "if (x <= 2) then_stmt ".to_string());
-    assert_eq!(
-        parser.parse_all().unwrap(),
-        Node::new(
-            NodeBase::StatementList(vec![Node::new(
-                NodeBase::If(
-                    Box::new(Node::new(
-                        NodeBase::BinaryOp(
-                            Box::new(Node::new(NodeBase::Identifier("x".to_string()), 4)),
-                            Box::new(Node::new(NodeBase::Number(2.0), 9)),
-                            BinOp::Le,
-                        ),
-                        9,
-                    )),
-                    Box::new(Node::new(NodeBase::Identifier("then_stmt".to_string()), 12)),
-                    Box::new(Node::new(NodeBase::Nope, 22)),
-                ),
-                0,
-            )]),
-            0
-        )
-    );
+#[test]
+fn if2() {
+    let mut parser = Parser::new("test", "if (x <= 2) then_stmt ".to_string());
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
+}
 
+#[test]
+fn if3() {
     for input in ["if(", "if()else", "if(true){} 8j"].iter() {
         let mut parser = Parser::new("test", input.to_string());
         parser.parse_all().expect_err("should be error");
@@ -2348,42 +1992,17 @@ fn if_() {
 #[test]
 fn while_() {
     let mut parser = Parser::new("test", "while (true) { }".to_string());
-    assert_eq!(
-        parser.parse_all().unwrap(),
-        Node::new(
-            NodeBase::StatementList(vec![Node::new(
-                NodeBase::While(
-                    Box::new(Node::new(NodeBase::Boolean(true), 7)),
-                    Box::new(Node::new(NodeBase::Block(vec![]), 13)),
-                ),
-                0,
-            )]),
-            0
-        )
-    );
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
 }
 
 #[test]
 fn for1() {
     let mut parser = Parser::new("test", "for (;;) { }".to_string());
-    assert_eq!(
-        parser.parse_all().unwrap(),
-        Node::new(
-            NodeBase::StatementList(vec![Node::new(
-                NodeBase::Block(vec![Node::new(
-                    NodeBase::For(
-                        Box::new(Node::new(NodeBase::Nope, 4)),
-                        Box::new(Node::new(NodeBase::Boolean(true), 6)),
-                        Box::new(Node::new(NodeBase::Nope, 7)),
-                        Box::new(Node::new(NodeBase::Block(vec![]), 9)),
-                    ),
-                    0,
-                )]),
-                0,
-            )]),
-            0
-        )
-    );
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
+}
+
+#[test]
+fn for_etc() {
     for input in [
         "for(){}",
         "for(;){}",
@@ -2402,75 +2021,37 @@ fn for1() {
 }
 
 #[test]
-fn function_decl() {
-    for (input, node) in [
-        (
-            "function
+fn function_decl1() {
+    let mut parser = Parser::new(
+        "test",
+        "function
             f
             (
-            ) 
-            { 
-            }",
-            Node::new(
-                NodeBase::FunctionDecl(
-                    "f".to_string(),
-                    vec![],
-                    Box::new(Node::new(NodeBase::StatementList(vec![]), 64)),
-                ),
-                0,
-            ),
-        ),
-        (
-            "function f() { return }",
-            Node::new(
-                NodeBase::FunctionDecl(
-                    "f".to_string(),
-                    vec![],
-                    Box::new(Node::new(
-                        NodeBase::StatementList(vec![Node::new(NodeBase::Return(None), 15)]),
-                        13,
-                    )),
-                ),
-                0,
-            ),
-        ),
-        (
-            "function f(x, y, ...z) { return x + y }",
-            Node::new(
-                NodeBase::FunctionDecl(
-                    "f".to_string(),
-                    vec![
-                        FormalParameter::new("x".to_string(), None, false),
-                        FormalParameter::new("y".to_string(), None, false),
-                        FormalParameter::new("z".to_string(), None, true),
-                    ],
-                    Box::new(Node::new(
-                        NodeBase::StatementList(vec![Node::new(
-                            NodeBase::Return(Some(Box::new(Node::new(
-                                NodeBase::BinaryOp(
-                                    Box::new(Node::new(NodeBase::Identifier("x".to_string()), 32)),
-                                    Box::new(Node::new(NodeBase::Identifier("y".to_string()), 36)),
-                                    BinOp::Add,
-                                ),
-                                36,
-                            )))),
-                            25,
-                        )]),
-                        23,
-                    )),
-                ),
-                0,
-            ),
-        ),
-    ]
-    .iter()
-    {
-        let mut parser = Parser::new("test", input.to_string());
-        assert_eq!(
-            parser.parse_all().unwrap(),
-            Node::new(NodeBase::StatementList(vec![node.clone()]), 0)
-        );
-    }
+            )
+            {
+            }"
+        .to_string(),
+    );
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
+}
+
+#[test]
+fn function_decl2() {
+    let mut parser = Parser::new("test", "function f() { return }".to_string());
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
+}
+
+#[test]
+fn function_decl3() {
+    let mut parser = Parser::new(
+        "test",
+        "function f(x, y, ...z) { return x + y }".to_string(),
+    );
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
+}
+
+#[test]
+fn function_decl_etc() {
     for input in [
         "function",
         "function ()",
@@ -2494,83 +2075,19 @@ fn function_decl() {
 }
 
 #[test]
-fn arrow_function() {
-    for (input, node) in [
-        (
-            "(a, b) => { return a + b }",
-            Node::new(
-                NodeBase::ArrowFunction(
-                    vec![
-                        FormalParameter {
-                            name: "a".to_string(),
-                            init: None,
-                            is_rest_param: false,
-                        },
-                        FormalParameter {
-                            name: "b".to_string(),
-                            init: None,
-                            is_rest_param: false,
-                        },
-                    ],
-                    Box::new(Node::new(
-                        NodeBase::StatementList(vec![Node::new(
-                            NodeBase::Return(Some(Box::new(Node::new(
-                                NodeBase::BinaryOp(
-                                    Box::new(Node::new(NodeBase::Identifier("a".to_string()), 19)),
-                                    Box::new(Node::new(NodeBase::Identifier("b".to_string()), 23)),
-                                    BinOp::Add,
-                                ),
-                                23,
-                            )))),
-                            12,
-                        )]),
-                        10,
-                    )),
-                ),
-                0,
-            ),
-        ),
-        (
-            "(a, b, ...c) => a",
-            Node::new(
-                NodeBase::ArrowFunction(
-                    vec![
-                        FormalParameter {
-                            name: "a".to_string(),
-                            init: None,
-                            is_rest_param: false,
-                        },
-                        FormalParameter {
-                            name: "b".to_string(),
-                            init: None,
-                            is_rest_param: false,
-                        },
-                        FormalParameter {
-                            name: "c".to_string(),
-                            init: None,
-                            is_rest_param: true,
-                        },
-                    ],
-                    Box::new(Node::new(
-                        NodeBase::Return(Some(Box::new(Node::new(
-                            NodeBase::Identifier("a".to_string()),
-                            16,
-                        )))),
-                        16,
-                    )),
-                ),
-                0,
-            ),
-        ),
-    ]
-    .iter()
-    {
-        let mut parser = Parser::new("test", input.to_string());
-        assert_eq!(
-            parser.parse_all().unwrap(),
-            Node::new(NodeBase::StatementList(vec![node.clone()]), 0)
-        );
-    }
+fn arrow_function1() {
+    let mut parser = Parser::new("test", "(a, b) => { return a + b }".to_string());
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
+}
+
+#[test]
+fn arrow_function2() {
+    let mut parser = Parser::new("test", "(a, b, ...c) => a".to_string());
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
+}
+
+#[test]
+fn arrow_function_etc() {
     for input in [
         "()
         =>{}",
@@ -2592,33 +2109,14 @@ fn arrow_function() {
 fn asi1() {
     let mut parser = Parser::new(
         "test",
-        "function f() 
+        "function f()
          {
-             return 
+             return
              {};
          }"
         .to_string(),
     );
-    assert_eq!(
-        parser.parse_all().unwrap(),
-        Node::new(
-            NodeBase::StatementList(vec![Node::new(
-                NodeBase::FunctionDecl(
-                    "f".to_string(),
-                    vec![],
-                    Box::new(Node::new(
-                        NodeBase::StatementList(vec![
-                            Node::new(NodeBase::Return(None), 38),
-                            Node::new(NodeBase::Block(vec![]), 59),
-                        ]),
-                        23,
-                    )),
-                ),
-                0,
-            )]),
-            0
-        )
-    )
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
 }
 
 #[test]
@@ -2631,42 +2129,13 @@ fn asi2() {
         "
         .to_string(),
     );
-    assert_eq!(
-        parser.parse_all().unwrap(),
-        Node::new(
-            NodeBase::StatementList(vec![
-                Node::new(
-                    NodeBase::Assign(
-                        Box::new(Node::new(NodeBase::Identifier("b".to_string()), 9)),
-                        Box::new(Node::new(NodeBase::Identifier("a".to_string()), 13)),
-                    ),
-                    9,
-                ),
-                Node::new(
-                    NodeBase::UnaryOp(
-                        Box::new(Node::new(NodeBase::Identifier("b".to_string()), 25)),
-                        UnaryOp::PrInc,
-                    ),
-                    23,
-                ),
-            ]),
-            0
-        )
-    )
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
 }
+
 #[test]
 fn throw() {
     let mut parser = Parser::new("test", "throw 10".to_string());
-    assert_eq!(
-        parser.parse_all().unwrap(),
-        Node::new(
-            NodeBase::StatementList(vec![Node::new(
-                NodeBase::Throw(Box::new(Node::new(NodeBase::Number(10.0), 6))),
-                0
-            )]),
-            0
-        )
-    );
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
     for input in [
         "throw",
         "throw
@@ -2680,24 +2149,12 @@ fn throw() {
         parser.parse_all().expect_err("should be error");
     }
 }
+
 #[test]
 fn try_catch1() {
     let mut parser = Parser::new("test", "try {} catch(e){} finally{}".to_string());
-    assert_eq!(
-        parser.parse_all().unwrap(),
-        Node::new(
-            NodeBase::StatementList(vec![Node::new(
-                NodeBase::Try(
-                    Box::new(Node::new(NodeBase::Block(vec![]), 4)),
-                    Box::new(Node::new(NodeBase::StatementList(vec![]), 15)),
-                    Box::new(Node::new(NodeBase::Identifier("e".to_string()), 13)),
-                    Box::new(Node::new(NodeBase::Block(vec![]), 25))
-                ),
-                0
-            )]),
-            0
-        )
-    );
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
+
     for input in ["try {} catch", "try {} catch {}", "try {} catch(7)"].iter() {
         let mut parser = Parser::new("test", input.to_string());
         parser.parse_all().expect_err("should be error");
@@ -2707,39 +2164,11 @@ fn try_catch1() {
 #[test]
 fn try_catch2() {
     let mut parser = Parser::new("test", "try {} catch(e){}".to_string());
-    assert_eq!(
-        parser.parse_all().unwrap(),
-        Node::new(
-            NodeBase::StatementList(vec![Node::new(
-                NodeBase::Try(
-                    Box::new(Node::new(NodeBase::Block(vec![]), 4)),
-                    Box::new(Node::new(NodeBase::StatementList(vec![]), 15)),
-                    Box::new(Node::new(NodeBase::Identifier("e".to_string()), 13)),
-                    Box::new(Node::new(NodeBase::Nope, 17))
-                ),
-                0
-            )]),
-            0
-        )
-    );
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
 }
 
 #[test]
 fn try_catch3() {
     let mut parser = Parser::new("test", "try {} finally {}".to_string());
-    assert_eq!(
-        parser.parse_all().unwrap(),
-        Node::new(
-            NodeBase::StatementList(vec![Node::new(
-                NodeBase::Try(
-                    Box::new(Node::new(NodeBase::Block(vec![]), 4)),
-                    Box::new(Node::new(NodeBase::Nope, 7)),
-                    Box::new(Node::new(NodeBase::Nope, 7)),
-                    Box::new(Node::new(NodeBase::Block(vec![]), 15)),
-                ),
-                0
-            )]),
-            0
-        )
-    );
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
 }

@@ -9,3 +9,6 @@ edition = "2021"
 rapidus-ast = { path = "../ast" }
 ansi_term = "0.9.0"
 encoding = "*"
+
+[dev-dependencies]
+insta = "= 1.7.1"

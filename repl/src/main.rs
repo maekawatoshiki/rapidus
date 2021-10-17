@@ -66,8 +66,8 @@ fn main() {
 
     let global_info = match vm.compile(&node, false) {
         Ok(ok) => ok,
-        Err(vm::codegen::Error { msg, token_pos, .. }) => {
-            parser.show_error_at(token_pos, msg);
+        Err(vm::codegen::Error { msg, loc, .. }) => {
+            parser.show_error_at(loc, msg);
             return;
         }
     };
@@ -116,8 +116,8 @@ fn repl(is_profile: bool, is_trace: bool) {
                     // compile and execute
                     let global_info = match vm.compile(&node, true) {
                         Ok(ok) => ok,
-                        Err(vm::codegen::Error { msg, token_pos, .. }) => {
-                            parser.show_error_at(token_pos, msg);
+                        Err(vm::codegen::Error { msg, loc, .. }) => {
+                            parser.show_error_at(loc, msg);
                             break;
                         }
                     };

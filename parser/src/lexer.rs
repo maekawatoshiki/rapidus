@@ -1,5 +1,6 @@
 use crate::token::{convert_reserved_keyword, Kind, Symbol, Token};
 use crate::Error;
+use rapidus_ast::loc::SourceLoc;
 
 use std::collections::VecDeque;
 
@@ -12,17 +13,14 @@ pub struct Lexer {
 
     /// Current positon in code.
     /// After tokenizing, always indicate EOF.
-    pub pos: usize,
+    // pub pos: usize,
+    pub loc: SourceLoc,
 
     /// Current line number
-    pub line: usize,
+    // pub line: usize,
 
     /// Hold all tokens
     pub buf: VecDeque<Token>,
-
-    /// Associate position in ``code`` and line number
-    // TODO: Delete this and consider another way.
-    pub pos_line_list: Vec<(usize, usize)>,
 
     /// Current position in ``buf``.
     pub token_pos: usize,
@@ -38,10 +36,8 @@ impl Lexer {
     pub fn new(code: String) -> Lexer {
         Lexer {
             code,
-            pos: 0,
-            line: 1,
+            loc: SourceLoc::default(),
             buf: VecDeque::new(),
-            pos_line_list: vec![(0, 1)],
             token_pos: 0,
             prev_token_pos: 0,
             states: vec![],
@@ -56,20 +52,11 @@ impl Lexer {
                 Err(Error::NormalEOF) => break,
                 Err(err) => {
                     // When error occurs in tokenizer, pos_line_list is not completed.
-                    self.skip_char_while(|c| c != '\n')?;
-                    self.take_char().unwrap_or(' ');
-                    self.pos_line_list.push((self.pos + 1, self.line + 1));
+                    // self.skip_char_while(|c| c != '\n')?;
+                    // self.take_char().unwrap_or(' ');
                     return Err(err);
                 }
             };
-        }
-
-        self.pos_line_list.push((self.pos + 1, self.line + 1));
-
-        let mut prev_pos = 0;
-        for mut tok in &mut self.buf {
-            tok.prev_pos = prev_pos;
-            prev_pos = tok.pos;
         }
 
         Ok(())
@@ -151,22 +138,22 @@ impl Lexer {
     }
 
     /// Get char position in the script of the next token
-    pub fn get_current_pos(&mut self) -> usize {
+    pub fn get_current_loc(&mut self) -> SourceLoc {
         if self.token_pos < self.buf.len() {
-            self.buf[self.token_pos].pos
+            self.buf[self.token_pos].loc
         } else {
-            self.pos
+            self.loc
         }
     }
 
-    /// Get char position in the script of previous token.
-    pub fn get_prev_pos(&mut self) -> usize {
-        if self.token_pos < self.buf.len() {
-            self.buf[self.token_pos].prev_pos
-        } else {
-            self.pos - 1
-        }
-    }
+    // /// Get char position in the script of previous token.
+    // pub fn get_prev_loc(&mut self) -> SourceLoc {
+    //     if self.token_pos < self.buf.len() {
+    //         self.buf[self.token_pos].prev_pos
+    //     } else {
+    //         self.pos - 1
+    //     }
+    // }
 
     /// Peek the next token and if it is ``kind``, get the next token, return true.
     /// Otherwise, return false.
@@ -252,7 +239,7 @@ impl Lexer {
 
     fn skip_normal_comment(&mut self) -> Result<(), Error> {
         let mut last_char = ' ';
-        let mut line = self.line;
+        let mut line = self.loc.line;
         self.skip_char_while(|c| {
             if c == '\n' {
                 line += 1;
@@ -261,10 +248,7 @@ impl Lexer {
             last_char = c;
             !end_of_comment
         })?;
-        if self.line != line {
-            self.pos_line_list.push((self.pos, line));
-        }
-        self.line = line;
+        self.loc.line = line;
         assert_eq!(self.take_char()?, '/');
         Ok(())
     }
@@ -272,19 +256,19 @@ impl Lexer {
 
 impl Lexer {
     fn read_identifier(&mut self) -> Result<Token, Error> {
-        let pos = self.pos;
+        let loc = self.loc;
         let ident = self.take_char_while(|c| c.is_alphanumeric() || c == '_' || c == '$')?;
         if let Some(keyword) = convert_reserved_keyword(ident.as_str()) {
-            Ok(Token::new_keyword(keyword, pos))
+            Ok(Token::new_keyword(keyword, loc))
         } else {
-            Ok(Token::new_identifier(ident, pos))
+            Ok(Token::new_identifier(ident, loc))
         }
     }
 }
 
 impl Lexer {
     fn read_number(&mut self) -> Result<Token, Error> {
-        let pos = self.pos;
+        let loc = self.loc;
         #[derive(Debug, Clone, PartialEq)]
         enum NumLiteralKind {
             Hex,
@@ -298,7 +282,7 @@ impl Lexer {
         let mut num_literal = "".to_string();
 
         match self.take_char()? {
-            '0' if self.eof() => return Ok(Token::new_number(0.0, pos)),
+            '0' if self.eof() => return Ok(Token::new_number(0.0, loc)),
             '0' => {
                 let c = self.peek_char()?;
                 match c {
@@ -311,7 +295,7 @@ impl Lexer {
                     }
                     '.' => num_literal.push('.'),
                     '8'..='9' => num_literal.push(c),
-                    _ => return Ok(Token::new_number(0.0, pos)),
+                    _ => return Ok(Token::new_number(0.0, loc)),
                 }
                 self.take_char()?;
             }
@@ -354,7 +338,7 @@ impl Lexer {
             NumLiteralKind::Dec => match num_literal.parse() {
                 Ok(ok) => ok,
                 Err(_) => {
-                    return Err(Error::General(pos, "invalid token".to_string()));
+                    return Err(Error::General(loc, "invalid token".to_string()));
                 }
             },
             NumLiteralKind::Hex => self.read_hex_num(num_literal.as_str()) as f64,
@@ -364,7 +348,7 @@ impl Lexer {
             NumLiteralKind::Bin => self.read_bin_num(num_literal.as_str()) as f64,
         };
 
-        Ok(Token::new_number(num, pos))
+        Ok(Token::new_number(num, loc))
     }
 
     fn read_hex_num(&mut self, num_literal: &str) -> i64 {
@@ -397,7 +381,7 @@ impl Lexer {
 
 impl Lexer {
     fn read_string_literal(&mut self) -> Result<Token, Error> {
-        let pos = self.pos;
+        let loc = self.loc;
         let quote = self.take_char()?;
         let mut s = "".to_string();
         loop {
@@ -411,7 +395,7 @@ impl Lexer {
                 c => s.push(c),
             }
         }
-        Ok(Token::new_string(s, pos))
+        Ok(Token::new_string(s, loc))
     }
 
     // TODO: Support more escape sequences
@@ -446,12 +430,12 @@ impl Lexer {
                         // TODO: Support \u{X..X}
                         unimplemented!("unsupported escape sequence");
                     }
-                    let save_pos = self.pos;
+                    let save_pos = self.loc.pos;
                     // TODO: Error handling
                     if self.take_char()? == '\\' && self.take_char()? == 'u' {
                         continue;
                     } else {
-                        self.pos = save_pos;
+                        self.loc.pos = save_pos;
                         break;
                     }
                 }
@@ -468,7 +452,7 @@ impl Lexer {
 
 impl Lexer {
     pub fn read_symbol(&mut self) -> Result<Token, Error> {
-        let pos = self.pos;
+        let loc = self.loc;
         let mut symbol = Symbol::Hash;
         let c = self.take_char()?;
         match c {
@@ -620,7 +604,7 @@ impl Lexer {
                     symbol = if self.take_char_if('.')? {
                         Symbol::Spread
                     } else {
-                        return Err(Error::General(pos, "Invalid token".to_string()));
+                        return Err(Error::General(loc, "Invalid token".to_string()));
                     }
                 } else {
                     symbol = Symbol::Point
@@ -629,18 +613,18 @@ impl Lexer {
             _ => {}
         };
 
-        Ok(Token::new_symbol(symbol, pos))
+        Ok(Token::new_symbol(symbol, loc))
     }
 }
 
 impl Lexer {
     /// Read line terminator. (if next char is not line terminator, panic.)
     fn read_line_terminator(&mut self) -> Result<Token, Error> {
-        let pos = self.pos;
+        let loc = self.loc;
         assert_eq!(self.take_char()?, '\n');
-        self.line += 1;
-        self.pos_line_list.push((self.pos, self.line));
-        Ok(Token::new_line_terminator(pos))
+        self.loc.line += 1;
+        self.loc.column = 0;
+        Ok(Token::new_line_terminator(loc))
     }
 }
 
@@ -676,10 +660,11 @@ impl Lexer {
 
     /// Read next char, and move cursor next
     fn take_char(&mut self) -> Result<char, Error> {
-        let mut iter = self.code[self.pos..].char_indices();
+        let mut iter = self.code[self.loc.pos..].char_indices();
         let (_, cur_char) = iter.next().ok_or(Error::NormalEOF)?;
         let (next_pos, _) = iter.next().unwrap_or((cur_char.len_utf8(), ' '));
-        self.pos += next_pos;
+        self.loc.pos += next_pos;
+        self.loc.column += next_pos;
         Ok(cur_char)
     }
 
@@ -695,40 +680,42 @@ impl Lexer {
 
     /// If chars start with ``s``, return true
     fn starts_with(&self, s: &str) -> bool {
-        self.code[self.pos..].starts_with(s)
+        self.code[self.loc.pos..].starts_with(s)
     }
 
     /// peek next char. if eof, raise Err(Error::NormalEOF)
     fn peek_char(&self) -> Result<char, Error> {
-        self.code[self.pos..].chars().next().ok_or(Error::NormalEOF)
+        self.code[self.loc.pos..]
+            .chars()
+            .next()
+            .ok_or(Error::NormalEOF)
     }
 
     fn eof(&self) -> bool {
-        self.pos >= self.code.len()
+        self.loc.pos >= self.code.len()
     }
 }
 
-impl Lexer {
-    pub fn get_code_around_err_point(&self, pos: usize) -> (String, usize, usize) {
-        let code = self.code.as_bytes();
-        let iter = self.pos_line_list.iter();
-        let (start_pos, line) = iter.take_while(|x| x.0 <= pos).last().unwrap();
+pub fn get_error_line<T: AsRef<str>>(code: T, loc: SourceLoc) -> String {
+    let code = code.as_ref();
+    let mut start = loc.pos;
+    let mut end = loc.pos;
 
-        let mut iter = self.pos_line_list.iter();
-        let end_pos = match iter
-            .find(|x| x.0 > pos)
-            .unwrap_or(self.pos_line_list.last().unwrap())
-            .0
-        {
-            x if x == 0 => 0,
-            x => x - 1,
-        };
-        let surrounding_code = String::from_utf8(code[*start_pos..end_pos].to_vec())
-            .unwrap()
-            .to_string();
-        let err_point = format!("{}{}", " ".repeat(pos - start_pos), '^',);
-        (surrounding_code + "\n" + err_point.as_str(), pos, *line)
+    while start > 0 {
+        if code[start..].chars().next().unwrap() == '\n' {
+            start += 1;
+            break;
+        }
+        start -= 1;
     }
+
+    while end < code.len() && code[end..].chars().next().unwrap() != '\n' {
+        end += 1
+    }
+
+    let surrounding_code = code[start..end].to_string();
+    let err_point = format!("{}{}", " ".repeat(loc.pos - start), '^',);
+    surrounding_code + "\n" + err_point.as_str()
 }
 
 #[test]

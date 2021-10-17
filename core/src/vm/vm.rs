@@ -11,7 +11,7 @@ use crate::vm::{
     jsvalue::symbol::GlobalSymbolRegistry, jsvalue::value::*,
 };
 use rapidus_ast::Node;
-use rapidus_parser::ScriptInfo;
+use rapidus_parser::{lexer::get_error_line, ScriptInfo};
 use rustc_hash::FxHashMap;
 use std::time::{Duration, Instant};
 
@@ -258,11 +258,11 @@ impl VM {
             ErrorKind::General(msg) => runtime_error(format!("Error: {}", msg)),
             ErrorKind::Exception(ref val) => {
                 runtime_error("Uncaught Exception");
-                let pos_in_script = self
+                let loc_in_script = self
                     .to_source_map
                     .get(&error.func_id)
                     .unwrap()
-                    .get_node_pos(error.inst_pc);
+                    .get_node_loc(error.inst_pc);
                 let module_func_id = error.module_func_id;
                 let info = &self
                     .script_info
@@ -270,35 +270,14 @@ impl VM {
                     .find(|info| info.0 == module_func_id)
                     .unwrap()
                     .1;
-                if let Some(pos) = pos_in_script {
-                    let (msg, _, line) = get_code_around_err_point(info, pos);
-                    println!("line: {}", line);
+                if let Some(loc) = loc_in_script {
+                    let msg = get_error_line(&info.code, loc);
+                    println!("line: {}", loc.line);
                     println!("{}", msg);
                 }
                 debug_print(val, false);
                 println!();
             }
-        }
-
-        pub fn get_code_around_err_point(info: &ScriptInfo, pos: usize) -> (String, usize, usize) {
-            let code = info.code.as_bytes();
-            let iter = info.pos_line_list.iter();
-            let (start_pos, line) = iter.take_while(|x| x.0 <= pos).last().unwrap();
-
-            let mut iter = info.pos_line_list.iter();
-            let end_pos = match iter
-                .find(|x| x.0 > pos)
-                .unwrap_or(info.pos_line_list.last().unwrap())
-                .0
-            {
-                x if x == 0 => 0,
-                x => x - 1,
-            };
-            let surrounding_code = String::from_utf8(code[*start_pos..end_pos].to_vec())
-                .unwrap()
-                .to_string();
-            let err_point = format!("{}{}", " ".repeat(pos - start_pos), "^",);
-            (surrounding_code + "\n" + err_point.as_str(), pos, *line)
         }
     }
 }

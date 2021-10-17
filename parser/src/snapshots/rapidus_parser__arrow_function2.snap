@@ -1,0 +1,47 @@
+---
+source: parser/src/lib.rs
+expression: parser.parse_all().unwrap()
+
+---
+Node {
+    base: StatementList(
+        [
+            Node {
+                base: ArrowFunction(
+                    [
+                        FormalParameter {
+                            name: "a",
+                            init: None,
+                            is_rest_param: false,
+                        },
+                        FormalParameter {
+                            name: "b",
+                            init: None,
+                            is_rest_param: false,
+                        },
+                        FormalParameter {
+                            name: "c",
+                            init: None,
+                            is_rest_param: true,
+                        },
+                    ],
+                    Node {
+                        base: Return(
+                            Some(
+                                Node {
+                                    base: Identifier(
+                                        "a",
+                                    ),
+                                    loc: Loc(line:1,column:16,pos:16),
+                                },
+                            ),
+                        ),
+                        loc: Loc(line:1,column:16,pos:16),
+                    },
+                ),
+                loc: Loc(line:1,column:0,pos:0),
+            },
+        ],
+    ),
+    loc: Loc(line:1,column:0,pos:0),
+}

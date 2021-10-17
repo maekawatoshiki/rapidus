@@ -1,0 +1,42 @@
+---
+source: parser/src/lib.rs
+expression: parser.parse_all().unwrap()
+
+---
+Node {
+    base: StatementList(
+        [
+            Node {
+                base: BinaryOp(
+                    Node {
+                        base: Number(
+                            20.0,
+                        ),
+                        loc: Loc(line:1,column:0,pos:0),
+                    },
+                    Node {
+                        base: BinaryOp(
+                            Node {
+                                base: Number(
+                                    50.0,
+                                ),
+                                loc: Loc(line:1,column:4,pos:4),
+                            },
+                            Node {
+                                base: Number(
+                                    70.0,
+                                ),
+                                loc: Loc(line:1,column:8,pos:8),
+                            },
+                            Exp,
+                        ),
+                        loc: Loc(line:1,column:4,pos:4),
+                    },
+                    Exp,
+                ),
+                loc: Loc(line:1,column:0,pos:0),
+            },
+        ],
+    ),
+    loc: Loc(line:1,column:0,pos:0),
+}

@@ -1,0 +1,41 @@
+---
+source: parser/src/lib.rs
+expression: parser.parse_all().unwrap()
+
+---
+Node {
+    base: StatementList(
+        [
+            Node {
+                base: Assign(
+                    Node {
+                        base: Identifier(
+                            "b",
+                        ),
+                        loc: Loc(line:2,column:8,pos:9),
+                    },
+                    Node {
+                        base: Identifier(
+                            "a",
+                        ),
+                        loc: Loc(line:2,column:12,pos:13),
+                    },
+                ),
+                loc: Loc(line:2,column:8,pos:9),
+            },
+            Node {
+                base: UnaryOp(
+                    Node {
+                        base: Identifier(
+                            "b",
+                        ),
+                        loc: Loc(line:3,column:10,pos:25),
+                    },
+                    PrInc,
+                ),
+                loc: Loc(line:3,column:8,pos:23),
+            },
+        ],
+    ),
+    loc: Loc(line:1,column:0,pos:0),
+}

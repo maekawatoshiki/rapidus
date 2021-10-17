@@ -1,3 +1,7 @@
+pub mod loc;
+
+use loc::SourceLoc;
+
 // TODO: Support all features: https://tc39.github.io/ecma262/#prod-FormalParameter
 //       Especially, destructing of rest parameter.
 #[derive(Clone, Debug, PartialEq)]
@@ -38,7 +42,7 @@ pub enum MethodDefinitionKind {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Node {
     pub base: NodeBase,
-    pub pos: usize,
+    pub loc: SourceLoc,
 }
 
 #[derive(Clone, Debug, PartialEq, Copy)]
@@ -88,8 +92,8 @@ pub enum NodeBase {
 }
 
 impl Node {
-    pub fn new(base: NodeBase, pos: usize) -> Node {
-        Node { base, pos }
+    pub fn new(base: NodeBase, loc: SourceLoc) -> Node {
+        Node { base, loc }
     }
     /*
     pub fn definitely_returns(&self) -> bool {

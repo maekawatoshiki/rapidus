@@ -159,8 +159,8 @@ pub fn require(vm: &mut VM, args: &[Value], _this: Value) -> VMValueResult {
 
     use crate::vm::codegen::Error;
     let module_info = vm.compile(&node, true).map_err(|codegen_err| {
-        let Error { msg, token_pos, .. } = codegen_err;
-        parser.show_error_at(token_pos, msg);
+        let Error { msg, loc, .. } = codegen_err;
+        parser.show_error_at(loc, msg);
         vm.current_context
             .error_general(format!("Error in parsing module \"{}\"", file_name))
     })?;

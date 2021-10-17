@@ -1,0 +1,67 @@
+---
+source: parser/src/lib.rs
+expression: parser.parse_all().unwrap()
+
+---
+Node {
+    base: StatementList(
+        [
+            Node {
+                base: FunctionDecl(
+                    "f",
+                    [
+                        FormalParameter {
+                            name: "x",
+                            init: None,
+                            is_rest_param: false,
+                        },
+                        FormalParameter {
+                            name: "y",
+                            init: None,
+                            is_rest_param: false,
+                        },
+                        FormalParameter {
+                            name: "z",
+                            init: None,
+                            is_rest_param: true,
+                        },
+                    ],
+                    Node {
+                        base: StatementList(
+                            [
+                                Node {
+                                    base: Return(
+                                        Some(
+                                            Node {
+                                                base: BinaryOp(
+                                                    Node {
+                                                        base: Identifier(
+                                                            "x",
+                                                        ),
+                                                        loc: Loc(line:1,column:32,pos:32),
+                                                    },
+                                                    Node {
+                                                        base: Identifier(
+                                                            "y",
+                                                        ),
+                                                        loc: Loc(line:1,column:36,pos:36),
+                                                    },
+                                                    Add,
+                                                ),
+                                                loc: Loc(line:1,column:36,pos:36),
+                                            },
+                                        ),
+                                    ),
+                                    loc: Loc(line:1,column:32,pos:32),
+                                },
+                            ],
+                        ),
+                        loc: Loc(line:1,column:25,pos:25),
+                    },
+                ),
+                loc: Loc(line:1,column:9,pos:9),
+            },
+        ],
+    ),
+    loc: Loc(line:1,column:0,pos:0),
+}

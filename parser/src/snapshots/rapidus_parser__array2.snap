@@ -1,0 +1,18 @@
+---
+source: parser/src/lib.rs
+expression: parser.parse_all().unwrap()
+
+---
+Node {
+    base: StatementList(
+        [
+            Node {
+                base: Array(
+                    [],
+                ),
+                loc: Loc(line:1,column:1,pos:1),
+            },
+        ],
+    ),
+    loc: Loc(line:1,column:0,pos:0),
+}

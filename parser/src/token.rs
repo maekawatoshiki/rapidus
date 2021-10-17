@@ -1,12 +1,12 @@
-use rapidus_ast::BinOp;
+use rapidus_ast::{loc::SourceLoc, BinOp};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Token {
+    /// Kind of the token.
     pub kind: Kind,
-    pub pos: usize,
-    /// char position of previous token.
-    /// lexer generate this after tokenizing.
-    pub prev_pos: usize,
+
+    /// Source location of the token.
+    pub loc: SourceLoc,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -112,51 +112,45 @@ pub enum Symbol {
 }
 
 impl Token {
-    pub fn new_number(f: f64, pos: usize) -> Token {
+    pub fn new_number(f: f64, loc: SourceLoc) -> Token {
         Token {
             kind: Kind::Number(f),
-            pos,
-            prev_pos: 0,
+            loc,
         }
     }
 
-    pub fn new_identifier(ident: String, pos: usize) -> Token {
+    pub fn new_identifier(ident: String, loc: SourceLoc) -> Token {
         Token {
             kind: Kind::Identifier(ident),
-            pos,
-            prev_pos: 0,
+            loc,
         }
     }
 
-    pub fn new_keyword(keyword: Keyword, pos: usize) -> Token {
+    pub fn new_keyword(keyword: Keyword, loc: SourceLoc) -> Token {
         Token {
             kind: Kind::Keyword(keyword),
-            pos,
-            prev_pos: 0,
+            loc,
         }
     }
 
-    pub fn new_string(s: String, pos: usize) -> Token {
+    pub fn new_string(s: String, loc: SourceLoc) -> Token {
         Token {
             kind: Kind::String(s),
-            pos,
-            prev_pos: 0,
+            loc,
         }
     }
 
-    pub fn new_symbol(symbol: Symbol, pos: usize) -> Token {
+    pub fn new_symbol(symbol: Symbol, loc: SourceLoc) -> Token {
         Token {
             kind: Kind::Symbol(symbol),
-            pos,
-            prev_pos: 0,
+            loc,
         }
     }
 
-    pub fn new_line_terminator(pos: usize) -> Token {
+    pub fn new_line_terminator(loc: SourceLoc) -> Token {
         Token {
             kind: Kind::LineTerminator,
-            pos,
-            prev_pos: 0,
+            loc,
         }
     }
 }

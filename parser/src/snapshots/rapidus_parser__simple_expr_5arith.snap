@@ -1,0 +1,78 @@
+---
+source: parser/src/lib.rs
+expression: parser.parse_all().unwrap()
+
+---
+Node {
+    base: StatementList(
+        [
+            Node {
+                base: BinaryOp(
+                    Node {
+                        base: BinaryOp(
+                            Node {
+                                base: Number(
+                                    31.0,
+                                ),
+                                loc: Loc(line:1,column:0,pos:0),
+                            },
+                            Node {
+                                base: BinaryOp(
+                                    Node {
+                                        base: Number(
+                                            26.0,
+                                        ),
+                                        loc: Loc(line:1,column:5,pos:5),
+                                    },
+                                    Node {
+                                        base: Number(
+                                            3.0,
+                                        ),
+                                        loc: Loc(line:1,column:10,pos:10),
+                                    },
+                                    Div,
+                                ),
+                                loc: Loc(line:1,column:10,pos:10),
+                            },
+                            Add,
+                        ),
+                        loc: Loc(line:1,column:5,pos:5),
+                    },
+                    Node {
+                        base: BinaryOp(
+                            Node {
+                                base: BinaryOp(
+                                    Node {
+                                        base: Number(
+                                            1.0,
+                                        ),
+                                        loc: Loc(line:1,column:14,pos:14),
+                                    },
+                                    Node {
+                                        base: Number(
+                                            20.0,
+                                        ),
+                                        loc: Loc(line:1,column:18,pos:18),
+                                    },
+                                    Mul,
+                                ),
+                                loc: Loc(line:1,column:18,pos:18),
+                            },
+                            Node {
+                                base: Number(
+                                    3.0,
+                                ),
+                                loc: Loc(line:1,column:23,pos:23),
+                            },
+                            Rem,
+                        ),
+                        loc: Loc(line:1,column:23,pos:23),
+                    },
+                    Sub,
+                ),
+                loc: Loc(line:1,column:14,pos:14),
+            },
+        ],
+    ),
+    loc: Loc(line:1,column:0,pos:0),
+}
