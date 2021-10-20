@@ -8,7 +8,7 @@ pub use rapidus_lexer::Error;
 use rapidus_lexer::{get_error_line, Lexer};
 use std::fs::OpenOptions;
 use std::io::Read;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 macro_rules! expect {
     ($self:ident, $kind:expr, $msg:expr) => {{
@@ -30,23 +30,22 @@ macro_rules! expect_no_lineterminator {
 
 #[derive(Clone, Debug)]
 pub struct Parser {
-    pub file_name: String,
+    pub file_name: PathBuf,
     pub lexer: Lexer,
 }
 
 #[derive(Clone, Debug)]
-/// Information about a script (module), e.g. file name, source text, and correspondence between char postions and line numbers.
+/// Information about a source file (module).
 pub struct ScriptInfo {
     /// File name with Absolute path.
-    pub file_name: String,
+    pub file_name: PathBuf,
+
     /// Script text.
     pub code: String,
-    // /// Correspondence between char postions and line numbers.
-    // pub pos_line_list: Vec<(usize, usize)>,
 }
 
 impl Parser {
-    pub fn new(file_name: impl Into<String>, code: impl Into<String>) -> Parser {
+    pub fn new(file_name: impl Into<PathBuf>, code: impl Into<String>) -> Parser {
         Parser {
             file_name: file_name.into(),
             lexer: Lexer::new(code.into()),
@@ -56,16 +55,14 @@ impl Parser {
     /// Load file and generate Parser from the file.
     /// ## Arguments
     /// * `file_name` - A module file name.
-    pub fn load_module(file_name: impl Into<String>) -> Result<Parser, Error> {
+    pub fn load_module(file_name: impl Into<PathBuf>) -> Result<Parser, Error> {
         let file_name = file_name.into();
         let path = Path::new(&file_name).with_extension("js");
         let absolute_path = match path.canonicalize() {
             Ok(path) => path,
             Err(ioerr) => {
-                let msg = format!("{}", ioerr);
-                println!("Error: Cannot find module file. '{}'", &file_name);
-                println!("{}", msg);
-                return Err(Error::General(SourceLoc::default(), msg));
+                // TODO: Error::General may be not suitable. We need a richer way to represent this error.
+                return Err(Error::General(SourceLoc::default(), ioerr.to_string()));
             }
         };
 
@@ -77,14 +74,12 @@ impl Parser {
                 .ok()
                 .expect("cannot read file"),
             Err(ioerr) => {
-                let msg = format!("{}", ioerr);
-                println!("Error: Cannot find module file. '{}'", &file_name);
-                println!("{}", msg);
-                return Err(Error::General(SourceLoc::default(), msg));
+                // TODO: Error::General may be not suitable. We need a richer way to represent this error.
+                return Err(Error::General(SourceLoc::default(), ioerr.to_string()));
             }
         };
 
-        Ok(Parser::new(absolute_path.to_string_lossy(), file_body))
+        Ok(Self::new(absolute_path, file_body))
     }
 
     pub fn into_script_info(self) -> ScriptInfo {

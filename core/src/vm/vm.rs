@@ -267,7 +267,9 @@ impl VM {
                 if let Some(loc) = loc_in_script {
                     runtime_error(format!(
                         "{}:{}:{}: Uncaught Exception",
-                        info.file_name, loc.line, loc.column
+                        info.file_name.to_string_lossy(),
+                        loc.line,
+                        loc.column
                     ));
                     let msg = get_error_line(&info.code, loc);
                     println!("{}", msg);

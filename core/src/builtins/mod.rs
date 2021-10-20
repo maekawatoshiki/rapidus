@@ -149,7 +149,7 @@ pub fn require(vm: &mut VM, args: &[Value], _this: Value) -> VMValueResult {
     use rapidus_parser::Parser;
     let mut parser = Parser::load_module(file_name.clone())
         .map_err(|e| return vm.current_context.error_general(format!("{:?}", e)))?;
-    let absolute_path = parser.file_name.clone();
+    let absolute_path = parser.file_name.to_path_buf();
 
     let node = parser.parse_all().map_err(|parse_err| {
         parser.handle_error(&parse_err);
@@ -179,7 +179,7 @@ pub fn require(vm: &mut VM, args: &[Value], _this: Value) -> VMValueResult {
     )?;
 
     let empty_object = make_normal_object!(vm.factory);
-    let id_object = vm.factory.string(absolute_path);
+    let id_object = vm.factory.string(absolute_path.to_string_lossy());
     let module = make_normal_object!(
         vm.factory,
         id       => false, false, false: id_object,
