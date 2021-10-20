@@ -79,7 +79,7 @@ fn main() {
 
     let script_info = parser.into_script_info();
     vm.script_info
-        .push((global_info.module_func_id, script_info));
+        .insert(global_info.module_func_id, script_info);
     if let Err(e) = vm.run_global(global_info) {
         vm.show_error_message(e);
     }
@@ -133,7 +133,9 @@ fn repl(is_profile: bool, is_trace: bool) {
                     vm.current_context = global_context.clone().unwrap();
                     let script_info = parser.into_script_info();
                     vm.script_info =
-                        vec![(vm.current_context.func_ref.module_func_id, script_info)];
+                        vec![(vm.current_context.func_ref.module_func_id, script_info)]
+                            .into_iter()
+                            .collect();
 
                     match vm.run() {
                         Ok(val) => println!("{}", val.debug_string(true)),

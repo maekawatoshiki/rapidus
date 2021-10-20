@@ -24,11 +24,14 @@ pub struct ExecContext {
     //pub exception_table: Vec<Exception>,
     /// This value in the context.
     pub this: Value,
+
     /// If true, calling JS function as a constructor.
     pub constructor_call: bool,
+
     pub call_mode: CallMode,
     /// If true, calling JS function as a module.
     //    pub module_call: bool,
+
     /// If true, calling JS function from native function.
     //    pub escape: bool,
     pub variable_environment: LexicalEnvironmentRef,

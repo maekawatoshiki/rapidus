@@ -91,7 +91,6 @@ impl Parser {
         ScriptInfo {
             file_name: self.file_name,
             code: self.lexer.code,
-            // pos_line_list: self.lexer.pos_line_list,
         }
     }
 
@@ -103,7 +102,7 @@ impl Parser {
         let err_line = get_error_line(&self.lexer.code, loc);
         eprintln!(
             "{}: line {}: {}\n{}",
-            Colour::Red.bold().paint("SyntaxError"),
+            Colour::Red.bold().paint("Syntax error"),
             loc.line,
             msg.into(),
             err_line,

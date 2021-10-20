@@ -166,7 +166,7 @@ pub fn require(vm: &mut VM, args: &[Value], _this: Value) -> VMValueResult {
     })?;
     let id = module_info.module_func_id;
     let script_info = parser.into_script_info();
-    vm.script_info.push((id, script_info));
+    vm.script_info.insert(id, script_info);
 
     vm.prepare_context_for_function_invokation(
         Value::undefined(), // TODO: wrong?

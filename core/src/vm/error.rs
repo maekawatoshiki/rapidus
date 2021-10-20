@@ -75,7 +75,7 @@ impl RuntimeError {
 pub fn runtime_error(msg: impl Into<String>) {
     eprintln!(
         "{}: {}",
-        Colour::Red.bold().paint("runtime error"),
+        Colour::Red.bold().paint("Runtime error"),
         msg.into(),
     );
 }

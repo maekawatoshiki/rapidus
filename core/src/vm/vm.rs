@@ -32,8 +32,7 @@ pub struct VM {
     pub to_source_map: FxHashMap<FunctionId, codegen::ToSourcePos>,
     pub is_profile: bool,
     pub is_trace: bool,
-    ///(func_id, script_info)
-    pub script_info: Vec<(FunctionId, ScriptInfo)>,
+    pub script_info: FxHashMap<FunctionId, ScriptInfo>,
     pub profile: Profiler,
 }
 
@@ -73,7 +72,7 @@ impl VM {
             to_source_map: FxHashMap::default(),
             is_profile: false,
             is_trace: false,
-            script_info: vec![],
+            script_info: FxHashMap::default(),
             profile: Profiler {
                 instant: Instant::now(),
                 prev_time: Duration::from_secs(0),
@@ -258,23 +257,22 @@ impl VM {
             ErrorKind::Type(msg) => runtime_error(format!("TypeError: {}", msg)),
             ErrorKind::General(msg) => runtime_error(format!("Error: {}", msg)),
             ErrorKind::Exception(ref val) => {
-                runtime_error("Uncaught Exception");
                 let loc_in_script = self
                     .to_source_map
                     .get(&error.func_id)
                     .unwrap()
                     .get_node_loc(error.inst_pc);
                 let module_func_id = error.module_func_id;
-                let info = &self
-                    .script_info
-                    .iter()
-                    .find(|info| info.0 == module_func_id)
-                    .unwrap()
-                    .1;
+                let info = &self.script_info[&module_func_id];
                 if let Some(loc) = loc_in_script {
+                    runtime_error(format!(
+                        "{}:{}:{}: Uncaught Exception",
+                        info.file_name, loc.line, loc.column
+                    ));
                     let msg = get_error_line(&info.code, loc);
-                    println!("line: {}", loc.line);
                     println!("{}", msg);
+                } else {
+                    runtime_error("Uncaught Exception");
                 }
                 debug_print(val, false);
                 println!();
