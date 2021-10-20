@@ -5,6 +5,7 @@ authors = ["uint256_t <maekawatoshiki@github.com>"]
 edition = "2021"
 
 [dependencies]
+rapidus-lexer = { path = "../lexer" }
 rapidus-parser = { path = "../parser" }
 rapidus-ast = { path = "../ast" }
 bitflags = "*"

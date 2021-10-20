@@ -1,16 +1,14 @@
-pub mod lexer;
-pub mod token;
-
 use ansi_term::Colour;
-use lexer::get_error_line;
 use rapidus_ast::{
     loc::SourceLoc, BinOp, FormalParameter, FormalParameters, MethodDefinitionKind, Node, NodeBase,
     PropertyDefinition, UnaryOp, VarKind,
 };
+use rapidus_lexer::token::{Keyword, Kind, Symbol, Token};
+pub use rapidus_lexer::Error;
+use rapidus_lexer::{get_error_line, Lexer};
 use std::fs::OpenOptions;
 use std::io::Read;
 use std::path::Path;
-use token::{Keyword, Kind, Symbol, Token};
 
 macro_rules! expect {
     ($self:ident, $kind:expr, $msg:expr) => {{
@@ -30,22 +28,10 @@ macro_rules! expect_no_lineterminator {
     }};
 }
 
-// TODO: It's dirty. Make it simpler.
-#[derive(Clone, Debug, PartialEq)]
-pub enum Error {
-    NormalEOF,
-    UnexpectedEOF(String),              // error msg
-    UnexpectedToken(SourceLoc, String), // position, error msg
-    UnsupportedFeature(SourceLoc),      // position
-    Expect(SourceLoc, String),          // position, error msg
-    InvalidToken(SourceLoc),
-    General(SourceLoc, String),
-}
-
 #[derive(Clone, Debug)]
 pub struct Parser {
     pub file_name: String,
-    pub lexer: lexer::Lexer,
+    pub lexer: Lexer,
 }
 
 #[derive(Clone, Debug)]
@@ -63,7 +49,7 @@ impl Parser {
     pub fn new(file_name: impl Into<String>, code: impl Into<String>) -> Parser {
         Parser {
             file_name: file_name.into(),
-            lexer: lexer::Lexer::new(code.into()),
+            lexer: Lexer::new(code.into()),
         }
     }
 

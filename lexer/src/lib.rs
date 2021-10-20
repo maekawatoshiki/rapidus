@@ -1,11 +1,24 @@
+pub mod token;
+
 use crate::token::{convert_reserved_keyword, Kind, Symbol, Token};
-use crate::Error;
 use rapidus_ast::loc::SourceLoc;
 
 use std::collections::VecDeque;
 
 use encoding::all::UTF_16BE;
 use encoding::{DecoderTrap, Encoding};
+
+// TODO: Simplify
+#[derive(Clone, Debug, PartialEq)]
+pub enum Error {
+    NormalEOF,
+    UnexpectedEOF(String),              // error msg
+    UnexpectedToken(SourceLoc, String), // position, error msg
+    UnsupportedFeature(SourceLoc),      // position
+    Expect(SourceLoc, String),          // position, error msg
+    InvalidToken(SourceLoc),
+    General(SourceLoc, String),
+}
 
 #[derive(Clone, Debug)]
 pub struct Lexer {

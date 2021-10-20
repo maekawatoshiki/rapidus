@@ -11,7 +11,8 @@ use crate::vm::{
     jsvalue::symbol::GlobalSymbolRegistry, jsvalue::value::*,
 };
 use rapidus_ast::Node;
-use rapidus_parser::{lexer::get_error_line, ScriptInfo};
+use rapidus_lexer::get_error_line;
+use rapidus_parser::ScriptInfo;
 use rustc_hash::FxHashMap;
 use std::time::{Duration, Instant};
 
