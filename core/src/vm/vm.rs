@@ -12,7 +12,7 @@ use crate::vm::{
 };
 use rapidus_ast::Node;
 use rapidus_lexer::get_error_line;
-use rapidus_parser::ScriptInfo;
+use rapidus_parser::script::ScriptInfo;
 use rustc_hash::FxHashMap;
 use std::time::{Duration, Instant};
 
@@ -267,11 +267,11 @@ impl VM {
                 if let Some(loc) = loc_in_script {
                     runtime_error(format!(
                         "{}:{}:{}: Uncaught Exception",
-                        info.file_name.to_string_lossy(),
+                        info.file_path().to_string_lossy(),
                         loc.line,
                         loc.column
                     ));
-                    let msg = get_error_line(&info.code, loc);
+                    let msg = get_error_line(&info.code(), loc);
                     println!("{}", msg);
                 } else {
                     runtime_error("Uncaught Exception");

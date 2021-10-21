@@ -1,3 +1,5 @@
+pub mod script;
+
 use ansi_term::Colour;
 use rapidus_ast::{
     loc::SourceLoc, BinOp, FormalParameter, FormalParameters, MethodDefinitionKind, Node, NodeBase,
@@ -6,6 +8,7 @@ use rapidus_ast::{
 use rapidus_lexer::token::{Keyword, Kind, Symbol, Token};
 pub use rapidus_lexer::Error;
 use rapidus_lexer::{get_error_line, Lexer};
+use script::ScriptInfo;
 use std::fs::OpenOptions;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -34,16 +37,6 @@ pub struct Parser {
     pub lexer: Lexer,
 }
 
-#[derive(Clone, Debug)]
-/// Information about a source file (module).
-pub struct ScriptInfo {
-    /// File name with Absolute path.
-    pub file_name: PathBuf,
-
-    /// Script text.
-    pub code: String,
-}
-
 impl Parser {
     pub fn new(file_name: impl Into<PathBuf>, code: impl Into<String>) -> Parser {
         Parser {
@@ -61,7 +54,7 @@ impl Parser {
         let absolute_path = match path.canonicalize() {
             Ok(path) => path,
             Err(ioerr) => {
-                // TODO: Error::General may be not suitable. We need a richer way to represent this error.
+                // TODO: Error::General may not be suitable. We need a richer way to represent this error.
                 return Err(Error::General(SourceLoc::default(), ioerr.to_string()));
             }
         };
@@ -74,7 +67,7 @@ impl Parser {
                 .ok()
                 .expect("cannot read file"),
             Err(ioerr) => {
-                // TODO: Error::General may be not suitable. We need a richer way to represent this error.
+                // TODO: Error::General may not be suitable. We need a richer way to represent this error.
                 return Err(Error::General(SourceLoc::default(), ioerr.to_string()));
             }
         };
@@ -83,10 +76,7 @@ impl Parser {
     }
 
     pub fn into_script_info(self) -> ScriptInfo {
-        ScriptInfo {
-            file_name: self.file_name,
-            code: self.lexer.code,
-        }
+        ScriptInfo::new(self.file_name, self.lexer.code)
     }
 
     /// Display error position in the source script.
