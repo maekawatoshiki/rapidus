@@ -25,12 +25,7 @@ pub struct Lexer {
     pub code: String,
 
     /// Current positon in code.
-    /// After tokenizing, always indicate EOF.
-    // pub pos: usize,
     pub loc: SourceLoc,
-
-    /// Current line number
-    // pub line: usize,
 
     /// Hold all tokens
     pub buf: VecDeque<Token>,
