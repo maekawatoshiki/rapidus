@@ -120,6 +120,7 @@ impl MemoryAllocator {
                 object_prototypes.function.initial_trace(&mut markset);
                 object_prototypes.string.initial_trace(&mut markset);
                 object_prototypes.array.initial_trace(&mut markset);
+                object_prototypes.date.initial_trace(&mut markset);
 
                 constant_table.initial_trace(&mut markset);
 
@@ -231,6 +232,8 @@ impl ExecContext {
     pub fn initial_trace(&self, markset: &mut MarkSet) {
         mark!(markset, self.lexical_environment.as_ptr());
         mark!(markset, self.variable_environment.as_ptr());
+        self.lexical_environment.initial_trace(markset);
+        self.variable_environment.initial_trace(markset);
         for env in &self.saved_lexical_environment {
             mark!(markset, env.as_ptr());
         }
@@ -254,12 +257,17 @@ impl GcTarget for LexicalEnvironment {
     fn initial_trace(&self, markset: &mut MarkSet) {
         fn trace_record(record: &EnvironmentRecord, markset: &mut MarkSet) {
             match record {
-                EnvironmentRecord::Declarative(record)
-                | EnvironmentRecord::Function { record, .. }
-                | EnvironmentRecord::Module { record, .. } => {
+                EnvironmentRecord::Declarative(record) => {
                     for (_, val) in record {
                         val.initial_trace(markset);
                     }
+                }
+                EnvironmentRecord::Function { record, this }
+                | EnvironmentRecord::Module { record, this } => {
+                    for (_, val) in record {
+                        val.initial_trace(markset);
+                    }
+                    this.initial_trace(markset);
                 }
                 EnvironmentRecord::Object(obj) | EnvironmentRecord::Global(obj) => {
                     obj.initial_trace(markset)
@@ -281,12 +289,17 @@ impl GcTarget for LexicalEnvironment {
             markset: &mut MarkSet,
         ) {
             match record {
-                EnvironmentRecord::Declarative(record)
-                | EnvironmentRecord::Function { record, .. }
-                | EnvironmentRecord::Module { record, .. } => {
+                EnvironmentRecord::Declarative(record) => {
                     for (_, val) in record {
                         val.trace(allocator, markset);
                     }
+                }
+                EnvironmentRecord::Function { record, this }
+                | EnvironmentRecord::Module { record, this } => {
+                    for (_, val) in record {
+                        val.trace(allocator, markset);
+                    }
+                    this.initial_trace(markset);
                 }
                 EnvironmentRecord::Object(obj) | EnvironmentRecord::Global(obj) => {
                     obj.trace(allocator, markset)
@@ -319,7 +332,12 @@ impl Value {
     fn initial_trace(&self, markset: &mut MarkSet) {
         match self {
             Value::Object(obj) => {
-                mark!(markset, *obj);
+                if *obj as *mut u8 != 0 as *mut u8 {
+                    if markset.insert(GcTargetKey(*obj)) {
+                        let obj = unsafe { &**obj };
+                        obj.initial_trace(markset);
+                    }
+                }
             }
             Value::String(s) => {
                 mark!(markset, *s);
@@ -330,7 +348,17 @@ impl Value {
 
     fn trace(&self, allocator: &mut MemoryAllocator, markset: &mut MarkSet) {
         match self {
-            Value::Object(obj) => mark_if_white!(allocator, markset, *obj),
+            Value::Object(obj) => {
+                if *obj as *mut u8 != 0 as *mut u8 {
+                    let mark = allocator.allocated_memory.get(&GcTargetKey(*obj)).unwrap();
+                    if mark == &allocator.white.flip_white() {
+                        if markset.insert(GcTargetKey(*obj)) {
+                            let obj = unsafe { &**obj };
+                            obj.trace(allocator, markset);
+                        }
+                    }
+                }
+            }
             Value::String(s) => mark_if_white!(allocator, markset, *s),
             _ => {}
         }
