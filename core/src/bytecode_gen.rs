@@ -207,6 +207,11 @@ impl<'a> ByteCodeGenerator<'a> {
         self.append_int32(dst, iseq);
     }
 
+    pub fn append_jmp_if_true(&self, dst: i32, iseq: &mut ByteCode) {
+        iseq.push(VMInst::JMP_IF_TRUE);
+        self.append_int32(dst, iseq);
+    }
+
     pub fn append_return_sub(&self, iseq: &mut ByteCode) {
         iseq.push(VMInst::RETURN_SUB);
     }
@@ -349,6 +354,10 @@ pub fn show_inst(code: &ByteCode, i: usize, const_table: &constant::ConstantTabl
                 let int32 = read_int32(code, i + 1);
                 format!("JmpIfFalse {:05}", i as i32 + int32 + 5)
             }
+            VMInst::JMP_IF_TRUE => {
+                let int32 = read_int32(code, i + 1);
+                format!("JmpIfTrue {:05}", i as i32 + int32 + 5)
+            }
             VMInst::JMP => {
                 let int32 = read_int32(code, i + 1);
                 format!("Jmp {:05}", i as i32 + int32 + 5)
@@ -440,6 +449,7 @@ pub fn inst_to_inst_name(inst: u8) -> &'static str {
         VMInst::GET_MEMBER => "GetMember",
         VMInst::SET_MEMBER => "SetMember",
         VMInst::JMP_IF_FALSE => "JmpIfFalse",
+        VMInst::JMP_IF_TRUE => "JmpIfTrue",
         VMInst::JMP => "Jmp",
         VMInst::CALL => "Call",
         VMInst::CALL_METHOD => "CallMethod",
@@ -516,6 +526,7 @@ pub mod VMInst {
     pub const SHR: u8 = 0x21;
     pub const ZFSHR: u8 = 0x22;
     pub const JMP_IF_FALSE: u8 = 0x25;
+    pub const JMP_IF_TRUE: u8 = 0x50;
     pub const JMP: u8 = 0x26;
     pub const CALL: u8 = 0x27;
     pub const CALL_METHOD: u8 = 0x41;
@@ -542,8 +553,8 @@ pub mod VMInst {
     pub fn get_inst_size(inst: u8) -> Option<usize> {
         match inst {
             THROW | RETURN_SUB | SET_OUTER_ENV | POP_ENV | TYPEOF | PUSH_NULL => Some(1),
-            CONSTRUCT | CREATE_OBJECT | PUSH_CONST | PUSH_INT32 | JMP_IF_FALSE | RETURN_TRY
-            | DECL_VAR | LOOP_START | JMP | SET_VALUE | GET_VALUE | CALL | JMP_SUB
+            CONSTRUCT | CREATE_OBJECT | PUSH_CONST | PUSH_INT32 | JMP_IF_FALSE | JMP_IF_TRUE
+            | RETURN_TRY | DECL_VAR | LOOP_START | JMP | SET_VALUE | GET_VALUE | CALL | JMP_SUB
             | CALL_METHOD | PUSH_ENV | DECL_LET | DECL_CONST => Some(5),
             PUSH_INT8 => Some(2),
             PUSH_FALSE | END | PUSH_TRUE | PUSH_THIS | ADD | SUB | MUL | DIV | REM | LT | EXP

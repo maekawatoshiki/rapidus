@@ -1,5 +1,5 @@
 let assert = function(expr, ans) {
-  if (expr !== ans) throw 100
+  if (expr !== ans) throw 'assertion failed'
 }
 
 assert(3 & 1, 1)
@@ -29,3 +29,10 @@ assert(3 >= 4, false)
 let a = 13
 assert(a == 13 ? true : false, true)
 assert(a != 7 ? true : false, true)
+assert(2 && 3, 3)
+assert("hello" && "world", "world")
+assert(0 && "world", 0)
+assert(null && "world", null)
+assert(123 || 234, 123)
+assert(0 || 234, 234)
+assert(undefined || 234, 234)

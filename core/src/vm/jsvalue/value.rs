@@ -621,6 +621,8 @@ impl Value {
         match self {
             Value::Bool(0) => false,
             Value::Bool(1) => true,
+            Value::Other(NULL) => false,
+            Value::Other(UNDEFINED) => false,
             Value::Number(num) => {
                 if *num == 0f64 || num.is_nan() {
                     false

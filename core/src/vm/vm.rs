@@ -760,6 +760,16 @@ impl VM {
                             (self.current_context.pc as isize + dst as isize) as usize;
                     }
                 }
+                VMInst::JMP_IF_TRUE => {
+                    self.current_context.pc += 1;
+                    read_int32!(self, dst, i32);
+                    let cond_boxed = self.current_context.stack.pop().unwrap();
+                    let cond: Value = cond_boxed.into();
+                    if cond.to_boolean() {
+                        self.current_context.pc =
+                            (self.current_context.pc as isize + dst as isize) as usize;
+                    }
+                }
                 VMInst::JMP => {
                     self.current_context.pc += 1;
                     read_int32!(self, dst, i32);
