@@ -244,8 +244,8 @@ impl Parser {
         }
         let mut is_expression_statement = false;
         let stmt = match tok.kind {
-            Kind::Keyword(Keyword::If) => self.read_if_statement(),
-            Kind::Keyword(Keyword::Var) => self.read_variable_statement(),
+            Kind::Keyword(Keyword::If) => self.read_if_statement(tok.loc),
+            Kind::Keyword(Keyword::Var) => self.read_variable_statement(tok.loc),
             Kind::Keyword(Keyword::While) => self.read_while_statement(),
             Kind::Keyword(Keyword::For) => self.read_for_statement(),
             Kind::Keyword(Keyword::Return) => self.read_return_statement(),
@@ -289,13 +289,12 @@ impl Parser {
 
 impl Parser {
     /// https://tc39.github.io/ecma262/#prod-VariableStatement
-    fn read_variable_statement(&mut self) -> Result<Node, Error> {
-        self.read_variable_declaration_list()
+    fn read_variable_statement(&mut self, loc: SourceLoc) -> Result<Node, Error> {
+        self.read_variable_declaration_list(loc)
     }
 
     /// https://tc39.github.io/ecma262/#prod-VariableDeclarationList
-    fn read_variable_declaration_list(&mut self) -> Result<Node, Error> {
-        let pos = self.lexer.get_current_loc();
+    fn read_variable_declaration_list(&mut self, loc: SourceLoc) -> Result<Node, Error> {
         let mut list = vec![];
 
         loop {
@@ -305,7 +304,7 @@ impl Parser {
             }
         }
 
-        Ok(Node::new(NodeBase::StatementList(list), pos))
+        Ok(Node::new(NodeBase::StatementList(list), loc))
     }
 
     fn variable_declaration_continuation(&mut self) -> Result<bool, Error> {
@@ -368,8 +367,7 @@ impl Parser {
 }
 
 impl Parser {
-    fn read_if_statement(&mut self) -> Result<Node, Error> {
-        let loc = self.lexer.get_current_loc();
+    fn read_if_statement(&mut self, loc: SourceLoc) -> Result<Node, Error> {
         let oparen = self.lexer.next_skip_lineterminator()?;
         if oparen.kind != Kind::Symbol(Symbol::OpeningParen) {
             return Err(Error::Expect(oparen.loc, "expect '('".to_string()));
@@ -432,10 +430,10 @@ impl Parser {
         let init = match self.lexer.peek(0)? {
             Token {
                 kind: Kind::Keyword(Keyword::Var),
-                ..
+                loc,
             } => {
                 assert_eq!(self.lexer.next()?.kind, Kind::Keyword(Keyword::Var));
-                self.read_variable_declaration_list()?
+                self.read_variable_declaration_list(loc)?
             }
             Token {
                 kind: Kind::Keyword(Keyword::Let) | Kind::Keyword(Keyword::Const),

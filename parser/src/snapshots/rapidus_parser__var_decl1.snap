@@ -34,7 +34,7 @@ Node {
                         },
                     ],
                 ),
-                loc: Loc(line:1,column:4,pos:4),
+                loc: Loc(line:1,column:0,pos:0),
             },
         ],
     ),

@@ -39,7 +39,7 @@ Node {
                         loc: Loc(line:4,column:12,pos:59),
                     },
                 ),
-                loc: Loc(line:1,column:3,pos:3),
+                loc: Loc(line:1,column:0,pos:0),
             },
         ],
     ),
