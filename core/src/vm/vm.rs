@@ -391,8 +391,6 @@ impl VM {
                 }};
             }
 
-            self.gc_mark();
-
             let inst = self.current_context.func_ref.code[self.current_context.pc];
             self.profile.current_inst = inst;
             match inst {
@@ -419,6 +417,7 @@ impl VM {
                             .into(),
                     );
                     //}
+                    self.gc_mark();
                 }
                 VMInst::SUB => {
                     self.current_context.pc += 1;
@@ -427,6 +426,7 @@ impl VM {
                     self.current_context
                         .stack
                         .push(lhs.sub(&mut self.factory.memory_allocator, rhs).into());
+                    self.gc_mark();
                 }
                 VMInst::MUL => {
                     self.current_context.pc += 1;
@@ -453,6 +453,7 @@ impl VM {
                     self.current_context
                         .stack
                         .push(lhs.exp(&mut self.factory.memory_allocator, rhs).into());
+                    self.gc_mark();
                 }
                 VMInst::EQ => {
                     self.current_context.pc += 1;
@@ -461,6 +462,7 @@ impl VM {
                     self.current_context
                         .stack
                         .push(lhs.eq(&mut self.factory.memory_allocator, rhs).into());
+                    self.gc_mark();
                 }
                 VMInst::SEQ => {
                     self.current_context.pc += 1;
@@ -475,6 +477,7 @@ impl VM {
                     self.current_context
                         .stack
                         .push(lhs.ne(&mut self.factory.memory_allocator, rhs).into());
+                    self.gc_mark();
                 }
                 VMInst::SNE => {
                     self.current_context.pc += 1;
@@ -489,6 +492,7 @@ impl VM {
                     self.current_context
                         .stack
                         .push(lhs.lt(&mut self.factory.memory_allocator, rhs).into());
+                    self.gc_mark();
                 }
                 VMInst::LE => {
                     self.current_context.pc += 1;
@@ -497,6 +501,7 @@ impl VM {
                     self.current_context
                         .stack
                         .push(lhs.le(&mut self.factory.memory_allocator, rhs).into());
+                    self.gc_mark();
                 }
                 VMInst::GT => {
                     self.current_context.pc += 1;
@@ -505,6 +510,7 @@ impl VM {
                     self.current_context
                         .stack
                         .push(rhs.lt(&mut self.factory.memory_allocator, lhs).into());
+                    self.gc_mark();
                 }
                 VMInst::GE => {
                     self.current_context.pc += 1;
@@ -513,6 +519,7 @@ impl VM {
                     self.current_context
                         .stack
                         .push(rhs.le(&mut self.factory.memory_allocator, lhs).into());
+                    self.gc_mark();
                 }
                 VMInst::AND => {
                     self.current_context.pc += 1;
@@ -521,6 +528,7 @@ impl VM {
                     self.current_context
                         .stack
                         .push(rhs.and(&mut self.factory.memory_allocator, lhs).into());
+                    self.gc_mark();
                 }
                 VMInst::OR => {
                     self.current_context.pc += 1;
@@ -529,6 +537,7 @@ impl VM {
                     self.current_context
                         .stack
                         .push(rhs.or(&mut self.factory.memory_allocator, lhs).into());
+                    self.gc_mark();
                 }
                 VMInst::XOR => {
                     self.current_context.pc += 1;
@@ -537,6 +546,7 @@ impl VM {
                     self.current_context
                         .stack
                         .push(rhs.xor(&mut self.factory.memory_allocator, lhs).into());
+                    self.gc_mark();
                 }
                 VMInst::NOT => {
                     self.current_context.pc += 1;
@@ -544,6 +554,7 @@ impl VM {
                     self.current_context
                         .stack
                         .push(rhs.not(&mut self.factory.memory_allocator).into());
+                    self.gc_mark();
                 }
                 VMInst::SHL => {
                     self.current_context.pc += 1;
@@ -552,6 +563,7 @@ impl VM {
                     self.current_context
                         .stack
                         .push(lhs.shift_l(&mut self.factory.memory_allocator, rhs).into());
+                    self.gc_mark();
                 }
                 VMInst::SHR => {
                     self.current_context.pc += 1;
@@ -560,6 +572,7 @@ impl VM {
                     self.current_context
                         .stack
                         .push(lhs.shift_r(&mut self.factory.memory_allocator, rhs).into());
+                    self.gc_mark();
                 }
                 VMInst::ZFSHR => {
                     self.current_context.pc += 1;
@@ -569,6 +582,7 @@ impl VM {
                         lhs.z_shift_r(&mut self.factory.memory_allocator, rhs)
                             .into(),
                     );
+                    self.gc_mark();
                 }
                 VMInst::NEG => {
                     self.current_context.pc += 1;
@@ -581,6 +595,7 @@ impl VM {
                     self.current_context
                         .stack
                         .push(val.positive(&mut self.factory.memory_allocator).into());
+                    self.gc_mark();
                 }
                 VMInst::LNOT => {
                     self.current_context.pc += 1;
@@ -717,17 +732,18 @@ impl VM {
                     let mut func = func_template.copy_object(&mut self.factory.memory_allocator);
                     func.set_function_outer_environment(self.current_context.lexical_environment);
                     self.current_context.stack.push(func.into());
+                    self.gc_mark();
                 }
                 VMInst::CREATE_OBJECT => {
                     self.current_context.pc += 1;
                     read_int32!(self, id, usize);
                     self.create_object(id)?;
-                    // self.gc_mark();
+                    self.gc_mark();
                 }
                 VMInst::CREATE_ARRAY => {
                     self.current_context.pc += 1;
                     self.create_array()?;
-                    // self.gc_mark();
+                    self.gc_mark();
                 }
                 VMInst::DOUBLE => {
                     self.current_context.pc += 1;
