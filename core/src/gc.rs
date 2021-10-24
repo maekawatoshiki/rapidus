@@ -39,7 +39,6 @@ pub struct MemoryAllocator {
     locked: MarkSet,
     pub state: GCState,
     white: MarkState,
-    counter: u32,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -78,12 +77,11 @@ impl MemoryAllocator {
             locked: MarkSet::default(),
             state: GCState::Initial,
             white: MarkState::White,
-            counter: 0,
         }
     }
 
     pub fn alloc<T: GcTarget + 'static>(&mut self, data: T) -> *mut T {
-        let data_size = mem::size_of_val(&data);
+        let data_size = data.size();
         let ptr = Box::into_raw(Box::new(data));
         self.allocated_size += data_size;
         self.allocated_memory.insert(GcTargetKey(ptr), self.white);
@@ -100,11 +98,9 @@ impl MemoryAllocator {
         cur_context: &ExecContext,
         saved_context: &Vec<ExecContext>,
     ) {
-        self.counter += 1;
-        if self.counter < 100 {
+        if self.allocated_size < 100_000_000 {
             return;
-        };
-        self.counter = 0;
+        }
 
         let mut markset = MarkSet::default();
 
@@ -207,6 +203,9 @@ pub trait GcTarget {
     fn initial_trace(&self, markset: &mut MarkSet);
     fn trace(&self, allocator: &mut MemoryAllocator, makeset: &mut MarkSet);
     fn free(&self) -> usize;
+    fn size(&self) -> usize {
+        mem::size_of_val(self)
+    }
 }
 
 macro_rules! mark {
@@ -323,8 +322,10 @@ impl GcTarget for ::std::ffi::CString {
     fn initial_trace(&self, _markset: &mut MarkSet) {}
     fn trace(&self, _allocator: &mut MemoryAllocator, _markset: &mut MarkSet) {}
     fn free(&self) -> usize {
-        // mem::drop(self);
-        mem::size_of::<::std::ffi::CString>()
+        self.size()
+    }
+    fn size(&self) -> usize {
+        mem::size_of_val(self) + self.as_bytes().len()
     }
 }
 

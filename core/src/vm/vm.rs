@@ -391,6 +391,8 @@ impl VM {
                 }};
             }
 
+            self.gc_mark();
+
             let inst = self.current_context.func_ref.code[self.current_context.pc];
             self.profile.current_inst = inst;
             match inst {
@@ -720,12 +722,12 @@ impl VM {
                     self.current_context.pc += 1;
                     read_int32!(self, id, usize);
                     self.create_object(id)?;
-                    self.gc_mark();
+                    // self.gc_mark();
                 }
                 VMInst::CREATE_ARRAY => {
                     self.current_context.pc += 1;
                     self.create_array()?;
-                    self.gc_mark();
+                    // self.gc_mark();
                 }
                 VMInst::DOUBLE => {
                     self.current_context.pc += 1;
@@ -817,7 +819,7 @@ impl VM {
                     }
                     // If call from built-in func, do not GC.
                     if !self.is_called_from_native {
-                        self.gc_mark()
+                        // self.gc_mark()
                     };
 
                     if self.is_trace {
@@ -923,8 +925,14 @@ impl VM {
             .fold(0, |acc, x| acc + x.1.as_micros()) as f64;
 
         let total_time = total_gc_time + total_inst_time;
-        println!("total execution time: {:>10} microsecs", total_time);
-        println!("gc time:              {:>10} microsecs", total_gc_time);
+        println!(
+            "total execution time: {:>10} secs",
+            total_time / 1000.0 / 1000.0
+        );
+        println!(
+            "gc time:              {:>10} secs",
+            total_gc_time / 1000.0 / 1000.0
+        );
 
         println!("Inst          total %    ave.time / inst");
         for (i, prof) in self.profile.inst_profile.iter().enumerate() {
