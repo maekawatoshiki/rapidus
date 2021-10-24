@@ -86,9 +86,11 @@ impl Parser {
     pub fn show_error_at(&self, loc: SourceLoc, msg: impl Into<String>) {
         let err_line = get_error_line(&self.lexer.code, loc);
         eprintln!(
-            "{}: line {}: {}\n{}",
+            "{}: {}:{}:{}: {}\n{}",
             Colour::Red.bold().paint("Syntax error"),
+            self.file_name.to_string_lossy(),
             loc.line,
+            loc.column,
             msg.into(),
             err_line,
         );
