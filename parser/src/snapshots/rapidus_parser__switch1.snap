@@ -1,0 +1,41 @@
+---
+source: parser/src/lib.rs
+expression: parser.parse_all().unwrap()
+
+---
+Node {
+    base: StatementList(
+        [
+            Node {
+                base: Switch(
+                    Node {
+                        base: Number(
+                            1.0,
+                        ),
+                        loc: Loc(line:1,column:7,pos:7),
+                    },
+                    Node {
+                        base: Block(
+                            [
+                                Node {
+                                    base: CaseLabel(
+                                        Node {
+                                            base: Number(
+                                                1.0,
+                                            ),
+                                            loc: Loc(line:2,column:17,pos:29),
+                                        },
+                                    ),
+                                    loc: Loc(line:2,column:12,pos:24),
+                                },
+                            ],
+                        ),
+                        loc: Loc(line:1,column:11,pos:11),
+                    },
+                ),
+                loc: Loc(line:1,column:0,pos:0),
+            },
+        ],
+    ),
+    loc: Loc(line:1,column:0,pos:0),
+}

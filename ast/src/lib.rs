@@ -72,6 +72,7 @@ pub enum NodeBase {
     BinaryOp(Box<Node>, Box<Node>, BinOp),
     TernaryOp(Box<Node>, Box<Node>, Box<Node>),
     Return(Option<Box<Node>>),
+    Switch(Box<Node>, Box<Node>),
     CaseLabel(Box<Node>),
     Label(String),
     Break(Option<String>),

@@ -133,21 +133,22 @@ impl Parser {
 
 impl Parser {
     fn read_statement_list(&mut self) -> Result<Node, Error> {
-        self.read_statements(false, false)
+        self.read_statements(false, false, false)
     }
 
     fn read_block_statement(&mut self) -> Result<Node, Error> {
-        self.read_statements(true, true)
+        self.read_statements(true, true, false)
     }
 
     fn read_block(&mut self) -> Result<Node, Error> {
-        self.read_statements(true, false)
+        self.read_statements(true, false, false)
     }
 
     fn read_statements(
         &mut self,
         break_when_closingbrase: bool,
         is_block_statement: bool,
+        accept_case_label: bool,
     ) -> Result<Node, Error> {
         let loc = self.lexer.get_current_loc();
         let mut items = vec![];
@@ -181,7 +182,7 @@ impl Parser {
                 }
             }
 
-            match self.read_statement_list_item() {
+            match self.read_statement_list_item(accept_case_label) {
                 Ok(ok) => items.push(ok),
                 Err(Error::NormalEOF) => {
                     return Err(Error::UnexpectedEOF("".to_string()));
@@ -207,13 +208,13 @@ impl Parser {
     }
 
     /// https://tc39.github.io/ecma262/#prod-StatementListItem
-    fn read_statement_list_item(&mut self) -> Result<Node, Error> {
+    fn read_statement_list_item(&mut self, accept_case_label: bool) -> Result<Node, Error> {
         if let Ok(tok) = self.lexer.peek_skip_lineterminator() {
             match tok.kind {
                 Kind::Keyword(Keyword::Function) => self.read_declaration(),
                 Kind::Keyword(Keyword::Const) => self.read_declaration(),
                 Kind::Keyword(Keyword::Let) => self.read_declaration(),
-                _ => self.read_statement(),
+                _ => self.read_statement_sub(accept_case_label),
             }
         } else {
             Err(Error::NormalEOF)
@@ -222,11 +223,14 @@ impl Parser {
 
     /// http://www.ecma-international.org/ecma-262/9.0/index.html#prod-Statement
     fn read_statement(&mut self) -> Result<Node, Error> {
+        self.read_statement_sub(false)
+    }
+
+    fn read_statement_sub(&mut self, accept_case_label: bool) -> Result<Node, Error> {
         let tok = self.lexer.next_skip_lineterminator()?;
 
         // Case label
-        // TODO: Raise error if not in switch block
-        if Kind::Keyword(Keyword::Case) == tok.kind {
+        if accept_case_label && matches!(tok.kind, Kind::Keyword(Keyword::Case)) {
             let val = self.read_assignment_expression()?;
             let maybe_colon = self.lexer.peek_skip_lineterminator();
             if let Ok(Token {
@@ -234,10 +238,7 @@ impl Parser {
                 ..
             }) = maybe_colon
             {
-                assert_eq!(
-                    self.lexer.next_skip_lineterminator()?.kind,
-                    Kind::Symbol(Symbol::Colon)
-                );
+                assert!(self.lexer.next_skip_lineterminator().is_ok());
                 return Ok(Node::new(NodeBase::CaseLabel(Box::new(val)), tok.loc));
             }
         }
@@ -259,9 +260,11 @@ impl Parser {
                 return Ok(Node::new(NodeBase::Label(name.clone()), tok.loc));
             }
         }
+
         let mut is_expression_statement = false;
         let stmt = match tok.kind {
             Kind::Keyword(Keyword::If) => self.read_if_statement(tok.loc),
+            Kind::Keyword(Keyword::Switch) => self.read_switch_statement(tok.loc),
             Kind::Keyword(Keyword::Var) => self.read_variable_statement(tok.loc),
             Kind::Keyword(Keyword::While) => self.read_while_statement(),
             Kind::Keyword(Keyword::For) => self.read_for_statement(),
@@ -416,6 +419,24 @@ impl Parser {
                 Box::new(then_),
                 Box::new(Node::new(NodeBase::Nope, loc_else)),
             ),
+            loc,
+        ))
+    }
+
+    fn read_switch_statement(&mut self, loc: SourceLoc) -> Result<Node, Error> {
+        let oparen = self.lexer.next_skip_lineterminator()?;
+        if oparen.kind != Kind::Symbol(Symbol::OpeningParen) {
+            return Err(Error::Expect(oparen.loc, "expect '('".to_string()));
+        }
+        let val = self.read_expression()?;
+        let cparen = self.lexer.next_skip_lineterminator()?;
+        if cparen.kind != Kind::Symbol(Symbol::ClosingParen) {
+            return Err(Error::Expect(cparen.loc, "expect ')'".to_string()));
+        }
+        expect!(self, Kind::Symbol(Symbol::OpeningBrace), "expect '{'");
+        let block = self.read_statements(true, true, true)?;
+        Ok(Node::new(
+            NodeBase::Switch(Box::new(val), Box::new(block)),
             loc,
         ))
     }
@@ -1972,6 +1993,18 @@ fn if3() {
         let mut parser = Parser::new("test", input.to_string());
         parser.parse_all().expect_err("should be error");
     }
+}
+
+#[test]
+fn switch1() {
+    let mut parser = Parser::new(
+        "test",
+        "switch(1) {
+            case 1:
+        }"
+        .to_string(),
+    );
+    insta::assert_debug_snapshot!(parser.parse_all().unwrap());
 }
 
 #[test]
