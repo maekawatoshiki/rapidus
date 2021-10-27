@@ -434,7 +434,7 @@ impl Parser {
             return Err(Error::Expect(cparen.loc, "expect ')'".to_string()));
         }
         expect!(self, Kind::Symbol(Symbol::OpeningBrace), "expect '{'");
-        let block = self.read_statements(true, true, true)?;
+        let block = self.read_statements(true, false, true)?;
         Ok(Node::new(
             NodeBase::Switch(Box::new(val), Box::new(block)),
             loc,

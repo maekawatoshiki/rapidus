@@ -72,6 +72,9 @@ pub enum Level {
         break_jmp_instr_pos: Vec<usize>,
         continue_jmp_instr_pos: Vec<usize>,
     },
+    Switch {
+        cases: FxHashMap<usize, Box<Node>>,
+    },
 }
 
 impl<'a> CodeGenerator<'a> {
@@ -133,12 +136,14 @@ impl<'a> CodeGenerator<'a> {
             NodeBase::If(ref cond, ref then, ref else_) => {
                 self.visit_if(&*cond, &*then, &*else_, iseq)?
             }
+            NodeBase::Switch(ref val, ref body) => self.visit_switch(&*val, &*body, iseq)?,
             NodeBase::While(ref cond, ref body) => self.visit_while(&*cond, &*body, iseq)?,
             NodeBase::For(ref init, ref cond, ref step, ref body) => {
                 self.visit_for(&*init, &*cond, &*step, &*body, iseq)?
             }
             NodeBase::Break(ref name) => self.visit_break(name, iseq)?,
             NodeBase::Continue(ref name) => self.visit_continue(name, iseq)?,
+            NodeBase::CaseLabel(ref val) => self.visit_case(val, iseq)?,
             NodeBase::Try(ref try_clause, ref catch, ref param, ref finally) => {
                 self.visit_try(&*try_clause, &*catch, &*param, &*finally, iseq)?
             }
@@ -322,7 +327,28 @@ impl<'a> CodeGenerator<'a> {
         Ok(())
     }
 
-    pub fn visit_while(&mut self, cond: &Node, body: &Node, iseq: &mut ByteCode) -> CodeGenResult {
+    fn visit_switch(&mut self, val: &Node, body: &Node, iseq: &mut ByteCode) -> CodeGenResult {
+        self.current_function().level.push(Level::Switch {
+            cases: FxHashMap::default(),
+        });
+
+        self.visit(val, iseq, true)?;
+
+        // switch jump
+
+        self.visit(body, iseq, false)?;
+
+        assert!(self.current_function().level.pop().is_some());
+
+        // self.current_function()
+        //     .level
+        //     .pop()
+        //     .unwrap()
+        //     .replace_break_and_continue(&mut self.bytecode_generator, iseq, end, start);
+        Ok(())
+    }
+
+    fn visit_while(&mut self, cond: &Node, body: &Node, iseq: &mut ByteCode) -> CodeGenResult {
         // name:
         //   while(...) {} // <- this while is named 'name'
         // let name = self.state.loop_names.pop();
@@ -433,6 +459,16 @@ impl<'a> CodeGenerator<'a> {
             .1
             .push(continue_instr_pos);
 
+        Ok(())
+    }
+
+    pub fn visit_case(&mut self, val: &Node, iseq: &mut ByteCode) -> CodeGenResult {
+        match self.current_function().level.last_mut().unwrap() {
+            Level::Switch { ref mut cases } => {
+                cases.insert(iseq.len(), Box::new(val.clone()));
+            }
+            _ => unreachable!(),
+        }
         Ok(())
     }
 
