@@ -72,7 +72,8 @@ pub enum NodeBase {
     BinaryOp(Box<Node>, Box<Node>, BinOp),
     TernaryOp(Box<Node>, Box<Node>, Box<Node>),
     Return(Option<Box<Node>>),
-    Label(String, Box<Node>),
+    CaseLabel(Box<Node>),
+    Label(String),
     Break(Option<String>),
     Continue(Option<String>),
     Try(Box<Node>, Box<Node>, Box<Node>, Box<Node>), // Try, Catch, Param, Finally

@@ -224,6 +224,24 @@ impl Parser {
     fn read_statement(&mut self) -> Result<Node, Error> {
         let tok = self.lexer.next_skip_lineterminator()?;
 
+        // Case label
+        // TODO: Raise error if not in switch block
+        if Kind::Keyword(Keyword::Case) == tok.kind {
+            let val = self.read_assignment_expression()?;
+            let maybe_colon = self.lexer.peek_skip_lineterminator();
+            if let Ok(Token {
+                kind: Kind::Symbol(Symbol::Colon),
+                ..
+            }) = maybe_colon
+            {
+                assert_eq!(
+                    self.lexer.next_skip_lineterminator()?.kind,
+                    Kind::Symbol(Symbol::Colon)
+                );
+                return Ok(Node::new(NodeBase::CaseLabel(Box::new(val)), tok.loc));
+            }
+        }
+
         // Label
         if let Kind::Identifier(ref name) = tok.kind {
             let maybe_colon = self.lexer.peek_skip_lineterminator();
@@ -237,11 +255,8 @@ impl Parser {
                     Kind::Symbol(Symbol::Colon)
                 );
                 // TODO: https://tc39.github.io/ecma262/#prod-LabelledStatement
-                let labeled_item = self.read_statement_list_item()?;
-                return Ok(Node::new(
-                    NodeBase::Label(name.clone(), Box::new(labeled_item)),
-                    tok.loc,
-                ));
+                // let labeled_item = self.read_statement_list_item()?;
+                return Ok(Node::new(NodeBase::Label(name.clone()), tok.loc));
             }
         }
         let mut is_expression_statement = false;
