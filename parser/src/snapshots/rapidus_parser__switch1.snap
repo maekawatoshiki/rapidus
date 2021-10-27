@@ -15,7 +15,7 @@ Node {
                         loc: Loc(line:1,column:7,pos:7),
                     },
                     Node {
-                        base: Block(
+                        base: StatementList(
                             [
                                 Node {
                                     base: CaseLabel(
