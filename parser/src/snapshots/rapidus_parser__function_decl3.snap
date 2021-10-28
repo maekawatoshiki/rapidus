@@ -52,7 +52,7 @@ Node {
                                             },
                                         ),
                                     ),
-                                    loc: Loc(line:1,column:32,pos:32),
+                                    loc: Loc(line:1,column:25,pos:25),
                                 },
                             ],
                         ),

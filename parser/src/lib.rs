@@ -1,5 +1,6 @@
 mod for_;
 mod if_;
+mod return_;
 mod while_;
 
 pub mod script;
@@ -267,7 +268,7 @@ impl Parser {
             Kind::Keyword(Keyword::Var) => self.read_variable_statement(tok.loc),
             Kind::Keyword(Keyword::While) => self.read_while_statement(tok.loc),
             Kind::Keyword(Keyword::For) => self.read_for_statement(tok.loc),
-            Kind::Keyword(Keyword::Return) => self.read_return_statement(),
+            Kind::Keyword(Keyword::Return) => self.read_return_statement(tok.loc),
             Kind::Keyword(Keyword::Break) => self.read_break_statement(),
             Kind::Keyword(Keyword::Continue) => self.read_continue_statement(),
             Kind::Keyword(Keyword::Try) => self.read_try_statement(),
@@ -1124,31 +1125,6 @@ impl Parser {
             tok.loc,
             "Expect property definition.".to_string(),
         ))
-    }
-}
-
-impl Parser {
-    /// https://tc39.github.io/ecma262/#prod-ReturnStatement
-    fn read_return_statement(&mut self) -> Result<Node, Error> {
-        let loc = self.lexer.get_current_loc();
-
-        // no LineTerminator here
-        if self.lexer.next_if(Kind::LineTerminator) {
-            return Ok(Node::new(NodeBase::Return(None), loc));
-        }
-
-        if self.lexer.next_if(Kind::Symbol(Symbol::Semicolon)) {
-            return Ok(Node::new(NodeBase::Return(None), loc));
-        }
-
-        if self.lexer.peek(0)?.kind == Kind::Symbol(Symbol::ClosingBrace) {
-            return Ok(Node::new(NodeBase::Return(None), loc));
-        }
-
-        let expr = self.read_expression()?;
-        self.lexer.next_if(Kind::Symbol(Symbol::Semicolon));
-
-        Ok(Node::new(NodeBase::Return(Some(Box::new(expr))), loc))
     }
 }
 

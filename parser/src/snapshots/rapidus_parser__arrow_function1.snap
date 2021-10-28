@@ -46,7 +46,7 @@ Node {
                                             },
                                         ),
                                     ),
-                                    loc: Loc(line:1,column:19,pos:19),
+                                    loc: Loc(line:1,column:12,pos:12),
                                 },
                             ],
                         ),

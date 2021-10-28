@@ -17,7 +17,7 @@ Node {
                                     base: Return(
                                         None,
                                     ),
-                                    loc: Loc(line:1,column:22,pos:22),
+                                    loc: Loc(line:1,column:15,pos:15),
                                 },
                             ],
                         ),
