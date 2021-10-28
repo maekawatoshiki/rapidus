@@ -270,7 +270,7 @@ impl Parser {
             Kind::Keyword(Keyword::If) => self.read_if_statement(tok.loc),
             Kind::Keyword(Keyword::Switch) => self.read_switch_statement(tok.loc),
             Kind::Keyword(Keyword::Var) => self.read_variable_statement(tok.loc),
-            Kind::Keyword(Keyword::While) => self.read_while_statement(),
+            Kind::Keyword(Keyword::While) => self.read_while_statement(tok.loc),
             Kind::Keyword(Keyword::For) => self.read_for_statement(),
             Kind::Keyword(Keyword::Return) => self.read_return_statement(),
             Kind::Keyword(Keyword::Break) => self.read_break_statement(),

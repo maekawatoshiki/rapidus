@@ -21,7 +21,7 @@ Node {
                         loc: Loc(line:1,column:15,pos:15),
                     },
                 ),
-                loc: Loc(line:1,column:6,pos:6),
+                loc: Loc(line:1,column:0,pos:0),
             },
         ],
     ),
