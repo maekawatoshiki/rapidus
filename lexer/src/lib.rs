@@ -178,19 +178,18 @@ impl Lexer {
         }
     }
 
-    /// Peek the next token and if it is ``kind``, get the next token, return true.
-    /// Otherwise, return false.
-    pub fn next_if(&mut self, kind: Kind) -> bool {
+    /// Skips the current token and return `Ok(true)` only if its kind is `kind`.
+    /// Does not ignore `Kind::LineTerminator`.
+    pub fn skip2<K: Into<Kind>>(&mut self, kind: K) -> Result<bool, Error> {
         match self.peek(0) {
             Ok(tok) => {
-                if tok.kind == kind {
-                    let _ = self.read_token().unwrap();
-                    true
-                } else {
-                    false
+                let eq = tok.kind == kind.into();
+                if eq {
+                    self.read_token()?;
                 }
+                Ok(eq)
             }
-            Err(_) => false,
+            Err(e) => Err(e),
         }
     }
 

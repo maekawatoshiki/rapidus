@@ -1,17 +1,21 @@
-use super::{expect, Parser};
+use super::Parser;
 use rapidus_ast::{loc::SourceLoc, Node, NodeBase};
-use rapidus_lexer::token::{Keyword, Kind, Symbol};
+use rapidus_lexer::token::{Kind, Symbol};
 use rapidus_lexer::Error;
 
 impl Parser {
     /// <https://tc39.github.io/ecma262/#prod-ReturnStatement>
     pub(super) fn read_return_statement(&mut self, loc: SourceLoc) -> Result<Node, Error> {
         // no LineTerminator here
-        if self.lexer.next_if(Kind::LineTerminator) {
+        if self.lexer.skip2(Kind::LineTerminator).unwrap_or(false) {
             return Ok(Node::new(NodeBase::Return(None), loc));
         }
 
-        if self.lexer.next_if(Kind::Symbol(Symbol::Semicolon)) {
+        if self
+            .lexer
+            .skip(Kind::Symbol(Symbol::Semicolon))
+            .unwrap_or(false)
+        {
             return Ok(Node::new(NodeBase::Return(None), loc));
         }
 
@@ -20,7 +24,7 @@ impl Parser {
         }
 
         let expr = self.read_expression()?;
-        self.lexer.next_if(Kind::Symbol(Symbol::Semicolon));
+        let _ = self.lexer.skip(Kind::Symbol(Symbol::Semicolon));
 
         Ok(Node::new(NodeBase::Return(Some(Box::new(expr))), loc))
     }

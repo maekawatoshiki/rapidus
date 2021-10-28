@@ -28,7 +28,11 @@ impl Parser {
         expect!(self, Kind::Symbol(Symbol::Semicolon), "expect ';'");
 
         let loc_ = self.lexer.get_current_loc();
-        let cond = if self.lexer.next_if(Kind::Symbol(Symbol::Semicolon)) {
+        let cond = if self
+            .lexer
+            .skip2(Kind::Symbol(Symbol::Semicolon))
+            .unwrap_or(false)
+        {
             Node::new(NodeBase::Boolean(true), loc_)
         } else {
             let step = self.read_expression()?;
@@ -37,7 +41,11 @@ impl Parser {
         };
 
         let loc_ = self.lexer.get_current_loc();
-        let step = if self.lexer.next_if(Kind::Symbol(Symbol::ClosingParen)) {
+        let step = if self
+            .lexer
+            .skip2(Kind::Symbol(Symbol::ClosingParen))
+            .unwrap_or(false)
+        {
             Node::new(NodeBase::Nope, loc_)
         } else {
             let step = self.read_expression()?;

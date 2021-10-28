@@ -818,7 +818,7 @@ impl Parser {
                 },
                 Kind::Symbol(Symbol::OpeningBoxBracket) => {
                     let idx = self.read_expression()?;
-                    if !self.lexer.next_if(Kind::Symbol(Symbol::ClosingBoxBracket)) {
+                    if !self.lexer.skip(Symbol::ClosingBoxBracket).unwrap_or(false) {
                         return Err(Error::Expect(
                             self.lexer.get_current_loc(),
                             "expect ']'".to_string(),
@@ -870,7 +870,11 @@ impl Parser {
                 },
                 Kind::Symbol(Symbol::OpeningBoxBracket) => {
                     let idx = self.read_expression()?;
-                    if !self.lexer.next_if(Kind::Symbol(Symbol::ClosingBoxBracket)) {
+                    if !self
+                        .lexer
+                        .skip2(Kind::Symbol(Symbol::ClosingBoxBracket))
+                        .unwrap_or(false)
+                    {
                         return Err(Error::Expect(
                             self.lexer.get_current_loc(),
                             "expect ']'".to_string(),
@@ -1021,11 +1025,19 @@ impl Parser {
 
         loop {
             // TODO: Support all features.
-            while self.lexer.next_if(Kind::Symbol(Symbol::Comma)) {
+            while self
+                .lexer
+                .skip(Kind::Symbol(Symbol::Comma))
+                .unwrap_or(false)
+            {
                 elements.push(Node::new(NodeBase::Nope, loc));
             }
 
-            if self.lexer.next_if(Kind::Symbol(Symbol::ClosingBoxBracket)) {
+            if self
+                .lexer
+                .skip(Kind::Symbol(Symbol::ClosingBoxBracket))
+                .unwrap_or(false)
+            {
                 break;
             }
 
@@ -1040,7 +1052,7 @@ impl Parser {
             } else {
                 elements.push(self.read_assignment_expression()?);
             }
-            self.lexer.next_if(Kind::Symbol(Symbol::Comma));
+            self.lexer.skip(Kind::Symbol(Symbol::Comma))?;
         }
 
         Ok(Node::new(NodeBase::Array(elements), loc))
@@ -1196,14 +1208,18 @@ impl Parser {
         let loc = self.lexer.get_current_loc();
 
         // no LineTerminator here
-        if self.lexer.next_if(Kind::LineTerminator) {
+        if self.lexer.skip2(Kind::LineTerminator).unwrap_or(false) {
             return Err(Error::General(
                 loc,
-                "Illegal new line after throw".to_string(),
+                "Illegal new line after 'throw'".to_string(),
             ));
         }
 
-        if self.lexer.next_if(Kind::Symbol(Symbol::Semicolon)) {
+        if self
+            .lexer
+            .skip2(Kind::Symbol(Symbol::Semicolon))
+            .unwrap_or(false)
+        {
             return Err(Error::UnexpectedToken(
                 loc,
                 "Unexpected token ;".to_string(),
@@ -1218,7 +1234,7 @@ impl Parser {
         }
 
         let expr = self.read_expression()?;
-        self.lexer.next_if(Kind::Symbol(Symbol::Semicolon));
+        let _ = self.lexer.skip(Symbol::Semicolon);
 
         Ok(Node::new(NodeBase::Throw(Box::new(expr)), loc))
     }
@@ -1314,7 +1330,11 @@ impl Parser {
                 self.read_formal_parameter()?
             });
 
-            if self.lexer.next_if(Kind::Symbol(Symbol::ClosingParen)) {
+            if self
+                .lexer
+                .skip2(Kind::Symbol(Symbol::ClosingParen))
+                .unwrap_or(false)
+            {
                 break;
             }
 
