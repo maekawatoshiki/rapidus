@@ -160,10 +160,7 @@ impl Parser {
 
         loop {
             let loc = self.lexer.get_current_loc();
-            match self
-                .lexer
-                .next_if_skip_lineterminator(Kind::Symbol(Symbol::ClosingBrace))
-            {
+            match self.lexer.skip(Symbol::ClosingBrace) {
                 Ok(true) => {
                     if break_when_closingbrase {
                         break;
@@ -195,10 +192,7 @@ impl Parser {
                 Err(e) => return Err(e),
             }
 
-            while match self
-                .lexer
-                .next_if_skip_lineterminator(Kind::Symbol(Symbol::Semicolon))
-            {
+            while match self.lexer.skip(Symbol::Semicolon) {
                 Ok(succ) => succ,
                 Err(Error::NormalEOF) => false,
                 Err(e) => return Err(e),
@@ -287,10 +281,7 @@ impl Parser {
             }
         };
 
-        match self
-            .lexer
-            .next_if_skip_lineterminator(Kind::Symbol(Symbol::Semicolon))
-        {
+        match self.lexer.skip(Symbol::Semicolon) {
             Ok(true) | Err(Error::NormalEOF) => {}
             Ok(false) => {
                 if is_expression_statement {
@@ -372,7 +363,7 @@ impl Parser {
             }
         };
 
-        if self.lexer.skip(Symbol::Assign) {
+        if self.lexer.skip(Symbol::Assign).unwrap_or(false) {
             Ok(Node::new(
                 NodeBase::VarDecl(name, Some(Box::new(self.read_initializer()?)), VarKind::Var),
                 loc,
@@ -799,19 +790,11 @@ impl Parser {
     // TODO: Implement all features.
     fn read_call_expression(&mut self, first_member_expr: Node) -> Result<Node, Error> {
         let loc = first_member_expr.loc;
-        let mut lhs = first_member_expr;
-        match self
-            .lexer
-            .next_if_skip_lineterminator(Kind::Symbol(Symbol::OpeningParen))
-        {
-            Ok(true) => {
-                let args = self.read_arguments()?;
-                lhs = Node::new(NodeBase::Call(Box::new(lhs), args), loc)
-            }
-            _ => {
-                panic!("CallExpression MUST start with MemberExpression.");
-            }
-        };
+
+        expect!(self, Kind::Symbol(Symbol::OpeningParen), "expect '('");
+
+        let args = self.read_arguments()?;
+        let mut lhs = Node::new(NodeBase::Call(Box::new(first_member_expr), args), loc);
 
         while let Ok(tok) = self.lexer.next_skip_lineterminator() {
             let loc_ = self.lexer.get_current_loc();
@@ -916,10 +899,7 @@ impl Parser {
                             "Unexpected token.".to_string(),
                         ));
                     }
-                    if self
-                        .lexer
-                        .next_if_skip_lineterminator(Kind::Symbol(Symbol::ClosingParen))?
-                    {
+                    if self.lexer.skip(Symbol::ClosingParen)? {
                         break;
                     }
                 }
@@ -994,10 +974,7 @@ impl Parser {
             }];
         }
         expect_no_lineterminator!(self, Kind::Symbol(Symbol::FatArrow), "expect '=>'");
-        let body = if self
-            .lexer
-            .next_if_skip_lineterminator(Kind::Symbol(Symbol::OpeningBrace))?
-        {
+        let body = if self.lexer.skip(Symbol::OpeningBrace)? {
             self.read_block()?
         } else {
             let loc = self.lexer.get_current_loc();
@@ -1055,10 +1032,7 @@ impl Parser {
                 return Err(Error::UnexpectedEOF("']' may be needed".to_string()));
             }
 
-            if self
-                .lexer
-                .next_if_skip_lineterminator(Kind::Symbol(Symbol::Spread))?
-            {
+            if self.lexer.skip(Symbol::Spread)? {
                 let node = self.read_assignment_expression()?;
                 let loc = node.loc;
                 elements.push(Node::new(NodeBase::Spread(Box::new(node)), loc));
@@ -1077,26 +1051,17 @@ impl Parser {
         let mut elements = vec![];
 
         loop {
-            if self
-                .lexer
-                .next_if_skip_lineterminator(Kind::Symbol(Symbol::ClosingBrace))?
-            {
+            if self.lexer.skip(Symbol::ClosingBrace)? {
                 break;
             }
 
             elements.push(self.read_property_definition()?);
 
-            if self
-                .lexer
-                .next_if_skip_lineterminator(Kind::Symbol(Symbol::ClosingBrace))?
-            {
+            if self.lexer.skip(Symbol::ClosingBrace)? {
                 break;
             }
 
-            if !self
-                .lexer
-                .next_if_skip_lineterminator(Kind::Symbol(Symbol::Comma))?
-            {
+            if !self.lexer.skip(Symbol::Comma)? {
                 return Err(Error::Expect(
                     self.lexer.get_current_loc(),
                     "expect ',' or '}'.".to_string(),
@@ -1118,20 +1083,14 @@ impl Parser {
             }
         }
 
-        if self
-            .lexer
-            .next_if_skip_lineterminator(Kind::Symbol(Symbol::Spread))?
-        {
+        if self.lexer.skip(Symbol::Spread)? {
             let node = self.read_assignment_expression()?;
             return Ok(PropertyDefinition::SpreadObject(node));
         }
 
         let tok = self.lexer.next_skip_lineterminator()?;
 
-        if self
-            .lexer
-            .next_if_skip_lineterminator(Kind::Symbol(Symbol::Colon))?
-        {
+        if self.lexer.skip(Symbol::Colon)? {
             let val = self.read_assignment_expression()?;
             return Ok(PropertyDefinition::Property(to_string(tok.kind), val));
         }
@@ -1195,7 +1154,7 @@ impl Parser {
 
 macro_rules! skip_symbol_or_error {
     ($lexer: expr, $symbol: path) => {
-        if !$lexer.next_if_skip_lineterminator(Kind::Symbol($symbol))? {
+        if !$lexer.skip($symbol)? {
             return Err(Error::UnexpectedToken($lexer.get_current_loc(), {
                 let name: String = $symbol.into();
                 format!("expected {}", name)
@@ -1210,10 +1169,7 @@ impl Parser {
         let loc_try = self.lexer.get_current_loc();
         skip_symbol_or_error!(self.lexer, Symbol::OpeningBrace);
         let try_clause = self.read_block_statement()?;
-        let is_catch = self
-            .lexer
-            .next_if_skip_lineterminator(Kind::Keyword(Keyword::Catch))
-            .unwrap_or(false);
+        let is_catch = self.lexer.skip(Keyword::Catch).unwrap_or(false);
         let loc_catch = self.lexer.get_current_loc();
         let (catch, param) = if is_catch {
             skip_symbol_or_error!(self.lexer, Symbol::OpeningParen);
@@ -1237,10 +1193,7 @@ impl Parser {
                 Node::new(NodeBase::Nope, loc_catch),
             )
         };
-        let is_finally = self
-            .lexer
-            .next_if_skip_lineterminator(Kind::Keyword(Keyword::Finally))
-            .unwrap_or(false);
+        let is_finally = self.lexer.skip(Keyword::Finally).unwrap_or(false);
         let loc_finally = self.lexer.get_current_loc();
         let finally = if is_finally {
             skip_symbol_or_error!(self.lexer, Symbol::OpeningBrace);
@@ -1329,10 +1282,7 @@ impl Parser {
                 }
             };
 
-            if self
-                .lexer
-                .next_if_skip_lineterminator(Kind::Symbol(Symbol::Assign))?
-            {
+            if self.lexer.skip(Symbol::Assign)? {
                 let init = Some(Box::new(self.read_initializer()?));
                 let decl = NodeBase::VarDecl(name, init, var_kind);
                 list.push(Node::new(decl, loc))
@@ -1372,10 +1322,7 @@ impl Parser {
     }
 
     fn read_formal_parameters(&mut self) -> Result<FormalParameters, Error> {
-        if self
-            .lexer
-            .next_if_skip_lineterminator(Kind::Symbol(Symbol::ClosingParen))?
-        {
+        if self.lexer.skip(Symbol::ClosingParen)? {
             return Ok(vec![]);
         }
 
@@ -1384,17 +1331,12 @@ impl Parser {
         loop {
             let mut rest_param = false;
 
-            params.push(
-                if self
-                    .lexer
-                    .next_if_skip_lineterminator(Kind::Symbol(Symbol::Spread))?
-                {
-                    rest_param = true;
-                    self.read_function_rest_parameter()?
-                } else {
-                    self.read_formal_parameter()?
-                },
-            );
+            params.push(if self.lexer.skip(Symbol::Spread)? {
+                rest_param = true;
+                self.read_function_rest_parameter()?
+            } else {
+                self.read_formal_parameter()?
+            });
 
             if self.lexer.next_if(Kind::Symbol(Symbol::ClosingParen)) {
                 break;

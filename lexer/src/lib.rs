@@ -163,16 +163,18 @@ impl Lexer {
     //     }
     // }
 
-    pub fn skip<K: Into<Kind>>(&mut self, kind: K) -> bool {
+    /// Skips the current token and return `Ok(true)` only if its kind is `kind`.
+    /// Ignores `Kind::LineTerminator`.
+    pub fn skip<K: Into<Kind>>(&mut self, kind: K) -> Result<bool, Error> {
         match self.peek_skip_lineterminator() {
             Ok(tok) => {
                 let eq = tok.kind == kind.into();
                 if eq {
-                    self.next_skip_lineterminator().unwrap();
+                    self.next_skip_lineterminator()?;
                 }
-                eq
+                Ok(eq)
             }
-            Err(_) => false,
+            Err(e) => Err(e),
         }
     }
 
@@ -192,25 +194,8 @@ impl Lexer {
         }
     }
 
-    /// Peek the next token, and when token is kind:Kind, get the token and return true.
-    /// Otherwise, return false.
-    /// Skipping line terminators.
-    pub fn next_if_skip_lineterminator(&mut self, kind: Kind) -> Result<bool, Error> {
-        match self.peek_skip_lineterminator() {
-            Ok(tok) => {
-                if tok.kind == kind {
-                    self.next_skip_lineterminator()?;
-                    Ok(true)
-                } else {
-                    Ok(false)
-                }
-            }
-            Err(e) => Err(e),
-        }
-    }
-
     /// Revert the previous ``next()`` or ``next_skip_lineterminator()``.
-    /// Does not support ``next_if()`` and ``next_if_skip_lineterminator()``.
+    /// Does not work for ``next_if()``.
     pub fn unget(&mut self) {
         self.token_pos = self.prev_token_pos;
     }
