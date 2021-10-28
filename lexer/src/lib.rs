@@ -163,6 +163,19 @@ impl Lexer {
     //     }
     // }
 
+    pub fn skip(&mut self, kind: Kind) -> bool {
+        match self.peek_skip_lineterminator() {
+            Ok(tok) => {
+                let eq = tok.kind == kind;
+                if eq {
+                    self.next_skip_lineterminator().unwrap();
+                }
+                eq
+            }
+            Err(_) => false,
+        }
+    }
+
     /// Peek the next token and if it is ``kind``, get the next token, return true.
     /// Otherwise, return false.
     pub fn next_if(&mut self, kind: Kind) -> bool {

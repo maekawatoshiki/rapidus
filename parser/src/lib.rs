@@ -1,4 +1,6 @@
 mod if_;
+mod while_;
+
 pub mod script;
 
 use ansi_term::Colour;
@@ -14,6 +16,7 @@ use std::fs::OpenOptions;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
+#[macro_export]
 macro_rules! expect {
     ($self:ident, $kind:expr, $msg:expr) => {{
         let tok = $self.lexer.next_skip_lineterminator()?;
@@ -408,23 +411,6 @@ impl Parser {
 }
 
 impl Parser {
-    fn read_while_statement(&mut self) -> Result<Node, Error> {
-        let loc = self.lexer.get_current_loc();
-
-        expect!(self, Kind::Symbol(Symbol::OpeningParen), "expect '('");
-
-        let cond = self.read_expression()?;
-
-        expect!(self, Kind::Symbol(Symbol::ClosingParen), "expect ')'");
-
-        let body = self.read_statement()?;
-
-        Ok(Node::new(
-            NodeBase::While(Box::new(cond), Box::new(body)),
-            loc,
-        ))
-    }
-
     fn read_for_statement(&mut self) -> Result<Node, Error> {
         let loc = self.lexer.get_current_loc();
 
