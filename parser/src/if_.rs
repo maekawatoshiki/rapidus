@@ -23,7 +23,7 @@ impl Parser {
     fn read_else_if_any(&mut self) -> Result<Node, Error> {
         let loc = self.lexer.get_current_loc();
 
-        if self.lexer.skip(Kind::Keyword(Keyword::Else)) {
+        if self.lexer.skip(Keyword::Else) {
             return self.read_statement();
         }
 

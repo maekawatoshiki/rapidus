@@ -163,10 +163,10 @@ impl Lexer {
     //     }
     // }
 
-    pub fn skip(&mut self, kind: Kind) -> bool {
+    pub fn skip<K: Into<Kind>>(&mut self, kind: K) -> bool {
         match self.peek_skip_lineterminator() {
             Ok(tok) => {
-                let eq = tok.kind == kind;
+                let eq = tok.kind == kind.into();
                 if eq {
                     self.next_skip_lineterminator().unwrap();
                 }

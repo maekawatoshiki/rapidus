@@ -297,3 +297,15 @@ impl From<Symbol> for String {
         }
     }
 }
+
+impl From<Keyword> for Kind {
+    fn from(kwd: Keyword) -> Self {
+        Kind::Keyword(kwd)
+    }
+}
+
+impl From<Symbol> for Kind {
+    fn from(sym: Symbol) -> Self {
+        Kind::Symbol(sym)
+    }
+}

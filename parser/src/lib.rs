@@ -372,10 +372,7 @@ impl Parser {
             }
         };
 
-        if self
-            .lexer
-            .next_if_skip_lineterminator(Kind::Symbol(Symbol::Assign))?
-        {
+        if self.lexer.skip(Symbol::Assign) {
             Ok(Node::new(
                 NodeBase::VarDecl(name, Some(Box::new(self.read_initializer()?)), VarKind::Var),
                 loc,
