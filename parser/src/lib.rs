@@ -1,3 +1,4 @@
+mod if_;
 pub mod script;
 
 use ansi_term::Colour;
@@ -387,42 +388,6 @@ impl Parser {
 }
 
 impl Parser {
-    fn read_if_statement(&mut self, loc: SourceLoc) -> Result<Node, Error> {
-        let oparen = self.lexer.next_skip_lineterminator()?;
-        if oparen.kind != Kind::Symbol(Symbol::OpeningParen) {
-            return Err(Error::Expect(oparen.loc, "expect '('".to_string()));
-        }
-        let cond = self.read_expression()?;
-        let cparen = self.lexer.next_skip_lineterminator()?;
-        if cparen.kind != Kind::Symbol(Symbol::ClosingParen) {
-            return Err(Error::Expect(cparen.loc, "expect ')'".to_string()));
-        }
-
-        let then_ = self.read_statement()?;
-
-        let loc_else = self.lexer.get_current_loc();
-        if let Ok(expect_else_tok) = self.lexer.next_skip_lineterminator() {
-            if expect_else_tok.kind == Kind::Keyword(Keyword::Else) {
-                let else_ = self.read_statement()?;
-                return Ok(Node::new(
-                    NodeBase::If(Box::new(cond), Box::new(then_), Box::new(else_)),
-                    loc,
-                ));
-            } else {
-                self.lexer.unget();
-            }
-        }
-
-        Ok(Node::new(
-            NodeBase::If(
-                Box::new(cond),
-                Box::new(then_),
-                Box::new(Node::new(NodeBase::Nope, loc_else)),
-            ),
-            loc,
-        ))
-    }
-
     fn read_switch_statement(&mut self, loc: SourceLoc) -> Result<Node, Error> {
         let oparen = self.lexer.next_skip_lineterminator()?;
         if oparen.kind != Kind::Symbol(Symbol::OpeningParen) {
