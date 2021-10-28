@@ -1,3 +1,4 @@
+mod for_;
 mod if_;
 mod while_;
 
@@ -271,7 +272,7 @@ impl Parser {
             Kind::Keyword(Keyword::Switch) => self.read_switch_statement(tok.loc),
             Kind::Keyword(Keyword::Var) => self.read_variable_statement(tok.loc),
             Kind::Keyword(Keyword::While) => self.read_while_statement(tok.loc),
-            Kind::Keyword(Keyword::For) => self.read_for_statement(),
+            Kind::Keyword(Keyword::For) => self.read_for_statement(tok.loc),
             Kind::Keyword(Keyword::Return) => self.read_return_statement(),
             Kind::Keyword(Keyword::Break) => self.read_break_statement(),
             Kind::Keyword(Keyword::Continue) => self.read_continue_statement(),
@@ -407,66 +408,6 @@ impl Parser {
             NodeBase::Switch(Box::new(val), Box::new(block)),
             loc,
         ))
-    }
-}
-
-impl Parser {
-    fn read_for_statement(&mut self) -> Result<Node, Error> {
-        let loc = self.lexer.get_current_loc();
-
-        expect!(self, Kind::Symbol(Symbol::OpeningParen), "expect '('");
-
-        let init = match self.lexer.peek(0)? {
-            Token {
-                kind: Kind::Keyword(Keyword::Var),
-                loc,
-            } => {
-                assert_eq!(self.lexer.next()?.kind, Kind::Keyword(Keyword::Var));
-                self.read_variable_declaration_list(loc)?
-            }
-            Token {
-                kind: Kind::Keyword(Keyword::Let) | Kind::Keyword(Keyword::Const),
-                ..
-            } => self.read_declaration()?,
-            Token {
-                kind: Kind::Symbol(Symbol::Semicolon),
-                loc,
-            } => Node::new(NodeBase::Nope, loc),
-            _ => self.read_expression()?,
-        };
-        expect!(self, Kind::Symbol(Symbol::Semicolon), "expect ';'");
-
-        let loc_ = self.lexer.get_current_loc();
-        let cond = if self.lexer.next_if(Kind::Symbol(Symbol::Semicolon)) {
-            Node::new(NodeBase::Boolean(true), loc_)
-        } else {
-            let step = self.read_expression()?;
-            expect!(self, Kind::Symbol(Symbol::Semicolon), "expect ';'");
-            step
-        };
-
-        let loc_ = self.lexer.get_current_loc();
-        let step = if self.lexer.next_if(Kind::Symbol(Symbol::ClosingParen)) {
-            Node::new(NodeBase::Nope, loc_)
-        } else {
-            let step = self.read_expression()?;
-            expect!(self, Kind::Symbol(Symbol::ClosingParen), "expect ')'");
-            step
-        };
-
-        let body = self.read_statement()?;
-
-        let for_node = Node::new(
-            NodeBase::For(
-                Box::new(init),
-                Box::new(cond),
-                Box::new(step),
-                Box::new(body),
-            ),
-            loc,
-        );
-
-        Ok(Node::new(NodeBase::Block(vec![for_node]), loc))
     }
 }
 
