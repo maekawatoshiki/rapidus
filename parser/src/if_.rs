@@ -1,7 +1,7 @@
 use super::{expect, Parser};
 use rapidus_ast::{loc::SourceLoc, Node, NodeBase};
 use rapidus_lexer::token::{Keyword, Kind, Symbol};
-pub use rapidus_lexer::Error;
+use rapidus_lexer::Error;
 
 impl Parser {
     pub(super) fn read_if_statement(&mut self, loc: SourceLoc) -> Result<Node, Error> {
