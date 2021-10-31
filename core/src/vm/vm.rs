@@ -1126,6 +1126,7 @@ impl VM {
             kind: ObjectKind::Ordinary,
             prototype: callee.get_property("prototype"),
             property: FxHashMap::default(),
+            data: vec![],
             sym_property: FxHashMap::default(),
         }));
 

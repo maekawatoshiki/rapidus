@@ -12,6 +12,8 @@ pub struct Object {
     pub prototype: Value,
     /// Properties
     pub property: FxHashMap<String, Property>,
+    /// Actual property data
+    pub data: Vec<Property>,
     /// Symbol properties
     pub sym_property: FxHashMap<usize, Property>,
 }

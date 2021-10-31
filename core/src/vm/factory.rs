@@ -135,6 +135,7 @@ impl Factory {
             kind: ObjectKind::Ordinary,
             prototype: self.object_prototypes.object,
             property,
+            data: vec![],
             sym_property: FxHashMap::default(),
         }))
     }
@@ -145,6 +146,7 @@ impl Factory {
             kind: ObjectKind::Arguments,
             prototype: self.object_prototypes.object,
             property,
+            data: vec![],
             sym_property: FxHashMap::default(),
         }))
     }
@@ -165,6 +167,7 @@ impl Factory {
                 name      => false, false, true : name_prop,
                 prototype => true , false, false: prototype
             ),
+                data: vec![],
             kind: ObjectKind::Function(FunctionObjectInfo {
                 name: info.func_name.clone(),
                 kind: FunctionObjectKind::User{info, outer_env: outer_env.into()},
@@ -194,6 +197,7 @@ impl Factory {
                 length => false, false, true : Value::Number(0.0),
                 name   => false, false, true : name_prop
             ),
+            data: vec![],
             sym_property: FxHashMap::default(),
         }))
     }
@@ -203,6 +207,7 @@ impl Factory {
             kind: ObjectKind::Array(ArrayObjectInfo { elems }),
             prototype: self.object_prototypes.array,
             property: make_property_map!(),
+            data: vec![],
             sym_property: FxHashMap::default(),
         }))
     }
@@ -212,6 +217,7 @@ impl Factory {
             kind: ObjectKind::Date(DateObjectInfo::default()),
             prototype: self.object_prototypes.date,
             property: make_property_map!(),
+            data: vec![],
             sym_property: FxHashMap::default(),
         }))
     }
@@ -224,6 +230,7 @@ impl Factory {
             }),
             prototype: self.object_prototypes.symbol,
             property: make_property_map!(),
+            data: vec![],
             sym_property: FxHashMap::default(),
         }))
     }
@@ -236,6 +243,7 @@ impl Factory {
             property: make_property_map!(
                 message => true, false, true: message
             ),
+            data: vec![],
             sym_property: FxHashMap::default(),
         }))
     }

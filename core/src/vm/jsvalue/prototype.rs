@@ -23,6 +23,7 @@ impl ObjectPrototypes {
             kind: ObjectKind::Ordinary,
             prototype: Value::null(),
             property: make_property_map!(),
+            data: vec![],
             sym_property: FxHashMap::default(),
         }));
         let default_func_ref = factory.get_default_func_ref();
@@ -38,6 +39,7 @@ impl ObjectPrototypes {
                 }),
                 prototype: object_prototype,
                 property: make_property_map!(),
+                data: vec![],
                 sym_property: FxHashMap::default(),
             }));
 
@@ -74,6 +76,7 @@ impl ObjectPrototypes {
                 kind: ObjectKind::Ordinary,
                 prototype: object_prototype,
                 property: make_property_map!(indexOf: index_of, split: split),
+                data: vec![],
                 sym_property: FxHashMap::default(),
             }))
         };
@@ -117,6 +120,7 @@ impl ObjectPrototypes {
                     pop    => true,  false, true : pop,
                     map    => true,  false, true : map
                 ),
+                data: vec![],
                 sym_property: FxHashMap::default(),
             }))
         };
@@ -143,6 +147,7 @@ impl ObjectPrototypes {
                     getHours => true, false, true : get_hours,
                     getMinutes => true, false, true : get_minutes
                 ),
+                data: vec![],
                 sym_property: FxHashMap::default(),
             }))
         };
@@ -153,6 +158,7 @@ impl ObjectPrototypes {
                 prototype: object_prototype,
                 // TODO: https://tc39.github.io/ecma262/#sec-properties-of-the-symbol-prototype-object
                 property: make_property_map!(),
+                data: vec![],
                 sym_property: FxHashMap::default(),
             }))
         };
@@ -165,6 +171,7 @@ impl ObjectPrototypes {
                 prototype: object_prototype,
                 // TODO: https://tc39.github.io/ecma262/#sec-properties-of-the-error-prototype-object
                 property: make_property_map!(),
+                data: vec![],
                 sym_property: FxHashMap::default(),
             }))
         };

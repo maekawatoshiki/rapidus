@@ -80,6 +80,7 @@ macro_rules! make_normal_object {
                 kind: crate::vm::jsvalue::object::ObjectKind::Ordinary,
                 prototype: $factory.object_prototypes.object,
                 property: rustc_hash::FxHashMap::default(),
+                data: vec![],
                 sym_property: rustc_hash::FxHashMap::default()
             }
         ))
@@ -110,6 +111,7 @@ macro_rules! make_normal_object {
                 kind: crate::vm::jsvalue::object::ObjectKind::Ordinary,
                 prototype: $factory.object_prototypes.object,
                 property: make_property_map_sub!($($property_name, $val, $x, $y, $z),* ),
+                data: vec![],
                 sym_property: rustc_hash::FxHashMap::default()
             }
             ))
@@ -199,6 +201,7 @@ impl Value {
                 length => false, false, true : Value::Number(0.0),
                 name   => false, false, true : name_prop
             ),
+            data: vec![],
             sym_property: FxHashMap::default(),
         }))
     }
