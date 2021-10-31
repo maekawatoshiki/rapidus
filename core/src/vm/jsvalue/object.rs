@@ -11,7 +11,7 @@ pub struct Object {
     /// Internal slot \[\[Prototype\]\]
     pub prototype: Value,
     /// Properties
-    pub property: FxHashMap<String, Property>,
+    pub property: FxHashMap<String, usize>,
     /// Actual property data
     pub data: Vec<Property>,
     /// Symbol properties
@@ -117,7 +117,7 @@ impl Object {
         }
 
         match self.property.get(key.to_string().as_str()) {
-            Some(prop) => Ok(*prop),
+            Some(idx) => Ok(self.data[*idx]),
             None => {
                 let proto = self.prototype;
                 if proto.is_null() {
@@ -130,20 +130,39 @@ impl Object {
 
     pub fn get_property(&self, key: &str) -> Value {
         match self.property.get(key) {
-            Some(prop) => prop.as_data().val,
+            Some(idx) => self.data[*idx].as_data().val,
             None => self.prototype.get_property(key),
         }
     }
 
-    pub fn set_property(&mut self, key: String, val: Value) {
-        let property = self
-            .property
-            .entry(key)
-            .or_insert_with(|| Property::new_data_simple(Value::undefined()));
-        let data = property.as_data_mut();
+    pub fn set_property_val<S: Into<String>>(&mut self, key: S, val: Value) {
+        let key = key.into();
+        let data = if let Some(idx) = self.property.get(&key) {
+            self.data[*idx].as_data_mut()
+        } else {
+            let idx = self.property.len();
+            self.property.insert(key, idx);
+            self.data
+                .push(Property::new_data_simple(Value::undefined()));
+            self.data[idx].as_data_mut()
+        };
         if data.writable {
             data.val = val;
         }
+    }
+
+    pub fn set_property<S: Into<String>>(&mut self, key: S, prop: Property) {
+        let key = key.into();
+        let data = if let Some(idx) = self.property.get(&key) {
+            &mut self.data[*idx]
+        } else {
+            let idx = self.property.len();
+            self.property.insert(key, idx);
+            self.data
+                .push(Property::new_data_simple(Value::undefined()));
+            &mut self.data[idx]
+        };
+        *data = prop;
     }
 
     pub fn set_property_by_value(
@@ -184,9 +203,16 @@ impl Object {
                 .entry(id)
                 .or_insert_with(|| Property::new_data_simple(Value::undefined()))
         } else {
-            self.property
-                .entry(key.to_string())
-                .or_insert_with(|| Property::new_data_simple(Value::undefined()))
+            let key = key.to_string();
+            if let Some(idx) = self.property.get(&key) {
+                &mut self.data[*idx]
+            } else {
+                let idx = self.property.len();
+                self.property.insert(key, idx);
+                self.data
+                    .push(Property::new_data_simple(Value::undefined()));
+                &mut self.data[idx]
+            }
         };
 
         match property {

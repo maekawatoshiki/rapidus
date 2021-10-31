@@ -22,8 +22,8 @@ impl ObjectPrototypes {
         let object_prototype = Value::Object(factory.alloc(Object {
             kind: ObjectKind::Ordinary,
             prototype: Value::null(),
-            property: make_property_map!(),
-            data: vec![],
+            property: FxHashMap::default(),
+            data: make_property_list!(),
             sym_property: FxHashMap::default(),
         }));
         let default_func_ref = factory.get_default_func_ref();
@@ -38,8 +38,8 @@ impl ObjectPrototypes {
                     },
                 }),
                 prototype: object_prototype,
-                property: make_property_map!(),
-                data: vec![],
+                property: create_prop_idx_map(vec!["call"]),
+                data: make_property_list!(),
                 sym_property: FxHashMap::default(),
             }));
 
@@ -52,7 +52,7 @@ impl ObjectPrototypes {
 
             let mut info = function_prototype.get_object_info();
             info.prototype = object_prototype;
-            info.property = make_property_map!(call: function_prototype_call);
+            info.data = make_property_list!(call: function_prototype_call);
 
             function_prototype
         };
@@ -75,8 +75,8 @@ impl ObjectPrototypes {
             Value::Object(factory.alloc(Object {
                 kind: ObjectKind::Ordinary,
                 prototype: object_prototype,
-                property: make_property_map!(indexOf: index_of, split: split),
-                data: vec![],
+                property: create_prop_idx_map(vec!["indexOf", "split"]),
+                data: make_property_list!(indexOf: index_of, split: split),
                 sym_property: FxHashMap::default(),
             }))
         };
@@ -113,14 +113,14 @@ impl ObjectPrototypes {
             Value::Object(factory.alloc(Object {
                 kind: ObjectKind::Array(ArrayObjectInfo { elems: vec![] }),
                 prototype: object_prototype,
-                property: make_property_map!(
+                property: create_prop_idx_map(vec!["length", "join", "push", "pop", "map"]),
+                data: make_property_list!(
                     length => false, false, true : Value::Number(0.0),
                     join   => true,  false, true : join,
                     push   => true,  false, true : push,
                     pop    => true,  false, true : pop,
                     map    => true,  false, true : map
                 ),
-                data: vec![],
                 sym_property: FxHashMap::default(),
             }))
         };
@@ -143,11 +143,11 @@ impl ObjectPrototypes {
             Value::Object(factory.alloc(Object {
                 kind: ObjectKind::Date(DateObjectInfo::default()),
                 prototype: object_prototype,
-                property: make_property_map!(
-                    getHours => true, false, true : get_hours,
+                property: create_prop_idx_map(vec!["getHours", "getMinutes"]),
+                data: make_property_list!(
+                    getHours   => true, false, true : get_hours,
                     getMinutes => true, false, true : get_minutes
                 ),
-                data: vec![],
                 sym_property: FxHashMap::default(),
             }))
         };
@@ -157,8 +157,8 @@ impl ObjectPrototypes {
                 kind: ObjectKind::Ordinary,
                 prototype: object_prototype,
                 // TODO: https://tc39.github.io/ecma262/#sec-properties-of-the-symbol-prototype-object
-                property: make_property_map!(),
-                data: vec![],
+                property: FxHashMap::default(),
+                data: make_property_list!(),
                 sym_property: FxHashMap::default(),
             }))
         };
@@ -170,8 +170,8 @@ impl ObjectPrototypes {
                 }),
                 prototype: object_prototype,
                 // TODO: https://tc39.github.io/ecma262/#sec-properties-of-the-error-prototype-object
-                property: make_property_map!(),
-                data: vec![],
+                property: FxHashMap::default(),
+                data: make_property_list!(),
                 sym_property: FxHashMap::default(),
             }))
         };

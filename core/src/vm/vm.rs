@@ -1050,8 +1050,7 @@ impl VM {
             if let Some(kind) = special_properties.get(&i) {
                 if *kind == Spread {
                     if val.is_object() {
-                        let map = val.get_object_properties().unwrap();
-                        for (name, prop) in map {
+                        for (name, prop) in val.create_object_prop_map().unwrap() {
                             properties.insert(name.clone(), prop.clone());
                         }
                         if val.is_array_object() {

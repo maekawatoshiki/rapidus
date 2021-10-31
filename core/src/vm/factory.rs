@@ -1,5 +1,6 @@
 use crate::builtins::BuiltinFuncTy;
 use crate::gc;
+use crate::vm::jsvalue::value::create_prop_idx_map;
 use crate::vm::{
     jsvalue::prototype::ObjectPrototypes,
     jsvalue::{
@@ -134,8 +135,8 @@ impl Factory {
         Value::Object(self.alloc(Object {
             kind: ObjectKind::Ordinary,
             prototype: self.object_prototypes.object,
-            property,
-            data: vec![],
+            property: create_prop_idx_map(property.iter().map(|(s, _)| s).collect()),
+            data: property.into_iter().map(|(_, p)| p).collect(),
             sym_property: FxHashMap::default(),
         }))
     }
@@ -145,8 +146,8 @@ impl Factory {
         Value::Object(self.alloc(Object {
             kind: ObjectKind::Arguments,
             prototype: self.object_prototypes.object,
-            property,
-            data: vec![],
+            property: create_prop_idx_map(property.iter().map(|(s, _)| s).collect()),
+            data: property.into_iter().map(|(_, p)| p).collect(),
             sym_property: FxHashMap::default(),
         }))
     }
@@ -162,12 +163,12 @@ impl Factory {
 
         let f = Value::Object(self.alloc(Object {
             prototype: self.object_prototypes.function,
-            property: make_property_map!(
+            property: create_prop_idx_map(vec!["length", "name", "prototype"]),
+            data: make_property_list!(
                 length    => false, false, true : Value::Number(info.params.len() as f64), /* TODO: rest param */
                 name      => false, false, true : name_prop,
                 prototype => true , false, false: prototype
             ),
-                data: vec![],
             kind: ObjectKind::Function(FunctionObjectInfo {
                 name: info.func_name.clone(),
                 kind: FunctionObjectKind::User{info, outer_env: outer_env.into()},
@@ -177,8 +178,7 @@ impl Factory {
 
         f.get_property("prototype")
             .get_object_info()
-            .property
-            .insert("constructor".to_string(), Property::new_data_simple(f));
+            .set_property_val("constructor", f);
 
         f
     }
@@ -193,11 +193,11 @@ impl Factory {
                 kind: FunctionObjectKind::Builtin(func),
             }),
             prototype: self.object_prototypes.function,
-            property: make_property_map!(
+            property: create_prop_idx_map(vec!["length", "name"]),
+            data: make_property_list!(
                 length => false, false, true : Value::Number(0.0),
                 name   => false, false, true : name_prop
             ),
-            data: vec![],
             sym_property: FxHashMap::default(),
         }))
     }
@@ -206,8 +206,8 @@ impl Factory {
         Value::Object(self.alloc(Object {
             kind: ObjectKind::Array(ArrayObjectInfo { elems }),
             prototype: self.object_prototypes.array,
-            property: make_property_map!(),
-            data: vec![],
+            property: FxHashMap::default(),
+            data: make_property_list!(),
             sym_property: FxHashMap::default(),
         }))
     }
@@ -216,7 +216,7 @@ impl Factory {
         Value::Object(self.alloc(Object {
             kind: ObjectKind::Date(DateObjectInfo::default()),
             prototype: self.object_prototypes.date,
-            property: make_property_map!(),
+            property: FxHashMap::default(),
             data: vec![],
             sym_property: FxHashMap::default(),
         }))
@@ -229,7 +229,7 @@ impl Factory {
                 description,
             }),
             prototype: self.object_prototypes.symbol,
-            property: make_property_map!(),
+            property: FxHashMap::default(),
             data: vec![],
             sym_property: FxHashMap::default(),
         }))
@@ -240,10 +240,10 @@ impl Factory {
         Value::Object(self.alloc(Object {
             kind: ObjectKind::Error(ErrorObjectInfo::new()),
             prototype: self.object_prototypes.error,
-            property: make_property_map!(
+            property: create_prop_idx_map(vec!["message"]),
+            data: make_property_list!(
                 message => true, false, true: message
             ),
-            data: vec![],
             sym_property: FxHashMap::default(),
         }))
     }
@@ -255,7 +255,7 @@ impl Factory {
         prototype: Value,
     ) -> Value {
         let ary = self.builtin_function(constructor_name, constructor_func);
-        ary.set_property("prototype", prototype);
+        ary.set_property_val("prototype", prototype);
         ary.get_property("prototype").set_constructor(ary);
         ary
     }

@@ -84,9 +84,8 @@ pub fn debug_print(val: &Value, nest: bool) {
                 ObjectKind::Ordinary => {
                     print!("{{ ");
 
-                    let mut sorted_key_val = (&obj_info.property)
-                        .iter()
-                        .collect::<Vec<(&String, &Property)>>();
+                    let sorted_key_val = val.create_object_prop_map().unwrap();
+                    let mut sorted_key_val = sorted_key_val.iter().collect::<Vec<_>>();
                     sorted_key_val.sort_by(|(key1, _), (key2, _)| key1.as_str().cmp(key2.as_str()));
 
                     show_obj(sorted_key_val);
@@ -96,7 +95,8 @@ pub fn debug_print(val: &Value, nest: bool) {
                 ObjectKind::Arguments => {
                     print!("[Arguments] {{ ");
 
-                    let mut key_val = (&obj_info.property)
+                    let key_val = val.create_object_prop_map().unwrap();
+                    let mut key_val = key_val
                         .iter()
                         .filter(|(name, _prop)| name.chars().all(|c| c.is_ascii_digit()))
                         .collect::<Vec<_>>();
@@ -126,9 +126,8 @@ pub fn debug_print(val: &Value, nest: bool) {
                 ObjectKind::Array(ref ary_info) => {
                     print!("[ ");
 
-                    let mut sorted_key_val = (&obj_info.property)
-                        .iter()
-                        .collect::<Vec<(&String, &Property)>>();
+                    let sorted_key_val = val.create_object_prop_map().unwrap();
+                    let mut sorted_key_val = sorted_key_val.iter().collect::<Vec<_>>();
                     sorted_key_val.sort_by(|(key1, _), (key2, _)| key1.as_str().cmp(key2.as_str()));
 
                     let length = ary_info.elems.len();

@@ -76,13 +76,11 @@ fn deep_seq_bool(lval: &Value, rval: &Value) -> bool {
             let lobj_info = ObjectRef(l_info);
             let robj_info = ObjectRef(r_info);
             // sort and compare properties
-            let mut l_sorted_propmap = (&lobj_info.property)
-                .iter()
-                .collect::<Vec<(&String, &Property)>>();
+            let l_sorted_propmap = lval.create_object_prop_map().unwrap();
+            let mut l_sorted_propmap = l_sorted_propmap.iter().collect::<Vec<_>>();
             l_sorted_propmap.sort_by(|(key1, _), (key2, _)| key1.as_str().cmp(key2.as_str()));
-            let mut r_sorted_propmap = (&robj_info.property)
-                .iter()
-                .collect::<Vec<(&String, &Property)>>();
+            let r_sorted_propmap = rval.create_object_prop_map().unwrap();
+            let mut r_sorted_propmap = r_sorted_propmap.iter().collect::<Vec<_>>();
             r_sorted_propmap.sort_by(|(key1, _), (key2, _)| key1.as_str().cmp(key2.as_str()));
             if l_sorted_propmap.len() != r_sorted_propmap.len() {
                 return false;

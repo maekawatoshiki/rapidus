@@ -38,7 +38,15 @@ make_nanbox! {
     }
 }
 
-macro_rules! make_property_map_sub {
+pub(crate) fn create_prop_idx_map<S: Into<String>>(names: Vec<S>) -> FxHashMap<String, usize> {
+    names
+        .into_iter()
+        .enumerate()
+        .map(|(i, n)| (n.into(), i))
+        .collect()
+}
+
+macro_rules! make_property_list_sub {
     ($(
          $property_name:ident,
          $val:expr,
@@ -47,9 +55,8 @@ macro_rules! make_property_map_sub {
          $configurable:ident
     ),*) => { {
         #[allow(unused_mut)]
-        let mut record = rustc_hash::FxHashMap::default();
-        $( record.insert(
-            (stringify!($property_name)).to_string(),
+        let mut record = Vec::new();
+        $( record.push(
             crate::vm::jsvalue::object::Property::Data(crate::vm::jsvalue::object::DataProperty {
                 val: $val,
                 writable: $writable,
@@ -63,12 +70,12 @@ macro_rules! make_property_map_sub {
 }
 
 #[macro_export]
-macro_rules! make_property_map {
+macro_rules! make_property_list {
     ($($property_name:ident: $val:expr),*) => { {
-        make_property_map_sub!($($property_name, $val, false, false, false),* )
+        make_property_list_sub!($($property_name, $val, false, false, false),* )
     } };
     ($($property_name:ident => $x:ident, $y:ident, $z:ident : $val:expr),*) => { {
-        make_property_map_sub!($($property_name, $val, $x, $y, $z),* )
+        make_property_list_sub!($($property_name, $val, $x, $y, $z),* )
     } };
 }
 
@@ -91,6 +98,7 @@ macro_rules! make_normal_object {
                 kind: ObjectKind::Ordinary,
                 prototype: $object_prototypes.object,
                 property: FxHashMap::default(),
+                data: vec![],
                 sym_property: FxHashMap::default()
             }
         ))
@@ -100,7 +108,8 @@ macro_rules! make_normal_object {
             Object {
                 kind: ObjectKind::Ordinary,
                 prototype: $object_prototypes.object,
-                property: make_property_map_sub!($($property_name, $val, $x, $y, $z),* ),
+                property: crate::vm::jsvalue::value::create_prop_idx_map(vec![$(stringify!($property_name)),*]),
+                data: make_property_list_sub!($($property_name, $val, $x, $y, $z),* ),
                 sym_property: FxHashMap::default()
             }
             ))
@@ -110,8 +119,8 @@ macro_rules! make_normal_object {
             crate::vm::jsvalue::object::Object {
                 kind: crate::vm::jsvalue::object::ObjectKind::Ordinary,
                 prototype: $factory.object_prototypes.object,
-                property: make_property_map_sub!($($property_name, $val, $x, $y, $z),* ),
-                data: vec![],
+                property: crate::vm::jsvalue::value::create_prop_idx_map(vec![$(stringify!($property_name)),*]),
+                data: make_property_list_sub!($($property_name, $val, $x, $y, $z),* ),
                 sym_property: rustc_hash::FxHashMap::default()
             }
             ))
@@ -197,11 +206,11 @@ impl Value {
                 kind: FunctionObjectKind::Builtin(func),
             }),
             prototype: proto,
-            property: make_property_map!(
+            property: create_prop_idx_map(vec!["length", "name"]),
+            data: make_property_list!(
                 length => false, false, true : Value::Number(0.0),
                 name   => false, false, true : name_prop
             ),
-            data: vec![],
             sym_property: FxHashMap::default(),
         }))
     }
@@ -353,13 +362,30 @@ impl Value {
         }
     }
 
-    pub fn get_object_properties(&self) -> Option<&FxHashMap<String, Property>> {
+    // pub fn get_object_properties(&self) -> Option<&FxHashMap<String, Property>> {
+    //     match self {
+    //         Value::Object(obj_info) => Some(&unsafe { &**obj_info }.property),
+    //         _ => None,
+    //     }
+    // }
+
+    pub fn create_object_prop_map(&self) -> Option<FxHashMap<String, Property>> {
         match self {
-            Value::Object(obj_info) => Some(&unsafe { &**obj_info }.property),
+            Value::Object(obj_info) => {
+                let prop = &unsafe { &**obj_info }.property;
+                let data = &unsafe { &**obj_info }.data;
+                assert!(prop.len() == data.len());
+                Some(
+                    prop.into_iter()
+                        .map(|(name, &idx)| (name.to_owned(), data[idx]))
+                        .collect(),
+                )
+            }
             _ => None,
         }
     }
 
+    // TODO: Rename to `get_property_val`
     pub fn get_property(&self, key: &str) -> Value {
         match self {
             Value::Object(obj_info) => ObjectRef(*obj_info).get_property(key),
@@ -413,9 +439,9 @@ impl Value {
         }
     }
 
-    pub fn set_property(&self, key: impl Into<String>, val: Value) {
+    pub fn set_property_val(&self, key: impl Into<String>, val: Value) {
         match self {
-            Value::Object(obj_info) => ObjectRef(*obj_info).set_property(key.into(), val),
+            Value::Object(obj_info) => ObjectRef(*obj_info).set_property_val(key.into(), val),
             _ => {}
         }
     }
@@ -440,15 +466,15 @@ impl Value {
     }
 
     pub fn set_constructor(&self, val: Value) {
-        self.get_object_info().property.insert(
-            "constructor".to_string(),
+        self.get_object_info().set_property(
+            "constructor",
             Property::Data(DataProperty {
                 val,
                 writable: true,
                 enumerable: false,
                 configurable: true,
             }),
-        );
+        )
     }
 
     pub fn set_function_outer_environment(&mut self, env: LexicalEnvironmentRef) {
@@ -1026,20 +1052,16 @@ impl Value {
                 let obj_info = ObjectRef(*obj_info);
                 match obj_info.kind {
                     ObjectKind::Ordinary => {
-                        let mut sorted_key_val =
-                            (&obj_info.property)
-                                .iter()
-                                .collect::<Vec<(&String, &Property)>>();
+                        let sorted_key_val = self.create_object_prop_map().unwrap();
+                        let mut sorted_key_val = sorted_key_val.iter().collect::<Vec<_>>();
                         sorted_key_val
                             .sort_by(|(key1, _), (key2, _)| key1.as_str().cmp(key2.as_str()));
 
                         format!("{{ {} }}", property_string(sorted_key_val))
                     }
                     ObjectKind::Arguments => {
-                        let mut sorted_key_val =
-                            (&obj_info.property)
-                                .iter()
-                                .collect::<Vec<(&String, &Property)>>();
+                        let sorted_key_val = self.create_object_prop_map().unwrap();
+                        let mut sorted_key_val = sorted_key_val.iter().collect::<Vec<_>>();
                         sorted_key_val
                             .sort_by(|(key1, _), (key2, _)| key1.as_str().cmp(key2.as_str()));
 
@@ -1063,10 +1085,8 @@ impl Value {
                     ObjectKind::Array(ref ary_info) => {
                         let mut string = "[ ".to_string();
 
-                        let mut sorted_key_val =
-                            (&obj_info.property)
-                                .iter()
-                                .collect::<Vec<(&String, &Property)>>();
+                        let sorted_key_val = self.create_object_prop_map().unwrap();
+                        let mut sorted_key_val = sorted_key_val.iter().collect::<Vec<_>>();
                         sorted_key_val
                             .sort_by(|(key1, _), (key2, _)| key1.as_str().cmp(key2.as_str()));
 

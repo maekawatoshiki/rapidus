@@ -369,14 +369,14 @@ impl Value {
 impl GcTarget for object::Object {
     fn initial_trace(&self, markset: &mut MarkSet) {
         self.kind.initial_trace(markset);
-        for (_, property) in &self.property {
+        for property in self.property.iter().map(|(_, &i)| self.data[i]) {
             property.initial_trace(markset)
         }
     }
 
     fn trace(&self, allocator: &mut MemoryAllocator, markset: &mut MarkSet) {
         self.kind.trace(allocator, markset);
-        for (_, property) in &self.property {
+        for property in self.property.iter().map(|(_, &i)| self.data[i]) {
             property.trace(allocator, markset)
         }
     }

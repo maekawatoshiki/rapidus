@@ -269,7 +269,7 @@ impl LexicalEnvironment {
                 None => {}
             },
             EnvironmentRecord::Global(obj) | EnvironmentRecord::Object(obj) => {
-                obj.set_property(name, val);
+                obj.set_property_val(name, val);
                 return Ok(());
             }
         };
@@ -292,7 +292,7 @@ impl LexicalEnvironment {
                 record.insert(name.into(), val);
             }
             EnvironmentRecord::Global(obj) | EnvironmentRecord::Object(obj) => {
-                obj.set_property(name, val);
+                obj.set_property_val(name, val);
             }
         };
         return Ok(());
