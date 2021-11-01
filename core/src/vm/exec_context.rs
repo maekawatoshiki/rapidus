@@ -218,12 +218,11 @@ impl LexicalEnvironment {
         }
     }
 
-    pub fn get_value(&self, name: impl Into<String>) -> Result<Value, RuntimeError> {
-        let name = name.into();
+    pub fn get_value(&self, name: &str) -> Result<Value, RuntimeError> {
         match self.record {
             EnvironmentRecord::Function { ref record, .. }
             | EnvironmentRecord::Module { ref record, .. }
-            | EnvironmentRecord::Declarative(ref record) => match record.get(&name) {
+            | EnvironmentRecord::Declarative(ref record) => match record.get(name) {
                 Some(binding) if binding == &Value::uninitialized() => {
                     return Err(RuntimeError::reference(format!(
                         "'{}' is not defined",
@@ -234,8 +233,8 @@ impl LexicalEnvironment {
                 None => {}
             },
             EnvironmentRecord::Global(obj) | EnvironmentRecord::Object(obj) => {
-                if obj.has_own_property(name.as_str()) {
-                    let val = obj.get_property(name.as_str());
+                if obj.has_own_property(name) {
+                    let val = obj.get_property(name);
                     if val == Value::uninitialized() {
                         return Err(RuntimeError::reference(format!(
                             "'{}' is not defined",
@@ -257,11 +256,11 @@ impl LexicalEnvironment {
         }
     }
 
-    pub fn set_value(&mut self, name: String, val: Value) -> VMResult {
+    pub fn set_value(&mut self, name: &str, val: Value) -> VMResult {
         match self.record {
             EnvironmentRecord::Function { ref mut record, .. }
             | EnvironmentRecord::Module { ref mut record, .. }
-            | EnvironmentRecord::Declarative(ref mut record) => match record.get_mut(&name) {
+            | EnvironmentRecord::Declarative(ref mut record) => match record.get_mut(name) {
                 Some(binding) => {
                     *binding = val;
                     return Ok(());

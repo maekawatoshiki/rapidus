@@ -97,6 +97,7 @@ impl VM {
     }
 
     pub fn gc_mark(&mut self) {
+        return;
         let time_before_gc = self.profile.instant.elapsed();
         let gc_mode = self.factory.memory_allocator.state;
         self.factory.memory_allocator.mark(
@@ -140,7 +141,7 @@ impl VM {
             .create_lexical_environment(&global_info.lex_names, var_env);
 
         for info in &global_info.func_decls {
-            let name = info.func_name.clone().unwrap();
+            let name = info.func_name.as_ref().unwrap().as_str();
             let val = self.factory.function(*info, lex_env);
             lex_env.set_value(name, val).unwrap();
         }
@@ -677,7 +678,7 @@ impl VM {
                     self.current_context.pc += 1;
                     read_int32!(self, name_id, usize);
                     let val = self.current_context.stack.pop().unwrap();
-                    let name = self.constant_table.get(name_id).as_string().clone();
+                    let name = self.constant_table.get(name_id).as_string().as_str();
                     etry!(self
                         .current_context
                         .lex_env_mut()
@@ -687,7 +688,7 @@ impl VM {
                     self.current_context.pc += 1;
                     read_int32!(self, name_id, usize);
                     let string = self.constant_table.get(name_id).as_string();
-                    let val = etry!(self.current_context.lex_env().get_value(string.clone()));
+                    let val = etry!(self.current_context.lex_env().get_value(string.as_str()));
                     self.current_context.stack.push(val.into());
                 }
                 VMInst::CONSTRUCT => {
@@ -1021,10 +1022,10 @@ impl VM {
     }
 
     fn push_env(&mut self, id: usize) -> VMResult {
-        let lex_names = self.constant_table.get(id).as_lex_env_info().clone();
+        let lex_names = self.constant_table.get(id).as_lex_env_info();
         let outer = self.current_context.lexical_environment;
 
-        let lex_env = self.factory.create_lexical_environment(&lex_names, outer);
+        let lex_env = self.factory.create_lexical_environment(lex_names, outer);
 
         self.current_context
             .saved_lexical_environment
@@ -1167,14 +1168,7 @@ impl VM {
                         self.current_context.func_ref.func_id
                     );
                 };
-                self.enter_user_function(
-                    callee,
-                    info.clone(),
-                    outer_env,
-                    args,
-                    this,
-                    constructor_call,
-                )
+                self.enter_user_function(callee, *info, outer_env, args, this, constructor_call)
             }
         };
         ret
@@ -1215,7 +1209,7 @@ impl VM {
             .create_lexical_environment(&user_func.lex_names, var_env_ref);
 
         for info in &user_func.func_decls {
-            let name = info.func_name.clone().unwrap();
+            let name = info.func_name.as_ref().unwrap().as_str();
             let func = self.factory.function(*info, lex_env_ref);
             lex_env_ref.set_value(name, func)?;
         }
