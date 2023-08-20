@@ -1,0 +1,22 @@
+---
+source: crates/rapidus_parser/src/lexer/mod.rs
+assertion_line: 252
+expression: tokens
+---
+[
+    Ident(
+        Ident(
+            "hello",
+        ),
+    ),
+    Comment(
+        SingleLine(
+            "comment",
+        ),
+    ),
+    Ident(
+        Ident(
+            "world",
+        ),
+    ),
+]

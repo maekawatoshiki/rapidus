@@ -1,0 +1,34 @@
+---
+source: crates/rapidus_parser/src/lexer/mod.rs
+assertion_line: 266
+expression: tokens
+---
+[
+    Ident(
+        Ident(
+            "hello",
+        ),
+    ),
+    Whitespace(
+        " ",
+    ),
+    Comment(
+        MultiLine(
+            " comment コメント ",
+        ),
+    ),
+    Whitespace(
+        " ",
+    ),
+    LineTerminator(
+        "\n",
+    ),
+    Whitespace(
+        "    ",
+    ),
+    Ident(
+        Ident(
+            "world",
+        ),
+    ),
+]

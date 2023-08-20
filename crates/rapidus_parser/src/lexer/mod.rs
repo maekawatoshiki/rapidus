@@ -6,8 +6,9 @@ use thiserror::Error;
 use crate::{
     source::Source,
     token::{
+        comment::Comment,
         ident::{Ident, ReservedWord},
-        Token,
+        is_line_terminator, is_whitespace, Token,
     },
 };
 
@@ -52,11 +53,14 @@ impl<'a> Lexer<'a> {
         match self.input.cur().unwrap() {
             // TODO: https://tc39.es/ecma262/#prod-IdentifierStart
             'a'..='z' | 'A'..='Z' | '_' => self.read_ident().map(Some),
+            '/' if matches!(self.input.cur2(), Some(('/', '/')) | Some(('/', '*'))) => {
+                self.read_comments().map(Some)
+            }
             c if c == '\n' || c == '\r' || c == '\u{2028}' || c == '\u{2029}' => {
                 self.read_line_terminators().map(Some)
             }
-            c if c.is_whitespace() => self.read_whitespaces().map(Some),
-            _ => todo!(),
+            c if is_whitespace(c) => self.read_whitespaces().map(Some),
+            c => todo!("{c:?}"),
         }
     }
 
@@ -70,7 +74,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn read_whitespaces(&mut self) -> Result<Token, LexerError> {
-        let s = self.input.take_while(char::is_ascii_whitespace);
+        let s = self.input.take_while(|&c| is_whitespace(c));
         Ok(Token::Whitespace(s))
     }
 
@@ -79,6 +83,30 @@ impl<'a> Lexer<'a> {
             .input
             .take_while(|c| c == &'\n' || c == &'\r' || c == &'\u{2028}' || c == &'\u{2029}');
         Ok(Token::LineTerminator(s))
+    }
+
+    fn read_comments(&mut self) -> Result<Token, LexerError> {
+        let (c1, c2) = self.input.cur2().unwrap();
+        match (c1, c2) {
+            ('/', '/') => {
+                let s = self
+                    .input
+                    .take_while(|&c| c != '\n' && c != '\r' && c != '\u{2028}' && c != '\u{2029}');
+                assert!(is_line_terminator(self.input.next().unwrap()));
+                Ok(Token::Comment(Comment::SingleLine(s[2..].into())))
+            }
+            ('/', '*') => {
+                let mut last_char = '\0';
+                let s = self.input.take_while(|&c| {
+                    let is_end = last_char == '*' && c == '/';
+                    last_char = c;
+                    !is_end
+                });
+                assert!(self.input.next().unwrap() == '/');
+                Ok(Token::Comment(Comment::MultiLine(s[2..s.len() - 1].into())))
+            }
+            _ => unreachable!(),
+        }
     }
 }
 
@@ -103,6 +131,13 @@ impl<'a> Input<'a> {
         self.chars.clone().peekable().peek().copied()
     }
 
+    pub fn cur2(&self) -> Option<(char, char)> {
+        let mut chars = self.chars.clone().peekable();
+        let c1 = chars.next()?;
+        let c2 = chars.next()?;
+        Some((c1, c2))
+    }
+
     pub fn take_while<F>(&mut self, mut pred: F) -> EcoString
     where
         F: FnMut(&char) -> bool,
@@ -115,6 +150,12 @@ impl<'a> Input<'a> {
         }
         self.chars = self.chars.as_str()[self.pos_in_chars - start_pos..].chars();
         out
+    }
+
+    pub fn next(&mut self) -> Option<char> {
+        let c = self.chars.next()?;
+        self.pos_in_chars += c.len_utf8();
+        Some(c)
     }
 }
 
@@ -185,7 +226,38 @@ mod tests {
 
     #[test]
     fn lex_line_terms() {
-        let source = Source::new(SourceName::FileName("test.js".into()), "if\na b\r\nwhile return");
+        let source = Source::new(
+            SourceName::FileName("test.js".into()),
+            "if\na b\r\nwhile return",
+        );
+        let mut lexer = Lexer::new(Input::from(&source));
+        let mut tokens = vec![];
+        while let Ok(Some(token)) = lexer.read_token() {
+            tokens.push(token);
+        }
+        insta::assert_debug_snapshot!(tokens);
+    }
+
+    #[test]
+    fn lex_single_line_comment() {
+        let source = Source::new(
+            SourceName::FileName("test.js".into()),
+            "hello//comment\nworld",
+        );
+        let mut lexer = Lexer::new(Input::from(&source));
+        let mut tokens = vec![];
+        while let Ok(Some(token)) = lexer.read_token() {
+            tokens.push(token);
+        }
+        insta::assert_debug_snapshot!(tokens);
+    }
+
+    #[test]
+    fn lex_multi_line_comment() {
+        let source = Source::new(
+            SourceName::FileName("test.js".into()),
+            "hello /* comment コメント */ \n    world",
+        );
         let mut lexer = Lexer::new(Input::from(&source));
         let mut tokens = vec![];
         while let Ok(Some(token)) = lexer.read_token() {
