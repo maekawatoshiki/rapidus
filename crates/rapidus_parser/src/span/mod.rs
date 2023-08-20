@@ -1,17 +1,18 @@
 /// Represents a span of something.
 #[derive(Debug, Clone, Copy)]
-pub struct Span {
+pub struct Spanned<T> {
+    inner: T,
     start: usize,
     end: usize,
 }
 
-/// Represents a spanned value.
-#[derive(Debug, Clone)]
-pub struct Spanned<T>(pub T, pub Span);
+impl<T> Spanned<T> {
+    pub fn inner_ref(&self) -> &T {
+        &self.inner
+    }
 
-impl Span {
-    pub fn new(start: usize, end: usize) -> Self {
-        Span { start, end }
+    pub fn inner(self) -> T {
+        self.inner
     }
 
     pub fn start(&self) -> usize {
@@ -20,15 +21,5 @@ impl Span {
 
     pub fn end(&self) -> usize {
         self.end
-    }
-}
-
-impl<T> Spanned<T> {
-    pub fn inner(&self) -> &T {
-        &self.0
-    }
-
-    pub fn span(&self) -> &Span {
-        &self.1
     }
 }
