@@ -68,7 +68,8 @@ impl<'a> Lexer<'a> {
     }
 
     fn read_whitespace(&mut self) -> Result<Token, LexerError> {
-        todo!()
+        let s = self.input.take_while(char::is_ascii_whitespace);
+        Ok(Token::Whitespace(s))
     }
 }
 
@@ -160,5 +161,16 @@ mod tests {
         let source = Source::new(SourceName::FileName("test.js".into()), "if");
         let mut lexer = Lexer::new(Input::from(&source));
         insta::assert_debug_snapshot!(lexer.read_token().unwrap());
+    }
+
+    #[test]
+    fn lex_reserved_words() {
+        let source = Source::new(SourceName::FileName("test.js".into()), "if while    await");
+        let mut lexer = Lexer::new(Input::from(&source));
+        let mut tokens = vec![];
+        while let Ok(Some(token)) = lexer.read_token() {
+            tokens.push(token);
+        }
+        insta::assert_debug_snapshot!(tokens);
     }
 }
