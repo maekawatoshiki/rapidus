@@ -13,7 +13,6 @@ use crate::{
 
 /// Lexical analyzer.
 pub struct Lexer<'a> {
-    #[allow(dead_code)]
     /// Input
     input: Input<'a>,
 }
@@ -53,7 +52,10 @@ impl<'a> Lexer<'a> {
         match self.input.cur().unwrap() {
             // TODO: https://tc39.es/ecma262/#prod-IdentifierStart
             'a'..='z' | 'A'..='Z' | '_' => self.read_ident().map(Some),
-            c if c.is_whitespace() => self.read_whitespace().map(Some),
+            c if c == '\n' || c == '\r' || c == '\u{2028}' || c == '\u{2029}' => {
+                self.read_line_terminators().map(Some)
+            }
+            c if c.is_whitespace() => self.read_whitespaces().map(Some),
             _ => todo!(),
         }
     }
@@ -67,9 +69,16 @@ impl<'a> Lexer<'a> {
         ))
     }
 
-    fn read_whitespace(&mut self) -> Result<Token, LexerError> {
+    fn read_whitespaces(&mut self) -> Result<Token, LexerError> {
         let s = self.input.take_while(char::is_ascii_whitespace);
         Ok(Token::Whitespace(s))
+    }
+
+    fn read_line_terminators(&mut self) -> Result<Token, LexerError> {
+        let s = self
+            .input
+            .take_while(|c| c == &'\n' || c == &'\r' || c == &'\u{2028}' || c == &'\u{2029}');
+        Ok(Token::LineTerminator(s))
     }
 }
 
@@ -166,6 +175,17 @@ mod tests {
     #[test]
     fn lex_reserved_words() {
         let source = Source::new(SourceName::FileName("test.js".into()), "if while    await");
+        let mut lexer = Lexer::new(Input::from(&source));
+        let mut tokens = vec![];
+        while let Ok(Some(token)) = lexer.read_token() {
+            tokens.push(token);
+        }
+        insta::assert_debug_snapshot!(tokens);
+    }
+
+    #[test]
+    fn lex_line_terms() {
+        let source = Source::new(SourceName::FileName("test.js".into()), "if\na b\r\nwhile return");
         let mut lexer = Lexer::new(Input::from(&source));
         let mut tokens = vec![];
         while let Ok(Some(token)) = lexer.read_token() {

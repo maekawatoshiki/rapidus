@@ -8,4 +8,5 @@ pub mod ident;
 pub enum Token {
     Ident(Ident),
     Whitespace(EcoString),
+    LineTerminator(EcoString),
 }

@@ -1,0 +1,44 @@
+---
+source: crates/rapidus_parser/src/lexer/mod.rs
+assertion_line: 194
+expression: tokens
+---
+[
+    Ident(
+        Reserved(
+            If,
+        ),
+    ),
+    LineTerminator(
+        "\n",
+    ),
+    Ident(
+        Ident(
+            "a",
+        ),
+    ),
+    Whitespace(
+        " ",
+    ),
+    Ident(
+        Ident(
+            "b",
+        ),
+    ),
+    LineTerminator(
+        "\r\n",
+    ),
+    Ident(
+        Reserved(
+            While,
+        ),
+    ),
+    Whitespace(
+        " ",
+    ),
+    Ident(
+        Reserved(
+            Return,
+        ),
+    ),
+]
