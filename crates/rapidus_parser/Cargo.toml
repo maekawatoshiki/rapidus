@@ -7,3 +7,4 @@ edition = "2021"
 rustc-hash = { workspace = true }
 thiserror = { workspace = true }
 log = { workspace = true }
+ecow = "0.1.2"

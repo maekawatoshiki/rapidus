@@ -3,6 +3,12 @@
 version = 3
 
 [[package]]
+name = "ecow"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d1990d053cf6edf3f030682dba3b0eb65ef01fabb2686072765d8a17d6728e8"
+
+[[package]]
 name = "log"
 version = "0.4.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -30,6 +36,7 @@ dependencies = [
 name = "rapidus_parser"
 version = "0.1.0"
 dependencies = [
+ "ecow",
  "log",
  "rustc-hash",
  "thiserror",
