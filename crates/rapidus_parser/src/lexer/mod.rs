@@ -1,4 +1,7 @@
-use crate::source::Source;
+use ecow::EcoString;
+use thiserror::Error;
+
+use crate::{source::Source, token::Token};
 
 /// Lexical analyzer.
 pub struct Lexer<'a> {
@@ -9,7 +12,7 @@ pub struct Lexer<'a> {
 
 pub struct Input<'a> {
     /// Source text
-    source: &'a str,
+    source: &'a EcoString,
 
     /// Start position in `source`
     start: usize,
@@ -18,10 +21,17 @@ pub struct Input<'a> {
     end: usize,
 }
 
+#[derive(Debug, Error)]
+pub enum LexerError {}
+
 impl<'a> Lexer<'a> {
     /// Creates a new lexer.
     pub fn new(input: Input<'a>) -> Self {
         Lexer { input }
+    }
+
+    pub fn read_token(&mut self) -> Result<Option<Token>, LexerError> {
+        Ok(None)
     }
 }
 
@@ -51,7 +61,7 @@ impl<'a> From<&'a Source> for Input<'a> {
     /// ```
     fn from(source: &'a Source) -> Self {
         Input {
-            source: source.text.as_str(),
+            source: &source.text,
             start: 0,
             end: source.text.len(),
         }
