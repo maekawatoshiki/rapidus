@@ -5,7 +5,10 @@ use thiserror::Error;
 
 use crate::{
     source::Source,
-    token::{ident::Ident, Token},
+    token::{
+        ident::{Ident, ReservedWord},
+        Token,
+    },
 };
 
 /// Lexical analyzer.
@@ -50,13 +53,22 @@ impl<'a> Lexer<'a> {
         match self.input.cur().unwrap() {
             // TODO: https://tc39.es/ecma262/#prod-IdentifierStart
             'a'..='z' | 'A'..='Z' | '_' => self.read_ident().map(Some),
+            c if c.is_whitespace() => self.read_whitespace().map(Some),
             _ => todo!(),
         }
     }
 
     fn read_ident(&mut self) -> Result<Token, LexerError> {
         let s = self.input.take_while(char::is_ascii_alphanumeric);
-        Ok(Token::Ident(Ident::Ident(s)))
+        Ok(Token::Ident(
+            ReservedWord::try_from(s.clone())
+                .map(Ident::from)
+                .unwrap_or_else(|_| Ident::Ident(s)),
+        ))
+    }
+
+    fn read_whitespace(&mut self) -> Result<Token, LexerError> {
+        todo!()
     }
 }
 
@@ -139,6 +151,13 @@ mod tests {
     #[test]
     fn lex_hello123() {
         let source = Source::new(SourceName::FileName("test.js".into()), "hello123");
+        let mut lexer = Lexer::new(Input::from(&source));
+        insta::assert_debug_snapshot!(lexer.read_token().unwrap());
+    }
+
+    #[test]
+    fn lex_reserved_if() {
+        let source = Source::new(SourceName::FileName("test.js".into()), "if");
         let mut lexer = Lexer::new(Input::from(&source));
         insta::assert_debug_snapshot!(lexer.read_token().unwrap());
     }
