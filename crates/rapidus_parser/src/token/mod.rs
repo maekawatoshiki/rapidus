@@ -1,6 +1,6 @@
 use self::ident::Ident;
 
-mod ident;
+pub mod ident;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Token {

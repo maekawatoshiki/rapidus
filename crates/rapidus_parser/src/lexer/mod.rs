@@ -1,9 +1,12 @@
-use std::str::CharIndices;
+use std::str::Chars;
 
 use ecow::EcoString;
 use thiserror::Error;
 
-use crate::{source::Source, token::Token};
+use crate::{
+    source::Source,
+    token::{ident::Ident, Token},
+};
 
 /// Lexical analyzer.
 pub struct Lexer<'a> {
@@ -16,8 +19,8 @@ pub struct Input<'a> {
     /// Source text
     source: &'a EcoString,
 
-    /// Iterator used to read each character and its position
-    chars: CharIndices<'a>,
+    /// Iterator used to read each character in `source`
+    chars: Chars<'a>,
 
     /// Current position in `chars`
     pos_in_chars: usize,
@@ -44,7 +47,7 @@ impl<'a> Lexer<'a> {
             return Ok(None);
         }
 
-        match self.input.peek().unwrap() {
+        match self.input.cur().unwrap() {
             // TODO: https://tc39.es/ecma262/#prod-IdentifierStart
             'a'..='z' | 'A'..='Z' | '_' => self.read_ident().map(Some),
             _ => todo!(),
@@ -52,7 +55,8 @@ impl<'a> Lexer<'a> {
     }
 
     fn read_ident(&mut self) -> Result<Token, LexerError> {
-        todo!()
+        let s = self.input.take_while(char::is_ascii_alphanumeric);
+        Ok(Token::Ident(Ident::Ident(s)))
     }
 }
 
@@ -73,8 +77,22 @@ impl<'a> Input<'a> {
         self.pos_in_chars >= self.end
     }
 
-    pub fn peek(&self) -> Option<char> {
-        self.chars.clone().peekable().peek().map(|(_, c)| *c)
+    pub fn cur(&self) -> Option<char> {
+        self.chars.clone().peekable().peek().copied()
+    }
+
+    pub fn take_while<F>(&mut self, mut pred: F) -> EcoString
+    where
+        F: FnMut(&char) -> bool,
+    {
+        let start_pos = self.pos_in_chars;
+        let mut out = EcoString::new();
+        for c in self.chars.as_str().chars().take_while(|c| pred(c)) {
+            self.pos_in_chars += c.len_utf8();
+            out.push(c);
+        }
+        self.chars = self.chars.as_str()[self.pos_in_chars - start_pos..].chars();
+        out
     }
 }
 
@@ -91,7 +109,7 @@ impl<'a> From<&'a Source> for Input<'a> {
     fn from(source: &'a Source) -> Self {
         Input {
             source: &source.text,
-            chars: source.text[0..source.text.len()].char_indices(),
+            chars: source.text[0..source.text.len()].chars(),
             pos_in_chars: 0,
             start: 0,
             end: source.text.len(),
@@ -112,10 +130,16 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
     fn lex_hello() {
         let source = Source::new(SourceName::FileName("test.js".into()), "hello");
         let mut lexer = Lexer::new(Input::from(&source));
-        assert_ne!(lexer.read_token().unwrap(), None);
+        insta::assert_debug_snapshot!(lexer.read_token().unwrap());
+    }
+
+    #[test]
+    fn lex_hello123() {
+        let source = Source::new(SourceName::FileName("test.js".into()), "hello123");
+        let mut lexer = Lexer::new(Input::from(&source));
+        insta::assert_debug_snapshot!(lexer.read_token().unwrap());
     }
 }

@@ -8,3 +8,6 @@ rustc-hash = { workspace = true }
 thiserror = { workspace = true }
 log = { workspace = true }
 ecow = "0.1.2"
+
+[dev-dependencies]
+insta = "1.31.0"

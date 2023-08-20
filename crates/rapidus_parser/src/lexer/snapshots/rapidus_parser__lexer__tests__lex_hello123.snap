@@ -1,0 +1,12 @@
+---
+source: crates/rapidus_parser/src/lexer/mod.rs
+assertion_line: 143
+expression: lexer.read_token().unwrap()
+---
+Some(
+    Ident(
+        Ident(
+            "hello123",
+        ),
+    ),
+)
