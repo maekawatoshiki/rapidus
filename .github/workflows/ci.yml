@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [ '*' ]
+  pull_request:
+    branches: [ '*' ]
+
+concurrency: 
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  CI:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: nightly
+    - uses: actions/cache@v2
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    - name: Add llvm-tools-preview
+      run: rustup component add llvm-tools-preview
+    - name: Install grcov
+      run: cargo install grcov
+    - name: Test
+      run: |
+        cargo test --release
+      env:
+        RUSTFLAGS: -Cinstrument-coverage
+        LLVM_PROFILE_FILE: coverage-%p-%m.profraw
+    - name: Submit coverage
+      run: |
+        mkdir -p /tmp/cov/
+        cp -rf ./target/release/* /tmp/cov/
+        grcov . --binary-path /tmp/cov/ -s . -t cobertura --branch --ignore-not-existing --ignore "*cargo*" -o coverage.xml
+        bash <(curl -s https://codecov.io/bash)
+      env:
+        RUSTFLAGS: -Cinstrument-coverage
+        LLVM_PROFILE_FILE: coverage-%p-%m.profraw
