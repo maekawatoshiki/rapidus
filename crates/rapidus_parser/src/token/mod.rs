@@ -1,12 +1,35 @@
 use ecow::EcoString;
 
-use self::{comment::Comment, ident::Ident};
+use self::{
+    comment::Comment,
+    ident::Ident,
+    op::{AssignOp, BinOp},
+};
 
 pub mod comment;
 pub mod ident;
+pub mod op;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Token {
+    LBrace,
+    RBrace,
+    LParen,
+    RParen,
+    LBracket,
+    RBracket,
+    Dot,
+    Ellipsis,
+    Semicolon,
+    Colon,
+    Comma,
+    BinOp(BinOp),
+    AssignOp(AssignOp),
+    PlusPlus,
+    MinusMinus,
+    Exclamation,
+    Question,
+    Arrow,
     Ident(Ident),
     Whitespace(EcoString),
     LineTerminator(EcoString),
