@@ -11,6 +11,7 @@ use crate::{
         is_line_terminator, is_whitespace,
         num::Num,
         op::{AssignOp, Op},
+        str::Str,
         Token,
     },
 };
@@ -28,8 +29,8 @@ pub struct Input<'a> {
     /// Iterator used to read each character in `source`
     chars: Chars<'a>,
 
-    /// Current position in `chars`
-    pos_in_chars: usize,
+    /// Current position in `source`
+    pos_in_source: usize,
 
     /// Start position in `source`
     start: usize,
@@ -72,6 +73,8 @@ impl<'a> Lexer<'a> {
             }
             // TODO: https://tc39.es/ecma262/multipage/ecmascript-language-lexical-grammar.html#sec-literals-numeric-literals
             '0'..='9' => self.read_num().map(Some),
+            // TODO: https://tc39.es/ecma262/multipage/ecmascript-language-lexical-grammar.html#sec-literals-string-literals
+            '"' | '\'' => self.read_str().map(Some),
             '\n' | '\r' | '\u{2028}' | '\u{2029}' => self.read_line_terminators().map(Some),
             c if is_whitespace(c) => self.read_whitespaces().map(Some),
             c => Err(LexerError::UnexpectedCharacter(c)),
@@ -158,6 +161,23 @@ impl<'a> Lexer<'a> {
         )))
     }
 
+    fn read_str(&mut self) -> Result<Token, LexerError> {
+        let pos = self.input.cur_pos();
+        let quote: char = self.input.advance().unwrap();
+        let mut last_char = '\0';
+        let s = self.input.take_while(|&c| {
+            let is_end = last_char != '\\' && c == quote;
+            last_char = c;
+            !is_end
+        });
+        assert!(self.input.skip(quote));
+        // TODO: Handle escape sequences
+        Ok(Token::Str(Str::new(
+            s,
+            self.input.source[pos..self.input.cur_pos()].into(),
+        )))
+    }
+
     fn read_whitespaces(&mut self) -> Result<Token, LexerError> {
         let s = self.input.take_while(|&c| is_whitespace(c));
         Ok(Token::Whitespace(s))
@@ -209,7 +229,11 @@ impl<'a> Input<'a> {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.pos_in_chars >= self.end
+        self.pos_in_source >= self.end
+    }
+
+    pub fn cur_pos(&self) -> usize {
+        self.pos_in_source
     }
 
     pub fn cur<const N: usize>(&self) -> Option<[char; N]> {
@@ -249,19 +273,19 @@ impl<'a> Input<'a> {
     where
         F: FnMut(&char) -> bool,
     {
-        let start_pos = self.pos_in_chars;
+        let start_pos = self.pos_in_source;
         let mut out = EcoString::new();
         for c in self.chars.as_str().chars().take_while(|c| pred(c)) {
-            self.pos_in_chars += c.len_utf8();
+            self.pos_in_source += c.len_utf8();
             out.push(c);
         }
-        self.chars = self.chars.as_str()[self.pos_in_chars - start_pos..].chars();
+        self.chars = self.chars.as_str()[self.pos_in_source - start_pos..].chars();
         out
     }
 
     pub fn advance(&mut self) -> Option<char> {
         let c = self.chars.next()?;
-        self.pos_in_chars += c.len_utf8();
+        self.pos_in_source += c.len_utf8();
         Some(c)
     }
 }
@@ -280,7 +304,7 @@ impl<'a> From<&'a Source> for Input<'a> {
         Input {
             source: &source.text,
             chars: source.text[0..source.text.len()].chars(),
-            pos_in_chars: 0,
+            pos_in_source: 0,
             start: 0,
             end: source.text.len(),
         }
@@ -427,6 +451,17 @@ mod tests {
             SourceName::FileName("test.js".into()),
             "one 1 two 2 twenty-six 26",
         );
+        let mut lexer = Lexer::new(Input::from(&source));
+        let mut tokens = vec![];
+        while let Ok(Some(token)) = lexer.read_token() {
+            tokens.push(token);
+        }
+        insta::assert_debug_snapshot!(tokens);
+    }
+
+    #[test]
+    fn lex_str() {
+        let source = Source::new(SourceName::FileName("test.js".into()), r#""hello" 'world'"#);
         let mut lexer = Lexer::new(Input::from(&source));
         let mut tokens = vec![];
         while let Ok(Some(token)) = lexer.read_token() {

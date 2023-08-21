@@ -1,0 +1,22 @@
+---
+source: crates/rapidus_parser/src/lexer/mod.rs
+assertion_line: 471
+expression: tokens
+---
+[
+    Str(
+        Str {
+            val: "hello",
+            raw: "\"hello\"",
+        },
+    ),
+    Whitespace(
+        " ",
+    ),
+    Str(
+        Str {
+            val: "world",
+            raw: "'world'",
+        },
+    ),
+]
