@@ -27,6 +27,8 @@ fn main() {
 
     let opt = Opt::from_args();
 
+    println!("\x1b[1mRemember that ECMAScript is not Context-Free language.\x1b[0m");
+
     if let Some(filepath) = opt.lex_target {
         lex_file(filepath);
     } else {
