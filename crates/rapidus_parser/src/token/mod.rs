@@ -6,6 +6,7 @@ use self::{
     num::Num,
     op::{AssignOp, Op},
     str::Str,
+    template::Template,
 };
 
 pub mod comment;
@@ -13,6 +14,7 @@ pub mod ident;
 pub mod num;
 pub mod op;
 pub mod str;
+pub mod template;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
@@ -27,6 +29,7 @@ pub enum Token {
     Arrow,
     Num(Num),
     Str(Str),
+    Template(Template),
     Ident(Ident),
     Whitespace(EcoString),
     LineTerminator(EcoString),

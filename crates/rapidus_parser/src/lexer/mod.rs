@@ -12,6 +12,7 @@ use crate::{
         num::Num,
         op::{AssignOp, Op},
         str::Str,
+        template::Template,
         Token,
     },
 };
@@ -66,6 +67,7 @@ impl<'a> Lexer<'a> {
             '0'..='9' => self.read_num().map(Some),
             // TODO: https://tc39.es/ecma262/multipage/ecmascript-language-lexical-grammar.html#sec-literals-string-literals
             '"' | '\'' => self.read_str().map(Some),
+            '`' => self.read_template().map(Some),
             '\n' | '\r' | '\u{2028}' | '\u{2029}' => self.read_line_terminators().map(Some),
             c if is_whitespace(c) => self.read_whitespaces().map(Some),
             c => Err(Error::UnexpectedCharacter(c)),
@@ -163,6 +165,26 @@ impl<'a> Lexer<'a> {
         }
         // TODO: Handle escape sequences
         Ok(Token::Str(Str::new(
+            s,
+            self.input.source[pos..self.input.cur_pos()].into(),
+        )))
+    }
+
+    fn read_template(&mut self) -> Result<Token, Error> {
+        let pos = self.input.cur_pos();
+        let quote: char = self.input.advance().unwrap();
+        let mut last_char = '\0';
+        let s = self.input.take_while(|&c| {
+            let is_end = last_char != '\\' && c == quote;
+            last_char = c;
+            !is_end
+        });
+        if !self.input.skip('`') {
+            return Err(Error::UnexpectedEof);
+        }
+        // TODO: https://tc39.es/ecma262/multipage/ecmascript-language-lexical-grammar.html#prod-Template
+        // TODO: Handle escape sequences and substitutions
+        Ok(Token::Template(Template::new(
             s,
             self.input.source[pos..self.input.cur_pos()].into(),
         )))
