@@ -158,7 +158,9 @@ impl<'a> Lexer<'a> {
             last_char = c;
             !is_end
         });
-        assert!(self.input.skip(quote));
+        if !self.input.skip(quote) {
+            return Err(Error::UnexpectedEof);
+        }
         // TODO: Handle escape sequences
         Ok(Token::Str(Str::new(
             s,

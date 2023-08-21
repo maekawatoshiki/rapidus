@@ -5,6 +5,9 @@ pub enum Error {
     #[error("Unexpected character: {0}")]
     UnexpectedCharacter(char),
 
+    #[error("Unexpected EOF")]
+    UnexpectedEof,
+
     #[error("TODO")]
     Todo,
 }

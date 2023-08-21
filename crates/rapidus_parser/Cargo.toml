@@ -13,5 +13,7 @@ ecow = "0.1.2"
 [dev-dependencies]
 color-backtrace = "0.6.0"
 env_logger = "0.10.0"
+glob = "0.3.1"
+indicatif = "0.17.6"
 insta = "1.31.0"
 structopt = "0.3.26"
