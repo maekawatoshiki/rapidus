@@ -9,6 +9,7 @@ use crate::{
         comment::Comment,
         ident::{Ident, ReservedWord},
         is_line_terminator, is_whitespace,
+        num::Num,
         op::{AssignOp, Op},
         Token,
     },
@@ -65,11 +66,12 @@ impl<'a> Lexer<'a> {
             '/' if matches!(self.input.cur(), Some(['/', '/']) | Some(['/', '*'])) => {
                 self.read_comments().map(Some)
             }
-            // TODO: https://tc39.es/ecma262/#prod-Punctuator
             '+' | '-' | '(' | ')' | '{' | '}' | '[' | ']' | '.' | ';' | ':' | ',' | '<' | '>'
             | '=' | '!' | '~' | '?' | '&' | '|' | '^' | '%' | '*' | '/' => {
                 self.read_punctuator().map(Some)
             }
+            // TODO: https://tc39.es/ecma262/multipage/ecmascript-language-lexical-grammar.html#sec-literals-numeric-literals
+            '0'..='9' => self.read_num().map(Some),
             '\n' | '\r' | '\u{2028}' | '\u{2029}' => self.read_line_terminators().map(Some),
             c if is_whitespace(c) => self.read_whitespaces().map(Some),
             c => Err(LexerError::UnexpectedCharacter(c)),
@@ -146,6 +148,14 @@ impl<'a> Lexer<'a> {
             '?' => Ok(Token::Op(Op::Question)),
             _ => Err(LexerError::Todo),
         }
+    }
+
+    fn read_num(&mut self) -> Result<Token, LexerError> {
+        let s = self.input.take_while(|c| c.is_ascii_digit());
+        Ok(Token::Num(Num::new(
+            s.parse().map_err(|_| LexerError::Todo)?,
+            s,
+        )))
     }
 
     fn read_whitespaces(&mut self) -> Result<Token, LexerError> {
@@ -402,6 +412,20 @@ mod tests {
         let source = Source::new(
             SourceName::FileName("test.js".into()),
             "while (true) { break; }",
+        );
+        let mut lexer = Lexer::new(Input::from(&source));
+        let mut tokens = vec![];
+        while let Ok(Some(token)) = lexer.read_token() {
+            tokens.push(token);
+        }
+        insta::assert_debug_snapshot!(tokens);
+    }
+
+    #[test]
+    fn lex_num() {
+        let source = Source::new(
+            SourceName::FileName("test.js".into()),
+            "one 1 two 2 twenty-six 26",
         );
         let mut lexer = Lexer::new(Input::from(&source));
         let mut tokens = vec![];

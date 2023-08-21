@@ -1,0 +1,63 @@
+---
+source: crates/rapidus_parser/src/lexer/mod.rs
+assertion_line: 435
+expression: tokens
+---
+[
+    Ident(
+        Ident(
+            "one",
+        ),
+    ),
+    Whitespace(
+        " ",
+    ),
+    Num(
+        Num {
+            val: 1.0,
+            raw: "1",
+        },
+    ),
+    Whitespace(
+        " ",
+    ),
+    Ident(
+        Ident(
+            "two",
+        ),
+    ),
+    Whitespace(
+        " ",
+    ),
+    Num(
+        Num {
+            val: 2.0,
+            raw: "2",
+        },
+    ),
+    Whitespace(
+        " ",
+    ),
+    Ident(
+        Ident(
+            "twenty",
+        ),
+    ),
+    Op(
+        Minus,
+    ),
+    Ident(
+        Ident(
+            "six",
+        ),
+    ),
+    Whitespace(
+        " ",
+    ),
+    Num(
+        Num {
+            val: 26.0,
+            raw: "26",
+        },
+    ),
+]
