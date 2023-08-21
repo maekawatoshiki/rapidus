@@ -1,0 +1,313 @@
+---
+source: crates/rapidus_parser/src/lexer/mod.rs
+assertion_line: 482
+expression: tokens
+---
+[
+    LBrace,
+    Whitespace(
+        " ",
+    ),
+    LParen,
+    Whitespace(
+        " ",
+    ),
+    RParen,
+    Whitespace(
+        " ",
+    ),
+    LBracket,
+    Whitespace(
+        " ",
+    ),
+    RBracket,
+    Whitespace(
+        " ",
+    ),
+    Op(
+        Dot,
+    ),
+    Whitespace(
+        " ",
+    ),
+    Op(
+        Ellipsis,
+    ),
+    Whitespace(
+        " ",
+    ),
+    Op(
+        Semicolon,
+    ),
+    Whitespace(
+        " ",
+    ),
+    Op(
+        Comma,
+    ),
+    Whitespace(
+        " ",
+    ),
+    Op(
+        LessThan,
+    ),
+    Whitespace(
+        " ",
+    ),
+    Op(
+        GreaterThan,
+    ),
+    Whitespace(
+        " ",
+    ),
+    Op(
+        LessThanOrEqual,
+    ),
+    Whitespace(
+        " ",
+    ),
+    Op(
+        GreaterThanOrEqual,
+    ),
+    Whitespace(
+        " ",
+    ),
+    Op(
+        Equal,
+    ),
+    Whitespace(
+        " ",
+    ),
+    Op(
+        NotEqual,
+    ),
+    Whitespace(
+        " ",
+    ),
+    Op(
+        StrictEqual,
+    ),
+    Whitespace(
+        " ",
+    ),
+    Op(
+        StrictNotEqual,
+    ),
+    LineTerminator(
+        "\n",
+    ),
+    Op(
+        Plus,
+    ),
+    Whitespace(
+        " ",
+    ),
+    Op(
+        Minus,
+    ),
+    Whitespace(
+        " ",
+    ),
+    Op(
+        Asterisk,
+    ),
+    Whitespace(
+        " ",
+    ),
+    Op(
+        Mod,
+    ),
+    Whitespace(
+        " ",
+    ),
+    Op(
+        Exp,
+    ),
+    Whitespace(
+        " ",
+    ),
+    Op(
+        PlusPlus,
+    ),
+    Whitespace(
+        " ",
+    ),
+    Op(
+        MinusMinus,
+    ),
+    Whitespace(
+        " ",
+    ),
+    Op(
+        LShift,
+    ),
+    Whitespace(
+        " ",
+    ),
+    Op(
+        RShift,
+    ),
+    Whitespace(
+        " ",
+    ),
+    Op(
+        URShift,
+    ),
+    Whitespace(
+        " ",
+    ),
+    Op(
+        BitAnd,
+    ),
+    Whitespace(
+        " ",
+    ),
+    Op(
+        BitOr,
+    ),
+    Whitespace(
+        " ",
+    ),
+    Op(
+        BitXor,
+    ),
+    Whitespace(
+        " ",
+    ),
+    Op(
+        Exclamation,
+    ),
+    Whitespace(
+        " ",
+    ),
+    Op(
+        BitNot,
+    ),
+    Whitespace(
+        " ",
+    ),
+    Op(
+        And,
+    ),
+    Whitespace(
+        " ",
+    ),
+    Op(
+        Or,
+    ),
+    Whitespace(
+        " ",
+    ),
+    Op(
+        NullishCoalescing,
+    ),
+    Whitespace(
+        " ",
+    ),
+    Op(
+        Question,
+    ),
+    Whitespace(
+        " ",
+    ),
+    Op(
+        Colon,
+    ),
+    Whitespace(
+        " ",
+    ),
+    AssignOp(
+        Normal,
+    ),
+    Whitespace(
+        " ",
+    ),
+    AssignOp(
+        Add,
+    ),
+    Whitespace(
+        " ",
+    ),
+    AssignOp(
+        Sub,
+    ),
+    Whitespace(
+        " ",
+    ),
+    AssignOp(
+        Mul,
+    ),
+    Whitespace(
+        " ",
+    ),
+    AssignOp(
+        Div,
+    ),
+    Whitespace(
+        " ",
+    ),
+    AssignOp(
+        Mod,
+    ),
+    Whitespace(
+        " ",
+    ),
+    AssignOp(
+        Exp,
+    ),
+    Whitespace(
+        " ",
+    ),
+    AssignOp(
+        LShift,
+    ),
+    Whitespace(
+        " ",
+    ),
+    AssignOp(
+        URShift,
+    ),
+    AssignOp(
+        URShift,
+    ),
+    Whitespace(
+        " ",
+    ),
+    AssignOp(
+        BitAnd,
+    ),
+    Whitespace(
+        " ",
+    ),
+    AssignOp(
+        BitOr,
+    ),
+    Whitespace(
+        " ",
+    ),
+    AssignOp(
+        BitXor,
+    ),
+    Whitespace(
+        " ",
+    ),
+    AssignOp(
+        And,
+    ),
+    Whitespace(
+        " ",
+    ),
+    AssignOp(
+        Or,
+    ),
+    Whitespace(
+        " ",
+    ),
+    AssignOp(
+        NullishCoalescing,
+    ),
+    Whitespace(
+        " ",
+    ),
+    Arrow,
+]

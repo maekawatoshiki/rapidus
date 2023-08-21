@@ -32,10 +32,12 @@ pub enum Op {
     MinusMinus,
     Exclamation,
     Question,
+    BitNot,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AssignOp {
+    Normal,
     Add,
     Sub,
     Mul,

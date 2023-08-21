@@ -9,7 +9,7 @@ use crate::{
         comment::Comment,
         ident::{Ident, ReservedWord},
         is_line_terminator, is_whitespace,
-        op::Op,
+        op::{AssignOp, Op},
         Token,
     },
 };
@@ -65,7 +65,10 @@ impl<'a> Lexer<'a> {
                 self.read_comments().map(Some)
             }
             // TODO: https://tc39.es/ecma262/#prod-Punctuator
-            '+' | '-' | '(' | ')' | '{' | '}' | '[' | ']' => self.read_punctuator().map(Some),
+            '+' | '-' | '(' | ')' | '{' | '}' | '[' | ']' | '.' | ';' | ':' | ',' | '<' | '>'
+            | '=' | '!' | '~' | '?' | '&' | '|' | '^' | '%' | '*' | '/' => {
+                self.read_punctuator().map(Some)
+            }
             '\n' | '\r' | '\u{2028}' | '\u{2029}' => self.read_line_terminators().map(Some),
             c if is_whitespace(c) => self.read_whitespaces().map(Some),
             c => Err(LexerError::UnexpectedCharacter(c)),
@@ -88,18 +91,166 @@ impl<'a> Lexer<'a> {
                 self.input.next();
                 Ok(Token::Op(Op::PlusPlus))
             }
+            '+' if self.input.cur() == Some('=') => {
+                self.input.next();
+                Ok(Token::AssignOp(AssignOp::Add))
+            }
             '-' if self.input.cur() == Some('-') => {
                 self.input.next();
                 Ok(Token::Op(Op::MinusMinus))
             }
+            '-' if self.input.cur() == Some('=') => {
+                self.input.next();
+                Ok(Token::AssignOp(AssignOp::Sub))
+            }
             '+' => Ok(Token::Op(Op::Plus)),
             '-' => Ok(Token::Op(Op::Minus)),
+            '*' if self.input.cur2() == Some(('*', '=')) => {
+                self.input.next();
+                self.input.next();
+                Ok(Token::AssignOp(AssignOp::Exp))
+            }
+            '*' if self.input.cur() == Some('*') => {
+                self.input.next();
+                Ok(Token::Op(Op::Exp))
+            }
+            '*' if self.input.cur() == Some('=') => {
+                self.input.next();
+                Ok(Token::AssignOp(AssignOp::Mul))
+            }
+            '*' => Ok(Token::Op(Op::Asterisk)),
+            '/' if self.input.cur() == Some('=') => {
+                self.input.next();
+                Ok(Token::AssignOp(AssignOp::Div))
+            }
+            '/' => Ok(Token::Op(Op::Div)),
+            '%' if self.input.cur() == Some('=') => {
+                self.input.next();
+                Ok(Token::AssignOp(AssignOp::Mod))
+            }
+            '%' => Ok(Token::Op(Op::Mod)),
+            '&' if self.input.cur() == Some('=') => {
+                self.input.next();
+                Ok(Token::AssignOp(AssignOp::BitAnd))
+            }
+            '&' if self.input.cur2() == Some(('&', '=')) => {
+                self.input.next();
+                self.input.next();
+                Ok(Token::AssignOp(AssignOp::And))
+            }
+            '&' if self.input.cur() == Some('&') => {
+                self.input.next();
+                Ok(Token::Op(Op::And))
+            }
+            '|' if self.input.cur2() == Some(('|', '=')) => {
+                self.input.next();
+                self.input.next();
+                Ok(Token::AssignOp(AssignOp::Or))
+            }
+            '|' if self.input.cur() == Some('|') => {
+                self.input.next();
+                Ok(Token::Op(Op::Or))
+            }
+            '|' if self.input.cur() == Some('=') => {
+                self.input.next();
+                Ok(Token::AssignOp(AssignOp::BitOr))
+            }
+            '&' => Ok(Token::Op(Op::BitAnd)),
+            '|' => Ok(Token::Op(Op::BitOr)),
+            '^' if self.input.cur() == Some('=') => {
+                self.input.next();
+                Ok(Token::AssignOp(AssignOp::BitXor))
+            }
+            '^' => Ok(Token::Op(Op::BitXor)),
+            '~' => Ok(Token::Op(Op::BitNot)),
             '(' => Ok(Token::LParen),
             ')' => Ok(Token::RParen),
             '{' => Ok(Token::LBrace),
             '}' => Ok(Token::RBrace),
             '[' => Ok(Token::LBracket),
             ']' => Ok(Token::RBracket),
+            '.' if self.input.cur2() == Some(('.', '.')) => {
+                self.input.next();
+                self.input.next();
+                Ok(Token::Op(Op::Ellipsis))
+            }
+            '.' => Ok(Token::Op(Op::Dot)),
+            ';' => Ok(Token::Op(Op::Semicolon)),
+            ':' => Ok(Token::Op(Op::Colon)),
+            ',' => Ok(Token::Op(Op::Comma)),
+            '<' if self.input.cur2() == Some(('<', '=')) => {
+                self.input.next();
+                self.input.next();
+                Ok(Token::AssignOp(AssignOp::LShift))
+            }
+            '>' if self.input.cur2() == Some(('>', '=')) => {
+                self.input.next();
+                self.input.next();
+                self.input.next();
+                Ok(Token::AssignOp(AssignOp::URShift))
+            }
+            '<' if self.input.cur() == Some('<') => {
+                self.input.next();
+                Ok(Token::Op(Op::LShift))
+            }
+            '>' if self.input.cur2() == Some(('>', '>')) => {
+                self.input.next();
+                self.input.next();
+                if self.input.cur() == Some('=') {
+                    self.input.next();
+                    Ok(Token::AssignOp(AssignOp::URShift))
+                } else {
+                    Ok(Token::Op(Op::URShift))
+                }
+            }
+            '>' if self.input.cur() == Some('>') => {
+                self.input.next();
+                Ok(Token::Op(Op::RShift))
+            }
+            '<' if self.input.cur() == Some('=') => {
+                self.input.next();
+                Ok(Token::Op(Op::LessThanOrEqual))
+            }
+            '>' if self.input.cur() == Some('=') => {
+                self.input.next();
+                Ok(Token::Op(Op::GreaterThanOrEqual))
+            }
+            '<' => Ok(Token::Op(Op::LessThan)),
+            '>' => Ok(Token::Op(Op::GreaterThan)),
+            '=' if self.input.cur2() == Some(('=', '=')) => {
+                self.input.next();
+                self.input.next();
+                Ok(Token::Op(Op::StrictEqual))
+            }
+            '=' if self.input.cur() == Some('>') => {
+                self.input.next();
+                Ok(Token::Arrow)
+            }
+            '=' if self.input.cur() == Some('=') => {
+                self.input.next();
+                Ok(Token::Op(Op::Equal))
+            }
+            '=' => Ok(Token::AssignOp(AssignOp::Normal)),
+            '!' if self.input.cur2() == Some(('=', '=')) => {
+                self.input.next();
+                self.input.next();
+                Ok(Token::Op(Op::StrictNotEqual))
+            }
+            '!' if self.input.cur() == Some('=') => {
+                self.input.next();
+                Ok(Token::Op(Op::NotEqual))
+            }
+            '!' => Ok(Token::Op(Op::Exclamation)),
+            '?' if self.input.cur2() == Some(('?', '=')) => {
+                self.input.next();
+                self.input.next();
+                Ok(Token::AssignOp(AssignOp::NullishCoalescing))
+            }
+            '?' if self.input.cur() == Some('?') => {
+                self.input.next();
+                Ok(Token::Op(Op::NullishCoalescing))
+            }
+            '?' => Ok(Token::Op(Op::Question)),
             _ => Err(LexerError::Todo),
         }
     }
@@ -311,6 +462,18 @@ mod tests {
     #[test]
     fn lex_punct_2() {
         let source = Source::new(SourceName::FileName("test.js".into()), "a++ + --c");
+        let mut lexer = Lexer::new(Input::from(&source));
+        let mut tokens = vec![];
+        while let Ok(Some(token)) = lexer.read_token() {
+            tokens.push(token);
+        }
+        insta::assert_debug_snapshot!(tokens);
+    }
+
+    #[test]
+    fn lex_punct_3() {
+        let source = Source::new(SourceName::FileName("test.js".into()), "{ ( ) [ ] . ... ; , < > <= >= == != === !==
++ - * % ** ++ -- << >> >>> & | ^ ! ~ && || ?? ? : = += -= *= /= %= **= <<= >>= >>>= &= |= ^= &&= ||= ??= =>");
         let mut lexer = Lexer::new(Input::from(&source));
         let mut tokens = vec![];
         while let Ok(Some(token)) = lexer.read_token() {
