@@ -58,10 +58,11 @@ impl<'a> Lexer<'a> {
             return Ok(None);
         }
 
-        match self.input.cur().unwrap() {
+        let [start] = self.input.cur().unwrap();
+        match start {
             // TODO: https://tc39.es/ecma262/#prod-IdentifierStart
             'a'..='z' | 'A'..='Z' | '_' => self.read_ident().map(Some),
-            '/' if matches!(self.input.cur2(), Some(('/', '/')) | Some(('/', '*'))) => {
+            '/' if matches!(self.input.cur(), Some(['/', '/']) | Some(['/', '*'])) => {
                 self.read_comments().map(Some)
             }
             // TODO: https://tc39.es/ecma262/#prod-Punctuator
@@ -160,16 +161,16 @@ impl<'a> Lexer<'a> {
     }
 
     fn read_comments(&mut self) -> Result<Token, LexerError> {
-        let (c1, c2) = self.input.cur2().unwrap();
-        match (c1, c2) {
-            ('/', '/') => {
+        let start: [char; 2] = self.input.cur().unwrap();
+        match start {
+            ['/', '/'] => {
                 let s = self
                     .input
                     .take_while(|&c| c != '\n' && c != '\r' && c != '\u{2028}' && c != '\u{2029}');
                 assert!(is_line_terminator(self.input.advance().unwrap()));
                 Ok(Token::Comment(Comment::SingleLine(s[2..].into())))
             }
-            ('/', '*') => {
+            ['/', '*'] => {
                 let mut last_char = '\0';
                 let s = self.input.take_while(|&c| {
                     let is_end = last_char == '*' && c == '/';
@@ -201,15 +202,22 @@ impl<'a> Input<'a> {
         self.pos_in_chars >= self.end
     }
 
-    pub fn cur(&self) -> Option<char> {
-        self.chars.clone().peekable().peek().copied()
+    pub fn cur<const N: usize>(&self) -> Option<[char; N]> {
+        let mut chars = self.chars.clone().peekable();
+        let mut cs = ['\0'; N];
+        for c in &mut cs {
+            *c = chars.next()?;
+        }
+        Some(cs)
     }
 
-    pub fn cur2(&self) -> Option<(char, char)> {
-        let mut chars = self.chars.clone().peekable();
-        let c1 = chars.next()?;
-        let c2 = chars.next()?;
-        Some((c1, c2))
+    pub fn skip(&mut self, c: char) -> bool {
+        if self.cur() == Some([c]) {
+            self.advance();
+            true
+        } else {
+            false
+        }
     }
 
     pub fn skips<const N: usize>(&mut self, cs: [char; N]) -> bool {
@@ -225,15 +233,6 @@ impl<'a> Input<'a> {
             self.advance();
         }
         true
-    }
-
-    pub fn skip(&mut self, c: char) -> bool {
-        if self.cur() == Some(c) {
-            self.advance();
-            true
-        } else {
-            false
-        }
     }
 
     pub fn take_while<F>(&mut self, mut pred: F) -> EcoString
