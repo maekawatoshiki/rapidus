@@ -1,0 +1,5 @@
+[build]
+rustflags = ["-Ctarget-cpu=native"]
+
+[env]
+RUST_LOG = "debug"
