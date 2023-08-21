@@ -52,8 +52,26 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_expr_stmt(&mut self) -> Result<Stmt, Error> {
-        self.parse_primary_expr()
-            .map(|expr| Stmt::new(expr.span(), stmt::Kind::Expr(expr)))
+        let expr = self.parse_primary_expr()?;
+        self.expect_semicolon()?;
+        Ok(Stmt::new(expr.span(), stmt::Kind::Expr(expr)))
+    }
+
+    fn expect_semicolon(&mut self) -> Result<(), Error> {
+        // https://tc39.es/ecma262/multipage/ecmascript-language-lexical-grammar.html#sec-rules-of-automatic-semicolon-insertion
+
+        let tok = self.lexer.read()?;
+        match tok {
+            Some(Spanned(_, Token::Op(Op::Semicolon))) => Ok(()),
+            Some(Spanned(_, Token::RBrace)) => {
+                self.lexer.unread(tok.unwrap());
+                Ok(())
+            }
+            Some(Spanned(_, Token::LineTerminator(_))) => Ok(()),
+            None => Ok(()),
+            // TODO: For now, handle this case as an unrecoverable error.
+            _ => Err(Error::SyntaxError),
+        }
     }
 
     fn parse_primary_expr(&mut self) -> Result<Expr, Error> {
@@ -88,5 +106,23 @@ mod tests {
         let lexer = Lexer::new(Input::from(&source));
         let module = Parser::new(lexer).parse_module().unwrap();
         insta::assert_debug_snapshot!(module);
+    }
+
+    #[test]
+    fn parse_nums() {
+        let source = Source::new(SourceName::FileName("test.js".into()), "123; 345; 1\n2");
+        let lexer = Lexer::new(Input::from(&source));
+        let module = Parser::new(lexer).parse_module().unwrap();
+        insta::assert_debug_snapshot!(module);
+    }
+
+    #[test]
+    fn parse_nums_error() {
+        let source = Source::new(SourceName::FileName("test.js".into()), r#"123 345"#);
+        let lexer = Lexer::new(Input::from(&source));
+        assert!(matches!(
+            Parser::new(lexer).parse_module().unwrap_err(),
+            Error::SyntaxError
+        ));
     }
 }

@@ -1,0 +1,101 @@
+---
+source: crates/rapidus_parser/src/parser/mod.rs
+assertion_line: 116
+expression: module
+---
+Module {
+    span: Span {
+        start: 0,
+        end: 13,
+    },
+    children: [
+        Stmt(
+            Stmt {
+                span: Span {
+                    start: 0,
+                    end: 3,
+                },
+                kind: Expr(
+                    Literal(
+                        Num(
+                            Num {
+                                span: Span {
+                                    start: 0,
+                                    end: 3,
+                                },
+                                val: 123.0,
+                                raw: "123",
+                            },
+                        ),
+                    ),
+                ),
+            },
+        ),
+        Stmt(
+            Stmt {
+                span: Span {
+                    start: 5,
+                    end: 8,
+                },
+                kind: Expr(
+                    Literal(
+                        Num(
+                            Num {
+                                span: Span {
+                                    start: 5,
+                                    end: 8,
+                                },
+                                val: 345.0,
+                                raw: "345",
+                            },
+                        ),
+                    ),
+                ),
+            },
+        ),
+        Stmt(
+            Stmt {
+                span: Span {
+                    start: 10,
+                    end: 11,
+                },
+                kind: Expr(
+                    Literal(
+                        Num(
+                            Num {
+                                span: Span {
+                                    start: 10,
+                                    end: 11,
+                                },
+                                val: 1.0,
+                                raw: "1",
+                            },
+                        ),
+                    ),
+                ),
+            },
+        ),
+        Stmt(
+            Stmt {
+                span: Span {
+                    start: 12,
+                    end: 13,
+                },
+                kind: Expr(
+                    Literal(
+                        Num(
+                            Num {
+                                span: Span {
+                                    start: 12,
+                                    end: 13,
+                                },
+                                val: 2.0,
+                                raw: "2",
+                            },
+                        ),
+                    ),
+                ),
+            },
+        ),
+    ],
+}

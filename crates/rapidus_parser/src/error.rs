@@ -8,6 +8,9 @@ pub enum Error {
     #[error("Unexpected EOF")]
     UnexpectedEof,
 
+    #[error("Syntax error")]
+    SyntaxError,
+
     #[error("TODO")]
     Todo,
 }
