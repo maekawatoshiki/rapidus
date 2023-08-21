@@ -84,22 +84,22 @@ impl<'a> Lexer<'a> {
     fn read_punctuator(&mut self) -> Result<Token, LexerError> {
         let c = self.input.next().unwrap();
         match c {
-            '+' | '-' => {
-                if self.input.cur() == Some(c) {
-                    self.input.next();
-                    Ok(if c == '+' {
-                        Token::PlusPlus
-                    } else {
-                        Token::MinusMinus
-                    })
-                } else {
-                    Ok(if c == '+' {
-                        Token::Op(Op::Plus)
-                    } else {
-                        Token::Op(Op::Minus)
-                    })
-                }
+            '+' if self.input.cur() == Some('+') => {
+                self.input.next();
+                Ok(Token::Op(Op::PlusPlus))
             }
+            '-' if self.input.cur() == Some('-') => {
+                self.input.next();
+                Ok(Token::Op(Op::MinusMinus))
+            }
+            '+' => Ok(Token::Op(Op::Plus)),
+            '-' => Ok(Token::Op(Op::Minus)),
+            '(' => Ok(Token::LParen),
+            ')' => Ok(Token::RParen),
+            '{' => Ok(Token::LBrace),
+            '}' => Ok(Token::RBrace),
+            '[' => Ok(Token::LBracket),
+            ']' => Ok(Token::RBracket),
             _ => Err(LexerError::Todo),
         }
     }
@@ -300,6 +300,17 @@ mod tests {
     #[test]
     fn lex_punct() {
         let source = Source::new(SourceName::FileName("test.js".into()), "a + b-c");
+        let mut lexer = Lexer::new(Input::from(&source));
+        let mut tokens = vec![];
+        while let Ok(Some(token)) = lexer.read_token() {
+            tokens.push(token);
+        }
+        insta::assert_debug_snapshot!(tokens);
+    }
+
+    #[test]
+    fn lex_punct_2() {
+        let source = Source::new(SourceName::FileName("test.js".into()), "a++ + --c");
         let mut lexer = Lexer::new(Input::from(&source));
         let mut tokens = vec![];
         while let Ok(Some(token)) = lexer.read_token() {

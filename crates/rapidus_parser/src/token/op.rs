@@ -24,6 +24,14 @@ pub enum Op {
     LessThanOrEqual,
     GreaterThan,
     GreaterThanOrEqual,
+    Ellipsis,
+    Semicolon,
+    Colon,
+    Comma,
+    PlusPlus,
+    MinusMinus,
+    Exclamation,
+    Question,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
