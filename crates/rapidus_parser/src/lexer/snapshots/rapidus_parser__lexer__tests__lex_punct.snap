@@ -1,0 +1,30 @@
+---
+source: crates/rapidus_parser/src/lexer/mod.rs
+assertion_line: 302
+expression: tokens
+---
+[
+    Ident(
+        Ident(
+            "a",
+        ),
+    ),
+    Whitespace(
+        " ",
+    ),
+    Plus,
+    Whitespace(
+        " ",
+    ),
+    Ident(
+        Ident(
+            "b",
+        ),
+    ),
+    Minus,
+    Ident(
+        Ident(
+            "c",
+        ),
+    ),
+]

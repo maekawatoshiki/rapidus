@@ -36,7 +36,13 @@ pub struct Input<'a> {
 }
 
 #[derive(Debug, Error)]
-pub enum LexerError {}
+pub enum LexerError {
+    #[error("Unexpected character: {0}")]
+    UnexpectedCharacter(char),
+
+    #[error("TODO")]
+    Todo,
+}
 
 impl<'a> Lexer<'a> {
     /// Creates a new lexer.
@@ -56,11 +62,11 @@ impl<'a> Lexer<'a> {
             '/' if matches!(self.input.cur2(), Some(('/', '/')) | Some(('/', '*'))) => {
                 self.read_comments().map(Some)
             }
-            c if c == '\n' || c == '\r' || c == '\u{2028}' || c == '\u{2029}' => {
-                self.read_line_terminators().map(Some)
-            }
+            // TODO: https://tc39.es/ecma262/#prod-Punctuator
+            '+' | '-' | '(' | ')' | '{' | '}' | '[' | ']' => self.read_punctuator().map(Some),
+            '\n' | '\r' | '\u{2028}' | '\u{2029}' => self.read_line_terminators().map(Some),
             c if is_whitespace(c) => self.read_whitespaces().map(Some),
-            c => todo!("{c:?}"),
+            c => Err(LexerError::UnexpectedCharacter(c)),
         }
     }
 
@@ -71,6 +77,25 @@ impl<'a> Lexer<'a> {
                 .map(Ident::from)
                 .unwrap_or_else(|_| Ident::Ident(s)),
         ))
+    }
+
+    fn read_punctuator(&mut self) -> Result<Token, LexerError> {
+        let c = self.input.next().unwrap();
+        match c {
+            '+' | '-' => {
+                if self.input.cur() == Some(c) {
+                    self.input.next();
+                    Ok(if c == '+' {
+                        Token::PlusPlus
+                    } else {
+                        Token::MinusMinus
+                    })
+                } else {
+                    Ok(if c == '+' { Token::Plus } else { Token::Minus })
+                }
+            }
+            _ => Err(LexerError::Todo),
+        }
     }
 
     fn read_whitespaces(&mut self) -> Result<Token, LexerError> {
@@ -258,6 +283,17 @@ mod tests {
             SourceName::FileName("test.js".into()),
             "hello /* comment コメント */ \n    world",
         );
+        let mut lexer = Lexer::new(Input::from(&source));
+        let mut tokens = vec![];
+        while let Ok(Some(token)) = lexer.read_token() {
+            tokens.push(token);
+        }
+        insta::assert_debug_snapshot!(tokens);
+    }
+
+    #[test]
+    fn lex_punct() {
+        let source = Source::new(SourceName::FileName("test.js".into()), "a + b-c");
         let mut lexer = Lexer::new(Input::from(&source));
         let mut tokens = vec![];
         while let Ok(Some(token)) = lexer.read_token() {

@@ -1,31 +1,4 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum BinOp {
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Mod,
-    Exp,
-    LShift,
-    RShift,
-    URShift,
-    BitAnd,
-    BitOr,
-    BitXor,
-    And,
-    Or,
-    NullishCoalescing,
-    Equal,
-    StrictEqual,
-    NotEqual,
-    StrictNotEqual,
-    LessThan,
-    LessThanOrEqual,
-    GreaterThan,
-    GreaterThanOrEqual,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AssignOp {
     Add,
     Sub,
