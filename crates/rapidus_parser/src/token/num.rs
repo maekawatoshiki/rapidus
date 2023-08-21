@@ -1,5 +1,6 @@
 use ecow::EcoString;
 
+/// Represents a numeric literal.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Num {
     val: f64,

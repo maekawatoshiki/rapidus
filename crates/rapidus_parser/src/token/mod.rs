@@ -5,12 +5,14 @@ use self::{
     ident::Ident,
     num::Num,
     op::{AssignOp, Op},
+    str::Str,
 };
 
 pub mod comment;
 pub mod ident;
 pub mod num;
 pub mod op;
+pub mod str;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
@@ -24,6 +26,7 @@ pub enum Token {
     AssignOp(AssignOp),
     Arrow,
     Num(Num),
+    Str(Str),
     Ident(Ident),
     Whitespace(EcoString),
     LineTerminator(EcoString),
