@@ -36,3 +36,9 @@ impl Num {
         &self.raw
     }
 }
+
+impl From<Num> for Literal {
+    fn from(num: Num) -> Self {
+        Self::Num(num)
+    }
+}
