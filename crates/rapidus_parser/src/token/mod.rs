@@ -43,3 +43,10 @@ pub fn is_line_terminator(c: char) -> bool {
 pub fn is_whitespace(c: char) -> bool {
     c == ' ' || c == '\t' || c == '\x0c' || c == '\u{00A0}' || c == '\u{FEFF}'
 }
+
+#[macro_export]
+macro_rules! t {
+    (";") => {
+        Token::Op(Op::Semicolon)
+    };
+}

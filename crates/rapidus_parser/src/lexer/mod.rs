@@ -46,6 +46,18 @@ impl<'a> Lexer<'a> {
         Lexer { input }
     }
 
+    pub fn cur_pos(&self) -> usize {
+        self.input.cur_pos()
+    }
+
+    pub fn read(&mut self) -> Result<Option<Token>, Error> {
+        let tok = self.read_token()?;
+        if let Some(Token::Whitespace(_)) = tok {
+            return self.read();
+        }
+        Ok(tok)
+    }
+
     /// Reads a token from `input`.
     pub fn read_token(&mut self) -> Result<Option<Token>, Error> {
         if self.input.is_empty() {
