@@ -1,6 +1,10 @@
 use ecow::EcoString;
 
-use self::{comment::Comment, ident::Ident, op::AssignOp};
+use self::{
+    comment::Comment,
+    ident::Ident,
+    op::{AssignOp, Op},
+};
 
 pub mod comment;
 pub mod ident;
@@ -14,34 +18,11 @@ pub enum Token {
     RParen,
     LBracket,
     RBracket,
-    Dot,
     Ellipsis,
     Semicolon,
     Colon,
     Comma,
-    Plus,
-    Minus,
-    Asterisk,
-    Div,
-    Mod,
-    Exp,
-    LShift,
-    RShift,
-    URShift,
-    BitAnd,
-    BitOr,
-    BitXor,
-    And,
-    Or,
-    NullishCoalescing,
-    Equal,
-    StrictEqual,
-    NotEqual,
-    StrictNotEqual,
-    LessThan,
-    LessThanOrEqual,
-    GreaterThan,
-    GreaterThanOrEqual,
+    Op(Op),
     AssignOp(AssignOp),
     PlusPlus,
     MinusMinus,

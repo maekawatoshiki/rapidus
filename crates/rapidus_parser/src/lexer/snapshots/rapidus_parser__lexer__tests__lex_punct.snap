@@ -1,6 +1,6 @@
 ---
 source: crates/rapidus_parser/src/lexer/mod.rs
-assertion_line: 302
+assertion_line: 308
 expression: tokens
 ---
 [
@@ -12,7 +12,9 @@ expression: tokens
     Whitespace(
         " ",
     ),
-    Plus,
+    Op(
+        Plus,
+    ),
     Whitespace(
         " ",
     ),
@@ -21,7 +23,9 @@ expression: tokens
             "b",
         ),
     ),
-    Minus,
+    Op(
+        Minus,
+    ),
     Ident(
         Ident(
             "c",

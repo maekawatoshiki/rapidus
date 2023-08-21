@@ -8,7 +8,9 @@ use crate::{
     token::{
         comment::Comment,
         ident::{Ident, ReservedWord},
-        is_line_terminator, is_whitespace, Token,
+        is_line_terminator, is_whitespace,
+        op::Op,
+        Token,
     },
 };
 
@@ -91,7 +93,11 @@ impl<'a> Lexer<'a> {
                         Token::MinusMinus
                     })
                 } else {
-                    Ok(if c == '+' { Token::Plus } else { Token::Minus })
+                    Ok(if c == '+' {
+                        Token::Op(Op::Plus)
+                    } else {
+                        Token::Op(Op::Minus)
+                    })
                 }
             }
             _ => Err(LexerError::Todo),
