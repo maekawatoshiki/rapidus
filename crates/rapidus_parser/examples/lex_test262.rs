@@ -60,7 +60,7 @@ fn lex_file(filepath: PathBuf) {
 
 fn lex_test262(dump_failed_tests: Option<PathBuf>) {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test262/test");
-    let num_expected_tests = 49795;
+    let num_expected_tests = 45554; // Contains no 'type: SyntaxError'
     let bar = ProgressBar::new(num_expected_tests);
     bar.set_style(
         ProgressStyle::default_bar()
@@ -77,6 +77,9 @@ fn lex_test262(dump_failed_tests: Option<PathBuf>) {
     for i in tests {
         let filename = i.clone().into_os_string().into_string().unwrap();
         let content = fs::read_to_string(&i).unwrap();
+        if content.contains("type: SyntaxError") {
+            continue;
+        }
         let len = content.len();
         let source = Source::new(SourceName::FileName(filename), content);
         let mut lexer = Lexer::new(Input::from(&source));
