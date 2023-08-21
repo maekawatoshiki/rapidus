@@ -1,17 +1,65 @@
-use std::{fs, path::Path};
+use std::{
+    fs::{self, File},
+    io::Write,
+    path::{Path, PathBuf},
+};
 
 use indicatif::{ProgressBar, ProgressStyle};
 use rapidus_parser::{
     lexer::{Input, Lexer},
     source::{Source, SourceName},
 };
+use structopt::StructOpt;
+
+#[derive(Debug, StructOpt)]
+#[structopt(name = "compile")]
+pub struct Opt {
+    #[structopt(parse(from_os_str), help = "File path to lex")]
+    pub lex_target: Option<PathBuf>,
+
+    #[structopt(long, help = "File path to dump failed tests to")]
+    pub dump_failed_tests: Option<PathBuf>,
+}
 
 fn main() {
     env_logger::init();
     color_backtrace::install();
 
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test262/test");
+    let opt = Opt::from_args();
 
+    if let Some(filepath) = opt.lex_target {
+        lex_file(filepath);
+    } else {
+        lex_test262(opt.dump_failed_tests);
+    }
+}
+
+fn lex_file(filepath: PathBuf) {
+    let filename = filepath.clone().into_os_string().into_string().unwrap();
+    let content = fs::read_to_string(&filepath).expect("Failed to read file");
+    let len = content.len();
+    let source = Source::new(SourceName::FileName(filename), content);
+    let mut lexer = Lexer::new(Input::from(&source));
+
+    let mut num_tokens = 0;
+    while let Ok(Some(_token)) = lexer.read_token() {
+        if num_tokens > len {
+            // This means that the lexer is in an infinite loop.
+            break;
+        }
+        log::info!("{:?}", _token);
+        num_tokens += 1;
+    }
+
+    if matches!(lexer.read_token(), Ok(None)) {
+        println!("\x1b[0;32mPASSED\x1b[0m");
+    } else {
+        println!("\x1b[0;31mFAILED\x1b[0m");
+    }
+}
+
+fn lex_test262(dump_failed_tests: Option<PathBuf>) {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test262/test");
     let num_expected_tests = 49795;
     let bar = ProgressBar::new(num_expected_tests);
     bar.set_style(
@@ -19,6 +67,7 @@ fn main() {
             .template("{bar:60} {pos:>5}/{len:>5} {msg}")
             .unwrap(),
     );
+    let mut dump_file = dump_failed_tests.map(|path| File::create(path).unwrap());
 
     let mut passed = 0;
     let mut failed = 0;
@@ -44,6 +93,12 @@ fn main() {
         if matches!(lexer.read_token(), Ok(None)) {
             passed += 1;
         } else {
+            let SourceName::FileName(filename) = source.name else {
+                panic!()
+            };
+            if let Some(file) = dump_file.as_mut() {
+                writeln!(file, "{}", filename).expect("Failed to write dump file");
+            }
             failed += 1
         }
 
