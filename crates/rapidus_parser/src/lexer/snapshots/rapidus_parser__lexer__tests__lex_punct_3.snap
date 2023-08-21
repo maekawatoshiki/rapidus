@@ -1,6 +1,6 @@
 ---
 source: crates/rapidus_parser/src/lexer/mod.rs
-assertion_line: 482
+assertion_line: 456
 expression: tokens
 ---
 [
@@ -265,7 +265,10 @@ expression: tokens
         " ",
     ),
     AssignOp(
-        URShift,
+        RShift,
+    ),
+    Whitespace(
+        " ",
     ),
     AssignOp(
         URShift,

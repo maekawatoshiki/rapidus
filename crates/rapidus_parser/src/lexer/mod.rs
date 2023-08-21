@@ -85,82 +85,31 @@ impl<'a> Lexer<'a> {
     }
 
     fn read_punctuator(&mut self) -> Result<Token, LexerError> {
-        let c = self.input.next().unwrap();
+        let c = self.input.advance().unwrap();
         match c {
-            '+' if self.input.cur() == Some('+') => {
-                self.input.next();
-                Ok(Token::Op(Op::PlusPlus))
-            }
-            '+' if self.input.cur() == Some('=') => {
-                self.input.next();
-                Ok(Token::AssignOp(AssignOp::Add))
-            }
-            '-' if self.input.cur() == Some('-') => {
-                self.input.next();
-                Ok(Token::Op(Op::MinusMinus))
-            }
-            '-' if self.input.cur() == Some('=') => {
-                self.input.next();
-                Ok(Token::AssignOp(AssignOp::Sub))
-            }
+            '+' if self.input.skip('+') => Ok(Token::Op(Op::PlusPlus)),
+            '+' if self.input.skip('=') => Ok(Token::AssignOp(AssignOp::Add)),
+            '-' if self.input.skip('-') => Ok(Token::Op(Op::MinusMinus)),
+            '-' if self.input.skip('=') => Ok(Token::AssignOp(AssignOp::Sub)),
             '+' => Ok(Token::Op(Op::Plus)),
             '-' => Ok(Token::Op(Op::Minus)),
-            '*' if self.input.cur2() == Some(('*', '=')) => {
-                self.input.next();
-                self.input.next();
-                Ok(Token::AssignOp(AssignOp::Exp))
-            }
-            '*' if self.input.cur() == Some('*') => {
-                self.input.next();
-                Ok(Token::Op(Op::Exp))
-            }
-            '*' if self.input.cur() == Some('=') => {
-                self.input.next();
-                Ok(Token::AssignOp(AssignOp::Mul))
-            }
+            '*' if self.input.skips(['*', '=']) => Ok(Token::AssignOp(AssignOp::Exp)),
+            '*' if self.input.skip('*') => Ok(Token::Op(Op::Exp)),
+            '*' if self.input.skip('=') => Ok(Token::AssignOp(AssignOp::Mul)),
             '*' => Ok(Token::Op(Op::Asterisk)),
-            '/' if self.input.cur() == Some('=') => {
-                self.input.next();
-                Ok(Token::AssignOp(AssignOp::Div))
-            }
+            '/' if self.input.skip('=') => Ok(Token::AssignOp(AssignOp::Div)),
             '/' => Ok(Token::Op(Op::Div)),
-            '%' if self.input.cur() == Some('=') => {
-                self.input.next();
-                Ok(Token::AssignOp(AssignOp::Mod))
-            }
+            '%' if self.input.skip('=') => Ok(Token::AssignOp(AssignOp::Mod)),
             '%' => Ok(Token::Op(Op::Mod)),
-            '&' if self.input.cur() == Some('=') => {
-                self.input.next();
-                Ok(Token::AssignOp(AssignOp::BitAnd))
-            }
-            '&' if self.input.cur2() == Some(('&', '=')) => {
-                self.input.next();
-                self.input.next();
-                Ok(Token::AssignOp(AssignOp::And))
-            }
-            '&' if self.input.cur() == Some('&') => {
-                self.input.next();
-                Ok(Token::Op(Op::And))
-            }
-            '|' if self.input.cur2() == Some(('|', '=')) => {
-                self.input.next();
-                self.input.next();
-                Ok(Token::AssignOp(AssignOp::Or))
-            }
-            '|' if self.input.cur() == Some('|') => {
-                self.input.next();
-                Ok(Token::Op(Op::Or))
-            }
-            '|' if self.input.cur() == Some('=') => {
-                self.input.next();
-                Ok(Token::AssignOp(AssignOp::BitOr))
-            }
+            '&' if self.input.skip('=') => Ok(Token::AssignOp(AssignOp::BitAnd)),
+            '&' if self.input.skips(['&', '=']) => Ok(Token::AssignOp(AssignOp::And)),
+            '&' if self.input.skip('&') => Ok(Token::Op(Op::And)),
+            '|' if self.input.skips(['|', '=']) => Ok(Token::AssignOp(AssignOp::Or)),
+            '|' if self.input.skip('|') => Ok(Token::Op(Op::Or)),
+            '|' if self.input.skip('=') => Ok(Token::AssignOp(AssignOp::BitOr)),
             '&' => Ok(Token::Op(Op::BitAnd)),
             '|' => Ok(Token::Op(Op::BitOr)),
-            '^' if self.input.cur() == Some('=') => {
-                self.input.next();
-                Ok(Token::AssignOp(AssignOp::BitXor))
-            }
+            '^' if self.input.skip('=') => Ok(Token::AssignOp(AssignOp::BitXor)),
             '^' => Ok(Token::Op(Op::BitXor)),
             '~' => Ok(Token::Op(Op::BitNot)),
             '(' => Ok(Token::LParen),
@@ -169,87 +118,30 @@ impl<'a> Lexer<'a> {
             '}' => Ok(Token::RBrace),
             '[' => Ok(Token::LBracket),
             ']' => Ok(Token::RBracket),
-            '.' if self.input.cur2() == Some(('.', '.')) => {
-                self.input.next();
-                self.input.next();
-                Ok(Token::Op(Op::Ellipsis))
-            }
+            '.' if self.input.skips(['.', '.']) => Ok(Token::Op(Op::Ellipsis)),
             '.' => Ok(Token::Op(Op::Dot)),
             ';' => Ok(Token::Op(Op::Semicolon)),
             ':' => Ok(Token::Op(Op::Colon)),
             ',' => Ok(Token::Op(Op::Comma)),
-            '<' if self.input.cur2() == Some(('<', '=')) => {
-                self.input.next();
-                self.input.next();
-                Ok(Token::AssignOp(AssignOp::LShift))
-            }
-            '>' if self.input.cur2() == Some(('>', '=')) => {
-                self.input.next();
-                self.input.next();
-                self.input.next();
-                Ok(Token::AssignOp(AssignOp::URShift))
-            }
-            '<' if self.input.cur() == Some('<') => {
-                self.input.next();
-                Ok(Token::Op(Op::LShift))
-            }
-            '>' if self.input.cur2() == Some(('>', '>')) => {
-                self.input.next();
-                self.input.next();
-                if self.input.cur() == Some('=') {
-                    self.input.next();
-                    Ok(Token::AssignOp(AssignOp::URShift))
-                } else {
-                    Ok(Token::Op(Op::URShift))
-                }
-            }
-            '>' if self.input.cur() == Some('>') => {
-                self.input.next();
-                Ok(Token::Op(Op::RShift))
-            }
-            '<' if self.input.cur() == Some('=') => {
-                self.input.next();
-                Ok(Token::Op(Op::LessThanOrEqual))
-            }
-            '>' if self.input.cur() == Some('=') => {
-                self.input.next();
-                Ok(Token::Op(Op::GreaterThanOrEqual))
-            }
+            '<' if self.input.skips(['<', '=']) => Ok(Token::AssignOp(AssignOp::LShift)),
+            '>' if self.input.skips(['>', '=']) => Ok(Token::AssignOp(AssignOp::RShift)),
+            '<' if self.input.skip('<') => Ok(Token::Op(Op::LShift)),
+            '>' if self.input.skips(['>', '>', '=']) => Ok(Token::AssignOp(AssignOp::URShift)),
+            '>' if self.input.skips(['>', '>']) => Ok(Token::Op(Op::URShift)),
+            '>' if self.input.skip('>') => Ok(Token::Op(Op::RShift)),
+            '<' if self.input.skip('=') => Ok(Token::Op(Op::LessThanOrEqual)),
+            '>' if self.input.skip('=') => Ok(Token::Op(Op::GreaterThanOrEqual)),
             '<' => Ok(Token::Op(Op::LessThan)),
             '>' => Ok(Token::Op(Op::GreaterThan)),
-            '=' if self.input.cur2() == Some(('=', '=')) => {
-                self.input.next();
-                self.input.next();
-                Ok(Token::Op(Op::StrictEqual))
-            }
-            '=' if self.input.cur() == Some('>') => {
-                self.input.next();
-                Ok(Token::Arrow)
-            }
-            '=' if self.input.cur() == Some('=') => {
-                self.input.next();
-                Ok(Token::Op(Op::Equal))
-            }
+            '=' if self.input.skips(['=', '=']) => Ok(Token::Op(Op::StrictEqual)),
+            '=' if self.input.skip('>') => Ok(Token::Arrow),
+            '=' if self.input.skip('=') => Ok(Token::Op(Op::Equal)),
             '=' => Ok(Token::AssignOp(AssignOp::Normal)),
-            '!' if self.input.cur2() == Some(('=', '=')) => {
-                self.input.next();
-                self.input.next();
-                Ok(Token::Op(Op::StrictNotEqual))
-            }
-            '!' if self.input.cur() == Some('=') => {
-                self.input.next();
-                Ok(Token::Op(Op::NotEqual))
-            }
+            '!' if self.input.skips(['=', '=']) => Ok(Token::Op(Op::StrictNotEqual)),
+            '!' if self.input.skip('=') => Ok(Token::Op(Op::NotEqual)),
             '!' => Ok(Token::Op(Op::Exclamation)),
-            '?' if self.input.cur2() == Some(('?', '=')) => {
-                self.input.next();
-                self.input.next();
-                Ok(Token::AssignOp(AssignOp::NullishCoalescing))
-            }
-            '?' if self.input.cur() == Some('?') => {
-                self.input.next();
-                Ok(Token::Op(Op::NullishCoalescing))
-            }
+            '?' if self.input.skips(['?', '=']) => Ok(Token::AssignOp(AssignOp::NullishCoalescing)),
+            '?' if self.input.skip('?') => Ok(Token::Op(Op::NullishCoalescing)),
             '?' => Ok(Token::Op(Op::Question)),
             _ => Err(LexerError::Todo),
         }
@@ -274,7 +166,7 @@ impl<'a> Lexer<'a> {
                 let s = self
                     .input
                     .take_while(|&c| c != '\n' && c != '\r' && c != '\u{2028}' && c != '\u{2029}');
-                assert!(is_line_terminator(self.input.next().unwrap()));
+                assert!(is_line_terminator(self.input.advance().unwrap()));
                 Ok(Token::Comment(Comment::SingleLine(s[2..].into())))
             }
             ('/', '*') => {
@@ -284,7 +176,7 @@ impl<'a> Lexer<'a> {
                     last_char = c;
                     !is_end
                 });
-                assert!(self.input.next().unwrap() == '/');
+                assert!(self.input.advance().unwrap() == '/');
                 Ok(Token::Comment(Comment::MultiLine(s[2..s.len() - 1].into())))
             }
             _ => unreachable!(),
@@ -320,6 +212,30 @@ impl<'a> Input<'a> {
         Some((c1, c2))
     }
 
+    pub fn skips<const N: usize>(&mut self, cs: [char; N]) -> bool {
+        let mut chars = self.chars.clone().peekable();
+        for expect in cs {
+            if chars.peek() == Some(&expect) {
+                chars.next();
+                continue;
+            }
+            return false;
+        }
+        for _ in 0..cs.len() {
+            self.advance();
+        }
+        true
+    }
+
+    pub fn skip(&mut self, c: char) -> bool {
+        if self.cur() == Some(c) {
+            self.advance();
+            true
+        } else {
+            false
+        }
+    }
+
     pub fn take_while<F>(&mut self, mut pred: F) -> EcoString
     where
         F: FnMut(&char) -> bool,
@@ -334,7 +250,7 @@ impl<'a> Input<'a> {
         out
     }
 
-    pub fn next(&mut self) -> Option<char> {
+    pub fn advance(&mut self) -> Option<char> {
         let c = self.chars.next()?;
         self.pos_in_chars += c.len_utf8();
         Some(c)
@@ -484,7 +400,10 @@ mod tests {
 
     #[test]
     fn lex_while_break() {
-        let source = Source::new(SourceName::FileName("test.js".into()), "while (true) { break; }");
+        let source = Source::new(
+            SourceName::FileName("test.js".into()),
+            "while (true) { break; }",
+        );
         let mut lexer = Lexer::new(Input::from(&source));
         let mut tokens = vec![];
         while let Ok(Some(token)) = lexer.read_token() {
