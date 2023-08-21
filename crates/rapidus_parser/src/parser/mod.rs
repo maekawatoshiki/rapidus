@@ -30,7 +30,7 @@ impl<'a> Parser<'a> {
             .map(|children| Module::new(Span::new(start, self.lexer.cur_pos()), children))
     }
 
-    pub fn parse_stmt_list(&mut self) -> Result<Vec<ModuleItem>, Error> {
+    fn parse_stmt_list(&mut self) -> Result<Vec<ModuleItem>, Error> {
         // TODO: https://tc39.es/ecma262/multipage/ecmascript-language-statements-and-declarations.html#prod-StatementListItem
         let mut children = vec![];
         let mut start = self.lexer.cur_pos();
@@ -41,13 +41,17 @@ impl<'a> Parser<'a> {
                     Span::new(start, self.lexer.cur_pos()),
                     stmt::Kind::Empty,
                 )),
-                _ => return Err(Error::Todo),
+                _ => self.parse_expr()?,
             };
             children.push(item);
             start = self.lexer.cur_pos();
         }
 
         Ok(children)
+    }
+
+    fn parse_expr(&mut self) -> Result<ModuleItem, Error> {
+        Err(Error::Todo)
     }
 }
 
@@ -63,6 +67,15 @@ mod tests {
     #[test]
     fn parse_empty() {
         let source = Source::new(SourceName::FileName("test.js".into()), r#";"#);
+        let lexer = Lexer::new(Input::from(&source));
+        let module = Parser::new(lexer).parse_module().unwrap();
+        insta::assert_debug_snapshot!(module);
+    }
+
+    #[test]
+    #[should_panic]
+    fn parse_num() {
+        let source = Source::new(SourceName::FileName("test.js".into()), r#"123"#);
         let lexer = Lexer::new(Input::from(&source));
         let module = Parser::new(lexer).parse_module().unwrap();
         insta::assert_debug_snapshot!(module);
