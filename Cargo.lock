@@ -92,6 +92,7 @@ dependencies = [
  "ecow",
  "insta",
  "log",
+ "rapidus_ast",
  "rustc-hash",
  "thiserror",
 ]

@@ -1,9 +1,9 @@
 use std::str::Chars;
 
 use ecow::EcoString;
-use thiserror::Error;
 
 use crate::{
+    error::Error,
     source::Source,
     token::{
         comment::Comment,
@@ -39,15 +39,6 @@ pub struct Input<'a> {
     end: usize,
 }
 
-#[derive(Debug, Error)]
-pub enum LexerError {
-    #[error("Unexpected character: {0}")]
-    UnexpectedCharacter(char),
-
-    #[error("TODO")]
-    Todo,
-}
-
 impl<'a> Lexer<'a> {
     /// Creates a new lexer.
     pub fn new(input: Input<'a>) -> Self {
@@ -55,7 +46,7 @@ impl<'a> Lexer<'a> {
     }
 
     /// Reads a token from `input`.
-    pub fn read_token(&mut self) -> Result<Option<Token>, LexerError> {
+    pub fn read_token(&mut self) -> Result<Option<Token>, Error> {
         if self.input.is_empty() {
             return Ok(None);
         }
@@ -77,11 +68,11 @@ impl<'a> Lexer<'a> {
             '"' | '\'' => self.read_str().map(Some),
             '\n' | '\r' | '\u{2028}' | '\u{2029}' => self.read_line_terminators().map(Some),
             c if is_whitespace(c) => self.read_whitespaces().map(Some),
-            c => Err(LexerError::UnexpectedCharacter(c)),
+            c => Err(Error::UnexpectedCharacter(c)),
         }
     }
 
-    fn read_ident(&mut self) -> Result<Token, LexerError> {
+    fn read_ident(&mut self) -> Result<Token, Error> {
         let s = self.input.take_while(char::is_ascii_alphanumeric);
         Ok(Token::Ident(
             ReservedWord::try_from(s.clone())
@@ -90,7 +81,7 @@ impl<'a> Lexer<'a> {
         ))
     }
 
-    fn read_punctuator(&mut self) -> Result<Token, LexerError> {
+    fn read_punctuator(&mut self) -> Result<Token, Error> {
         let c = self.input.advance().unwrap();
         match c {
             '+' if self.input.skip('+') => Ok(Token::Op(Op::PlusPlus)),
@@ -149,19 +140,16 @@ impl<'a> Lexer<'a> {
             '?' if self.input.skips(['?', '=']) => Ok(Token::AssignOp(AssignOp::NullishCoalescing)),
             '?' if self.input.skip('?') => Ok(Token::Op(Op::NullishCoalescing)),
             '?' => Ok(Token::Op(Op::Question)),
-            _ => Err(LexerError::Todo),
+            _ => Err(Error::Todo),
         }
     }
 
-    fn read_num(&mut self) -> Result<Token, LexerError> {
+    fn read_num(&mut self) -> Result<Token, Error> {
         let s = self.input.take_while(|c| c.is_ascii_digit());
-        Ok(Token::Num(Num::new(
-            s.parse().map_err(|_| LexerError::Todo)?,
-            s,
-        )))
+        Ok(Token::Num(Num::new(s.parse().map_err(|_| Error::Todo)?, s)))
     }
 
-    fn read_str(&mut self) -> Result<Token, LexerError> {
+    fn read_str(&mut self) -> Result<Token, Error> {
         let pos = self.input.cur_pos();
         let quote: char = self.input.advance().unwrap();
         let mut last_char = '\0';
@@ -178,19 +166,19 @@ impl<'a> Lexer<'a> {
         )))
     }
 
-    fn read_whitespaces(&mut self) -> Result<Token, LexerError> {
+    fn read_whitespaces(&mut self) -> Result<Token, Error> {
         let s = self.input.take_while(|&c| is_whitespace(c));
         Ok(Token::Whitespace(s))
     }
 
-    fn read_line_terminators(&mut self) -> Result<Token, LexerError> {
+    fn read_line_terminators(&mut self) -> Result<Token, Error> {
         let s = self
             .input
             .take_while(|c| c == &'\n' || c == &'\r' || c == &'\u{2028}' || c == &'\u{2029}');
         Ok(Token::LineTerminator(s))
     }
 
-    fn read_comments(&mut self) -> Result<Token, LexerError> {
+    fn read_comments(&mut self) -> Result<Token, Error> {
         let start: [char; 2] = self.input.cur().unwrap();
         match start {
             ['/', '/'] => {

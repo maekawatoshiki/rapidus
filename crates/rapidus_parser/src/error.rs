@@ -1,0 +1,10 @@
+use thiserror::Error as ThisError;
+
+#[derive(Debug, ThisError)]
+pub enum Error {
+    #[error("Unexpected character: {0}")]
+    UnexpectedCharacter(char),
+
+    #[error("TODO")]
+    Todo,
+}

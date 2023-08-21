@@ -7,6 +7,7 @@ edition = "2021"
 rustc-hash = { workspace = true }
 thiserror = { workspace = true }
 log = { workspace = true }
+rapidus_ast = { path = "../rapidus_ast" }
 ecow = "0.1.2"
 
 [dev-dependencies]
