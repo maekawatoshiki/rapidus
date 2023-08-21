@@ -17,9 +17,17 @@ pub struct Num {
     raw: EcoString,
 }
 
+impl Node for Literal {
+    fn span(&self) -> Span {
+        match self {
+            Self::Num(num) => num.span(),
+        }
+    }
+}
+
 impl Node for Num {
-    fn span(&self) -> &Span {
-        &self.span
+    fn span(&self) -> Span {
+        self.span
     }
 }
 

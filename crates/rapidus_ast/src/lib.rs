@@ -8,5 +8,5 @@ pub mod span;
 pub mod stmt;
 
 pub trait Node {
-    fn span(&self) -> &Span;
+    fn span(&self) -> Span;
 }

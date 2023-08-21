@@ -8,7 +8,7 @@ pub struct Decl {
 }
 
 impl Node for Decl {
-    fn span(&self) -> &Span {
-        &self.span
+    fn span(&self) -> Span {
+        self.span
     }
 }

@@ -5,6 +5,9 @@ pub struct Span {
     end: usize,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct Spanned<T>(pub Span, pub T);
+
 impl Span {
     pub const fn new(start: usize, end: usize) -> Self {
         Self { start, end }

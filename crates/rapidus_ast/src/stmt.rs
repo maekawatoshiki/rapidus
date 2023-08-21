@@ -1,4 +1,4 @@
-use crate::{span::Span, Node, expr::Expr};
+use crate::{expr::Expr, span::Span, Node};
 
 /// Represents a statement.
 /// https://tc39.es/ecma262/multipage/ecmascript-language-statements-and-declarations.html#prod-Statement
@@ -25,7 +25,7 @@ impl Stmt {
 }
 
 impl Node for Stmt {
-    fn span(&self) -> &Span {
-        &self.span
+    fn span(&self) -> Span {
+        self.span
     }
 }

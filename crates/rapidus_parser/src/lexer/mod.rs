@@ -1,6 +1,7 @@
-use std::str::Chars;
+use std::{collections::VecDeque, str::Chars};
 
 use ecow::EcoString;
+use rapidus_ast::span::{Span, Spanned};
 
 use crate::{
     error::Error,
@@ -21,6 +22,9 @@ use crate::{
 pub struct Lexer<'a> {
     /// Input
     input: Input<'a>,
+
+    /// Buffer for unread tokens
+    buf: VecDeque<Spanned<Token>>,
 }
 
 pub struct Input<'a> {
@@ -43,22 +47,36 @@ pub struct Input<'a> {
 impl<'a> Lexer<'a> {
     /// Creates a new lexer.
     pub fn new(input: Input<'a>) -> Self {
-        Lexer { input }
+        Lexer {
+            input,
+            buf: VecDeque::new(),
+        }
     }
 
     pub fn cur_pos(&self) -> usize {
         self.input.cur_pos()
     }
 
-    pub fn read(&mut self) -> Result<Option<Token>, Error> {
+    /// Reads a token from `input`, intended for use in parser.
+    pub fn read(&mut self) -> Result<Option<Spanned<Token>>, Error> {
+        if let Some(tok) = self.buf.pop_front() {
+            return Ok(Some(tok));
+        }
+
+        let start = self.cur_pos();
         let tok = self.read_token()?;
+        let span = Span::new(start, self.cur_pos());
         if let Some(Token::Whitespace(_)) = tok {
             return self.read();
         }
-        Ok(tok)
+        Ok(tok.map(|tok| Spanned(span, tok)))
     }
 
-    /// Reads a token from `input`.
+    pub fn unread(&mut self, tok: Spanned<Token>) {
+        self.buf.push_back(tok);
+    }
+
+    /// Reads a token from `input`, not for parser.
     pub fn read_token(&mut self) -> Result<Option<Token>, Error> {
         if self.input.is_empty() {
             return Ok(None);

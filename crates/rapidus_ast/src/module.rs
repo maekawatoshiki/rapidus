@@ -26,7 +26,7 @@ impl Module {
 }
 
 impl Node for Module {
-    fn span(&self) -> &Span {
-        &self.span
+    fn span(&self) -> Span {
+        self.span
     }
 }
