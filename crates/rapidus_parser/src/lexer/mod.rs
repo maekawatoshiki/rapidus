@@ -481,4 +481,15 @@ mod tests {
         }
         insta::assert_debug_snapshot!(tokens);
     }
+
+    #[test]
+    fn lex_while_break() {
+        let source = Source::new(SourceName::FileName("test.js".into()), "while (true) { break; }");
+        let mut lexer = Lexer::new(Input::from(&source));
+        let mut tokens = vec![];
+        while let Ok(Some(token)) = lexer.read_token() {
+            tokens.push(token);
+        }
+        insta::assert_debug_snapshot!(tokens);
+    }
 }
