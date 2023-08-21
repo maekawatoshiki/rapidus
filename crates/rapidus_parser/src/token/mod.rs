@@ -3,14 +3,16 @@ use ecow::EcoString;
 use self::{
     comment::Comment,
     ident::Ident,
+    num::Num,
     op::{AssignOp, Op},
 };
 
 pub mod comment;
 pub mod ident;
+pub mod num;
 pub mod op;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Token {
     LBrace,
     RBrace,
@@ -21,6 +23,7 @@ pub enum Token {
     Op(Op),
     AssignOp(AssignOp),
     Arrow,
+    Num(Num),
     Ident(Ident),
     Whitespace(EcoString),
     LineTerminator(EcoString),
