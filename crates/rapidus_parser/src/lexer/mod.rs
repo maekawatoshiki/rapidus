@@ -217,13 +217,16 @@ impl<'a> Lexer<'a> {
             }
             ['/', '*'] => {
                 let mut last_char = '\0';
+                assert!(self.input.skips(['/', '*']));
                 let s = self.input.take_while(|&c| {
                     let is_end = last_char == '*' && c == '/';
                     last_char = c;
                     !is_end
                 });
-                assert!(self.input.advance().unwrap() == '/');
-                Ok(Token::Comment(Comment::MultiLine(s[2..s.len() - 1].into())))
+                if !self.input.skip('/') {
+                    return Err(Error::UnexpectedEof);
+                }
+                Ok(Token::Comment(Comment::MultiLine(s[..s.len() - 1].into())))
             }
             _ => unreachable!(),
         }
@@ -487,7 +490,10 @@ mod tests {
 
     #[test]
     fn lex_template() {
-        let source = Source::new(SourceName::FileName("test.js".into()), r#"`hello ${world}`"#);
+        let source = Source::new(
+            SourceName::FileName("test.js".into()),
+            r#"`hello ${world}`"#,
+        );
         let mut lexer = Lexer::new(Input::from(&source));
         let mut tokens = vec![];
         while let Ok(Some(token)) = lexer.read_token() {
