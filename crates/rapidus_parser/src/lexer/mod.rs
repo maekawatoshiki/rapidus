@@ -483,6 +483,17 @@ mod tests {
     }
 
     #[test]
+    fn lex_template() {
+        let source = Source::new(SourceName::FileName("test.js".into()), r#"`hello ${world}`"#);
+        let mut lexer = Lexer::new(Input::from(&source));
+        let mut tokens = vec![];
+        while let Ok(Some(token)) = lexer.read_token() {
+            tokens.push(token);
+        }
+        insta::assert_debug_snapshot!(tokens);
+    }
+
+    #[test]
     fn lex_fizzbuzz() {
         let source = Source::new(
             SourceName::FileName("test.js".into()),

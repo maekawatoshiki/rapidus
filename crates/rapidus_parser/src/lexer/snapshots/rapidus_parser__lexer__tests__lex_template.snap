@@ -1,0 +1,13 @@
+---
+source: crates/rapidus_parser/src/lexer/mod.rs
+assertion_line: 493
+expression: tokens
+---
+[
+    Template(
+        Template {
+            val: "hello ${world}",
+            raw: "`hello ${world}`",
+        },
+    ),
+]
