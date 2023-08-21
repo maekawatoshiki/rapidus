@@ -55,7 +55,7 @@ impl<'a> Lexer<'a> {
         let [start] = self.input.cur().unwrap();
         match start {
             // TODO: https://tc39.es/ecma262/#prod-IdentifierStart
-            'a'..='z' | 'A'..='Z' | '_' => self.read_ident().map(Some),
+            'a'..='z' | 'A'..='Z' | '_' | '$' => self.read_ident().map(Some),
             '/' if matches!(self.input.cur(), Some(['/', '/']) | Some(['/', '*'])) => {
                 self.read_comments().map(Some)
             }
@@ -75,7 +75,10 @@ impl<'a> Lexer<'a> {
     }
 
     fn read_ident(&mut self) -> Result<Token, Error> {
-        let s = self.input.take_while(char::is_ascii_alphanumeric);
+        let s = self.input.take_while(|&c| {
+            matches!(c, 'a'..='z' | 'A'..='Z' | '0'..='9' |
+                    '_' | '$')
+        });
         Ok(Token::Ident(
             ReservedWord::try_from(s.clone())
                 .map(Ident::from)
