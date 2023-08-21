@@ -11,4 +11,7 @@ rapidus_ast = { path = "../rapidus_ast" }
 ecow = "0.1.2"
 
 [dev-dependencies]
+color-backtrace = "0.6.0"
+env_logger = "0.10.0"
 insta = "1.31.0"
+structopt = "0.3.26"
