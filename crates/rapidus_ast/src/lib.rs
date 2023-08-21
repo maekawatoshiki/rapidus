@@ -1,6 +1,8 @@
 use span::Span;
 
 pub mod decl;
+pub mod expr;
+pub mod literal;
 pub mod module;
 pub mod span;
 pub mod stmt;

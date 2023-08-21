@@ -1,4 +1,5 @@
 use rapidus_ast::{
+    expr::Expr,
     module::{Module, ModuleItem},
     span::Span,
     stmt::{self, Stmt},
@@ -41,7 +42,7 @@ impl<'a> Parser<'a> {
                     Span::new(start, self.lexer.cur_pos()),
                     stmt::Kind::Empty,
                 )),
-                _ => self.parse_expr()?,
+                _ => ModuleItem::Stmt(self.parse_expr_stmt(tok, start)?),
             };
             children.push(item);
             start = self.lexer.cur_pos();
@@ -50,7 +51,16 @@ impl<'a> Parser<'a> {
         Ok(children)
     }
 
-    fn parse_expr(&mut self) -> Result<ModuleItem, Error> {
+    fn parse_expr_stmt(&mut self, _tok: Token, start: usize) -> Result<Stmt, Error> {
+        self.parse_primary_expr().map(|expr| {
+            Stmt::new(
+                Span::new(start, self.lexer.cur_pos()),
+                stmt::Kind::Expr(expr),
+            )
+        })
+    }
+
+    fn parse_primary_expr(&mut self) -> Result<Expr, Error> {
         Err(Error::Todo)
     }
 }

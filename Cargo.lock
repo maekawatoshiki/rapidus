@@ -371,6 +371,9 @@ dependencies = [
 [[package]]
 name = "rapidus_ast"
 version = "0.1.0"
+dependencies = [
+ "ecow",
+]
 
 [[package]]
 name = "rapidus_parser"
