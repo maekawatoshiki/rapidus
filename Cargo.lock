@@ -82,6 +82,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "rapidus_ast"
+version = "0.1.0"
+
+[[package]]
 name = "rapidus_parser"
 version = "0.1.0"
 dependencies = [

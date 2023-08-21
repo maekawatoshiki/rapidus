@@ -26,7 +26,7 @@ impl Source {
     /// ```
     pub fn new(name: SourceName, text: impl Into<EcoString>) -> Self {
         Self {
-            name: name.into(),
+            name,
             text: text.into(),
         }
     }

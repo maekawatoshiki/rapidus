@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "crates/rapidus_parser",
+  "crates/rapidus_ast",
 ]
 resolver = "2"
 
