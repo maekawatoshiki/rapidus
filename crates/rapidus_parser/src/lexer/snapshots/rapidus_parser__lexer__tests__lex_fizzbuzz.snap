@@ -1,0 +1,380 @@
+---
+source: crates/rapidus_parser/src/lexer/mod.rs
+assertion_line: 489
+expression: tokens
+---
+[
+    Ident(
+        Reserved(
+            For,
+        ),
+    ),
+    Whitespace(
+        " ",
+    ),
+    LParen,
+    Ident(
+        Ident(
+            "let",
+        ),
+    ),
+    Whitespace(
+        " ",
+    ),
+    Ident(
+        Ident(
+            "i",
+        ),
+    ),
+    Whitespace(
+        " ",
+    ),
+    AssignOp(
+        Normal,
+    ),
+    Whitespace(
+        " ",
+    ),
+    Num(
+        Num {
+            val: 1.0,
+            raw: "1",
+        },
+    ),
+    Op(
+        Semicolon,
+    ),
+    Whitespace(
+        " ",
+    ),
+    Ident(
+        Ident(
+            "i",
+        ),
+    ),
+    Whitespace(
+        " ",
+    ),
+    Op(
+        LessThan,
+    ),
+    Whitespace(
+        " ",
+    ),
+    Num(
+        Num {
+            val: 20.0,
+            raw: "20",
+        },
+    ),
+    Op(
+        Semicolon,
+    ),
+    Whitespace(
+        " ",
+    ),
+    Ident(
+        Ident(
+            "i",
+        ),
+    ),
+    Op(
+        PlusPlus,
+    ),
+    RParen,
+    Whitespace(
+        " ",
+    ),
+    LBrace,
+    LineTerminator(
+        "\n",
+    ),
+    Whitespace(
+        "    ",
+    ),
+    Ident(
+        Reserved(
+            If,
+        ),
+    ),
+    Whitespace(
+        " ",
+    ),
+    LParen,
+    Ident(
+        Ident(
+            "i",
+        ),
+    ),
+    Whitespace(
+        " ",
+    ),
+    Op(
+        Mod,
+    ),
+    Whitespace(
+        " ",
+    ),
+    Num(
+        Num {
+            val: 15.0,
+            raw: "15",
+        },
+    ),
+    Whitespace(
+        " ",
+    ),
+    Op(
+        Equal,
+    ),
+    Whitespace(
+        " ",
+    ),
+    Num(
+        Num {
+            val: 0.0,
+            raw: "0",
+        },
+    ),
+    RParen,
+    Whitespace(
+        " ",
+    ),
+    Ident(
+        Ident(
+            "console",
+        ),
+    ),
+    Op(
+        Dot,
+    ),
+    Ident(
+        Ident(
+            "log",
+        ),
+    ),
+    LParen,
+    Str(
+        Str {
+            val: "FizzBuzz",
+            raw: "\"FizzBuzz\"",
+        },
+    ),
+    RParen,
+    Op(
+        Semicolon,
+    ),
+    LineTerminator(
+        "\n",
+    ),
+    Whitespace(
+        "    ",
+    ),
+    Ident(
+        Reserved(
+            Else,
+        ),
+    ),
+    Whitespace(
+        " ",
+    ),
+    Ident(
+        Reserved(
+            If,
+        ),
+    ),
+    Whitespace(
+        " ",
+    ),
+    LParen,
+    Ident(
+        Ident(
+            "i",
+        ),
+    ),
+    Whitespace(
+        " ",
+    ),
+    Op(
+        Mod,
+    ),
+    Whitespace(
+        " ",
+    ),
+    Num(
+        Num {
+            val: 3.0,
+            raw: "3",
+        },
+    ),
+    Whitespace(
+        " ",
+    ),
+    Op(
+        Equal,
+    ),
+    Whitespace(
+        " ",
+    ),
+    Num(
+        Num {
+            val: 0.0,
+            raw: "0",
+        },
+    ),
+    RParen,
+    Whitespace(
+        " ",
+    ),
+    Ident(
+        Ident(
+            "console",
+        ),
+    ),
+    Op(
+        Dot,
+    ),
+    Ident(
+        Ident(
+            "log",
+        ),
+    ),
+    LParen,
+    Str(
+        Str {
+            val: "Fizz",
+            raw: "\"Fizz\"",
+        },
+    ),
+    RParen,
+    Op(
+        Semicolon,
+    ),
+    LineTerminator(
+        "\n",
+    ),
+    Whitespace(
+        "    ",
+    ),
+    Ident(
+        Reserved(
+            Else,
+        ),
+    ),
+    Whitespace(
+        " ",
+    ),
+    Ident(
+        Reserved(
+            If,
+        ),
+    ),
+    Whitespace(
+        " ",
+    ),
+    LParen,
+    Ident(
+        Ident(
+            "i",
+        ),
+    ),
+    Whitespace(
+        " ",
+    ),
+    Op(
+        Mod,
+    ),
+    Whitespace(
+        " ",
+    ),
+    Num(
+        Num {
+            val: 5.0,
+            raw: "5",
+        },
+    ),
+    Whitespace(
+        " ",
+    ),
+    Op(
+        Equal,
+    ),
+    Whitespace(
+        " ",
+    ),
+    Num(
+        Num {
+            val: 0.0,
+            raw: "0",
+        },
+    ),
+    RParen,
+    Whitespace(
+        " ",
+    ),
+    Ident(
+        Ident(
+            "console",
+        ),
+    ),
+    Op(
+        Dot,
+    ),
+    Ident(
+        Ident(
+            "log",
+        ),
+    ),
+    LParen,
+    Str(
+        Str {
+            val: "Buzz",
+            raw: "\"Buzz\"",
+        },
+    ),
+    RParen,
+    Op(
+        Semicolon,
+    ),
+    LineTerminator(
+        "\n",
+    ),
+    Whitespace(
+        "    ",
+    ),
+    Ident(
+        Reserved(
+            Else,
+        ),
+    ),
+    Whitespace(
+        " ",
+    ),
+    Ident(
+        Ident(
+            "console",
+        ),
+    ),
+    Op(
+        Dot,
+    ),
+    Ident(
+        Ident(
+            "log",
+        ),
+    ),
+    LParen,
+    Ident(
+        Ident(
+            "i",
+        ),
+    ),
+    RParen,
+    Op(
+        Semicolon,
+    ),
+    LineTerminator(
+        "\n",
+    ),
+    RBrace,
+]
