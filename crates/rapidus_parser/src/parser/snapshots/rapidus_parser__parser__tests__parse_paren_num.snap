@@ -1,0 +1,57 @@
+---
+source: crates/rapidus_parser/src/parser/mod.rs
+assertion_line: 153
+expression: module
+---
+Module {
+    span: Span {
+        start: 0,
+        end: 9,
+    },
+    children: [
+        Stmt(
+            Stmt {
+                span: Span {
+                    start: 1,
+                    end: 3,
+                },
+                kind: Expr(
+                    Literal(
+                        Num(
+                            Num {
+                                span: Span {
+                                    start: 1,
+                                    end: 3,
+                                },
+                                val: 42.0,
+                                raw: "42",
+                            },
+                        ),
+                    ),
+                ),
+            },
+        ),
+        Stmt(
+            Stmt {
+                span: Span {
+                    start: 7,
+                    end: 8,
+                },
+                kind: Expr(
+                    Literal(
+                        Num(
+                            Num {
+                                span: Span {
+                                    start: 7,
+                                    end: 8,
+                                },
+                                val: 1.0,
+                                raw: "1",
+                            },
+                        ),
+                    ),
+                ),
+            },
+        ),
+    ],
+}
