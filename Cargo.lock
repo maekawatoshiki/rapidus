@@ -376,6 +376,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "rapidus_eval"
+version = "0.1.0"
+dependencies = [
+ "ecow",
+ "log",
+ "rapidus_ast",
+ "rustc-hash",
+ "thiserror",
+]
+
+[[package]]
 name = "rapidus_parser"
 version = "0.1.0"
 dependencies = [
