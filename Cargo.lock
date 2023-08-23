@@ -379,10 +379,17 @@ dependencies = [
 name = "rapidus_eval"
 version = "0.1.0"
 dependencies = [
+ "color-backtrace",
  "ecow",
+ "env_logger",
+ "glob",
+ "indicatif",
+ "insta",
  "log",
  "rapidus_ast",
+ "rapidus_parser",
  "rustc-hash",
+ "structopt",
  "thiserror",
 ]
 
