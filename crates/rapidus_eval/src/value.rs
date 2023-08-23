@@ -11,6 +11,8 @@ pub const TAG_F64: u64 = 0xFFF0;
 pub const TAG_PTR: u64 = 0xFFF1;
 pub const TAG_STR: u64 = 0xFFF2;
 pub const TAG_BOOL: u64 = 0xFFF3;
+pub const TAG_NULL: u64 = 0xFFF4;
+pub const TAG_UNDEFINED: u64 = 0xFFF5;
 
 impl JsValue {
     pub fn ptr(p: *const u8) -> Self {
@@ -42,20 +44,36 @@ impl JsValue {
         })
     }
 
+    pub fn null() -> Self {
+        Self(TAG_NULL << 48)
+    }
+
+    pub fn undefined() -> Self {
+        Self(TAG_UNDEFINED << 48)
+    }
+
     pub fn is_ptr(&self) -> bool {
-        (self.0 & 0xFFFF000000000000) >> 48 == TAG_PTR
+        self.0 >> 48 == TAG_PTR
     }
 
     pub fn is_str(&self) -> bool {
-        (self.0 & 0xFFFF000000000000) >> 48 == TAG_STR
+        self.0 >> 48 == TAG_STR
     }
 
     pub fn is_bool(&self) -> bool {
-        (self.0 & 0xFFFF000000000000) >> 48 == TAG_BOOL
+        self.0 >> 48 == TAG_BOOL
     }
 
     pub fn is_f64(&self) -> bool {
         !f64::from_bits(self.0).is_nan() || (self.0 >> 48 == TAG_F64)
+    }
+
+    pub fn is_null(&self) -> bool {
+        self.0 >> 48 == TAG_NULL
+    }
+
+    pub fn is_undefined(&self) -> bool {
+        self.0 >> 48 == TAG_UNDEFINED
     }
 
     pub fn as_ptr(&self) -> Option<*const u8> {
@@ -113,6 +131,18 @@ mod tests {
         assert!(JsValue::f64(f64::MAX).is_f64());
         assert!(JsValue::f64(f64::MIN).is_f64());
         assert!(JsValue::f64(f64::NAN).is_f64());
+    }
+
+    #[test]
+    fn jsvalue_null() {
+        assert!(JsValue::null().is_null());
+        assert!(JsValue::null().tag() == TAG_NULL);
+    }
+
+    #[test]
+    fn jsvalue_undefined() {
+        assert!(JsValue::undefined().is_undefined());
+        assert!(JsValue::undefined().tag() == TAG_UNDEFINED);
     }
 
     #[test]

@@ -1,7 +1,8 @@
 use rapidus_ast::module::Module;
 
-use crate::error::Error;
+use crate::{error::Error, value::JsValue};
 
+// TODO: What is the relationship between this and Realm?
 pub struct EvalCtx {}
 
 impl EvalCtx {
@@ -9,7 +10,7 @@ impl EvalCtx {
         Self {}
     }
 
-    pub fn eval_module(&mut self, _module: &Module) -> Result<(), Error> {
-        Err(Error::Todo)
+    pub fn eval_module(&mut self, _module: &Module) -> Result<JsValue, Error> {
+        Ok(JsValue::undefined())
     }
 }
