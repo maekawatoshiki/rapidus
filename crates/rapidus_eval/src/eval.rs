@@ -1,13 +1,15 @@
-pub struct Evaluator {}
+use rapidus_ast::module::Module;
 
-impl Evaluator {
+use crate::error::Error;
+
+pub struct EvalCtx {}
+
+impl EvalCtx {
     pub const fn new() -> Self {
         Self {}
     }
-}
 
-impl Default for Evaluator {
-    fn default() -> Self {
-        Self::new()
+    pub fn eval_module(&mut self, _module: &Module) -> Result<(), Error> {
+        Err(Error::Todo)
     }
 }
