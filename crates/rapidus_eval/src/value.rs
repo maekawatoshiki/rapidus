@@ -107,9 +107,9 @@ impl fmt::Debug for JsValue {
             TAG_PTR => write!(f, "ptr({:p})", self.as_ptr().unwrap()),
             TAG_STR => write!(f, "str({:p})", self.as_str().unwrap()),
             TAG_BOOL => write!(f, "bool({})", self.as_bool().unwrap()),
-            TAG_F64 => write!(f, "f64({})", self.as_f64().unwrap()),
             TAG_NULL => write!(f, "null"),
             TAG_UNDEFINED => write!(f, "undefined"),
+            _ if self.is_f64() => write!(f, "f64({})", self.as_f64().unwrap()),
             _ => unreachable!(),
         }
     }
