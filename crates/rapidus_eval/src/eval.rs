@@ -39,6 +39,7 @@ impl EvalCtx {
 
     fn eval_expr(&mut self, expr: &Expr) -> Result<JsValue, Error> {
         match expr {
+            Expr::Ident(_ident) => Err(Error::Todo),
             Expr::Literal(lit) => self.eval_literal(lit),
         }
     }

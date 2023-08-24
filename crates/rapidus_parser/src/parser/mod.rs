@@ -1,6 +1,7 @@
 use rapidus_ast::{
     expr::Expr,
-    literal::{Num, Null},
+    ident::Ident as Ident_,
+    literal::{Null, Num},
     module::{Module, ModuleItem},
     span::{Span, Spanned},
     stmt::{self, Stmt},
@@ -11,7 +12,12 @@ use crate::{
     error::Error,
     lexer::Lexer,
     t,
-    token::{num::Num as TokNum, op::Op, Token, ident::{Ident, ReservedWord}},
+    token::{
+        ident::{Ident, ReservedWord},
+        num::Num as TokNum,
+        op::Op,
+        Token,
+    },
 };
 
 /// Parser.
@@ -65,7 +71,12 @@ impl<'a> Parser<'a> {
         let Spanned(span, tok) = self.lexer.read()?.unwrap();
         match tok {
             Token::Num(TokNum { val, raw }) => Ok(Expr::Literal(Num::new(span, val, raw).into())),
-            Token::Ident(Ident::Reserved(ReservedWord::Null)) => Ok(Expr::Literal(Null::new(span).into())),
+            Token::Ident(Ident::Reserved(ReservedWord::Null)) => {
+                Ok(Expr::Literal(Null::new(span).into()))
+            }
+            Token::Ident(Ident::Ident(i)) if i == "undefined" => {
+                Ok(Expr::Ident(Ident_::new(span, i).into()))
+            }
             Token::LParen => {
                 let expr = self.parse_expr()?;
                 self.expect_rparen()?;
