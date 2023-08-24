@@ -47,6 +47,7 @@ impl EvalCtx {
         match lit {
             // TODO: https://tc39.es/ecma262/multipage/ecmascript-language-expressions.html#sec-identifiers-runtime-semantics-evaluation
             Literal::Num(num) => Ok(JsValue::f64(num.val())),
+            Literal::Null(_null) => Ok(JsValue::null()),
         }
     }
 }
