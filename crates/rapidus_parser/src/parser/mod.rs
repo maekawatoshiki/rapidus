@@ -1,7 +1,7 @@
 use rapidus_ast::{
     expr::Expr,
     ident::Ident as Ident_,
-    literal::{Null, Num},
+    literal::{Null, Num, Str as Str_},
     module::{Module, ModuleItem},
     span::{Span, Spanned},
     stmt::{self, Stmt},
@@ -16,6 +16,7 @@ use crate::{
         ident::{Ident, ReservedWord},
         num::Num as TokNum,
         op::Op,
+        str::Str,
         Token,
     },
 };
@@ -75,6 +76,7 @@ impl<'a> Parser<'a> {
                 Ok(Expr::Literal(Null::new(span).into()))
             }
             Token::Ident(Ident::Ident(i)) => Ok(Expr::Ident(Ident_::new(span, i).into())),
+            Token::Str(Str { val, raw }) => Ok(Expr::Literal(Str_::new(span, val, raw).into())),
             Token::LParen => {
                 let expr = self.parse_expr()?;
                 self.expect_rparen()?;

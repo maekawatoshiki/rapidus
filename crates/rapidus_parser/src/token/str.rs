@@ -4,10 +4,10 @@ use ecow::EcoString;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Str {
     /// Escaped string value
-    val: EcoString,
+    pub(crate) val: EcoString,
 
     /// Original string literal
-    raw: EcoString,
+    pub(crate) raw: EcoString,
 }
 
 impl Str {

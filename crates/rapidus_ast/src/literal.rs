@@ -7,6 +7,7 @@ use ecow::EcoString;
 #[derive(Debug, Clone)]
 pub enum Literal {
     Num(Num),
+    Str(Str),
     Null(Null),
 }
 
@@ -15,6 +16,14 @@ pub enum Literal {
 pub struct Num {
     span: Span,
     val: f64,
+    raw: EcoString,
+}
+
+// Represents a string literal.
+#[derive(Debug, Clone)]
+pub struct Str {
+    span: Span,
+    val: EcoString,
     raw: EcoString,
 }
 
@@ -28,6 +37,7 @@ impl Node for Literal {
     fn span(&self) -> Span {
         match self {
             Self::Num(num) => num.span(),
+            Self::Str(str) => str.span(),
             Self::Null(null) => null.span(),
         }
     }
@@ -45,6 +55,12 @@ impl Node for Null {
     }
 }
 
+impl Node for Str {
+    fn span(&self) -> Span {
+        self.span
+    }
+}
+
 impl Num {
     pub const fn new(span: Span, val: f64, raw: EcoString) -> Self {
         Self { span, val, raw }
@@ -52,6 +68,20 @@ impl Num {
 
     pub const fn val(&self) -> f64 {
         self.val
+    }
+
+    pub const fn raw(&self) -> &EcoString {
+        &self.raw
+    }
+}
+
+impl Str {
+    pub const fn new(span: Span, val: EcoString, raw: EcoString) -> Self {
+        Self { span, val, raw }
+    }
+
+    pub const fn val(&self) -> &EcoString {
+        &self.val
     }
 
     pub const fn raw(&self) -> &EcoString {
@@ -74,5 +104,11 @@ impl From<Num> for Literal {
 impl From<Null> for Literal {
     fn from(null: Null) -> Self {
         Self::Null(null)
+    }
+}
+
+impl From<Str> for Literal {
+    fn from(str: Str) -> Self {
+        Self::Str(str)
     }
 }
