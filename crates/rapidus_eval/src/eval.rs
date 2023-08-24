@@ -6,7 +6,7 @@ use rapidus_ast::{
     stmt::{self, Stmt},
 };
 
-use crate::{error::Error, value::JsValue};
+use crate::{error::Error, object::string::JsString, value::JsValue};
 
 // TODO: What is the relationship between this and Realm?
 pub struct EvalCtx {}
@@ -56,7 +56,9 @@ impl EvalCtx {
         match lit {
             // TODO: https://tc39.es/ecma262/multipage/ecmascript-language-expressions.html#sec-identifiers-runtime-semantics-evaluation
             Literal::Num(num) => Ok(JsValue::f64(num.val())),
-            Literal::Str(_str) => Err(Error::Todo),
+            Literal::Str(str) => Ok(JsValue::str(
+                JsString::new_leaked(str.val()) as *mut _ as *const _
+            )),
             Literal::Null(_null) => Ok(JsValue::null()),
         }
     }

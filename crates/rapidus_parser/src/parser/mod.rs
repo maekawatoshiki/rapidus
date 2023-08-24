@@ -180,4 +180,12 @@ mod tests {
         let module = Parser::new(lexer).parse_module().unwrap();
         insta::assert_debug_snapshot!(module);
     }
+
+    #[test]
+    fn parse_string() {
+        let source = Source::new(SourceName::FileName("test.js".into()), r#""foo""#);
+        let lexer = Lexer::new(Input::from(&source));
+        let module = Parser::new(lexer).parse_module().unwrap();
+        insta::assert_debug_snapshot!(module);
+    }
 }

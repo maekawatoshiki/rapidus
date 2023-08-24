@@ -1,5 +1,7 @@
 use std::fmt;
 
+use crate::object::string::JsString;
+
 // Value representation by nan-boxing:
 //   float  : FFFFFFFFFFFF|FFFF| FFFFFFFFFFFFFFFF FFFFFFFFFFFFFFFF FFFFFFFFFFFFFFFF
 //   pointer: 111111111111|0001| PPPPPPPPPPPPPPPP PPPPPPPPPPPPPPPP PPPPPPPPPPPPPPPP
@@ -105,7 +107,10 @@ impl fmt::Debug for JsValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.tag() {
             TAG_PTR => write!(f, "ptr({:p})", self.as_ptr().unwrap()),
-            TAG_STR => write!(f, "str({:p})", self.as_str().unwrap()),
+            TAG_STR => write!(f, "str({:?})", {
+                let p = self.as_str().unwrap() as *const JsString;
+                unsafe { &*p }.to_string()
+            }),
             TAG_BOOL => write!(f, "bool({})", self.as_bool().unwrap()),
             TAG_NULL => write!(f, "null"),
             TAG_UNDEFINED => write!(f, "undefined"),
