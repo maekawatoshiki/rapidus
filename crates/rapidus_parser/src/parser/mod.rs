@@ -74,9 +74,7 @@ impl<'a> Parser<'a> {
             Token::Ident(Ident::Reserved(ReservedWord::Null)) => {
                 Ok(Expr::Literal(Null::new(span).into()))
             }
-            Token::Ident(Ident::Ident(i)) if i == "undefined" => {
-                Ok(Expr::Ident(Ident_::new(span, i).into()))
-            }
+            Token::Ident(Ident::Ident(i)) => Ok(Expr::Ident(Ident_::new(span, i).into())),
             Token::LParen => {
                 let expr = self.parse_expr()?;
                 self.expect_rparen()?;
@@ -160,6 +158,22 @@ mod tests {
     #[test]
     fn parse_paren_num() {
         let source = Source::new(SourceName::FileName("test.js".into()), "(42\n)\n(1)");
+        let lexer = Lexer::new(Input::from(&source));
+        let module = Parser::new(lexer).parse_module().unwrap();
+        insta::assert_debug_snapshot!(module);
+    }
+
+    #[test]
+    fn parse_null() {
+        let source = Source::new(SourceName::FileName("test.js".into()), "null");
+        let lexer = Lexer::new(Input::from(&source));
+        let module = Parser::new(lexer).parse_module().unwrap();
+        insta::assert_debug_snapshot!(module);
+    }
+
+    #[test]
+    fn parse_ident() {
+        let source = Source::new(SourceName::FileName("test.js".into()), "foo; undefined");
         let lexer = Lexer::new(Input::from(&source));
         let module = Parser::new(lexer).parse_module().unwrap();
         insta::assert_debug_snapshot!(module);
