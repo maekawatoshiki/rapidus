@@ -70,7 +70,7 @@ impl<'a> Parser<'a> {
                 self.expect_rparen()?;
                 Ok(expr)
             }
-            _ => Err(Error::Todo),
+            _ => Err(Error::Todo(span)),
         }
     }
 

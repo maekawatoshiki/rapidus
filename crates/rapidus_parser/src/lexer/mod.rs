@@ -117,6 +117,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn read_punctuator(&mut self) -> Result<Token, Error> {
+        let start = self.input.cur_pos();
         let c = self.input.advance().unwrap();
         match c {
             '+' if self.input.skip('+') => Ok(Token::Op(Op::PlusPlus)),
@@ -175,13 +176,18 @@ impl<'a> Lexer<'a> {
             '?' if self.input.skips(['?', '=']) => Ok(Token::AssignOp(AssignOp::NullishCoalescing)),
             '?' if self.input.skip('?') => Ok(Token::Op(Op::NullishCoalescing)),
             '?' => Ok(Token::Op(Op::Question)),
-            _ => Err(Error::Todo),
+            _ => Err(Error::Todo(Span::new(start, self.input.cur_pos()))),
         }
     }
 
     fn read_num(&mut self) -> Result<Token, Error> {
+        let start = self.input.cur_pos();
         let s = self.input.take_while(|c| c.is_ascii_digit());
-        Ok(Token::Num(Num::new(s.parse().map_err(|_| Error::Todo)?, s)))
+        Ok(Token::Num(Num::new(
+            s.parse()
+                .map_err(|_| Error::Todo(Span::new(start, self.input.cur_pos())))?,
+            s,
+        )))
     }
 
     fn read_str(&mut self) -> Result<Token, Error> {

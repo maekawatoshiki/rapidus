@@ -1,3 +1,4 @@
+use rapidus_ast::span::Span;
 use thiserror::Error as ThisError;
 
 #[derive(Debug, ThisError)]
@@ -12,5 +13,5 @@ pub enum Error {
     SyntaxError,
 
     #[error("TODO")]
-    Todo,
+    Todo(Span),
 }
