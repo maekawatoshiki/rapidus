@@ -1,5 +1,6 @@
 use rapidus_ast::{
     expr::Expr,
+    ident::Ident,
     literal::Literal,
     module::{Module, ModuleItem},
     stmt::{self, Stmt},
@@ -39,8 +40,15 @@ impl EvalCtx {
 
     fn eval_expr(&mut self, expr: &Expr) -> Result<JsValue, Error> {
         match expr {
-            Expr::Ident(_ident) => Err(Error::Todo),
+            Expr::Ident(ident) => self.eval_ident(ident),
             Expr::Literal(lit) => self.eval_literal(lit),
+        }
+    }
+
+    fn eval_ident(&mut self, ident: &Ident) -> Result<JsValue, Error> {
+        match ident.val().as_str() {
+            "undefined" => Ok(JsValue::undefined()),
+            _ => Err(Error::Todo),
         }
     }
 
