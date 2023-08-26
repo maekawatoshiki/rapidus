@@ -9,7 +9,7 @@ use rapidus_ast::{
 };
 
 use crate::{
-    error::Error,
+    error::{Error, SyntaxError},
     lexer::Lexer,
     t,
     token::{
@@ -99,7 +99,7 @@ impl<'a> Parser<'a> {
             Some(Spanned(_, Token::LineTerminator(_))) => Ok(()),
             None => Ok(()),
             // TODO: For now, handle this case as an unrecoverable error.
-            _ => Err(Error::SyntaxError),
+            Some(tok) => Err(Error::SyntaxError(SyntaxError::UnexpectedToken(tok))),
         }
     }
 
@@ -109,7 +109,8 @@ impl<'a> Parser<'a> {
             Some(Spanned(_, Token::RParen)) => Ok(()),
             Some(Spanned(_, Token::LineTerminator(_))) => self.expect_rparen(),
             // TODO: For now, handle this case as an unrecoverable error.
-            _ => Err(Error::SyntaxError),
+            Some(tok) => Err(Error::SyntaxError(SyntaxError::UnexpectedToken(tok))),
+            None => Err(Error::SyntaxError(SyntaxError::UnexpectedEndOfInput)),
         }
     }
 }
@@ -153,7 +154,7 @@ mod tests {
         let lexer = Lexer::new(Input::from(&source));
         assert!(matches!(
             Parser::new(lexer).parse_module().unwrap_err(),
-            Error::SyntaxError
+            Error::SyntaxError(_)
         ));
     }
 
