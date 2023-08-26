@@ -3,6 +3,7 @@ use std::{fs, path::PathBuf};
 use ecow::EcoString;
 use rapidus_eval::eval::EvalCtx;
 use rapidus_parser::{
+    error::{Error, SyntaxError},
     lexer::{Input, Lexer},
     parser::Parser,
     source::{Source, SourceName},
@@ -36,7 +37,13 @@ fn eval_str(text: EcoString) {
         text,
     };
     let lexer = Lexer::new(Input::from(&src));
-    let module = Parser::new(lexer).parse_module().unwrap();
+    let module = match Parser::new(lexer).parse_module() {
+        Ok(module) => module,
+        Err(Error::SyntaxError(SyntaxError::UnexpectedToken(tok))) => {
+            panic!("{}", src.error_message_at(tok.0, "Unexpected token"));
+        }
+        Err(e) => panic!("{e:?}"),
+    };
     println!(
         "Result: {:#?}",
         EvalCtx::new().eval_module(&module).unwrap()

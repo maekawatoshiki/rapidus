@@ -1,4 +1,5 @@
 use ecow::EcoString;
+use rapidus_ast::span::Span;
 
 /// Represents a source.
 pub struct Source {
@@ -29,5 +30,30 @@ impl Source {
             name,
             text: text.into(),
         }
+    }
+
+    pub fn error_message_at(&self, span: Span, message: impl Into<String>) -> String {
+        let (line, row, column) = self.line_at(span);
+        let mut s = format!("{}:{}:{}: {}", "error", row, column, message.into());
+        s.push('\n');
+        s.push_str(line);
+        s.push('\n');
+        for _ in 0..column - 1 {
+            s.push(' ');
+        }
+        s.push('^');
+        s
+    }
+
+    /// Returns a line including the span and its starting position.
+    fn line_at<'a>(&'a self, span: Span) -> (&'a str, usize, usize) {
+        let mut chars = 0;
+        for (line_num, line) in self.text.lines().enumerate() {
+            if chars <= span.start() && span.end() <= chars + line.len() {
+                return (line, line_num + 1, span.start() - chars + 1);
+            }
+            chars += line.len();
+        }
+        panic!("Invalid span: {:?}", span);
     }
 }
