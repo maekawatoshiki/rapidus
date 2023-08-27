@@ -1,4 +1,5 @@
 use rapidus_ast::{
+    bin::{BinOp, BinOpExpr},
     expr::Expr,
     ident::Ident,
     literal::Literal,
@@ -42,7 +43,19 @@ impl EvalCtx {
         match expr {
             Expr::Ident(ident) => self.eval_ident(ident),
             Expr::Literal(lit) => self.eval_literal(lit),
-            Expr::BinOp(_) => Err(Error::Todo),
+            Expr::BinOp(op) => self.eval_binop(op),
+        }
+    }
+
+    fn eval_binop(&mut self, expr: &BinOpExpr) -> Result<JsValue, Error> {
+        match expr.op() {
+            BinOp::Add => {
+                let lhs = self.eval_expr(expr.lhs())?;
+                let rhs = self.eval_expr(expr.rhs())?;
+                assert!(lhs.is_f64());
+                assert!(rhs.is_f64());
+                Ok(JsValue::f64(lhs.as_f64().unwrap() + rhs.as_f64().unwrap()))
+            }
         }
     }
 

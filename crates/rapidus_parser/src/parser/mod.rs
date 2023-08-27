@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use rapidus_ast::{
     bin::{BinOp, BinOpExpr},
     expr::Expr,
@@ -71,6 +73,7 @@ impl<'a> Parser<'a> {
 
     fn parse_additive_expr(&mut self) -> Result<Expr, Error> {
         let mut lhs = self.parse_primary_expr()?;
+        let mut buf = VecDeque::new();
         while let Some(Spanned(span, tok)) = self.lexer.read()? {
             match tok {
                 Token::Op(Op::Plus) => {
@@ -81,14 +84,17 @@ impl<'a> Parser<'a> {
                         lhs,
                         rhs,
                     ));
+                    buf.clear();
                 }
-                Token::LineTerminator(_) => continue,
+                Token::LineTerminator(_) => buf.push_back(Spanned(span, tok)),
                 _ => {
-                    return Err(Error::SyntaxError(SyntaxError::UnexpectedToken(Spanned(
-                        span, tok,
-                    ))))
+                    buf.push_back(Spanned(span, tok));
+                    break;
                 }
             }
+        }
+        while let Some(tok) = buf.pop_front() {
+            self.lexer.unread(tok);
         }
         Ok(lhs)
     }
@@ -107,6 +113,7 @@ impl<'a> Parser<'a> {
                 self.expect_rparen()?;
                 Ok(expr)
             }
+            Token::LineTerminator(_) => self.parse_primary_expr(),
             _ => Err(Error::Todo(span)),
         }
     }
@@ -210,6 +217,30 @@ mod tests {
     #[test]
     fn parse_string() {
         let source = Source::new(SourceName::FileName("test.js".into()), r#""foo""#);
+        let lexer = Lexer::new(Input::from(&source));
+        let module = Parser::new(lexer).parse_module().unwrap();
+        insta::assert_debug_snapshot!(module);
+    }
+
+    #[test]
+    fn parse_add_1() {
+        let source = Source::new(SourceName::FileName("test.js".into()), "2 + 40");
+        let lexer = Lexer::new(Input::from(&source));
+        let module = Parser::new(lexer).parse_module().unwrap();
+        insta::assert_debug_snapshot!(module);
+    }
+
+    #[test]
+    fn parse_add_2() {
+        let source = Source::new(SourceName::FileName("test.js".into()), "2 \n+ 40");
+        let lexer = Lexer::new(Input::from(&source));
+        let module = Parser::new(lexer).parse_module().unwrap();
+        insta::assert_debug_snapshot!(module);
+    }
+
+    #[test]
+    fn parse_add_3() {
+        let source = Source::new(SourceName::FileName("test.js".into()), "2 \n+ \n40");
         let lexer = Lexer::new(Input::from(&source));
         let module = Parser::new(lexer).parse_module().unwrap();
         insta::assert_debug_snapshot!(module);
