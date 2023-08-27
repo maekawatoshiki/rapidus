@@ -42,6 +42,7 @@ impl EvalCtx {
         match expr {
             Expr::Ident(ident) => self.eval_ident(ident),
             Expr::Literal(lit) => self.eval_literal(lit),
+            Expr::BinOp(_) => Err(Error::Todo),
         }
     }
 

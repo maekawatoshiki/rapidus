@@ -32,6 +32,7 @@ impl Source {
         }
     }
 
+    /// Returns an error report string at the span.
     pub fn error_message_at(&self, span: Span, message: impl Into<String>) -> String {
         let (line, row, column) = self.line_at(span);
         let mut s = format!("{}:{}:{}: {}", "error", row, column, message.into());
@@ -45,7 +46,7 @@ impl Source {
         s
     }
 
-    /// Returns a line including the span and its starting position.
+    /// Returns a line including the span and its row and column.
     fn line_at<'a>(&'a self, span: Span) -> (&'a str, usize, usize) {
         let mut chars = 0;
         for (line_num, line) in self.text.lines().enumerate() {
