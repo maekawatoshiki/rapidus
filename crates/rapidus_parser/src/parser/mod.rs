@@ -1,4 +1,5 @@
 use rapidus_ast::{
+    bin::{BinOp, BinOpExpr},
     expr::Expr,
     ident::Ident as Ident_,
     literal::{Null, Num, Str as Str_},
@@ -65,7 +66,31 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_expr(&mut self) -> Result<Expr, Error> {
-        self.parse_primary_expr()
+        self.parse_additive_expr()
+    }
+
+    fn parse_additive_expr(&mut self) -> Result<Expr, Error> {
+        let mut lhs = self.parse_primary_expr()?;
+        while let Some(Spanned(span, tok)) = self.lexer.read()? {
+            match tok {
+                Token::Op(Op::Plus) => {
+                    let rhs = self.parse_primary_expr()?;
+                    lhs = Expr::BinOp(BinOpExpr::new(
+                        Span::new(lhs.span().start(), rhs.span().end()),
+                        BinOp::Add,
+                        lhs,
+                        rhs,
+                    ));
+                }
+                Token::LineTerminator(_) => continue,
+                _ => {
+                    return Err(Error::SyntaxError(SyntaxError::UnexpectedToken(Spanned(
+                        span, tok,
+                    ))))
+                }
+            }
+        }
+        Ok(lhs)
     }
 
     fn parse_primary_expr(&mut self) -> Result<Expr, Error> {
