@@ -66,7 +66,7 @@ impl<'a> Lexer<'a> {
         let start = self.cur_pos();
         let tok = self.read_token()?;
         let span = Span::new(start, self.cur_pos());
-        if let Some(Token::Whitespace(_)) = tok {
+        if let Some(Token::Whitespace(_)) | Some(Token::Comment(_)) = tok {
             return self.read();
         }
         Ok(tok.map(|tok| Spanned(span, tok)))
