@@ -76,11 +76,15 @@ impl<'a> Parser<'a> {
         let mut buf = VecDeque::new();
         while let Some(Spanned(span, tok)) = self.lexer.read()? {
             match tok {
-                t!("+") => {
+                t!("+") | t!("-") => {
                     let rhs = self.parse_primary_expr()?;
                     lhs = Expr::BinOp(BinOpExpr::new(
                         Span::new(lhs.span().start(), rhs.span().end()),
-                        BinOp::Add,
+                        if tok == t!("+") {
+                            BinOp::Add
+                        } else {
+                            BinOp::Sub
+                        },
                         lhs,
                         rhs,
                     ));
@@ -241,6 +245,14 @@ mod tests {
     #[test]
     fn parse_add_3() {
         let source = Source::new(SourceName::FileName("test.js".into()), "2 \n+ \n40");
+        let lexer = Lexer::new(Input::from(&source));
+        let module = Parser::new(lexer).parse_module().unwrap();
+        insta::assert_debug_snapshot!(module);
+    }
+
+    #[test]
+    fn parse_sub() {
+        let source = Source::new(SourceName::FileName("test.js".into()), "2 - 42");
         let lexer = Lexer::new(Input::from(&source));
         let module = Parser::new(lexer).parse_module().unwrap();
         insta::assert_debug_snapshot!(module);

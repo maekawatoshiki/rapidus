@@ -1,0 +1,56 @@
+---
+source: crates/rapidus_parser/src/parser/mod.rs
+assertion_line: 258
+expression: module
+---
+Module {
+    span: Span {
+        start: 0,
+        end: 6,
+    },
+    children: [
+        Stmt(
+            Stmt {
+                span: Span {
+                    start: 0,
+                    end: 6,
+                },
+                kind: Expr(
+                    BinOp(
+                        BinOpExpr {
+                            op: Sub,
+                            lhs: Literal(
+                                Num(
+                                    Num {
+                                        span: Span {
+                                            start: 0,
+                                            end: 1,
+                                        },
+                                        val: 2.0,
+                                        raw: "2",
+                                    },
+                                ),
+                            ),
+                            rhs: Literal(
+                                Num(
+                                    Num {
+                                        span: Span {
+                                            start: 4,
+                                            end: 6,
+                                        },
+                                        val: 42.0,
+                                        raw: "42",
+                                    },
+                                ),
+                            ),
+                            span: Span {
+                                start: 0,
+                                end: 6,
+                            },
+                        },
+                    ),
+                ),
+            },
+        ),
+    ],
+}

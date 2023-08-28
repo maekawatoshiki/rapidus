@@ -56,6 +56,13 @@ impl EvalCtx {
                 assert!(rhs.is_f64());
                 Ok(JsValue::f64(lhs.as_f64().unwrap() + rhs.as_f64().unwrap()))
             }
+            BinOp::Sub => {
+                let lhs = self.eval_expr(expr.lhs())?;
+                let rhs = self.eval_expr(expr.rhs())?;
+                assert!(lhs.is_f64());
+                assert!(rhs.is_f64());
+                Ok(JsValue::f64(lhs.as_f64().unwrap() - rhs.as_f64().unwrap()))
+            }
         }
     }
 

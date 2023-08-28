@@ -52,6 +52,9 @@ macro_rules! t {
     ("+") => {
         Token::Op(Op::Plus)
     };
+    ("-") => {
+        Token::Op(Op::Minus)
+    };
     ("(") => {
         Token::LParen
     };
