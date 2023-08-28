@@ -12,6 +12,9 @@ pub struct BinOpExpr {
 pub enum BinOp {
     Add,
     Sub,
+    Mul,
+    Div,
+    Mod,
 }
 
 impl BinOpExpr {

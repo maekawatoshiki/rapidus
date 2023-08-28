@@ -72,18 +72,51 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_additive_expr(&mut self) -> Result<Expr, Error> {
-        let mut lhs = self.parse_primary_expr()?;
+        let mut lhs = self.parse_multiplicative_expr()?;
         let mut buf = VecDeque::new();
         while let Some(Spanned(span, tok)) = self.lexer.read()? {
             match tok {
                 t!("+") | t!("-") => {
-                    let rhs = self.parse_primary_expr()?;
+                    let rhs = self.parse_multiplicative_expr()?;
                     lhs = Expr::BinOp(BinOpExpr::new(
                         Span::new(lhs.span().start(), rhs.span().end()),
                         if tok == t!("+") {
                             BinOp::Add
                         } else {
                             BinOp::Sub
+                        },
+                        lhs,
+                        rhs,
+                    ));
+                    buf.clear();
+                }
+                Token::LineTerminator(_) => buf.push_back(Spanned(span, tok)),
+                _ => {
+                    buf.push_back(Spanned(span, tok));
+                    break;
+                }
+            }
+        }
+        while let Some(tok) = buf.pop_front() {
+            self.lexer.unread(tok);
+        }
+        Ok(lhs)
+    }
+
+    fn parse_multiplicative_expr(&mut self) -> Result<Expr, Error> {
+        let mut lhs = self.parse_primary_expr()?;
+        let mut buf = VecDeque::new();
+        while let Some(Spanned(span, tok)) = self.lexer.read()? {
+            match tok {
+                t!("*") | t!("/") | t!("%") => {
+                    let rhs = self.parse_primary_expr()?;
+                    lhs = Expr::BinOp(BinOpExpr::new(
+                        Span::new(lhs.span().start(), rhs.span().end()),
+                        match tok {
+                            t!("*") => BinOp::Mul,
+                            t!("/") => BinOp::Div,
+                            t!("%") => BinOp::Mod,
+                            _ => unreachable!(),
                         },
                         lhs,
                         rhs,

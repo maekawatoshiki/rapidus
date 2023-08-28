@@ -48,21 +48,17 @@ impl EvalCtx {
     }
 
     fn eval_binop(&mut self, expr: &BinOpExpr) -> Result<JsValue, Error> {
+        // TODO: https://tc39.es/ecma262/multipage/ecmascript-language-expressions.html#sec-applystringornumericbinaryoperator
+        let lhs = self.eval_expr(expr.lhs())?;
+        let rhs = self.eval_expr(expr.rhs())?;
+        assert!(lhs.is_f64());
+        assert!(rhs.is_f64());
         match expr.op() {
-            BinOp::Add => {
-                let lhs = self.eval_expr(expr.lhs())?;
-                let rhs = self.eval_expr(expr.rhs())?;
-                assert!(lhs.is_f64());
-                assert!(rhs.is_f64());
-                Ok(JsValue::f64(lhs.as_f64().unwrap() + rhs.as_f64().unwrap()))
-            }
-            BinOp::Sub => {
-                let lhs = self.eval_expr(expr.lhs())?;
-                let rhs = self.eval_expr(expr.rhs())?;
-                assert!(lhs.is_f64());
-                assert!(rhs.is_f64());
-                Ok(JsValue::f64(lhs.as_f64().unwrap() - rhs.as_f64().unwrap()))
-            }
+            BinOp::Add => Ok(JsValue::f64(lhs.as_f64().unwrap() + rhs.as_f64().unwrap())),
+            BinOp::Sub => Ok(JsValue::f64(lhs.as_f64().unwrap() - rhs.as_f64().unwrap())),
+            BinOp::Mul => Ok(JsValue::f64(lhs.as_f64().unwrap() * rhs.as_f64().unwrap())),
+            BinOp::Div => Ok(JsValue::f64(lhs.as_f64().unwrap() / rhs.as_f64().unwrap())),
+            BinOp::Mod => Ok(JsValue::f64(lhs.as_f64().unwrap() % rhs.as_f64().unwrap())),
         }
     }
 

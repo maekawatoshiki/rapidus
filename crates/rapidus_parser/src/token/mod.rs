@@ -55,6 +55,15 @@ macro_rules! t {
     ("-") => {
         Token::Op(Op::Minus)
     };
+    ("*") => {
+        Token::Op(Op::Asterisk)
+    };
+    ("/") => {
+        Token::Op(Op::Div)
+    };
+    ("%") => {
+        Token::Op(Op::Mod)
+    };
     ("(") => {
         Token::LParen
     };
