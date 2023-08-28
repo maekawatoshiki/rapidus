@@ -50,10 +50,10 @@ impl Source {
     fn line_at<'a>(&'a self, span: Span) -> (&'a str, usize, usize) {
         let mut chars = 0;
         for (line_num, line) in self.text.lines().enumerate() {
-            if chars <= span.start() && span.end() <= chars + line.len() {
+            if chars <= span.start() && span.end() <= chars + line.len() + 1 {
                 return (line, line_num + 1, span.start() - chars + 1);
             }
-            chars += line.len();
+            chars += line.len() + '\n'.len_utf8();
         }
         panic!("Invalid span: {:?}", span);
     }

@@ -104,7 +104,10 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_primary_expr(&mut self) -> Result<Expr, Error> {
-        let Spanned(span, tok) = self.lexer.read()?.unwrap();
+        let Spanned(span, tok) = self
+            .lexer
+            .read()?
+            .ok_or(Error::SyntaxError(SyntaxError::UnexpectedEndOfInput))?;
         match tok {
             Token::Num(TokNum { val, raw }) => Ok(Expr::Literal(Num::new(span, val, raw).into())),
             Token::Ident(Ident::Reserved(ReservedWord::Null)) => {

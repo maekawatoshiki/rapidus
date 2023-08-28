@@ -1,6 +1,7 @@
 use std::{fs, path::PathBuf};
 
 use ecow::EcoString;
+use rapidus_ast::span::Span;
 use rapidus_eval::eval::EvalCtx;
 use rapidus_parser::{
     error::{Error, SyntaxError},
@@ -41,6 +42,15 @@ fn eval_str(text: EcoString) {
         Ok(module) => module,
         Err(Error::SyntaxError(SyntaxError::UnexpectedToken(tok))) => {
             panic!("{}", src.error_message_at(tok.0, "Unexpected token"));
+        }
+        Err(Error::SyntaxError(SyntaxError::UnexpectedEndOfInput)) => {
+            panic!(
+                "{}",
+                src.error_message_at(
+                    Span::new(src.text.len() - 1, src.text.len()),
+                    "Unexpected end of input"
+                )
+            );
         }
         Err(e) => panic!("{e:?}"),
     };
