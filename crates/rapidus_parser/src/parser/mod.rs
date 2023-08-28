@@ -76,7 +76,7 @@ impl<'a> Parser<'a> {
         let mut buf = VecDeque::new();
         while let Some(Spanned(span, tok)) = self.lexer.read()? {
             match tok {
-                Token::Op(Op::Plus) => {
+                t!("+") => {
                     let rhs = self.parse_primary_expr()?;
                     lhs = Expr::BinOp(BinOpExpr::new(
                         Span::new(lhs.span().start(), rhs.span().end()),
@@ -108,7 +108,7 @@ impl<'a> Parser<'a> {
             }
             Token::Ident(Ident::Ident(i)) => Ok(Expr::Ident(Ident_::new(span, i).into())),
             Token::Str(Str { val, raw }) => Ok(Expr::Literal(Str_::new(span, val, raw).into())),
-            Token::LParen => {
+            t!("(") => {
                 let expr = self.parse_expr()?;
                 self.expect_rparen()?;
                 Ok(expr)
@@ -123,8 +123,8 @@ impl<'a> Parser<'a> {
 
         let tok = self.lexer.read()?;
         match tok {
-            Some(Spanned(_, Token::Op(Op::Semicolon))) => Ok(()),
-            Some(Spanned(_, Token::RBrace)) => {
+            Some(Spanned(_, t!(";"))) => Ok(()),
+            Some(Spanned(_, t!(")"))) => {
                 self.lexer.unread(tok.unwrap());
                 Ok(())
             }
@@ -138,7 +138,7 @@ impl<'a> Parser<'a> {
     fn expect_rparen(&mut self) -> Result<(), Error> {
         let tok = self.lexer.read()?;
         match tok {
-            Some(Spanned(_, Token::RParen)) => Ok(()),
+            Some(Spanned(_, t!(")"))) => Ok(()),
             Some(Spanned(_, Token::LineTerminator(_))) => self.expect_rparen(),
             // TODO: For now, handle this case as an unrecoverable error.
             Some(tok) => Err(Error::SyntaxError(SyntaxError::UnexpectedToken(tok))),

@@ -49,4 +49,13 @@ macro_rules! t {
     (";") => {
         Token::Op(Op::Semicolon)
     };
+    ("+") => {
+        Token::Op(Op::Plus)
+    };
+    ("(") => {
+        Token::LParen
+    };
+    (")") => {
+        Token::RParen
+    };
 }
