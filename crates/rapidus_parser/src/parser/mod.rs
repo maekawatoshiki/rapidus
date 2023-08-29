@@ -2,6 +2,7 @@ use std::collections::VecDeque;
 
 use rapidus_ast::{
     bin::{BinOp, BinOpExpr},
+    decl::Decl,
     expr::Expr,
     ident::Ident as Ident_,
     literal::{Null, Num, Str as Str_},
@@ -81,6 +82,9 @@ impl<'a> Parser<'a> {
 
         while let Some(Spanned(span, tok)) = self.lexer.read()? {
             let item = match tok {
+                Token::Ident(Ident::Ident(name)) if name == "let" => {
+                    ModuleItem::Decl(self.parse_lexical_decl()?)
+                }
                 t!(";") => ModuleItem::Stmt(Stmt::new(span, stmt::Kind::Empty)),
                 _ => {
                     self.lexer.unread(Spanned(span, tok));
@@ -91,6 +95,10 @@ impl<'a> Parser<'a> {
         }
 
         Ok(children)
+    }
+
+    fn parse_lexical_decl(&mut self) -> Result<Decl, Error> {
+        todo!()
     }
 
     fn parse_expr_stmt(&mut self) -> Result<Stmt, Error> {
