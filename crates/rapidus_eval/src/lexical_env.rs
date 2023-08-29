@@ -14,7 +14,7 @@ pub struct ModuleEnvRecord {
 }
 
 pub trait EnvRecord {
-    fn bindings(&mut self) -> &FxHashMap<EcoString, JsValue>;
+    fn bindings(&self) -> &FxHashMap<EcoString, JsValue>;
     fn bindings_mut(&mut self) -> &mut FxHashMap<EcoString, JsValue>;
 
     fn create_mutable_binding(&mut self, name: impl Into<EcoString>) {
@@ -25,10 +25,14 @@ pub trait EnvRecord {
     fn initialize_binding(&mut self, name: impl Into<EcoString>, value: JsValue) {
         self.bindings_mut().insert(name.into(), value);
     }
+
+    fn get_binding_value(&self, name: impl AsRef<str>) -> Option<JsValue> {
+        self.bindings().get(name.as_ref()).copied()
+    }
 }
 
 impl EnvRecord for LexicalEnv {
-    fn bindings(&mut self) -> &FxHashMap<EcoString, JsValue> {
+    fn bindings(&self) -> &FxHashMap<EcoString, JsValue> {
         match self {
             Self::Module(record) => record.bindings(),
         }
@@ -50,7 +54,7 @@ impl ModuleEnvRecord {
 }
 
 impl EnvRecord for ModuleEnvRecord {
-    fn bindings(&mut self) -> &FxHashMap<EcoString, JsValue> {
+    fn bindings(&self) -> &FxHashMap<EcoString, JsValue> {
         &self.bindings
     }
 

@@ -4,4 +4,7 @@ use thiserror::Error as ThisError;
 pub enum Error {
     #[error("TODO")]
     Todo,
+
+    #[error("ReferenceError")]
+    ReferenceError,
 }

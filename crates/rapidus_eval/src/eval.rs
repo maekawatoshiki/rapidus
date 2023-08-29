@@ -92,7 +92,11 @@ impl EvalCtx {
     fn eval_ident(&mut self, ident: &Ident) -> Result<JsValue, Error> {
         match ident.val().as_str() {
             "undefined" => Ok(JsValue::undefined()),
-            _ => Err(Error::Todo),
+            name => self
+                .cur_exec_ctx
+                .cur_lexical_env()
+                .get_binding_value(name)
+                .ok_or_else(|| Error::ReferenceError),
         }
     }
 
