@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 
 use rapidus_ast::{
     bin::{BinOp, BinOpExpr},
-    decl::Decl,
+    decl::{self, Decl, LexicalDecl},
     expr::Expr,
     ident::Ident as Ident_,
     literal::{Null, Num, Str as Str_},
@@ -19,7 +19,7 @@ use crate::{
     token::{
         ident::{Ident, ReservedWord},
         num::Num as TokNum,
-        op::Op,
+        op::{AssignOp, Op},
         str::Str,
         Token,
     },
@@ -86,6 +86,7 @@ impl<'a> Parser<'a> {
                     ModuleItem::Decl(self.parse_lexical_decl()?)
                 }
                 t!(";") => ModuleItem::Stmt(Stmt::new(span, stmt::Kind::Empty)),
+                Token::LineTerminator(_) => continue,
                 _ => {
                     self.lexer.unread(Spanned(span, tok));
                     ModuleItem::Stmt(self.parse_expr_stmt()?)
@@ -98,7 +99,31 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_lexical_decl(&mut self) -> Result<Decl, Error> {
-        todo!()
+        let binding = self
+            .lexer
+            .read()?
+            .ok_or(Error::SyntaxError(SyntaxError::UnexpectedEndOfInput))?;
+        let (bspan, binding) = match binding {
+            Spanned(bspan, Token::Ident(Ident::Ident(ident))) => (bspan, ident),
+            _ => return Err(Error::SyntaxError(SyntaxError::UnexpectedToken(binding))),
+        };
+        let init = self
+            .expect_token(t!("="))
+            .is_ok()
+            .then(|| self.parse_expr())
+            .transpose()?;
+        let sspan = self.expect_semicolon()?;
+        Ok(Decl::new(
+            Span::new(bspan.start(), sspan.end()),
+            decl::Kind::LexicalDecl(LexicalDecl::new(
+                Span::new(
+                    bspan.start(),
+                    init.as_ref().map_or(bspan.end(), |i| i.span().end()),
+                ),
+                binding,
+                init,
+            )),
+        ))
     }
 
     fn parse_expr_stmt(&mut self) -> Result<Stmt, Error> {
@@ -140,20 +165,34 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn expect_semicolon(&mut self) -> Result<(), Error> {
+    fn expect_semicolon(&mut self) -> Result<Span, Error> {
         // https://tc39.es/ecma262/multipage/ecmascript-language-lexical-grammar.html#sec-rules-of-automatic-semicolon-insertion
 
         let tok = self.lexer.read()?;
         match tok {
-            Some(Spanned(_, t!(";"))) => Ok(()),
-            Some(Spanned(_, t!(")"))) => {
+            Some(Spanned(span, t!(";"))) => Ok(span),
+            Some(Spanned(span, t!(")"))) => {
                 self.lexer.unread(tok.unwrap());
-                Ok(())
+                Ok(span)
             }
-            Some(Spanned(_, Token::LineTerminator(_))) => Ok(()),
-            None => Ok(()),
+            Some(Spanned(span, Token::LineTerminator(_))) => Ok(span),
+            None => Ok(Span::new(
+                self.lexer.source().len() - 1,
+                self.lexer.source().len(),
+            )),
             // TODO: For now, handle this case as an unrecoverable error.
             Some(tok) => Err(Error::SyntaxError(SyntaxError::UnexpectedToken(tok))),
+        }
+    }
+
+    fn expect_token(&mut self, token: Token) -> Result<Span, Error> {
+        let tok = self.lexer.read()?;
+        match tok {
+            Some(Spanned(span, t)) if t == token => Ok(span),
+            Some(Spanned(_, Token::LineTerminator(_))) => self.expect_token(token),
+            // TODO: For now, handle this case as an unrecoverable error.
+            Some(tok) => Err(Error::SyntaxError(SyntaxError::UnexpectedToken(tok))),
+            None => Err(Error::SyntaxError(SyntaxError::UnexpectedEndOfInput)),
         }
     }
 

@@ -57,6 +57,10 @@ impl<'a> Lexer<'a> {
         self.input.cur_pos()
     }
 
+    pub fn source(&self) -> &'a str {
+        self.input.source()
+    }
+
     /// Reads a token from `input`, intended for use in parser.
     pub fn read(&mut self) -> Result<Option<Spanned<Token>>, Error> {
         if let Some(tok) = self.buf.pop_front() {

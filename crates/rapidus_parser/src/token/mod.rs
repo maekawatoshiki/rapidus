@@ -70,4 +70,7 @@ macro_rules! t {
     (")") => {
         Token::RParen
     };
+    ("=") => {
+        Token::AssignOp(AssignOp::Normal)
+    }
 }

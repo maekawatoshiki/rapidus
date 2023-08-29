@@ -1,4 +1,6 @@
-use crate::{span::Span, Node};
+use ecow::EcoString;
+
+use crate::{expr::Expr, span::Span, Node};
 
 /// Represents a declaration.
 /// https://tc39.es/ecma262/multipage/ecmascript-language-statements-and-declarations.html#prod-Declaration
@@ -17,6 +19,8 @@ pub enum Kind {
 #[derive(Debug, Clone)]
 pub struct LexicalDecl {
     span: Span,
+    bind: Box<EcoString>,
+    init: Option<Box<Expr>>,
 }
 
 impl Decl {
@@ -30,8 +34,20 @@ impl Decl {
 }
 
 impl LexicalDecl {
-    pub fn new(span: Span) -> Self {
-        Self { span }
+    pub fn new(span: Span, bind: EcoString, init: Option<Expr>) -> Self {
+        Self {
+            span,
+            bind: Box::new(bind),
+            init: init.map(Box::new),
+        }
+    }
+
+    pub fn bind(&self) -> &EcoString {
+        &self.bind
+    }
+
+    pub fn init(&self) -> Option<&Expr> {
+        self.init.as_deref()
     }
 }
 
