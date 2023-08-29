@@ -24,6 +24,38 @@ use crate::{
     },
 };
 
+macro_rules! parse_binop {
+    ($name:ident, $child:ident, ($($op:tt),*)) => {
+        fn $name(&mut self) -> Result<Expr, Error> {
+            let mut lhs = self.$child()?;
+            let mut buf = VecDeque::new();
+            while let Some(Spanned(span, tok)) = self.lexer.read()? {
+                match tok {
+                    $(t!($op))|* => {
+                        let rhs = self.$child()?;
+                        lhs = Expr::BinOp(BinOpExpr::new(
+                            Span::new(lhs.span().start(), rhs.span().end()),
+                            BinOp::try_from(tok).unwrap(),
+                            lhs,
+                            rhs,
+                        ));
+                        buf.clear();
+                    }
+                    Token::LineTerminator(_) => buf.push_back(Spanned(span, tok)),
+                    _ => {
+                        buf.push_back(Spanned(span, tok));
+                        break;
+                    }
+                }
+            }
+            while let Some(tok) = buf.pop_front() {
+                self.lexer.unread(tok);
+            }
+            Ok(lhs)
+        }
+    };
+}
+
 /// Parser.
 pub struct Parser<'a> {
     /// Lexical analyzer used in the parser.
@@ -71,70 +103,12 @@ impl<'a> Parser<'a> {
         self.parse_additive_expr()
     }
 
-    fn parse_additive_expr(&mut self) -> Result<Expr, Error> {
-        let mut lhs = self.parse_multiplicative_expr()?;
-        let mut buf = VecDeque::new();
-        while let Some(Spanned(span, tok)) = self.lexer.read()? {
-            match tok {
-                t!("+") | t!("-") => {
-                    let rhs = self.parse_multiplicative_expr()?;
-                    lhs = Expr::BinOp(BinOpExpr::new(
-                        Span::new(lhs.span().start(), rhs.span().end()),
-                        if tok == t!("+") {
-                            BinOp::Add
-                        } else {
-                            BinOp::Sub
-                        },
-                        lhs,
-                        rhs,
-                    ));
-                    buf.clear();
-                }
-                Token::LineTerminator(_) => buf.push_back(Spanned(span, tok)),
-                _ => {
-                    buf.push_back(Spanned(span, tok));
-                    break;
-                }
-            }
-        }
-        while let Some(tok) = buf.pop_front() {
-            self.lexer.unread(tok);
-        }
-        Ok(lhs)
-    }
-
-    fn parse_multiplicative_expr(&mut self) -> Result<Expr, Error> {
-        let mut lhs = self.parse_primary_expr()?;
-        let mut buf = VecDeque::new();
-        while let Some(Spanned(span, tok)) = self.lexer.read()? {
-            match tok {
-                t!("*") | t!("/") | t!("%") => {
-                    let rhs = self.parse_primary_expr()?;
-                    lhs = Expr::BinOp(BinOpExpr::new(
-                        Span::new(lhs.span().start(), rhs.span().end()),
-                        match tok {
-                            t!("*") => BinOp::Mul,
-                            t!("/") => BinOp::Div,
-                            t!("%") => BinOp::Mod,
-                            _ => unreachable!(),
-                        },
-                        lhs,
-                        rhs,
-                    ));
-                    buf.clear();
-                }
-                Token::LineTerminator(_) => buf.push_back(Spanned(span, tok)),
-                _ => {
-                    buf.push_back(Spanned(span, tok));
-                    break;
-                }
-            }
-        }
-        while let Some(tok) = buf.pop_front() {
-            self.lexer.unread(tok);
-        }
-        Ok(lhs)
-    }
+    parse_binop!(parse_additive_expr, parse_multiplicative_expr, ("+", "-"));
+    parse_binop!(
+        parse_multiplicative_expr,
+        parse_primary_expr,
+        ("*", "/", "%")
+    );
 
     fn parse_primary_expr(&mut self) -> Result<Expr, Error> {
         let Spanned(span, tok) = self
@@ -183,6 +157,20 @@ impl<'a> Parser<'a> {
             // TODO: For now, handle this case as an unrecoverable error.
             Some(tok) => Err(Error::SyntaxError(SyntaxError::UnexpectedToken(tok))),
             None => Err(Error::SyntaxError(SyntaxError::UnexpectedEndOfInput)),
+        }
+    }
+}
+
+impl TryFrom<Token> for BinOp {
+    type Error = ();
+    fn try_from(tok: Token) -> Result<Self, Self::Error> {
+        match tok {
+            t!("+") => Ok(BinOp::Add),
+            t!("-") => Ok(BinOp::Sub),
+            t!("*") => Ok(BinOp::Mul),
+            t!("/") => Ok(BinOp::Div),
+            t!("%") => Ok(BinOp::Mod),
+            _ => Err(()),
         }
     }
 }
