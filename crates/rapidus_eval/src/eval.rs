@@ -7,14 +7,19 @@ use rapidus_ast::{
     stmt::{self, Stmt},
 };
 
-use crate::{error::Error, object::string::JsString, value::JsValue};
+use crate::{error::Error, exec_ctx::ExecutionCtx, object::string::JsString, value::JsValue};
 
 // TODO: What is the relationship between this and Realm?
-pub struct EvalCtx {}
+pub struct EvalCtx {
+    #[allow(dead_code)]
+    cur_exec_ctx: ExecutionCtx,
+}
 
 impl EvalCtx {
     pub const fn new() -> Self {
-        Self {}
+        Self {
+            cur_exec_ctx: ExecutionCtx::new(),
+        }
     }
 
     pub fn eval_module(&mut self, module: &Module) -> Result<JsValue, Error> {
