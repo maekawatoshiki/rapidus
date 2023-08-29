@@ -1,4 +1,4 @@
-use crate::lexical_env::LexicalEnv;
+use crate::lexical_env::{LexicalEnv, ModuleEnvRecord};
 
 #[derive(Debug, Clone)]
 pub struct ExecutionCtx {
@@ -6,9 +6,9 @@ pub struct ExecutionCtx {
 }
 
 impl ExecutionCtx {
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         Self {
-            cur_lexical_env: LexicalEnv::new(),
+            cur_lexical_env: LexicalEnv::Module(ModuleEnvRecord::new()), // TODO
         }
     }
 

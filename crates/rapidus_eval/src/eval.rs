@@ -1,5 +1,6 @@
 use rapidus_ast::{
     bin::{BinOp, BinOpExpr},
+    decl::{self, Decl},
     expr::Expr,
     ident::Ident,
     literal::Literal,
@@ -7,7 +8,10 @@ use rapidus_ast::{
     stmt::{self, Stmt},
 };
 
-use crate::{error::Error, exec_ctx::ExecutionCtx, object::string::JsString, value::JsValue};
+use crate::{
+    error::Error, exec_ctx::ExecutionCtx, lexical_env::EnvRecord, object::string::JsString,
+    value::JsValue,
+};
 
 // TODO: What is the relationship between this and Realm?
 pub struct EvalCtx {
@@ -16,7 +20,7 @@ pub struct EvalCtx {
 }
 
 impl EvalCtx {
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             cur_exec_ctx: ExecutionCtx::new(),
         }
@@ -33,8 +37,26 @@ impl EvalCtx {
     fn eval_module_item(&mut self, item: &ModuleItem) -> Result<JsValue, Error> {
         match item {
             ModuleItem::Stmt(stmt) => self.eval_stmt(stmt),
-            ModuleItem::Decl(_decl) => Err(Error::Todo),
+            ModuleItem::Decl(decl) => self.eval_decl(decl),
         }
+    }
+
+    fn eval_decl(&mut self, decl: &Decl) -> Result<JsValue, Error> {
+        match decl.kind() {
+            decl::Kind::LexicalDecl(decl) => {
+                let name = decl.bind();
+                self.cur_exec_ctx
+                    .cur_lexical_env_mut()
+                    .create_mutable_binding(name.clone());
+                if let Some(init) = decl.init() {
+                    let init = self.eval_expr(init)?;
+                    self.cur_exec_ctx
+                        .cur_lexical_env_mut()
+                        .initialize_binding(name.clone(), init);
+                }
+            }
+        }
+        Ok(JsValue::undefined())
     }
 
     fn eval_stmt(&mut self, stmt: &Stmt) -> Result<JsValue, Error> {
