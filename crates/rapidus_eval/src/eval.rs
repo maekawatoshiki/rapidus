@@ -9,20 +9,19 @@ use rapidus_ast::{
 };
 
 use crate::{
-    error::Error, exec_ctx::ExecutionCtx, lexical_env::EnvRecord, object::string::JsString,
-    value::JsValue,
+    env::EnvRecord, error::Error, exec_ctx::ExecutionCtx, object::string::JsString, value::JsValue,
 };
 
 // TODO: What is the relationship between this and Realm?
 pub struct EvalCtx {
     #[allow(dead_code)]
-    cur_exec_ctx: ExecutionCtx,
+    exec_ctx_stack: Vec<ExecutionCtx>,
 }
 
 impl EvalCtx {
     pub fn new() -> Self {
         Self {
-            cur_exec_ctx: ExecutionCtx::new(),
+            exec_ctx_stack: vec![ExecutionCtx::new()],
         }
     }
 
@@ -45,13 +44,13 @@ impl EvalCtx {
         match decl.kind() {
             decl::Kind::LexicalDecl(decl) => {
                 let name = decl.bind();
-                self.cur_exec_ctx
-                    .cur_lexical_env_mut()
+                self.running_exec_ctx_mut()
+                    .env_mut()
                     .create_mutable_binding(name.clone());
                 if let Some(init) = decl.init() {
                     let init = self.eval_expr(init)?;
-                    self.cur_exec_ctx
-                        .cur_lexical_env_mut()
+                    self.running_exec_ctx_mut()
+                        .env_mut()
                         .initialize_binding(name.clone(), init);
                 }
             }
@@ -93,8 +92,8 @@ impl EvalCtx {
         match ident.val().as_str() {
             "undefined" => Ok(JsValue::undefined()),
             name => self
-                .cur_exec_ctx
-                .cur_lexical_env()
+                .running_exec_ctx()
+                .env()
                 .get_binding_value(name)
                 .ok_or_else(|| Error::ReferenceError),
         }
@@ -109,5 +108,13 @@ impl EvalCtx {
             )),
             Literal::Null(_null) => Ok(JsValue::null()),
         }
+    }
+
+    fn running_exec_ctx(&self) -> &ExecutionCtx {
+        self.exec_ctx_stack.last().unwrap()
+    }
+
+    fn running_exec_ctx_mut(&mut self) -> &mut ExecutionCtx {
+        self.exec_ctx_stack.last_mut().unwrap()
     }
 }

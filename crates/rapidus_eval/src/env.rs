@@ -4,12 +4,16 @@ use rustc_hash::FxHashMap;
 use crate::value::JsValue;
 
 #[derive(Debug, Clone)]
-pub enum LexicalEnv {
-    Module(ModuleEnvRecord),
+pub enum Environment {
+    Module(ModuleEnv),
+    // Lexical(LexicalEnv),
+    // Global(GlobalEnv),
+    // Object(ObjectEnv),
+    // Function(FunctionEnv),
 }
 
 #[derive(Debug, Clone)]
-pub struct ModuleEnvRecord {
+pub struct ModuleEnv {
     bindings: FxHashMap<EcoString, JsValue>,
 }
 
@@ -31,7 +35,7 @@ pub trait EnvRecord {
     }
 }
 
-impl EnvRecord for LexicalEnv {
+impl EnvRecord for Environment {
     fn bindings(&self) -> &FxHashMap<EcoString, JsValue> {
         match self {
             Self::Module(record) => record.bindings(),
@@ -45,7 +49,7 @@ impl EnvRecord for LexicalEnv {
     }
 }
 
-impl ModuleEnvRecord {
+impl ModuleEnv {
     pub fn new() -> Self {
         Self {
             bindings: FxHashMap::default(),
@@ -53,7 +57,7 @@ impl ModuleEnvRecord {
     }
 }
 
-impl EnvRecord for ModuleEnvRecord {
+impl EnvRecord for ModuleEnv {
     fn bindings(&self) -> &FxHashMap<EcoString, JsValue> {
         &self.bindings
     }
