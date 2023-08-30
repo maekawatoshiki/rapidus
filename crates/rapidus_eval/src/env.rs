@@ -12,6 +12,12 @@ pub enum Environment {
     // Function(FunctionEnv),
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct Binding {
+    idx: u32,
+    mutable: bool,
+}
+
 #[derive(Debug, Clone)]
 pub struct ModuleEnv {
     bindings: FxHashMap<EcoString, JsValue>,
@@ -64,5 +70,19 @@ impl EnvRecord for ModuleEnv {
 
     fn bindings_mut(&mut self) -> &mut FxHashMap<EcoString, JsValue> {
         &mut self.bindings
+    }
+}
+
+impl Binding {
+    pub fn new(idx: u32, mutable: bool) -> Self {
+        Self { idx, mutable }
+    }
+
+    pub fn idx(&self) -> u32 {
+        self.idx
+    }
+
+    pub fn mutable(&self) -> bool {
+        self.mutable
     }
 }
