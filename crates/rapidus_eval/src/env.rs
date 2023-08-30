@@ -1,11 +1,10 @@
 use ecow::EcoString;
 use rustc_hash::FxHashMap;
 
-use crate::value::JsValue;
-
 #[derive(Debug, Clone)]
 pub enum Environment {
     Module(ModuleEnv),
+    // TODO:
     // Lexical(LexicalEnv),
     // Global(GlobalEnv),
     // Object(ObjectEnv),
@@ -14,43 +13,26 @@ pub enum Environment {
 
 #[derive(Debug, Clone, Copy)]
 pub struct Binding {
-    idx: u32,
+    idx: usize,
     mutable: bool,
+    initialized: bool,
 }
 
 #[derive(Debug, Clone)]
 pub struct ModuleEnv {
-    bindings: FxHashMap<EcoString, JsValue>,
+    bindings: FxHashMap<EcoString, Binding>,
 }
 
-pub trait EnvRecord {
-    fn bindings(&self) -> &FxHashMap<EcoString, JsValue>;
-    fn bindings_mut(&mut self) -> &mut FxHashMap<EcoString, JsValue>;
-
-    fn create_mutable_binding(&mut self, name: impl Into<EcoString>) {
-        self.bindings_mut()
-            .insert(name.into(), JsValue::undefined());
-    }
-
-    fn initialize_binding(&mut self, name: impl Into<EcoString>, value: JsValue) {
-        self.bindings_mut().insert(name.into(), value);
-    }
-
-    fn get_binding_value(&self, name: impl AsRef<str>) -> Option<JsValue> {
-        self.bindings().get(name.as_ref()).copied()
-    }
-}
-
-impl EnvRecord for Environment {
-    fn bindings(&self) -> &FxHashMap<EcoString, JsValue> {
+impl Environment {
+    pub fn bindings(&self) -> &FxHashMap<EcoString, Binding> {
         match self {
-            Self::Module(record) => record.bindings(),
+            Self::Module(env) => env.bindings(),
         }
     }
 
-    fn bindings_mut(&mut self) -> &mut FxHashMap<EcoString, JsValue> {
+    pub fn bindings_mut(&mut self) -> &mut FxHashMap<EcoString, Binding> {
         match self {
-            Self::Module(record) => record.bindings_mut(),
+            Self::Module(env) => env.bindings_mut(),
         }
     }
 }
@@ -61,28 +43,39 @@ impl ModuleEnv {
             bindings: FxHashMap::default(),
         }
     }
-}
 
-impl EnvRecord for ModuleEnv {
-    fn bindings(&self) -> &FxHashMap<EcoString, JsValue> {
+    pub fn bindings(&self) -> &FxHashMap<EcoString, Binding> {
         &self.bindings
     }
 
-    fn bindings_mut(&mut self) -> &mut FxHashMap<EcoString, JsValue> {
+    pub fn bindings_mut(&mut self) -> &mut FxHashMap<EcoString, Binding> {
         &mut self.bindings
     }
 }
 
 impl Binding {
-    pub fn new(idx: u32, mutable: bool) -> Self {
-        Self { idx, mutable }
+    pub fn new(idx: usize, mutable: bool) -> Self {
+        Self {
+            idx,
+            mutable,
+            initialized: false,
+        }
     }
 
-    pub fn idx(&self) -> u32 {
+    pub fn idx(&self) -> usize {
         self.idx
     }
 
     pub fn mutable(&self) -> bool {
         self.mutable
+    }
+
+    pub fn initialized(&self) -> bool {
+        self.initialized
+    }
+
+    pub fn set_initialized(&mut self, initialized: bool) -> &mut Self {
+        self.initialized = initialized;
+        self
     }
 }

@@ -1,3 +1,4 @@
+use ecow::EcoString;
 use rapidus_ast::{
     bin::{BinOp, BinOpExpr},
     decl::{self, Decl},
@@ -9,19 +10,27 @@ use rapidus_ast::{
 };
 
 use crate::{
-    env::EnvRecord, error::Error, exec_ctx::ExecutionCtx, object::string::JsString, value::JsValue,
+    env::{Binding, Environment, ModuleEnv},
+    error::Error,
+    exec_ctx::ExecutionCtx,
+    object::string::JsString,
+    value::JsValue,
 };
 
 // TODO: What is the relationship between this and Realm?
 pub struct EvalCtx {
     #[allow(dead_code)]
     exec_ctx_stack: Vec<ExecutionCtx>,
+    env_stack: Vec<Environment>,
+    bindings: Vec<JsValue>,
 }
 
 impl EvalCtx {
     pub fn new() -> Self {
         Self {
-            exec_ctx_stack: vec![ExecutionCtx::new()],
+            exec_ctx_stack: vec![ExecutionCtx::new(0)],
+            env_stack: vec![Environment::Module(ModuleEnv::new())],
+            bindings: vec![],
         }
     }
 
@@ -44,14 +53,10 @@ impl EvalCtx {
         match decl.kind() {
             decl::Kind::LexicalDecl(decl) => {
                 let name = decl.bind();
-                self.running_exec_ctx_mut()
-                    .env_mut()
-                    .create_mutable_binding(name.clone());
+                self.create_mutable_binding(name.to_owned());
                 if let Some(init) = decl.init() {
                     let init = self.eval_expr(init)?;
-                    self.running_exec_ctx_mut()
-                        .env_mut()
-                        .initialize_binding(name.clone(), init);
+                    self.initialize_binding(name, init);
                 }
             }
         }
@@ -91,11 +96,10 @@ impl EvalCtx {
     fn eval_ident(&mut self, ident: &Ident) -> Result<JsValue, Error> {
         match ident.val().as_str() {
             "undefined" => Ok(JsValue::undefined()),
-            name => self
-                .running_exec_ctx()
-                .env()
-                .get_binding_value(name)
-                .ok_or_else(|| Error::ReferenceError),
+            name => self.get_binding_value(name).map_or_else(
+                || Err(Error::ReferenceError),
+                |b| b.ok_or(Error::ReferenceError),
+            ),
         }
     }
 
@@ -109,12 +113,39 @@ impl EvalCtx {
             Literal::Null(_null) => Ok(JsValue::null()),
         }
     }
+}
 
+impl EvalCtx {
     fn running_exec_ctx(&self) -> &ExecutionCtx {
         self.exec_ctx_stack.last().unwrap()
     }
 
-    fn running_exec_ctx_mut(&mut self) -> &mut ExecutionCtx {
-        self.exec_ctx_stack.last_mut().unwrap()
+    fn create_mutable_binding(&mut self, name: impl Into<EcoString>) {
+        let env_idx = self.running_exec_ctx().env_idx();
+        let env = &mut self.env_stack[env_idx];
+        let bind_idx = self.bindings.len();
+        env.bindings_mut()
+            .insert(name.into(), Binding::new(bind_idx, true));
+        self.bindings.push(JsValue::undefined());
+    }
+
+    fn get_binding_value(&self, name: impl AsRef<str>) -> Option<Option<JsValue>> {
+        let exec_ctx = self.running_exec_ctx();
+        let env = &self.env_stack[exec_ctx.env_idx()];
+        env.bindings().get(name.as_ref()).map(|binding| {
+            if binding.initialized() {
+                Some(self.bindings[binding.idx()])
+            } else {
+                None
+            }
+        })
+    }
+
+    fn initialize_binding(&mut self, name: impl AsRef<str>, value: JsValue) {
+        let env_idx = self.running_exec_ctx().env_idx();
+        let env = &mut self.env_stack[env_idx];
+        let binding = env.bindings_mut().get_mut(name.as_ref()).unwrap();
+        binding.set_initialized(true);
+        self.bindings[binding.idx()] = value;
     }
 }
