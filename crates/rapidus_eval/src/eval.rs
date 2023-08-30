@@ -121,18 +121,18 @@ impl EvalCtx {
     }
 
     fn create_mutable_binding(&mut self, name: impl Into<EcoString>) {
-        let env_idx = self.running_exec_ctx().env_idx();
-        let env = &mut self.env_stack[env_idx];
+        let env = &mut self.env_stack.last_mut().unwrap();
         let bind_idx = self.bindings.len();
         env.bindings_mut()
             .insert(name.into(), Binding::new(bind_idx, true));
         self.bindings.push(JsValue::undefined());
     }
 
+    // TODO: Should return Result<JsValue, Error>, where Error is one of:
+    //       - ReferenceError("Binding not found")
+    //       - ReferenceError("Binding not initialized")
     fn get_binding_value(&self, name: impl AsRef<str>) -> Option<Option<JsValue>> {
-        let exec_ctx = self.running_exec_ctx();
-        let env = &self.env_stack[exec_ctx.env_idx()];
-        env.bindings().get(name.as_ref()).map(|binding| {
+        self.lookup_binding(name).map(|binding| {
             if binding.initialized() {
                 Some(self.bindings[binding.idx()])
             } else {
@@ -142,10 +142,23 @@ impl EvalCtx {
     }
 
     fn initialize_binding(&mut self, name: impl AsRef<str>, value: JsValue) {
-        let env_idx = self.running_exec_ctx().env_idx();
-        let env = &mut self.env_stack[env_idx];
-        let binding = env.bindings_mut().get_mut(name.as_ref()).unwrap();
+        let binding = self.lookup_binding_mut(name).unwrap();
+        assert!(binding.mutable());
+        assert!(!binding.initialized());
         binding.set_initialized(true);
-        self.bindings[binding.idx()] = value;
+        let idx = binding.idx();
+        self.bindings[idx] = value;
+    }
+
+    fn lookup_binding(&self, name: impl AsRef<str>) -> Option<Binding> {
+        let exec_ctx = self.running_exec_ctx();
+        let mut envs = self.env_stack[exec_ctx.base_env_idx()..].iter().rev();
+        envs.find_map(|env| env.bindings().get(name.as_ref()).copied())
+    }
+
+    fn lookup_binding_mut(&mut self, name: impl AsRef<str>) -> Option<&mut Binding> {
+        let base_env_idx = self.running_exec_ctx().base_env_idx();
+        let mut envs = self.env_stack[base_env_idx..].iter_mut().rev();
+        envs.find_map(|env| env.bindings_mut().get_mut(name.as_ref()))
     }
 }
