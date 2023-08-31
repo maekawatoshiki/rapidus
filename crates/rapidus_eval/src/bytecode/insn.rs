@@ -11,6 +11,9 @@ pub const DROP: Opcode = Opcode(0x06);
 pub const CONST_F64: Opcode = Opcode(0x07);
 pub const CONST_LIT: Opcode = Opcode(0x08);
 pub const NULL: Opcode = Opcode(0x09);
+pub const NEW_MUT_BINDING: Opcode = Opcode(0x0a);
+pub const GET_BINDING: Opcode = Opcode(0x0b);
+pub const SET_BINDING: Opcode = Opcode(0x0c);
 
 impl Opcode {
     pub fn name(self) -> &'static str {
@@ -25,6 +28,7 @@ impl Opcode {
             CONST_F64 => "const_f64",
             CONST_LIT => "const_lit",
             NULL => "null",
+            NEW_MUT_BINDING => "new_mut_binding",
             _ => unreachable!(),
         }
     }
@@ -32,8 +36,8 @@ impl Opcode {
     pub const fn total_bytes(self) -> usize {
         match self {
             NOP | ADD | SUB | MUL | DIV | MOD | DROP | NULL => 1,
-            CONST_LIT => 5,
             CONST_F64 => 9,
+            NEW_MUT_BINDING | CONST_LIT | SET_BINDING | GET_BINDING => 5,
             _ => unreachable!(),
         }
     }

@@ -1,5 +1,7 @@
 use std::fmt;
 
+use ecow::EcoString;
+
 use crate::value::JsValue;
 
 use super::insn::Opcode;
@@ -8,6 +10,7 @@ use super::insn::Opcode;
 pub struct Code {
     bytecode: Vec<u8>,
     literals: Vec<JsValue>,
+    idents: Vec<EcoString>,
 }
 
 impl Code {
@@ -15,6 +18,7 @@ impl Code {
         Self {
             bytecode: Vec::new(),
             literals: Vec::new(),
+            idents: Vec::new(),
         }
     }
 
@@ -46,6 +50,23 @@ impl Code {
 
     pub fn get_lit(&self, idx: usize) -> Option<JsValue> {
         self.literals.get(idx).copied()
+    }
+
+    pub fn push_ident(&mut self, name: impl Into<EcoString>) -> u32 {
+        let idx = self.idents.len();
+        self.idents.push(name.into());
+        idx as u32
+    }
+
+    pub fn lookup_ident(&self, name: impl AsRef<str>) -> Option<u32> {
+        self.idents
+            .iter()
+            .position(|n| n == name.as_ref())
+            .map(|idx| idx as u32)
+    }
+
+    pub fn get_ident(&self, idx: usize) -> Option<&str> {
+        self.idents.get(idx).map(|s| s.as_str())
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &u8> {

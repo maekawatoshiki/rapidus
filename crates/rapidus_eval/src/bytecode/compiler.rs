@@ -101,8 +101,24 @@ impl<'a> DeclCompiler<'a> {
 
     pub fn compile(&mut self, decl: &Decl) -> Result<(), Error> {
         match decl.kind() {
-            decl::Kind::LexicalDecl(_decl) => Err(Error::Todo("decl".into())),
+            decl::Kind::LexicalDecl(decl) => {
+                let name = decl.bind();
+                let idx = self.create_mutable_binding(name);
+                if let Some(init) = decl.init() {
+                    ExprCompiler::new(self.code).compile(init)?;
+                    self.code.push_opcode(insn::SET_BINDING);
+                    self.code.push_bytes(idx.to_le_bytes());
+                }
+                Ok(())
+            }
         }
+    }
+
+    fn create_mutable_binding(&mut self, name: impl AsRef<str>) -> u32 {
+        let idx = self.code.push_ident(name.as_ref().to_string());
+        self.code.push_opcode(insn::NEW_MUT_BINDING);
+        self.code.push_bytes(idx.to_le_bytes());
+        idx
     }
 }
 
@@ -154,7 +170,13 @@ impl<'a> ExprCompiler<'a> {
         }
     }
 
-    fn compile_ident(&self, _ident: &Ident) -> Result<(), Error> {
-        Err(Error::Todo("expr ident".into()))
+    fn compile_ident(&mut self, ident: &Ident) -> Result<(), Error> {
+        let idx = self
+            .code
+            .lookup_ident(ident.val())
+            .unwrap_or_else(|| self.code.push_ident(ident.val().to_owned()));
+        self.code.push_opcode(insn::GET_BINDING);
+        self.code.push_bytes(idx.to_le_bytes());
+        Ok(())
     }
 }

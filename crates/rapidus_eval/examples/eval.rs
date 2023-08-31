@@ -2,7 +2,7 @@ use std::{fs, path::PathBuf};
 
 use ecow::EcoString;
 use rapidus_ast::span::Span;
-use rapidus_eval::eval::EvalCtx;
+use rapidus_eval::bytecode::compiler::ModuleCompiler;
 use rapidus_parser::{
     error::{Error, SyntaxError},
     lexer::{Input, Lexer},
@@ -56,6 +56,10 @@ fn eval_str(text: EcoString) {
     };
     println!(
         "Result: {:#?}",
-        EvalCtx::default().eval_module(&module).unwrap()
+        ModuleCompiler::new()
+            .compile(&module)
+            .unwrap()
+            .run()
+            .unwrap()
     );
 }
