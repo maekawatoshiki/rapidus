@@ -153,7 +153,7 @@ impl<'a> Parser<'a> {
             Token::Ident(Ident::Reserved(ReservedWord::Null)) => {
                 Ok(Expr::Literal(Null::new(span).into()))
             }
-            Token::Ident(Ident::Ident(i)) => Ok(Expr::Ident(Ident_::new(span, i).into())),
+            Token::Ident(Ident::Ident(i)) => Ok(Expr::Ident(Ident_::new(span, i))),
             Token::Str(Str { val, raw }) => Ok(Expr::Literal(Str_::new(span, val, raw).into())),
             t!("(") => {
                 let expr = self.parse_expr()?;

@@ -47,7 +47,7 @@ impl Source {
     }
 
     /// Returns a line including the span and its row and column.
-    fn line_at<'a>(&'a self, span: Span) -> (&'a str, usize, usize) {
+    fn line_at(&self, span: Span) -> (&str, usize, usize) {
         let mut chars = 0;
         for (line_num, line) in self.text.lines().enumerate() {
             if chars <= span.start() && span.end() <= chars + line.len() + 1 {

@@ -22,6 +22,7 @@ use crate::{
 pub struct EvalCtx {
     exec_ctx_stack: Vec<ExecutionCtx>,
     env_stack: Vec<Environment>,
+    stack: Vec<JsValue>,
     bindings: Vec<JsValue>,
 }
 
@@ -30,7 +31,8 @@ impl Default for EvalCtx {
         Self {
             exec_ctx_stack: vec![ExecutionCtx::new(Code::new(), 0)],
             env_stack: vec![Environment::Module(ModuleEnv::new())],
-            bindings: vec![],
+            stack: Vec::new(),
+            bindings: Vec::new(),
         }
     }
 }
@@ -40,6 +42,7 @@ impl EvalCtx {
         Self {
             exec_ctx_stack: vec![exec_ctx],
             env_stack: vec![env],
+            stack: Vec::new(),
             bindings,
         }
     }
@@ -48,7 +51,6 @@ impl EvalCtx {
         let ctx = self.exec_ctx_stack.last().unwrap();
         let mut pc = 0;
         let size = ctx.code().len();
-        let mut stack = Vec::new();
         while pc < size {
             let [opcode]: [u8; 1] = ctx.code().get(pc).unwrap();
             let opcode = insn::Opcode(opcode);
@@ -56,13 +58,13 @@ impl EvalCtx {
                 insn::CONST_F64 => {
                     let val: [u8; 8] = ctx.code().get(pc + 1).unwrap();
                     let val = f64::from_le_bytes(val);
-                    stack.push(JsValue::f64(val));
+                    self.stack.push(JsValue::f64(val));
                     pc += opcode.total_bytes();
                 }
                 _ => return Err(Error::Todo),
             }
         }
-        Ok(stack.pop().unwrap_or(JsValue::undefined()))
+        Ok(self.stack.pop().unwrap_or(JsValue::undefined()))
     }
 
     pub fn eval_module(&mut self, module: &Module) -> Result<JsValue, Error> {
