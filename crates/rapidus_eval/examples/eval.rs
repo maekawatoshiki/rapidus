@@ -56,6 +56,6 @@ fn eval_str(text: EcoString) {
     };
     println!(
         "Result: {:#?}",
-        EvalCtx::new().eval_module(&module).unwrap()
+        EvalCtx::default().eval_module(&module).unwrap()
     );
 }

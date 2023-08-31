@@ -11,7 +11,7 @@ fn num() {
     let module = Parser::new(Lexer::new(Input::from(&src)))
         .parse_module()
         .unwrap();
-    let val = EvalCtx::new().eval_module(&module).unwrap();
+    let val = EvalCtx::default().eval_module(&module).unwrap();
     assert_eq!(val, JsValue::f64(123.0));
 }
 
@@ -21,7 +21,7 @@ fn str() {
     let module = Parser::new(Lexer::new(Input::from(&src)))
         .parse_module()
         .unwrap();
-    let val = EvalCtx::new().eval_module(&module).unwrap();
+    let val = EvalCtx::default().eval_module(&module).unwrap();
     assert_eq!(format!("{val:?}"), r#"str("hello")"#);
 }
 
@@ -31,7 +31,7 @@ fn null() {
     let module = Parser::new(Lexer::new(Input::from(&src)))
         .parse_module()
         .unwrap();
-    let val = EvalCtx::new().eval_module(&module).unwrap();
+    let val = EvalCtx::default().eval_module(&module).unwrap();
     assert_eq!(val, JsValue::null());
 }
 
@@ -41,7 +41,7 @@ fn arith() {
     let module = Parser::new(Lexer::new(Input::from(&src)))
         .parse_module()
         .unwrap();
-    let val = EvalCtx::new().eval_module(&module).unwrap();
+    let val = EvalCtx::default().eval_module(&module).unwrap();
     assert_eq!(val, JsValue::f64(26585.5));
 }
 
@@ -54,6 +54,6 @@ fn let_binding() {
     let module = Parser::new(Lexer::new(Input::from(&src)))
         .parse_module()
         .unwrap();
-    let val = EvalCtx::new().eval_module(&module).unwrap();
+    let val = EvalCtx::default().eval_module(&module).unwrap();
     assert_eq!(val, JsValue::f64(42.0));
 }

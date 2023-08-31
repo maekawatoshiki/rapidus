@@ -1,3 +1,5 @@
+use std::fmt;
+
 use super::insn::Opcode;
 
 #[derive(Clone)]
@@ -30,5 +32,19 @@ impl Code {
 
     pub fn into_inner(self) -> Vec<u8> {
         self.0
+    }
+}
+
+impl fmt::Debug for Code {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut pos = 0;
+        while pos < self.0.len() {
+            let opcode = Opcode(self.0[pos]);
+            let name = opcode.name();
+            let total_bytes = opcode.total_bytes();
+            writeln!(f, "{:05} {:?}", pos, name)?;
+            pos += total_bytes;
+        }
+        Ok(())
     }
 }

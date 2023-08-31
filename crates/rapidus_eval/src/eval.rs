@@ -10,6 +10,7 @@ use rapidus_ast::{
 };
 
 use crate::{
+    bytecode::code::Code,
     env::{Binding, Environment, ModuleEnv},
     error::Error,
     exec_ctx::ExecutionCtx,
@@ -24,12 +25,22 @@ pub struct EvalCtx {
     bindings: Vec<JsValue>,
 }
 
-impl EvalCtx {
-    pub fn new() -> Self {
+impl Default for EvalCtx {
+    fn default() -> Self {
         Self {
-            exec_ctx_stack: vec![ExecutionCtx::new(0)],
+            exec_ctx_stack: vec![ExecutionCtx::new(Code::new(), 0)],
             env_stack: vec![Environment::Module(ModuleEnv::new())],
             bindings: vec![],
+        }
+    }
+}
+
+impl EvalCtx {
+    pub fn new(exec_ctx: ExecutionCtx, env: Environment, bindings: Vec<JsValue>) -> Self {
+        Self {
+            exec_ctx_stack: vec![exec_ctx],
+            env_stack: vec![env],
+            bindings,
         }
     }
 
