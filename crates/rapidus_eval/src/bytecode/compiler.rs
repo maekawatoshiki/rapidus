@@ -138,7 +138,10 @@ impl<'a> ExprCompiler<'a> {
                 Ok(())
             }
             Literal::Str(_) => Err(Error::Todo("str lit".into())),
-            Literal::Null(_) => Err(Error::Todo("null lit".into())),
+            Literal::Null(_) => {
+                self.code.push_opcode(insn::NULL);
+                Ok(())
+            }
         }
     }
 

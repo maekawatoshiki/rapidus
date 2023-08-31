@@ -58,7 +58,6 @@ impl EvalCtx {
                     let val: [u8; 8] = ctx.code().get(ctx.pc() + 1).unwrap();
                     let val = f64::from_le_bytes(val);
                     self.stack.push(JsValue::f64(val));
-                    *ctx.pc_mut() += opcode.total_bytes();
                 }
                 insn::ADD | insn::SUB | insn::MUL | insn::DIV | insn::MOD => {
                     let rhs = self.stack.pop().unwrap().as_f64().unwrap();
@@ -71,10 +70,11 @@ impl EvalCtx {
                         insn::MOD => self.stack.push(JsValue::f64(lhs % rhs)),
                         _ => unreachable!(),
                     }
-                    *ctx.pc_mut() += opcode.total_bytes();
                 }
+                insn::NULL => self.stack.push(JsValue::null()),
                 _ => return Err(Error::Todo),
             }
+            *ctx.pc_mut() += opcode.total_bytes();
         }
         Ok(self.stack.pop().unwrap_or(JsValue::undefined()))
     }
