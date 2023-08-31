@@ -19,7 +19,6 @@ use crate::{
 
 // TODO: What is the relationship between this and Realm?
 pub struct EvalCtx {
-    #[allow(dead_code)]
     exec_ctx_stack: Vec<ExecutionCtx>,
     env_stack: Vec<Environment>,
     bindings: Vec<JsValue>,
