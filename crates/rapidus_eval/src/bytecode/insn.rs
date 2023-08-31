@@ -9,7 +9,8 @@ pub const DIV: Opcode = Opcode(0x04);
 pub const MOD: Opcode = Opcode(0x05);
 pub const DROP: Opcode = Opcode(0x06);
 pub const CONST_F64: Opcode = Opcode(0x07);
-pub const NULL: Opcode = Opcode(0x08);
+pub const CONST_LIT: Opcode = Opcode(0x08);
+pub const NULL: Opcode = Opcode(0x09);
 
 impl Opcode {
     pub fn name(self) -> &'static str {
@@ -22,6 +23,7 @@ impl Opcode {
             MOD => "mod",
             DROP => "drop",
             CONST_F64 => "const_f64",
+            CONST_LIT => "const_lit",
             NULL => "null",
             _ => unreachable!(),
         }
@@ -30,6 +32,7 @@ impl Opcode {
     pub const fn total_bytes(self) -> usize {
         match self {
             NOP | ADD | SUB | MUL | DIV | MOD | DROP | NULL => 1,
+            CONST_LIT => 5,
             CONST_F64 => 9,
             _ => unreachable!(),
         }

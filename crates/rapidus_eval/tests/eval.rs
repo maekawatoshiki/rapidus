@@ -28,6 +28,17 @@ fn bytecode_arith() {
 }
 
 #[test]
+fn bytecode_str() {
+    let src = Source::new(SourceName::Custom("test".into()), r#""hello""#);
+    let module = Parser::new(Lexer::new(Input::from(&src)))
+        .parse_module()
+        .unwrap();
+    let mut ctx = ModuleCompiler::new().compile(&module).unwrap();
+    let val = ctx.run().unwrap();
+    assert_eq!(format!("{val:?}"), r#"str("hello")"#);
+}
+
+#[test]
 fn bytecode_null() {
     let src = Source::new(SourceName::Custom("test".into()), r#"null"#);
     let module = Parser::new(Lexer::new(Input::from(&src)))

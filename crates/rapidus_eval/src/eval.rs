@@ -59,6 +59,12 @@ impl EvalCtx {
                     let val = f64::from_le_bytes(val);
                     self.stack.push(JsValue::f64(val));
                 }
+                insn::CONST_LIT => {
+                    let idx: [u8; 4] = ctx.code().get(ctx.pc() + 1).unwrap();
+                    let idx = u32::from_le_bytes(idx);
+                    let val = ctx.code().get_lit(idx as usize).unwrap();
+                    self.stack.push(val);
+                }
                 insn::ADD | insn::SUB | insn::MUL | insn::DIV | insn::MOD => {
                     let rhs = self.stack.pop().unwrap().as_f64().unwrap();
                     let lhs = self.stack.pop().unwrap().as_f64().unwrap();

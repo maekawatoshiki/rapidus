@@ -15,6 +15,8 @@ use crate::{
     env::{Environment, ModuleEnv},
     eval::EvalCtx,
     exec_ctx::ExecutionCtx,
+    object::string::JsString,
+    value::JsValue,
 };
 
 use super::{code::Code, insn};
@@ -137,7 +139,14 @@ impl<'a> ExprCompiler<'a> {
                 self.code.push_f64(num.val());
                 Ok(())
             }
-            Literal::Str(_) => Err(Error::Todo("str lit".into())),
+            Literal::Str(str) => {
+                let idx = self.code.push_lit(JsValue::str(
+                    JsString::new_leaked(str.val()) as *mut _ as *const _,
+                ));
+                self.code.push_opcode(insn::CONST_LIT);
+                self.code.push_bytes(idx.to_le_bytes());
+                Ok(())
+            }
             Literal::Null(_) => {
                 self.code.push_opcode(insn::NULL);
                 Ok(())
