@@ -10,7 +10,7 @@ use rapidus_ast::{
 };
 
 use crate::{
-    bytecode::code::Code,
+    bytecode::{code::Code, insn},
     env::{Binding, Environment, ModuleEnv},
     error::Error,
     exec_ctx::ExecutionCtx,
@@ -42,6 +42,27 @@ impl EvalCtx {
             env_stack: vec![env],
             bindings,
         }
+    }
+
+    pub fn run(&mut self) -> Result<JsValue, Error> {
+        let ctx = self.exec_ctx_stack.last().unwrap();
+        let mut pc = 0;
+        let size = ctx.code().len();
+        let mut stack = Vec::new();
+        while pc < size {
+            let [opcode]: [u8; 1] = ctx.code().get(pc).unwrap();
+            let opcode = insn::Opcode(opcode);
+            match opcode {
+                insn::CONST_F64 => {
+                    let val: [u8; 8] = ctx.code().get(pc + 1).unwrap();
+                    let val = f64::from_le_bytes(val);
+                    stack.push(JsValue::f64(val));
+                    pc += opcode.total_bytes();
+                }
+                _ => return Err(Error::Todo),
+            }
+        }
+        Ok(stack.pop().unwrap_or(JsValue::undefined()))
     }
 
     pub fn eval_module(&mut self, module: &Module) -> Result<JsValue, Error> {

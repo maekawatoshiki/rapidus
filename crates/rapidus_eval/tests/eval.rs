@@ -1,9 +1,20 @@
-use rapidus_eval::{eval::EvalCtx, value::JsValue};
+use rapidus_eval::{bytecode::compiler::ModuleCompiler, eval::EvalCtx, value::JsValue};
 use rapidus_parser::{
     lexer::{Input, Lexer},
     parser::Parser,
     source::{Source, SourceName},
 };
+
+#[test]
+fn bytecode_num() {
+    let src = Source::new(SourceName::Custom("test".into()), "123");
+    let module = Parser::new(Lexer::new(Input::from(&src)))
+        .parse_module()
+        .unwrap();
+    let mut ctx = ModuleCompiler::new().compile(&module).unwrap();
+    let val = ctx.run().unwrap();
+    assert_eq!(val, JsValue::f64(123.0));
+}
 
 #[test]
 fn num() {

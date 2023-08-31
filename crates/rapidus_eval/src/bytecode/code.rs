@@ -22,6 +22,10 @@ impl Code {
         self.0.len()
     }
 
+    pub fn get<const N: usize>(&self, idx: usize) -> Option<[u8; N]> {
+        self.0[idx..idx + N].try_into().ok()
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = &u8> {
         self.0.iter()
     }

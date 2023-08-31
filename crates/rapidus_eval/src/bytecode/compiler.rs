@@ -11,7 +11,11 @@ use rapidus_ast::{
 };
 use thiserror::Error as ThisError;
 
-use crate::eval::EvalCtx;
+use crate::{
+    env::{Environment, ModuleEnv},
+    eval::EvalCtx,
+    exec_ctx::ExecutionCtx,
+};
 
 use super::{code::Code, insn};
 
@@ -43,7 +47,7 @@ impl ModuleCompiler {
         Self { code: Code::new() }
     }
 
-    pub fn compile(&mut self, module: &Module) -> Result<EvalCtx, Error> {
+    pub fn compile(mut self, module: &Module) -> Result<EvalCtx, Error> {
         for (item, drop_value) in module
             .children()
             .iter()
@@ -53,7 +57,12 @@ impl ModuleCompiler {
         {
             self.compile_module_item(item, drop_value)?;
         }
-        todo!()
+
+        Ok(EvalCtx::new(
+            ExecutionCtx::new(self.code, 0),
+            Environment::Module(ModuleEnv::new()),
+            vec![],
+        ))
     }
 
     fn compile_module_item(&mut self, item: &ModuleItem, drop_value: bool) -> Result<(), Error> {

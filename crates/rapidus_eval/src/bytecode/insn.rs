@@ -25,7 +25,7 @@ impl Opcode {
         }
     }
 
-    pub fn total_bytes(self) -> usize {
+    pub const fn total_bytes(self) -> usize {
         match self {
             NOP | ADD | SUB | MUL | DIV | MOD | DROP => 1,
             CONST_F64 => 9,
