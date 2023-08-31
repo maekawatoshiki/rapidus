@@ -48,18 +48,30 @@ impl EvalCtx {
     }
 
     pub fn run(&mut self) -> Result<JsValue, Error> {
-        let ctx = self.exec_ctx_stack.last().unwrap();
-        let mut pc = 0;
+        let ctx = self.exec_ctx_stack.last_mut().unwrap();
         let size = ctx.code().len();
-        while pc < size {
-            let [opcode]: [u8; 1] = ctx.code().get(pc).unwrap();
+        while ctx.pc() < size {
+            let [opcode]: [u8; 1] = ctx.code().get(ctx.pc()).unwrap();
             let opcode = insn::Opcode(opcode);
             match opcode {
                 insn::CONST_F64 => {
-                    let val: [u8; 8] = ctx.code().get(pc + 1).unwrap();
+                    let val: [u8; 8] = ctx.code().get(ctx.pc() + 1).unwrap();
                     let val = f64::from_le_bytes(val);
                     self.stack.push(JsValue::f64(val));
-                    pc += opcode.total_bytes();
+                    *ctx.pc_mut() += opcode.total_bytes();
+                }
+                insn::ADD | insn::SUB | insn::MUL | insn::DIV | insn::MOD => {
+                    let rhs = self.stack.pop().unwrap().as_f64().unwrap();
+                    let lhs = self.stack.pop().unwrap().as_f64().unwrap();
+                    match opcode {
+                        insn::ADD => self.stack.push(JsValue::f64(lhs + rhs)),
+                        insn::SUB => self.stack.push(JsValue::f64(lhs - rhs)),
+                        insn::MUL => self.stack.push(JsValue::f64(lhs * rhs)),
+                        insn::DIV => self.stack.push(JsValue::f64(lhs / rhs)),
+                        insn::MOD => self.stack.push(JsValue::f64(lhs % rhs)),
+                        _ => unreachable!(),
+                    }
+                    *ctx.pc_mut() += opcode.total_bytes();
                 }
                 _ => return Err(Error::Todo),
             }

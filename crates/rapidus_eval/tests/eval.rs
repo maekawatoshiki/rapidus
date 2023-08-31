@@ -17,6 +17,17 @@ fn bytecode_num() {
 }
 
 #[test]
+fn bytecode_arith() {
+    let src = Source::new(SourceName::Custom("test".into()), "42 + 50");
+    let module = Parser::new(Lexer::new(Input::from(&src)))
+        .parse_module()
+        .unwrap();
+    let mut ctx = ModuleCompiler::new().compile(&module).unwrap();
+    let val = ctx.run().unwrap();
+    assert_eq!(val, JsValue::f64(92.0));
+}
+
+#[test]
 fn num() {
     let src = Source::new(SourceName::Custom("test".into()), "123");
     let module = Parser::new(Lexer::new(Input::from(&src)))
