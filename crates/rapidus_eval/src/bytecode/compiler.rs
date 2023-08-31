@@ -1,5 +1,7 @@
+use std::borrow::Cow;
+
 use rapidus_ast::{
-    bin::BinOpExpr,
+    bin::{BinOp, BinOpExpr},
     decl::{self, Decl},
     expr::Expr,
     ident::Ident,
@@ -11,86 +13,127 @@ use thiserror::Error as ThisError;
 
 use crate::eval::EvalCtx;
 
-pub struct ModuleCompiler {}
+use super::{code::Code, insn};
 
-struct StmtCompiler {}
+pub struct ModuleCompiler {
+    code: Code,
+}
 
-struct DeclCompiler {}
+struct StmtCompiler<'a> {
+    code: &'a mut Code,
+}
 
-struct ExprCompiler {}
+struct DeclCompiler<'a> {
+    #[allow(dead_code)]
+    code: &'a mut Code,
+}
+
+struct ExprCompiler<'a> {
+    code: &'a mut Code,
+}
 
 #[derive(Debug, Clone, ThisError)]
-pub enum Error {}
+pub enum Error {
+    #[error("Todo: {0}")]
+    Todo(Cow<'static, str>),
+}
 
 impl ModuleCompiler {
     pub fn new() -> Self {
-        Self {}
+        Self { code: Code::new() }
     }
 
-    pub fn compile(&self, module: &Module) -> Result<EvalCtx, Error> {
-        for item in module.children() {
-            self.compile_module_item(item)?;
+    pub fn compile(&mut self, module: &Module) -> Result<EvalCtx, Error> {
+        for (item, drop_value) in module
+            .children()
+            .iter()
+            .enumerate()
+            // To retain the last value
+            .map(|(i, item)| (item, i != module.children().len() - 1))
+        {
+            self.compile_module_item(item, drop_value)?;
         }
         todo!()
     }
 
-    fn compile_module_item(&self, item: &ModuleItem) -> Result<(), Error> {
+    fn compile_module_item(&mut self, item: &ModuleItem, drop_value: bool) -> Result<(), Error> {
         match item {
-            ModuleItem::Stmt(stmt) => StmtCompiler::new().compile(stmt),
-            ModuleItem::Decl(decl) => DeclCompiler::new().compile(decl),
+            ModuleItem::Stmt(stmt) => StmtCompiler::new(&mut self.code).compile(stmt, drop_value),
+            ModuleItem::Decl(decl) => DeclCompiler::new(&mut self.code).compile(decl),
         }
     }
 }
 
-impl StmtCompiler {
-    pub fn new() -> Self {
-        Self {}
+impl<'a> StmtCompiler<'a> {
+    pub fn new(code: &'a mut Code) -> Self {
+        Self { code }
     }
 
-    pub fn compile(&self, stmt: &Stmt) -> Result<(), Error> {
+    pub fn compile(&mut self, stmt: &Stmt, drop_value: bool) -> Result<(), Error> {
         match stmt.kind() {
-            stmt::Kind::Expr(expr) => ExprCompiler::new().compile(expr),
+            stmt::Kind::Expr(expr) => {
+                ExprCompiler::new(self.code).compile(expr)?;
+                if drop_value {
+                    self.code.push_opcode(insn::DROP);
+                }
+                Ok(())
+            }
             stmt::Kind::Empty => Ok(()),
         }
     }
 }
 
-impl DeclCompiler {
-    pub fn new() -> Self {
-        Self {}
+impl<'a> DeclCompiler<'a> {
+    pub fn new(code: &'a mut Code) -> Self {
+        Self { code }
     }
 
-    pub fn compile(&self, decl: &Decl) -> Result<(), Error> {
+    pub fn compile(&mut self, decl: &Decl) -> Result<(), Error> {
         match decl.kind() {
-            decl::Kind::LexicalDecl(_decl) => {
-                todo!()
-            }
+            decl::Kind::LexicalDecl(_decl) => Err(Error::Todo("decl".into())),
         }
     }
 }
 
-impl ExprCompiler {
-    pub fn new() -> Self {
-        Self {}
+impl<'a> ExprCompiler<'a> {
+    pub fn new(code: &'a mut Code) -> Self {
+        Self { code }
     }
 
-    pub fn compile(&self, expr: &Expr) -> Result<(), Error> {
+    pub fn compile(&mut self, expr: &Expr) -> Result<(), Error> {
         match expr {
-            Expr::Ident(ident) => self.compile_ident(ident),
-            Expr::Literal(lit) => self.compile_lit(lit),
             Expr::BinOp(op) => self.compile_binop(op),
+            Expr::Literal(lit) => self.compile_lit(lit),
+            Expr::Ident(ident) => self.compile_ident(ident),
+        }
+    }
+
+    fn compile_binop(&mut self, expr: &BinOpExpr) -> Result<(), Error> {
+        self.compile(expr.lhs())?;
+        self.compile(expr.rhs())?;
+        match expr.op() {
+            BinOp::Add => self.code.push_opcode(insn::ADD),
+            BinOp::Sub => self.code.push_opcode(insn::SUB),
+            BinOp::Mul => self.code.push_opcode(insn::MUL),
+            BinOp::Div => self.code.push_opcode(insn::DIV),
+            BinOp::Mod => self.code.push_opcode(insn::MOD),
+        }
+        Ok(())
+    }
+
+    fn compile_lit(&mut self, lit: &Literal) -> Result<(), Error> {
+        match lit {
+            Literal::Num(num) => {
+                self.code.push_opcode(insn::CONST_F64);
+                self.code.push_f64(num.val());
+                Ok(())
+            }
+            Literal::Str(_) => Err(Error::Todo("str lit".into())),
+            Literal::Null(_) => Err(Error::Todo("null lit".into())),
         }
     }
 
     fn compile_ident(&self, _ident: &Ident) -> Result<(), Error> {
-        todo!()
-    }
-
-    fn compile_lit(&self, _lit: &Literal) -> Result<(), Error> {
-        todo!()
-    }
-
-    fn compile_binop(&self, _expr: &BinOpExpr) -> Result<(), Error> {
-        todo!()
+        Err(Error::Todo("expr ident".into()))
     }
 }
