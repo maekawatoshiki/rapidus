@@ -172,7 +172,7 @@ pub fn require(vm: &mut VM, args: &[Value], _this: Value) -> VMValueResult {
         Value::undefined(), // TODO: wrong?
         module_info,
         Some(vm.global_environment),
-        args: &[Value],
+        args,
         Value::undefined(),
         CallMode::Module,
         false,

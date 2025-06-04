@@ -1,5 +1,3 @@
-#![feature(box_patterns)]
-#![feature(type_ascription)]
 #[macro_use]
 pub mod util;
 #[macro_use]

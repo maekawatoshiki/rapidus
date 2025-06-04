@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 rapidus-ast = { path = "../ast" }
 rapidus-lexer = { path = "../lexer" }
-ansi_term = "0.9.0"
+ansi_term = "0.12"
 
 [dev-dependencies]
 insta = "= 1.7.1"

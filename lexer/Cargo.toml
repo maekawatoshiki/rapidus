@@ -7,4 +7,4 @@ edition = "2021"
 
 [dependencies]
 rapidus-ast = { path = "../ast" }
-encoding = "*"
+encoding = "0.2.33"
