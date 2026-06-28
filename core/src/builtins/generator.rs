@@ -1,3 +1,4 @@
+use crate::builtins::helpers::builtin_function_with_proto_and_length;
 use crate::vm::{
     error::RuntimeError,
     jsvalue::{
@@ -7,7 +8,6 @@ use crate::vm::{
     },
     vm::{VMValueResult, VM},
 };
-use crate::builtins::helpers::builtin_function_with_proto_and_length;
 
 pub fn generator_next(vm: &mut VM, args: &[Value], this: Value) -> VMValueResult {
     let value = args.get(0).copied().unwrap_or_else(Value::undefined);
@@ -178,12 +178,27 @@ pub fn generator_prototype(
     function_prototype: Value,
     iterator_prototype: Value,
 ) -> Value {
-    let next =
-        builtin_function_with_proto_and_length(factory, function_prototype, "next", generator_next, 1.0);
-    let return_fn =
-        builtin_function_with_proto_and_length(factory, function_prototype, "return", generator_return, 1.0);
-    let throw =
-        builtin_function_with_proto_and_length(factory, function_prototype, "throw", generator_throw, 1.0);
+    let next = builtin_function_with_proto_and_length(
+        factory,
+        function_prototype,
+        "next",
+        generator_next,
+        1.0,
+    );
+    let return_fn = builtin_function_with_proto_and_length(
+        factory,
+        function_prototype,
+        "return",
+        generator_return,
+        1.0,
+    );
+    let throw = builtin_function_with_proto_and_length(
+        factory,
+        function_prototype,
+        "throw",
+        generator_throw,
+        1.0,
+    );
     let iterator = builtin_function_with_proto_and_length(
         factory,
         function_prototype,

@@ -1,5 +1,11 @@
 use super::{array_buffer, eval, VMValueResult};
-use crate::vm::{jsvalue::{object::{DataProperty, Property}, value::Value}, vm::VM};
+use crate::vm::{
+    jsvalue::{
+        object::{DataProperty, Property},
+        value::Value,
+    },
+    vm::VM,
+};
 use rustc_hash::FxHashMap;
 
 pub fn test262_detach_array_buffer(vm: &mut VM, args: &[Value], _this: Value) -> VMValueResult {

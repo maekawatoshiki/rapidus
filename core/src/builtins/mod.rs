@@ -123,9 +123,6 @@ pub fn throw_type_error(vm: &mut VM, _args: &[Value], _this: Value) -> VMValueRe
     Err(vm.current_context.error_exception(error))
 }
 
-
-
-
 pub fn parse_float(vm: &mut VM, args: &[Value], _this: Value) -> VMValueResult {
     let string = vm.to_string(*args.get(0).unwrap_or(&Value::undefined()))?;
     Ok(Value::Number(parse_float_prefix(&string)))

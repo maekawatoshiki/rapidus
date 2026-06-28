@@ -108,20 +108,40 @@ fn validate_regexp_flags(vm: &mut VM, flags: &str) -> Result<(), RuntimeError> {
 }
 
 fn regexp_prototype(factory: &mut Factory) -> Value {
-    let source = helpers::builtin_function_with_length(factory, "get source", regexp_prototype_source, 0.0);
-    let flags = helpers::builtin_function_with_length(factory, "get flags", regexp_prototype_flags, 0.0);
-    let global = helpers::builtin_function_with_length(factory, "get global", regexp_prototype_global, 0.0);
-    let ignore_case =
-        helpers::builtin_function_with_length(factory, "get ignoreCase", regexp_prototype_ignore_case, 0.0);
-    let multiline =
-        helpers::builtin_function_with_length(factory, "get multiline", regexp_prototype_multiline, 0.0);
+    let source =
+        helpers::builtin_function_with_length(factory, "get source", regexp_prototype_source, 0.0);
+    let flags =
+        helpers::builtin_function_with_length(factory, "get flags", regexp_prototype_flags, 0.0);
+    let global =
+        helpers::builtin_function_with_length(factory, "get global", regexp_prototype_global, 0.0);
+    let ignore_case = helpers::builtin_function_with_length(
+        factory,
+        "get ignoreCase",
+        regexp_prototype_ignore_case,
+        0.0,
+    );
+    let multiline = helpers::builtin_function_with_length(
+        factory,
+        "get multiline",
+        regexp_prototype_multiline,
+        0.0,
+    );
     let dot_all =
         helpers::builtin_function_with_length(factory, "get dotAll", regexp_prototype_dot_all, 0.0);
-    let has_indices =
-        helpers::builtin_function_with_length(factory, "get hasIndices", regexp_prototype_has_indices, 0.0);
-    let sticky = helpers::builtin_function_with_length(factory, "get sticky", regexp_prototype_sticky, 0.0);
-    let unicode =
-        helpers::builtin_function_with_length(factory, "get unicode", regexp_prototype_unicode, 0.0);
+    let has_indices = helpers::builtin_function_with_length(
+        factory,
+        "get hasIndices",
+        regexp_prototype_has_indices,
+        0.0,
+    );
+    let sticky =
+        helpers::builtin_function_with_length(factory, "get sticky", regexp_prototype_sticky, 0.0);
+    let unicode = helpers::builtin_function_with_length(
+        factory,
+        "get unicode",
+        regexp_prototype_unicode,
+        0.0,
+    );
     let unicode_sets = helpers::builtin_function_with_length(
         factory,
         "get unicodeSets",
@@ -131,12 +151,14 @@ fn regexp_prototype(factory: &mut Factory) -> Value {
     let exec = helpers::builtin_function_with_length(factory, "exec", regexp_exec, 1.0);
     let test = helpers::builtin_function_with_length(factory, "test", regexp_test, 1.0);
     let compile = helpers::builtin_function_with_length(factory, "compile", regexp_compile, 2.0);
-    let symbol_match = helpers::builtin_function_with_length(factory, "[Symbol.match]", regexp_match, 1.0);
+    let symbol_match =
+        helpers::builtin_function_with_length(factory, "[Symbol.match]", regexp_match, 1.0);
     let symbol_search =
         helpers::builtin_function_with_length(factory, "[Symbol.search]", regexp_search, 1.0);
     let symbol_replace =
         helpers::builtin_function_with_length(factory, "[Symbol.replace]", regexp_replace, 2.0);
-    let symbol_split = helpers::builtin_function_with_length(factory, "[Symbol.split]", regexp_split, 2.0);
+    let symbol_split =
+        helpers::builtin_function_with_length(factory, "[Symbol.split]", regexp_split, 2.0);
     let tag = factory.string("RegExp");
 
     let prototype = Value::Object(factory.alloc(Object {

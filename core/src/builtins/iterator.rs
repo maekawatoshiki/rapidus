@@ -670,21 +670,62 @@ pub fn iterator_prototype(
         iterator_for_each,
         1.0,
     );
-    let every =
-        builtin_function_with_proto_and_length(factory, function_prototype, "every", iterator_every, 1.0);
-    let some =
-        builtin_function_with_proto_and_length(factory, function_prototype, "some", iterator_some, 1.0);
-    let find =
-        builtin_function_with_proto_and_length(factory, function_prototype, "find", iterator_find, 1.0);
-    let reduce =
-        builtin_function_with_proto_and_length(factory, function_prototype, "reduce", iterator_reduce, 1.0);
-    let map = builtin_function_with_proto_and_length(factory, function_prototype, "map", iterator_map, 1.0);
-    let filter =
-        builtin_function_with_proto_and_length(factory, function_prototype, "filter", iterator_filter, 1.0);
-    let take =
-        builtin_function_with_proto_and_length(factory, function_prototype, "take", iterator_take, 1.0);
-    let drop =
-        builtin_function_with_proto_and_length(factory, function_prototype, "drop", iterator_drop, 1.0);
+    let every = builtin_function_with_proto_and_length(
+        factory,
+        function_prototype,
+        "every",
+        iterator_every,
+        1.0,
+    );
+    let some = builtin_function_with_proto_and_length(
+        factory,
+        function_prototype,
+        "some",
+        iterator_some,
+        1.0,
+    );
+    let find = builtin_function_with_proto_and_length(
+        factory,
+        function_prototype,
+        "find",
+        iterator_find,
+        1.0,
+    );
+    let reduce = builtin_function_with_proto_and_length(
+        factory,
+        function_prototype,
+        "reduce",
+        iterator_reduce,
+        1.0,
+    );
+    let map = builtin_function_with_proto_and_length(
+        factory,
+        function_prototype,
+        "map",
+        iterator_map,
+        1.0,
+    );
+    let filter = builtin_function_with_proto_and_length(
+        factory,
+        function_prototype,
+        "filter",
+        iterator_filter,
+        1.0,
+    );
+    let take = builtin_function_with_proto_and_length(
+        factory,
+        function_prototype,
+        "take",
+        iterator_take,
+        1.0,
+    );
+    let drop = builtin_function_with_proto_and_length(
+        factory,
+        function_prototype,
+        "drop",
+        iterator_drop,
+        1.0,
+    );
     let flat_map = builtin_function_with_proto_and_length(
         factory,
         function_prototype,

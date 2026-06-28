@@ -1,5 +1,9 @@
 use super::{promise, VMValueResult};
-use crate::vm::{error::RuntimeError, jsvalue::{object::Property, value::Value}, vm::VM};
+use crate::vm::{
+    error::RuntimeError,
+    jsvalue::{object::Property, value::Value},
+    vm::VM,
+};
 use rustc_hash::FxHashMap;
 
 pub fn dynamic_import(vm: &mut VM, args: &[Value], _this: Value) -> VMValueResult {

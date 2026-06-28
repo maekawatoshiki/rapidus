@@ -5,6 +5,7 @@
 //! typed_array, ...). New code should use these instead of redefining
 //! private copies.
 
+use super::BuiltinFuncTy;
 use crate::vm::{
     error::RuntimeError,
     factory::Factory,
@@ -15,7 +16,6 @@ use crate::vm::{
     },
     vm::{VMValueResult, VM},
 };
-use super::BuiltinFuncTy;
 
 const MAX_SAFE_INTEGER: f64 = 9_007_199_254_740_991.0;
 
@@ -136,8 +136,12 @@ pub fn builtin_function_with_proto_and_length(
     func: BuiltinFuncTy,
     length: f64,
 ) -> Value {
-    let function =
-        Value::builtin_function_with_proto(&mut factory.memory_allocator, function_prototype, name, func);
+    let function = Value::builtin_function_with_proto(
+        &mut factory.memory_allocator,
+        function_prototype,
+        name,
+        func,
+    );
     set_function_length(function, length);
     function
 }
