@@ -112,6 +112,29 @@ fn operator_test() {
 }
 
 #[test]
+fn fuzz_regression_remainder_by_zero() {
+    test_code("1 % 0", "NaN");
+}
+
+#[test]
+fn fuzz_regression_ternary_expression_statement() {
+    test_code("true ? 0 : 1", "0");
+}
+
+#[test]
+fn fuzz_regression_unary_minus_object() {
+    test_code("var x = -({}); x !== x", "true");
+}
+
+#[test]
+fn fuzz_regression_object_literal_conditional_stack() {
+    test_code(
+        "try { var r = { a: (((\"1\" ? {} : undefined) ? ([], true) : -1) && 0) }; 1 } catch (e) { 2 }",
+        "1",
+    );
+}
+
+#[test]
 fn operator_test2() {
     assert_file("operator");
 }

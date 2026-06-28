@@ -269,8 +269,18 @@ impl<'a> CodeGenerator<'a> {
             NodeBase::Await(ref val) => self.visit(val, iseq, use_value)?,
             NodeBase::Return(ref val) => self.visit_return(val, iseq)?,
             NodeBase::New(ref expr) => self.visit_new(&*expr, iseq, use_value)?,
-            NodeBase::Object(ref properties) => self.visit_object_literal(properties, iseq)?,
-            NodeBase::Array(ref elems) => self.visit_array_literal(elems, iseq)?,
+            NodeBase::Object(ref properties) => {
+                self.visit_object_literal(properties, iseq)?;
+                if !use_value {
+                    self.bytecode_generator.append_pop(iseq);
+                }
+            }
+            NodeBase::Array(ref elems) => {
+                self.visit_array_literal(elems, iseq)?;
+                if !use_value {
+                    self.bytecode_generator.append_pop(iseq);
+                }
+            }
             NodeBase::ArrayPattern(_) | NodeBase::ObjectPattern(_) => {
                 return Err(Error::new_general_error(
                     "Syntax error: invalid destructuring pattern position.".to_string(),
@@ -1992,7 +2002,7 @@ impl<'a> CodeGenerator<'a> {
         iseq: &mut ByteCode,
         use_value: bool,
     ) -> CodeGenResult {
-        self.visit(cond, iseq, use_value)?;
+        self.visit(cond, iseq, true)?;
 
         let cond_pos = iseq.len() as isize;
         self.bytecode_generator.append_jmp_if_false(0, iseq);

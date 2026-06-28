@@ -1682,7 +1682,8 @@ impl VM {
                     let val = if val.is_bigint() {
                         val.minus(&mut self.factory.memory_allocator)
                     } else {
-                        Value::Number(-self.to_number(val)?)
+                        let number = -self.to_number(val)?;
+                        Value::Number(if number.is_nan() { f64::NAN } else { number })
                     };
                     self.current_context.stack.push(val.into());
                     self.gc_mark();

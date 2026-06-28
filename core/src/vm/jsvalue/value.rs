@@ -1046,7 +1046,10 @@ impl Value {
                 })
             }
             (x, y) if x.is_bigint() || y.is_bigint() => Value::undefined(),
-            (Value::Number(x), Value::Number(y)) => Value::Number((x as i64 % y as i64) as f64),
+            (Value::Number(x), Value::Number(y)) => {
+                let result = x % y;
+                Value::Number(if result.is_nan() { f64::NAN } else { result })
+            }
             _ => Value::undefined(),
         }
     }
