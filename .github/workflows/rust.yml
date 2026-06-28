@@ -2,6 +2,9 @@ name: Build
 
 on: [push, pull_request]
 
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -11,15 +14,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v2
-    - uses: actions-rs/toolchain@v1
+    - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
       with:
-        toolchain: nightly
+        persist-credentials: false
+    - name: Show toolchain
+      run: rustup show
     - name: Install dependencies
       env: 
         ACCEPT_EULA: Y
       run:  |
-            rustup override set nightly && \
             wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add - && \
             sudo sh -c 'echo "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-12 main" >> /etc/apt/sources.list' && \
             sudo sh -c 'echo "deb-src http://apt.llvm.org/focal/ llvm-toolchain-focal-12 main" >> /etc/apt/sources.list' && \
