@@ -1233,13 +1233,14 @@ impl Lexer {
         Ok(Token::new_number(num, loc))
     }
 
-    fn read_hex_num(&mut self, num_literal: &str) -> i64 {
-        num_literal
-            .chars()
-            .fold(0, |n, c| match c.to_ascii_lowercase() {
-                '0'..='9' | 'A'..='F' | 'a'..='f' => n * 16 + c.to_digit(16).unwrap() as i64,
-                _ => n,
-            })
+    fn read_hex_num(&mut self, num_literal: &str) -> Option<i64> {
+        num_literal.chars().try_fold(0i64, |n, c| {
+            let digit = match c.to_ascii_lowercase() {
+                '0'..='9' | 'A'..='F' | 'a'..='f' => c.to_digit(16).unwrap() as i64,
+                _ => return Some(n),
+            };
+            n.checked_mul(16)?.checked_add(digit)
+        })
     }
 }
 
@@ -1428,7 +1429,7 @@ impl Lexer {
             'v' => vec!['\x0b'],
             'x' => {
                 let hex = self.take_hex_digits(2)?;
-                vec![self.read_hex_num(hex.as_str()) as u8 as char]
+                vec![self.read_hex_num(hex.as_str()).unwrap() as u8 as char]
             }
             'u' => {
                 if self.take_char_if('{')? {
@@ -1439,19 +1440,21 @@ impl Lexer {
                             "invalid unicode escape sequence".to_string(),
                         ));
                     }
-                    let code = self.read_hex_num(hex.as_str()) as u32;
+                    let code = self.read_hex_num(hex.as_str()).ok_or_else(|| {
+                        Error::General(self.loc, "invalid unicode code point".to_string())
+                    })? as u32;
                     vec![char::from_u32(code).ok_or_else(|| {
                         Error::General(self.loc, "invalid unicode code point".to_string())
                     })?]
                 } else {
                     let hex = self.take_hex_digits(4)?;
-                    let unit = self.read_hex_num(hex.as_str()) as u16;
+                    let unit = self.read_hex_num(hex.as_str()).unwrap() as u16;
                     if is_high_surrogate(unit) && self.starts_with("\\u") {
                         let save_loc = self.loc;
                         self.take_char()?;
                         self.take_char()?;
                         let low_hex = self.take_hex_digits(4)?;
-                        let low = self.read_hex_num(low_hex.as_str()) as u16;
+                        let low = self.read_hex_num(low_hex.as_str()).unwrap() as u16;
                         if is_low_surrogate(low) {
                             vec![surrogate_pair_to_char(unit, low).unwrap()]
                         } else {
@@ -2000,6 +2003,20 @@ fn escape_seq() {
         lexer.next().unwrap().kind,
         Kind::String("\' \" \\ \x07 \x08 \x0c \n \r \t \x0b \x12 𩸽".to_string())
     );
+}
+
+#[test]
+fn escaped_unicode_code_point_limit() {
+    let expected = char::from_u32(0x10ffff).unwrap().to_string();
+    let mut lexer = Lexer::new("\"\\u{10ffff}\"".to_string());
+    lexer.tokenize_all().unwrap();
+    assert_eq!(lexer.next().unwrap().kind, Kind::String(expected));
+}
+
+#[test]
+fn escaped_unicode_code_point_overflow() {
+    let mut lexer = Lexer::new("\\u{77777777777777777}".to_string());
+    assert!(lexer.tokenize_all().is_err());
 }
 
 #[test]
