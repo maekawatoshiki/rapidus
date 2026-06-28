@@ -6,4 +6,5 @@ members = [
   "parser",
   "ast",
   "repl",
+  "fuzz",
 ]
