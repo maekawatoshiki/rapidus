@@ -917,7 +917,10 @@ impl VM {
                 ),
                 match self.current_context.stack.last() {
                     None => format!("<empty>"),
-                    Some(val) => format!("{:10}", (*val).into(): Value),
+                    Some(val) => {
+                        let val: Value = (*val).into();
+                        format!("{:10}", val)
+                    }
                 }
             );
         }

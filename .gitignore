@@ -1,3 +1,7 @@
+.DS_Store
+AGENTS.md
 /target
 **/*.rs.bk
 .vscode/*
+__pycache__
+.env
