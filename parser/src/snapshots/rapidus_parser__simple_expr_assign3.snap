@@ -1,13 +1,12 @@
 ---
 source: parser/src/lib.rs
 expression: parser.parse_all().unwrap()
-
 ---
 Node {
     base: StatementList(
         [
             Node {
-                base: Assign(
+                base: AssignOp(
                     Node {
                         base: Identifier(
                             "v",
@@ -15,23 +14,12 @@ Node {
                         loc: Loc(line:1,column:0,pos:0),
                     },
                     Node {
-                        base: BinaryOp(
-                            Node {
-                                base: Identifier(
-                                    "v",
-                                ),
-                                loc: Loc(line:1,column:0,pos:0),
-                            },
-                            Node {
-                                base: Number(
-                                    1.0,
-                                ),
-                                loc: Loc(line:1,column:5,pos:5),
-                            },
-                            Sub,
+                        base: Number(
+                            1.0,
                         ),
-                        loc: Loc(line:1,column:0,pos:0),
+                        loc: Loc(line:1,column:5,pos:5),
                     },
+                    Sub,
                 ),
                 loc: Loc(line:1,column:0,pos:0),
             },

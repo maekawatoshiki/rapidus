@@ -1,7 +1,6 @@
 ---
 source: parser/src/lib.rs
 expression: parser.parse_all().unwrap()
-
 ---
 Node {
     base: StatementList(
@@ -11,11 +10,13 @@ Node {
                     [
                         FormalParameter {
                             name: "a",
+                            pattern: None,
                             init: None,
                             is_rest_param: false,
                         },
                         FormalParameter {
                             name: "b",
+                            pattern: None,
                             init: None,
                             is_rest_param: false,
                         },

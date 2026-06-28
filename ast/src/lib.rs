@@ -7,6 +7,7 @@ use loc::SourceLoc;
 #[derive(Clone, Debug, PartialEq)]
 pub struct FormalParameter {
     pub name: String,
+    pub pattern: Option<Node>,
     pub init: Option<Node>,
     pub is_rest_param: bool,
 }
@@ -17,6 +18,21 @@ impl FormalParameter {
     pub fn new(name: String, init: Option<Node>, is_rest_param: bool) -> FormalParameter {
         FormalParameter {
             name,
+            pattern: None,
+            init,
+            is_rest_param,
+        }
+    }
+
+    pub fn new_pattern(
+        name: String,
+        pattern: Node,
+        init: Option<Node>,
+        is_rest_param: bool,
+    ) -> FormalParameter {
+        FormalParameter {
+            name,
+            pattern: Some(pattern),
             init,
             is_rest_param,
         }
@@ -28,7 +44,10 @@ impl FormalParameter {
 pub enum PropertyDefinition {
     IdentifierReference(String),
     Property(String, Node),
+    ComputedProperty(Node, Node),
+    CoverInitializedName(String, Node),
     MethodDefinition(MethodDefinitionKind, String, Node),
+    ComputedMethodDefinition(MethodDefinitionKind, Node, Node),
     SpreadObject(Node),
 }
 
@@ -37,6 +56,20 @@ pub enum MethodDefinitionKind {
     Get,
     Set,
     Ordinary,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ArrayPatternElement {
+    Elision,
+    Element(Node, Option<Node>),
+    Rest(Node),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ObjectPatternProperty {
+    Property(String, Node, Option<Node>),
+    ComputedProperty(Node, Node, Option<Node>),
+    Rest(Node),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -57,30 +90,56 @@ pub enum NodeBase {
     StatementList(Vec<Node>),
     Block(Vec<Node>),
     FunctionDecl(String, FormalParameters, Box<Node>), // name, params, body
+    DerivedConstructorDecl(String, FormalParameters, Box<Node>), // name, params, body
+    ClassHeritageSetup(String, Box<Node>),             // class name, superclass expression
     FunctionExpr(Option<String>, FormalParameters, Box<Node>), // Name, params, body
+    GeneratorFunctionDecl(String, FormalParameters, Box<Node>), // name, params, body
+    GeneratorFunctionExpr(Option<String>, FormalParameters, Box<Node>), // Name, params, body
+    AsyncFunctionDecl(String, FormalParameters, Box<Node>), // name, params, body
+    AsyncFunctionExpr(Option<String>, FormalParameters, Box<Node>), // Name, params, body
+    AsyncGeneratorFunctionDecl(String, FormalParameters, Box<Node>), // name, params, body
+    AsyncGeneratorFunctionExpr(Option<String>, FormalParameters, Box<Node>), // Name, params, body
     ArrowFunction(FormalParameters, Box<Node>),
+    AsyncArrowFunction(FormalParameters, Box<Node>),
+    AnonymousClassExpr(Box<Node>),
     VarDecl(String, Option<Box<Node>>, VarKind),
+    VarDeclPattern(Box<Node>, Option<Box<Node>>, VarKind),
     Member(Box<Node>, String),
+    PrivateMember(Box<Node>, String),
+    PrivateMemberInit(Box<Node>, String, bool), // object, name, writable
+    PrivateAccessorInit(Box<Node>, String, bool), // object, name, is_getter
     Index(Box<Node>, Box<Node>),
     New(Box<Node>),
     Call(Box<Node>, Vec<Node>),
+    SuperCall(Vec<Node>),
+    SuperCallFromArguments,
     If(Box<Node>, Box<Node>, Box<Node>), // Cond, Then, Else
     While(Box<Node>, Box<Node>),         // Cond, Body
+    DoWhile(Box<Node>, Box<Node>),       // Body, Cond
+    With(Box<Node>, Box<Node>),          // Object, Body
     For(Box<Node>, Box<Node>, Box<Node>, Box<Node>), // Init, Cond, Step, Body
+    ForIn(Box<Node>, Box<Node>, Box<Node>), // Left, Right, Body
+    ForOf(Box<Node>, Box<Node>, Box<Node>), // Left, Right, Body
     Assign(Box<Node>, Box<Node>),
+    AssignOp(Box<Node>, Box<Node>, BinOp),
     UnaryOp(Box<Node>, UnaryOp),
     BinaryOp(Box<Node>, Box<Node>, BinOp),
     TernaryOp(Box<Node>, Box<Node>, Box<Node>),
     Return(Option<Box<Node>>),
     Switch(Box<Node>, Box<Node>),
     CaseLabel(Box<Node>),
-    Label(String),
+    DefaultLabel,
+    Label(String, Box<Node>),
     Break(Option<String>),
     Continue(Option<String>),
     Try(Box<Node>, Box<Node>, Box<Node>, Box<Node>), // Try, Catch, Param, Finally
     Throw(Box<Node>),
+    Yield(Option<Box<Node>>, bool), // expr, is yield*
+    Await(Box<Node>),
     Array(Vec<Node>),
     Object(Vec<PropertyDefinition>),
+    ArrayPattern(Vec<ArrayPatternElement>),
+    ObjectPattern(Vec<ObjectPatternProperty>),
     Identifier(String),
     Spread(Box<Node>),
     This,
@@ -90,6 +149,7 @@ pub enum NodeBase {
     String(String),
     Boolean(bool),
     Number(f64),
+    BigInt(String),
     Nope,
 }
 
@@ -122,14 +182,17 @@ impl Node {
             | NodeBase::String(_)
             | NodeBase::Boolean(_)
             | NodeBase::Number(_)
+            | NodeBase::BigInt(_)
             | NodeBase::Nope
             | NodeBase::Break(_)
             | NodeBase::Continue(_)
             | NodeBase::Assign(_, _)
+            | NodeBase::AssignOp(_, _, _)
             | NodeBase::UnaryOp(_, _)
             | NodeBase::BinaryOp(_, _, _)
             | NodeBase::TernaryOp(_, _, _)
             | NodeBase::While(_, _)
+            | NodeBase::DoWhile(_, _)
             | NodeBase::For(_, _, _, _)
             | NodeBase::New(_)
             | NodeBase::Call(_, _)
@@ -215,6 +278,7 @@ impl NodeBase {
             NodeBase::String(s) => Some(NodeBase::String(s.clone())),
             NodeBase::Boolean(b) => Some(NodeBase::Boolean(*b)),
             NodeBase::Number(n) => Some(NodeBase::Number(*n)),
+            NodeBase::BigInt(n) => Some(NodeBase::BigInt(n.clone())),
             // NodeBase::Nope,
             // NodeBase::SetCurCallObj(String),
             _ => None,
@@ -250,6 +314,7 @@ pub enum BinOp {
     Xor,
     LAnd,
     LOr,
+    Coalesce,
     Eq,
     Ne,
     SEq, // Strict Eq
@@ -258,6 +323,8 @@ pub enum BinOp {
     Gt,
     Le,
     Ge,
+    In,
+    Instanceof,
     Shl,
     Shr,
     ZFShr,

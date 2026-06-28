@@ -7,6 +7,15 @@ pub struct Token {
 
     /// Source location of the token.
     pub loc: SourceLoc,
+
+    /// Whether this token's identifier spelling contained a unicode escape.
+    pub contains_escape: bool,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TemplatePart {
+    pub cooked: String,
+    pub expr: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -14,7 +23,10 @@ pub enum Kind {
     Keyword(Keyword),
     Identifier(String),
     Number(f64),
+    BigInt(String),
     String(String),
+    RegExp(String, String),
+    Template(Vec<TemplatePart>),
     Symbol(Symbol),
     LineTerminator,
     EOF,
@@ -92,6 +104,7 @@ pub enum Symbol {
     Xor,
     LAnd,
     LOr,
+    Coalesce,
     Question,
     Assign,
     AssignAdd,
@@ -101,11 +114,13 @@ pub enum Symbol {
     AssignMod,
     AssignShl,
     AssignShr,
+    AssignZFShr,
     AssignAnd,
     AssignOr,
     AssignXor,
     AssignLAnd,
     AssignLOr,
+    AssignCoalesce,
     Hash,
     Spread,
     FatArrow,
@@ -116,6 +131,15 @@ impl Token {
         Token {
             kind: Kind::Number(f),
             loc,
+            contains_escape: false,
+        }
+    }
+
+    pub fn new_bigint(s: String, loc: SourceLoc) -> Token {
+        Token {
+            kind: Kind::BigInt(s),
+            loc,
+            contains_escape: false,
         }
     }
 
@@ -123,6 +147,15 @@ impl Token {
         Token {
             kind: Kind::Identifier(ident),
             loc,
+            contains_escape: false,
+        }
+    }
+
+    pub fn new_escaped_identifier(ident: String, loc: SourceLoc) -> Token {
+        Token {
+            kind: Kind::Identifier(ident),
+            loc,
+            contains_escape: true,
         }
     }
 
@@ -130,6 +163,7 @@ impl Token {
         Token {
             kind: Kind::Keyword(keyword),
             loc,
+            contains_escape: false,
         }
     }
 
@@ -137,6 +171,23 @@ impl Token {
         Token {
             kind: Kind::String(s),
             loc,
+            contains_escape: false,
+        }
+    }
+
+    pub fn new_regexp(pattern: String, flags: String, loc: SourceLoc) -> Token {
+        Token {
+            kind: Kind::RegExp(pattern, flags),
+            loc,
+            contains_escape: false,
+        }
+    }
+
+    pub fn new_template(parts: Vec<TemplatePart>, loc: SourceLoc) -> Token {
+        Token {
+            kind: Kind::Template(parts),
+            loc,
+            contains_escape: false,
         }
     }
 
@@ -144,6 +195,7 @@ impl Token {
         Token {
             kind: Kind::Symbol(symbol),
             loc,
+            contains_escape: false,
         }
     }
 
@@ -151,6 +203,7 @@ impl Token {
         Token {
             kind: Kind::LineTerminator,
             loc,
+            contains_escape: false,
         }
     }
 }
@@ -185,6 +238,7 @@ impl Symbol {
             Symbol::Xor => Some(BinOp::Xor),
             Symbol::LAnd => Some(BinOp::LAnd),
             Symbol::LOr => Some(BinOp::LOr),
+            Symbol::Coalesce => Some(BinOp::Coalesce),
             Symbol::Eq => Some(BinOp::Eq),
             Symbol::Ne => Some(BinOp::Ne),
             Symbol::SEq => Some(BinOp::SEq),
@@ -314,6 +368,7 @@ impl From<Symbol> for String {
             Symbol::Xor => "^",
             Symbol::LAnd => "&&",
             Symbol::LOr => "||",
+            Symbol::Coalesce => "??",
             Symbol::Question => "?",
             Symbol::Assign => "=",
             Symbol::AssignAdd => "+=",
@@ -323,11 +378,13 @@ impl From<Symbol> for String {
             Symbol::AssignMod => "%=",
             Symbol::AssignShl => "<<=",
             Symbol::AssignShr => ">>=",
+            Symbol::AssignZFShr => ">>>=",
             Symbol::AssignAnd => "&=",
             Symbol::AssignOr => "|=",
             Symbol::AssignXor => "^=",
             Symbol::AssignLAnd => "&&=",
             Symbol::AssignLOr => "||=",
+            Symbol::AssignCoalesce => "??=",
             Symbol::Hash => "#",
             Symbol::Spread => "...",
             Symbol::FatArrow => "=>",

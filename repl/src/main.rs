@@ -26,11 +26,17 @@ fn main() {
                 .help("Tracing execution")
                 .long("trace"),
         )
+        .arg(
+            Arg::with_name("module")
+                .help("Parse input as an ECMAScript module")
+                .long("module"),
+        )
         .arg(Arg::with_name("file").help("Input file name").index(1));
     let app_matches = app.clone().get_matches();
     let is_debug = app_matches.is_present("debug");
     let is_profile = app_matches.is_present("profile");
     let is_trace = app_matches.is_present("trace");
+    let is_module = app_matches.is_present("module");
     let file_name = match app_matches.value_of("file") {
         Some(file_name) => file_name,
         None => {
@@ -39,12 +45,16 @@ fn main() {
         }
     };
 
-    let mut parser = match parser::Parser::load_module(file_name.clone()) {
+    let mut parser = match parser::Parser::load_module(file_name) {
         Ok(ok) => ok,
         Err(_) => return,
     };
 
-    let node = match parser.parse_all() {
+    let node = match if is_module {
+        parser.parse_module()
+    } else {
+        parser.parse_all()
+    } {
         Ok(ok) => ok,
         Err(err) => {
             parser.handle_error(&err);

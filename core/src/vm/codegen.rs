@@ -1126,6 +1126,14 @@ impl<'a> CodeGenerator<'a> {
                     self.visit(&node, iseq, true)?;
                     self.bytecode_generator.append_push_null(iseq);
                 }
+                ComputedProperty(_, _)
+                | CoverInitializedName(_, _)
+                | ComputedMethodDefinition(_, _, _) => {
+                    return Err(Error::new_unimplemented_error(
+                        "unsupported object literal property".to_string(),
+                        self.loc,
+                    ));
+                }
             }
         }
 
