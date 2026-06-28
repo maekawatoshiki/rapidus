@@ -1417,7 +1417,7 @@ impl TracingJit {
                 }
                 VMInst::DECL_VAR => pc += 5,
                 VMInst::UPDATE_PARENT_SCOPE => pc += 1,
-                VMInst::CALL => {
+                VMInst::CALL | VMInst::CALL_DIRECT_EVAL => {
                     pc += 1;
                     get_int32!(iseq, pc, argc, usize);
 
@@ -1508,7 +1508,7 @@ impl TracingJit {
                                 self.builder,
                                 LLVMConstInt(
                                     LLVMInt64TypeInContext(self.context),
-                                    s.as_ptr() as u64,
+                                    unsafe { (**s).as_ptr() as u64 },
                                     0,
                                 ),
                                 LLVMPointerType(LLVMInt8TypeInContext(self.context), 0),
@@ -1561,7 +1561,11 @@ impl TracingJit {
                         None,
                     ));
                 }
-                VMInst::PUSH_THIS | VMInst::PUSH_ARGUMENTS | VMInst::SET_MEMBER => pc += 1,
+                VMInst::PUSH_THIS
+                | VMInst::PUSH_ARGUMENTS
+                | VMInst::SET_MEMBER
+                | VMInst::DELETE_MEMBER
+                | VMInst::DELETE_MEMBER_STRICT => pc += 1,
                 VMInst::POP => {
                     pc += 1;
                     stack.pop();

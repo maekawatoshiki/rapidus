@@ -93,7 +93,7 @@ pub fn debug_print(val: &Value, nest: bool) {
 
                     print!("}}");
                 }
-                ObjectKind::Arguments => {
+                ObjectKind::Arguments(_) => {
                     print!("[Arguments] {{ ");
 
                     let mut key_val = (&obj_info.property)
@@ -110,6 +110,7 @@ pub fn debug_print(val: &Value, nest: bool) {
                     "Symbol({})",
                     info.description.as_ref().unwrap_or(&"".to_string())
                 ),
+                ObjectKind::BigInt(ref info) => print!("{}n", info.decimal),
                 ObjectKind::Error(ref _info) => {
                     print!("Error({})", obj_info.get_property("message").to_string())
                 }
@@ -123,6 +124,25 @@ pub fn debug_print(val: &Value, nest: bool) {
                 ObjectKind::Date(ref date) => {
                     print!("{}", date.to_string())
                 }
+                ObjectKind::RegExp(ref info) => {
+                    print!("/{}/{}", info.original_source, info.original_flags)
+                }
+                ObjectKind::Map(_) => print!("[Map]"),
+                ObjectKind::Set(_) => print!("[Set]"),
+                ObjectKind::WeakMap(_) => print!("[WeakMap]"),
+                ObjectKind::WeakSet(_) => print!("[WeakSet]"),
+                ObjectKind::WeakRef(_) => print!("[WeakRef]"),
+                ObjectKind::FinalizationRegistry(_) => print!("[FinalizationRegistry]"),
+                ObjectKind::ShadowRealm(_) => print!("[ShadowRealm]"),
+                ObjectKind::MapIterator(_) => print!("[Map Iterator]"),
+                ObjectKind::SetIterator(_) => print!("[Set Iterator]"),
+                ObjectKind::Generator(_) => print!("[Generator]"),
+                ObjectKind::ArrayBuffer(ref info) if info.shared => print!("[SharedArrayBuffer]"),
+                ObjectKind::ArrayBuffer(_) => print!("[ArrayBuffer]"),
+                ObjectKind::DataView(_) => print!("[DataView]"),
+                ObjectKind::TypedArray(ref info) => print!("[{}]", info.name),
+                ObjectKind::Proxy(_) => print!("[Proxy]"),
+                ObjectKind::Temporal(_) => print!("[Temporal]"),
                 ObjectKind::Array(ref ary_info) => {
                     print!("[ ");
 

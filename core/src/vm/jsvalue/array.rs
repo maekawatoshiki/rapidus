@@ -6,6 +6,8 @@ use super::value::*;
 #[derive(Clone, Debug)]
 pub struct ArrayObjectInfo {
     pub elems: Vec<Property>,
+    pub length: usize,
+    pub length_writable: bool,
 }
 
 impl ArrayObjectInfo {
@@ -32,46 +34,48 @@ impl ArrayObjectInfo {
         self.elems[idx]
     }
 
-    pub fn set_element(&mut self, idx: usize, val_: Value) -> Option<Value> {
+    pub fn set_element(&mut self, idx: usize, val_: Value) -> (Option<Value>, bool) {
         // Extend
         if idx >= self.elems.len() {
-            self.set_length(idx + 1);
+            self.length = self.length.max(idx + 1);
+            while self.elems.len() <= idx {
+                self.elems.push(Property::new_data_simple(Value::empty()))
+            }
         }
 
         match self.elems[idx] {
-            Property::Data(DataProperty { ref mut val, .. }) => {
-                *val = val_;
-                None
+            Property::Data(DataProperty {
+                ref mut val,
+                writable,
+                ..
+            }) => {
+                if writable {
+                    *val = val_;
+                    return (None, true);
+                }
+                (None, false)
             }
             Property::Accessor(AccessorProperty { set, .. }) => {
                 if set.is_undefined() {
-                    None
+                    (None, false)
                 } else {
-                    Some(set)
+                    (Some(set), true)
                 }
             }
         }
     }
 
     pub fn set_length(&mut self, len: usize) {
-        // Extend
-        if self.elems.len() < len {
-            while self.elems.len() < len {
-                self.elems.push(Property::new_data_simple(Value::empty()))
-            }
-            return;
-        }
-
         // Shorten
         if self.elems.len() > len {
             unsafe { self.elems.set_len(len) };
-            return;
         }
+        self.length = len;
     }
 
     #[inline]
     pub fn get_length(&self) -> usize {
-        self.elems.len()
+        self.length
     }
 }
 
@@ -81,14 +85,15 @@ impl ArrayObjectInfo {
         let separator = separator.unwrap_or(",".to_string());
         let separator_str = separator.as_str();
         let mut res = "".to_string();
-        for (i, elem) in self.elems.iter().enumerate() {
+        for i in 0..self.length {
+            let elem = self.get_element(i);
             if let Some(data) = elem.get_data() {
-                res += &(data.val.to_string()
-                    + if self.elems.len() - 1 != i {
-                        separator_str
-                    } else {
-                        ""
-                    });
+                if !data.val.is_undefined() {
+                    res += &data.val.to_string();
+                }
+                if self.length - 1 != i {
+                    res += separator_str;
+                }
             }
         }
         res

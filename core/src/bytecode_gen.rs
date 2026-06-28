@@ -91,6 +91,10 @@ impl<'a> ByteCodeGenerator<'a> {
         iseq.push(VMInst::PUSH_UNDEFINED);
     }
 
+    pub fn append_yield(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::YIELD);
+    }
+
     pub fn append_spread_array(&self, iseq: &mut ByteCode) {
         iseq.push(VMInst::SPREAD_ARRAY);
     }
@@ -133,6 +137,12 @@ impl<'a> ByteCodeGenerator<'a> {
     }
     pub fn append_ge(&self, iseq: &mut ByteCode) {
         iseq.push(VMInst::GE);
+    }
+    pub fn append_instanceof(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::INSTANCEOF);
+    }
+    pub fn append_in(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::IN);
     }
     pub fn append_eq(&self, iseq: &mut ByteCode) {
         iseq.push(VMInst::EQ);
@@ -187,13 +197,76 @@ impl<'a> ByteCodeGenerator<'a> {
         iseq.push(VMInst::SET_MEMBER);
     }
 
+    pub fn append_get_private_member(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::GET_PRIVATE_MEMBER);
+    }
+
+    pub fn append_set_private_member(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::SET_PRIVATE_MEMBER);
+    }
+
+    pub fn append_define_private_member(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::DEFINE_PRIVATE_MEMBER);
+    }
+
+    pub fn append_define_private_method(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::DEFINE_PRIVATE_METHOD);
+    }
+
+    pub fn append_define_private_getter(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::DEFINE_PRIVATE_GETTER);
+    }
+
+    pub fn append_define_private_setter(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::DEFINE_PRIVATE_SETTER);
+    }
+
+    pub fn append_delete_member(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::DELETE_MEMBER);
+    }
+
+    pub fn append_delete_member_strict(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::DELETE_MEMBER_STRICT);
+    }
+
     pub fn append_call(&self, argc: u32, iseq: &mut ByteCode) {
         iseq.push(VMInst::CALL);
         self.append_int32(argc as i32, iseq);
     }
 
+    pub fn append_call_spread(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::CALL_SPREAD);
+    }
+
+    pub fn append_call_direct_eval(&self, argc: u32, iseq: &mut ByteCode) {
+        iseq.push(VMInst::CALL_DIRECT_EVAL);
+        self.append_int32(argc as i32, iseq);
+    }
+
     pub fn append_call_method(&self, argc: u32, iseq: &mut ByteCode) {
         iseq.push(VMInst::CALL_METHOD);
+        self.append_int32(argc as i32, iseq);
+    }
+
+    pub fn append_call_super_method(&self, argc: u32, iseq: &mut ByteCode) {
+        iseq.push(VMInst::CALL_SUPER_METHOD);
+        self.append_int32(argc as i32, iseq);
+    }
+
+    pub fn append_call_super_method_spread(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::CALL_SUPER_METHOD_SPREAD);
+    }
+
+    pub fn append_call_method_spread(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::CALL_METHOD_SPREAD);
+    }
+
+    pub fn append_call_private_method_spread(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::CALL_PRIVATE_METHOD_SPREAD);
+    }
+
+    pub fn append_call_private_method(&self, argc: u32, iseq: &mut ByteCode) {
+        iseq.push(VMInst::CALL_PRIVATE_METHOD);
         self.append_int32(argc as i32, iseq);
     }
 
@@ -209,6 +282,11 @@ impl<'a> ByteCodeGenerator<'a> {
 
     pub fn append_jmp_if_true(&self, dst: i32, iseq: &mut ByteCode) {
         iseq.push(VMInst::JMP_IF_TRUE);
+        self.append_int32(dst, iseq);
+    }
+
+    pub fn append_jmp_if_not_nullish(&self, dst: i32, iseq: &mut ByteCode) {
+        iseq.push(VMInst::JMP_IF_NOT_NULLISH);
         self.append_int32(dst, iseq);
     }
 
@@ -236,9 +314,41 @@ impl<'a> ByteCodeGenerator<'a> {
         self.append_int32(id, iseq);
     }
 
+    pub fn append_get_value_keep_ref(&mut self, name: &String, iseq: &mut ByteCode) {
+        let id = self.constant_table.add_string(name.clone()) as i32;
+        iseq.push(VMInst::GET_VALUE_KEEP_REF);
+        self.append_int32(id, iseq);
+    }
+
     pub fn append_set_value(&mut self, name: &String, iseq: &mut ByteCode) {
         let id = self.constant_table.add_string(name.clone()) as i32;
         iseq.push(VMInst::SET_VALUE);
+        self.append_int32(id, iseq);
+    }
+
+    pub fn append_set_value_keep_ref(&mut self, name: &String, iseq: &mut ByteCode) {
+        let id = self.constant_table.add_string(name.clone()) as i32;
+        iseq.push(VMInst::SET_VALUE_KEEP_REF);
+        self.append_int32(id, iseq);
+    }
+
+    pub fn append_make_object_reference(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::MAKE_OBJECT_REFERENCE);
+    }
+
+    pub fn append_set_pending_reference(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::SET_PENDING_REFERENCE);
+    }
+
+    pub fn append_make_binding_reference(&mut self, name: &String, iseq: &mut ByteCode) {
+        let id = self.constant_table.add_string(name.clone()) as i32;
+        iseq.push(VMInst::MAKE_BINDING_REFERENCE);
+        self.append_int32(id, iseq);
+    }
+
+    pub fn append_set_function_name(&mut self, name: &String, iseq: &mut ByteCode) {
+        let id = self.constant_table.add_string(name.clone()) as i32;
+        iseq.push(VMInst::SET_FUNCTION_NAME);
         self.append_int32(id, iseq);
     }
 
@@ -260,6 +370,10 @@ impl<'a> ByteCodeGenerator<'a> {
         self.append_uint32(id, iseq);
     }
 
+    pub fn append_push_object_env(&mut self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::PUSH_OBJECT_ENV);
+    }
+
     pub fn append_pop_env(&mut self, iseq: &mut ByteCode) {
         iseq.push(VMInst::POP_ENV);
     }
@@ -270,6 +384,66 @@ impl<'a> ByteCodeGenerator<'a> {
 
     pub fn append_typeof(&mut self, iseq: &mut ByteCode) {
         iseq.push(VMInst::TYPEOF);
+    }
+
+    pub fn append_for_in_enumerate(&mut self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::FOR_IN_ENUMERATE);
+    }
+
+    pub fn append_for_of_enumerate(&mut self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::FOR_OF_ENUMERATE);
+    }
+
+    pub fn append_for_in_next(&mut self, name: &String, dst: i32, iseq: &mut ByteCode) {
+        let id = self.constant_table.add_string(name.clone()) as i32;
+        iseq.push(VMInst::FOR_IN_NEXT);
+        self.append_int32(id, iseq);
+        self.append_int32(dst, iseq);
+    }
+
+    pub fn append_for_of_next(&mut self, name: &String, dst: i32, iseq: &mut ByteCode) {
+        let id = self.constant_table.add_string(name.clone()) as i32;
+        iseq.push(VMInst::FOR_OF_NEXT);
+        self.append_int32(id, iseq);
+        self.append_int32(dst, iseq);
+    }
+
+    pub fn append_for_of_next_value(&mut self, dst: i32, iseq: &mut ByteCode) {
+        iseq.push(VMInst::FOR_OF_NEXT_VALUE);
+        self.append_int32(dst, iseq);
+    }
+
+    pub fn append_iterator_next(&mut self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::ITERATOR_NEXT);
+    }
+
+    pub fn append_iterator_rest_array(&mut self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::ITERATOR_REST_ARRAY);
+    }
+
+    pub fn append_iterator_close(&mut self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::ITERATOR_CLOSE);
+    }
+
+    pub fn append_push_pending_iterator_close(&mut self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::PUSH_PENDING_ITERATOR_CLOSE);
+    }
+
+    pub fn append_pop_pending_iterator_close(&mut self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::POP_PENDING_ITERATOR_CLOSE);
+    }
+
+    pub fn append_require_object_coercible(&mut self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::REQUIRE_OBJECT_COERCIBLE);
+    }
+
+    pub fn append_object_rest(&mut self, excluded_count: usize, iseq: &mut ByteCode) {
+        iseq.push(VMInst::OBJECT_REST);
+        self.append_int32(excluded_count as i32, iseq);
+    }
+
+    pub fn append_object_rest_exclusion(&mut self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::OBJECT_REST_EXCLUSION);
     }
 
     // Utils
@@ -358,6 +532,10 @@ pub fn show_inst(code: &ByteCode, i: usize, const_table: &constant::ConstantTabl
                 let int32 = read_int32(code, i + 1);
                 format!("JmpIfTrue {:05}", i as i32 + int32 + 5)
             }
+            VMInst::JMP_IF_NOT_NULLISH => {
+                let int32 = read_int32(code, i + 1);
+                format!("JmpIfNotNullish {:05}", i as i32 + int32 + 5)
+            }
             VMInst::JMP => {
                 let int32 = read_int32(code, i + 1);
                 format!("Jmp {:05}", i as i32 + int32 + 5)
@@ -366,19 +544,48 @@ pub fn show_inst(code: &ByteCode, i: usize, const_table: &constant::ConstantTabl
                 let int32 = read_int32(code, i + 1);
                 format!("Call {}", int32)
             }
+            VMInst::CALL_SPREAD => "CallSpread".to_string(),
             VMInst::CALL_METHOD => {
                 let int32 = read_int32(code, i + 1);
                 format!("CallMethod {}", int32)
             }
+            VMInst::CALL_SUPER_METHOD => {
+                let int32 = read_int32(code, i + 1);
+                format!("CallSuperMethod {}", int32)
+            }
+            VMInst::CALL_SUPER_METHOD_SPREAD => "CallSuperMethodSpread".to_string(),
+            VMInst::CALL_METHOD_SPREAD => "CallMethodSpread".to_string(),
+            VMInst::CALL_PRIVATE_METHOD => {
+                let int32 = read_int32(code, i + 1);
+                format!("CallPrivateMethod {}", int32)
+            }
+            VMInst::CALL_PRIVATE_METHOD_SPREAD => "CallPrivateMethodSpread".to_string(),
             VMInst::GET_VALUE => {
                 let int32 = read_int32(code, i + 1);
                 let name = const_table.get(int32 as usize).as_string();
                 format!("GetValue '{}'", name)
             }
+            VMInst::GET_VALUE_KEEP_REF => {
+                let int32 = read_int32(code, i + 1);
+                let name = const_table.get(int32 as usize).as_string();
+                format!("GetValueKeepRef '{}'", name)
+            }
             VMInst::SET_VALUE => {
                 let int32 = read_int32(code, i + 1);
                 let name = const_table.get(int32 as usize).as_string();
                 format!("SetValue '{}'", name)
+            }
+            VMInst::SET_VALUE_KEEP_REF => {
+                let int32 = read_int32(code, i + 1);
+                let name = const_table.get(int32 as usize).as_string();
+                format!("SetValueKeepRef '{}'", name)
+            }
+            VMInst::MAKE_OBJECT_REFERENCE => "MakeObjectReference".to_string(),
+            VMInst::SET_PENDING_REFERENCE => "SetPendingReference".to_string(),
+            VMInst::MAKE_BINDING_REFERENCE => {
+                let int32 = read_int32(code, i + 1);
+                let name = const_table.get(int32 as usize).as_string();
+                format!("MakeBindingReference '{}'", name)
             }
             VMInst::DECL_VAR => {
                 let int32 = read_int32(code, i + 1);
@@ -400,9 +607,30 @@ pub fn show_inst(code: &ByteCode, i: usize, const_table: &constant::ConstantTabl
                 let names = const_table.get(int32 as usize).as_lex_env_info();
                 format!("PushEnv '{:?}'", names)
             }
+            VMInst::PUSH_OBJECT_ENV => "PushObjectEnv".to_string(),
             VMInst::JMP_SUB => {
                 let int32 = read_int32(code, i + 1);
                 format!("JmpSub {:05}", i as i32 + int32 + 5)
+            }
+            VMInst::FOR_IN_NEXT => {
+                let name_id = read_int32(code, i + 1);
+                let dst = read_int32(code, i + 5);
+                let name = const_table.get(name_id as usize).as_string();
+                format!("ForInNext '{}' {:05}", name, i as i32 + dst + 9)
+            }
+            VMInst::FOR_OF_NEXT => {
+                let name_id = read_int32(code, i + 1);
+                let dst = read_int32(code, i + 5);
+                let name = const_table.get(name_id as usize).as_string();
+                format!("ForOfNext '{}' {:05}", name, i as i32 + dst + 9)
+            }
+            VMInst::FOR_OF_NEXT_VALUE => {
+                let dst = read_int32(code, i + 1);
+                format!("ForOfNextValue {:05}", i as i32 + dst + 5)
+            }
+            VMInst::OBJECT_REST => {
+                let excluded_count = read_int32(code, i + 1);
+                format!("ObjectRest {}", excluded_count)
             }
             _ => inst_to_inst_name(code[i]).to_string(),
         }
@@ -448,11 +676,27 @@ pub fn inst_to_inst_name(inst: u8) -> &'static str {
         VMInst::ZFSHR => "ZeroFill-Shift-R",
         VMInst::GET_MEMBER => "GetMember",
         VMInst::SET_MEMBER => "SetMember",
+        VMInst::GET_PRIVATE_MEMBER => "GetPrivateMember",
+        VMInst::SET_PRIVATE_MEMBER => "SetPrivateMember",
+        VMInst::DEFINE_PRIVATE_MEMBER => "DefinePrivateMember",
+        VMInst::DEFINE_PRIVATE_METHOD => "DefinePrivateMethod",
+        VMInst::DEFINE_PRIVATE_GETTER => "DefinePrivateGetter",
+        VMInst::DEFINE_PRIVATE_SETTER => "DefinePrivateSetter",
+        VMInst::DELETE_MEMBER => "DeleteMember",
+        VMInst::DELETE_MEMBER_STRICT => "DeleteMemberStrict",
         VMInst::JMP_IF_FALSE => "JmpIfFalse",
         VMInst::JMP_IF_TRUE => "JmpIfTrue",
+        VMInst::JMP_IF_NOT_NULLISH => "JmpIfNotNullish",
         VMInst::JMP => "Jmp",
         VMInst::CALL => "Call",
+        VMInst::CALL_DIRECT_EVAL => "CallDirectEval",
+        VMInst::CALL_SPREAD => "CallSpread",
         VMInst::CALL_METHOD => "CallMethod",
+        VMInst::CALL_SUPER_METHOD => "CallSuperMethod",
+        VMInst::CALL_SUPER_METHOD_SPREAD => "CallSuperMethodSpread",
+        VMInst::CALL_METHOD_SPREAD => "CallMethodSpread",
+        VMInst::CALL_PRIVATE_METHOD => "CallPrivateMethod",
+        VMInst::CALL_PRIVATE_METHOD_SPREAD => "CallPrivateMethodSpread",
         VMInst::RETURN => "Return",
         VMInst::DOUBLE => "Double",
         VMInst::POP => "Pop",
@@ -460,10 +704,12 @@ pub fn inst_to_inst_name(inst: u8) -> &'static str {
         VMInst::LOR => "LogOr",
         VMInst::GET_VALUE => "GetValue",
         VMInst::SET_VALUE => "SetValue",
+        VMInst::SET_FUNCTION_NAME => "SetFunctionName",
         VMInst::DECL_VAR => "DeclVar",
         VMInst::DECL_CONST => "DeclConst",
         VMInst::DECL_LET => "DeclLet",
         VMInst::PUSH_ENV => "PushEnv",
+        VMInst::PUSH_OBJECT_ENV => "PushObjectEnv",
         VMInst::POP_ENV => "PopEnv",
         VMInst::COND_OP => "CondOp",
         VMInst::LOOP_START => "LoopStart",
@@ -477,6 +723,26 @@ pub fn inst_to_inst_name(inst: u8) -> &'static str {
         VMInst::EXP => "Exp",
         VMInst::PUSH_SEPERATOR => "PushSeperator",
         VMInst::SPREAD_ARRAY => "SpreadArray",
+        VMInst::FOR_IN_ENUMERATE => "ForInEnumerate",
+        VMInst::FOR_IN_NEXT => "ForInNext",
+        VMInst::FOR_OF_ENUMERATE => "ForOfEnumerate",
+        VMInst::FOR_OF_NEXT_VALUE => "ForOfNextValue",
+        VMInst::ITERATOR_NEXT => "IteratorNext",
+        VMInst::ITERATOR_REST_ARRAY => "IteratorRestArray",
+        VMInst::ITERATOR_CLOSE => "IteratorClose",
+        VMInst::PUSH_PENDING_ITERATOR_CLOSE => "PushPendingIteratorClose",
+        VMInst::POP_PENDING_ITERATOR_CLOSE => "PopPendingIteratorClose",
+        VMInst::REQUIRE_OBJECT_COERCIBLE => "RequireObjectCoercible",
+        VMInst::OBJECT_REST => "ObjectRest",
+        VMInst::OBJECT_REST_EXCLUSION => "ObjectRestExclusion",
+        VMInst::GET_VALUE_KEEP_REF => "GetValueKeepRef",
+        VMInst::SET_VALUE_KEEP_REF => "SetValueKeepRef",
+        VMInst::MAKE_OBJECT_REFERENCE => "MakeObjectReference",
+        VMInst::SET_PENDING_REFERENCE => "SetPendingReference",
+        VMInst::MAKE_BINDING_REFERENCE => "MakeBindingReference",
+        VMInst::YIELD => "Yield",
+        VMInst::INSTANCEOF => "Instanceof",
+        VMInst::IN => "In",
         _ => "???",
     }
 }
@@ -549,20 +815,151 @@ pub mod VMInst {
     pub const JMP_SUB: u8 = 0x3f;
     pub const RETURN_SUB: u8 = 0x40;
     pub const TYPEOF: u8 = 0x41;
+    pub const FOR_IN_ENUMERATE: u8 = 0x42;
+    pub const FOR_IN_NEXT: u8 = 0x43;
+    pub const INSTANCEOF: u8 = 0x44;
+    pub const IN: u8 = 0x45;
+    pub const DELETE_MEMBER: u8 = 0x46;
+    pub const DELETE_MEMBER_STRICT: u8 = 0x47;
+    pub const CALL_DIRECT_EVAL: u8 = 0x48;
+    pub const FOR_OF_ENUMERATE: u8 = 0x49;
+    pub const FOR_OF_NEXT: u8 = 0x4a;
+    pub const JMP_IF_NOT_NULLISH: u8 = 0x4b;
+    pub const FOR_OF_NEXT_VALUE: u8 = 0x4c;
+    pub const ITERATOR_NEXT: u8 = 0x4d;
+    pub const ITERATOR_REST_ARRAY: u8 = 0x4e;
+    pub const REQUIRE_OBJECT_COERCIBLE: u8 = 0x4f;
+    pub const OBJECT_REST: u8 = 0x50;
+    pub const YIELD: u8 = 0x51;
+    pub const PUSH_OBJECT_ENV: u8 = 0x52;
+    pub const OBJECT_REST_EXCLUSION: u8 = 0x53;
+    pub const GET_VALUE_KEEP_REF: u8 = 0x54;
+    pub const SET_VALUE_KEEP_REF: u8 = 0x55;
+    pub const SET_FUNCTION_NAME: u8 = 0x56;
+    pub const GET_PRIVATE_MEMBER: u8 = 0x57;
+    pub const SET_PRIVATE_MEMBER: u8 = 0x58;
+    pub const DEFINE_PRIVATE_MEMBER: u8 = 0x59;
+    pub const CALL_PRIVATE_METHOD: u8 = 0x5a;
+    pub const DEFINE_PRIVATE_METHOD: u8 = 0x5b;
+    pub const DEFINE_PRIVATE_GETTER: u8 = 0x5c;
+    pub const DEFINE_PRIVATE_SETTER: u8 = 0x5d;
+    pub const CALL_SPREAD: u8 = 0x5e;
+    pub const CALL_METHOD_SPREAD: u8 = 0x5f;
+    pub const CALL_PRIVATE_METHOD_SPREAD: u8 = 0x60;
+    pub const CALL_SUPER_METHOD: u8 = 0x61;
+    pub const ITERATOR_CLOSE: u8 = 0x62;
+    pub const CALL_SUPER_METHOD_SPREAD: u8 = 0x63;
+    pub const MAKE_OBJECT_REFERENCE: u8 = 0x64;
+    pub const SET_PENDING_REFERENCE: u8 = 0x65;
+    pub const MAKE_BINDING_REFERENCE: u8 = 0x66;
+    pub const PUSH_PENDING_ITERATOR_CLOSE: u8 = 0x67;
+    pub const POP_PENDING_ITERATOR_CLOSE: u8 = 0x68;
 
     pub fn get_inst_size(inst: u8) -> Option<usize> {
         match inst {
-            THROW | RETURN_SUB | SET_OUTER_ENV | POP_ENV | TYPEOF | PUSH_NULL => Some(1),
-            CONSTRUCT | CREATE_OBJECT | PUSH_CONST | PUSH_INT32 | JMP_IF_FALSE | JMP_IF_TRUE
-            | RETURN_TRY | DECL_VAR | LOOP_START | JMP | SET_VALUE | GET_VALUE | CALL | JMP_SUB
-            | CALL_METHOD | PUSH_ENV | DECL_LET | DECL_CONST => Some(5),
+            THROW
+            | RETURN_SUB
+            | SET_OUTER_ENV
+            | POP_ENV
+            | TYPEOF
+            | PUSH_NULL
+            | FOR_IN_ENUMERATE
+            | FOR_OF_ENUMERATE
+            | IN
+            | DELETE_MEMBER
+            | DELETE_MEMBER_STRICT
+            | ITERATOR_NEXT
+            | ITERATOR_REST_ARRAY
+            | ITERATOR_CLOSE
+            | PUSH_PENDING_ITERATOR_CLOSE
+            | POP_PENDING_ITERATOR_CLOSE
+            | REQUIRE_OBJECT_COERCIBLE
+            | YIELD
+            | PUSH_OBJECT_ENV
+            | OBJECT_REST_EXCLUSION
+            | CALL_SPREAD
+            | CALL_METHOD_SPREAD
+            | CALL_SUPER_METHOD_SPREAD
+            | CALL_PRIVATE_METHOD_SPREAD
+            | MAKE_OBJECT_REFERENCE
+            | SET_PENDING_REFERENCE => Some(1),
+            CONSTRUCT
+            | CREATE_OBJECT
+            | PUSH_CONST
+            | PUSH_INT32
+            | JMP_IF_FALSE
+            | JMP_IF_TRUE
+            | JMP_IF_NOT_NULLISH
+            | RETURN_TRY
+            | DECL_VAR
+            | LOOP_START
+            | JMP
+            | SET_VALUE
+            | GET_VALUE
+            | CALL
+            | JMP_SUB
+            | CALL_DIRECT_EVAL
+            | CALL_METHOD
+            | PUSH_ENV
+            | DECL_LET
+            | DECL_CONST
+            | FOR_OF_NEXT_VALUE
+            | OBJECT_REST
+            | GET_VALUE_KEEP_REF
+            | SET_VALUE_KEEP_REF
+            | SET_FUNCTION_NAME
+            | CALL_PRIVATE_METHOD
+            | MAKE_BINDING_REFERENCE
+            | CALL_SUPER_METHOD => Some(5),
+            FOR_IN_NEXT | FOR_OF_NEXT => Some(9),
             PUSH_INT8 => Some(2),
-            PUSH_FALSE | END | PUSH_TRUE | PUSH_THIS | ADD | SUB | MUL | DIV | REM | LT | EXP
-            | PUSH_ARGUMENTS | NEG | POSI | GT | LE | GE | EQ | NE | GET_MEMBER | RETURN | SNE
-            | ZFSHR | POP | DOUBLE | AND | COND_OP | OR | SEQ | SET_MEMBER | LNOT
-            | PUSH_UNDEFINED | LAND | SHR | SHL | XOR | LOR | NOT | CREATE_ARRAY | SPREAD_ARRAY => {
-                Some(1)
-            }
+            PUSH_FALSE
+            | END
+            | PUSH_TRUE
+            | PUSH_THIS
+            | ADD
+            | SUB
+            | MUL
+            | DIV
+            | REM
+            | LT
+            | EXP
+            | PUSH_ARGUMENTS
+            | NEG
+            | POSI
+            | GT
+            | LE
+            | GE
+            | INSTANCEOF
+            | EQ
+            | NE
+            | GET_MEMBER
+            | GET_PRIVATE_MEMBER
+            | RETURN
+            | SNE
+            | ZFSHR
+            | POP
+            | DOUBLE
+            | AND
+            | COND_OP
+            | OR
+            | SEQ
+            | SET_MEMBER
+            | SET_PRIVATE_MEMBER
+            | DEFINE_PRIVATE_MEMBER
+            | LNOT
+            | DEFINE_PRIVATE_METHOD
+            | DEFINE_PRIVATE_GETTER
+            | DEFINE_PRIVATE_SETTER
+            | PUSH_UNDEFINED
+            | LAND
+            | SHR
+            | SHL
+            | XOR
+            | LOR
+            | NOT
+            | CREATE_ARRAY
+            | SPREAD_ARRAY => Some(1),
             _ => None,
         }
     }

@@ -11,7 +11,6 @@ use crate::gc;
 use crate::vm::exec_context::LexicalEnvironmentRef;
 use crate::vm::vm::Factory;
 pub use rustc_hash::FxHashMap;
-use std::ffi::CString;
 
 pub const UNINITIALIZED: i32 = 0;
 pub const EMPTY: i32 = 1;
@@ -31,7 +30,7 @@ make_nanbox! {
     pub unsafe enum BoxedValue, Value {
         Number(f64),
         Bool(u8), // 0 | 1 = false | true
-        String(*mut CString), // TODO: Using CString is good for JIT. However, we need better one instead.
+        String(*mut String),
         Object(*mut Object),
         // Symbol(*mut SymbolInfo),
         Other(i32) // UNINITIALIZED | EMPTY | NULL | UNDEFINED
@@ -62,6 +61,16 @@ macro_rules! make_property_map_sub {
     } };
 }
 
+macro_rules! make_property_order_sub {
+    ($(
+         $property_name:ident
+    ),*) => { {
+        let mut order = Vec::new();
+        $( order.push((stringify!($property_name)).to_string()); )*
+        order
+    } };
+}
+
 #[macro_export]
 macro_rules! make_property_map {
     ($($property_name:ident: $val:expr),*) => { {
@@ -73,6 +82,16 @@ macro_rules! make_property_map {
 }
 
 #[macro_export]
+macro_rules! make_property_order {
+    ($($property_name:ident: $val:expr),*) => { {
+        make_property_order_sub!($($property_name),* )
+    } };
+    ($($property_name:ident => $x:ident, $y:ident, $z:ident : $val:expr),*) => { {
+        make_property_order_sub!($($property_name),* )
+    } };
+}
+
+#[macro_export]
 macro_rules! make_normal_object {
     ($factory:expr) => { {
         Value::Object($factory.alloc(
@@ -80,7 +99,11 @@ macro_rules! make_normal_object {
                 kind: crate::vm::jsvalue::object::ObjectKind::Ordinary,
                 prototype: $factory.object_prototypes.object,
                 property: rustc_hash::FxHashMap::default(),
-                sym_property: rustc_hash::FxHashMap::default()
+                property_order: Vec::new(),
+                private_elements: rustc_hash::FxHashMap::default(),
+                sym_property: rustc_hash::FxHashMap::default(),
+                sym_property_order: Vec::new(),
+                extensible: true
             }
         ))
     } };
@@ -90,7 +113,11 @@ macro_rules! make_normal_object {
                 kind: ObjectKind::Ordinary,
                 prototype: $object_prototypes.object,
                 property: FxHashMap::default(),
-                sym_property: FxHashMap::default()
+                property_order: Vec::new(),
+                private_elements: rustc_hash::FxHashMap::default(),
+                sym_property: FxHashMap::default(),
+                sym_property_order: Vec::new(),
+                extensible: true
             }
         ))
     } };
@@ -100,7 +127,11 @@ macro_rules! make_normal_object {
                 kind: ObjectKind::Ordinary,
                 prototype: $object_prototypes.object,
                 property: make_property_map_sub!($($property_name, $val, $x, $y, $z),* ),
-                sym_property: FxHashMap::default()
+                property_order: make_property_order_sub!($($property_name),* ),
+                private_elements: rustc_hash::FxHashMap::default(),
+                sym_property: FxHashMap::default(),
+                sym_property_order: Vec::new(),
+                extensible: true
             }
             ))
     } };
@@ -110,7 +141,11 @@ macro_rules! make_normal_object {
                 kind: crate::vm::jsvalue::object::ObjectKind::Ordinary,
                 prototype: $factory.object_prototypes.object,
                 property: make_property_map_sub!($($property_name, $val, $x, $y, $z),* ),
-                sym_property: rustc_hash::FxHashMap::default()
+                property_order: make_property_order_sub!($($property_name),* ),
+                private_elements: rustc_hash::FxHashMap::default(),
+                sym_property: rustc_hash::FxHashMap::default(),
+                sym_property_order: Vec::new(),
+                extensible: true
             }
             ))
     } };
@@ -134,12 +169,32 @@ impl std::fmt::Display for Value {
                 let info = ObjectRef(*info);
                 match info.kind {
                     ObjectKind::Ordinary => write!(f, "Object"),
-                    ObjectKind::Arguments => write!(f, "Arguments"),
+                    ObjectKind::Arguments(_) => write!(f, "Arguments"),
                     ObjectKind::Function(_) => write!(f, "Function"),
                     ObjectKind::Array(_) => write!(f, "Array"),
                     ObjectKind::Date(_) => write!(f, "Date"),
+                    ObjectKind::RegExp(_) => write!(f, "RegExp"),
+                    ObjectKind::Map(_) => write!(f, "Map"),
+                    ObjectKind::Set(_) => write!(f, "Set"),
+                    ObjectKind::WeakMap(_) => write!(f, "WeakMap"),
+                    ObjectKind::WeakSet(_) => write!(f, "WeakSet"),
+                    ObjectKind::WeakRef(_) => write!(f, "WeakRef"),
+                    ObjectKind::FinalizationRegistry(_) => write!(f, "FinalizationRegistry"),
+                    ObjectKind::ShadowRealm(_) => write!(f, "ShadowRealm"),
+                    ObjectKind::MapIterator(_) => write!(f, "Map Iterator"),
+                    ObjectKind::SetIterator(_) => write!(f, "Set Iterator"),
+                    ObjectKind::Generator(_) => write!(f, "Generator"),
+                    ObjectKind::ArrayBuffer(ref info) if info.shared => {
+                        write!(f, "SharedArrayBuffer")
+                    }
+                    ObjectKind::ArrayBuffer(_) => write!(f, "ArrayBuffer"),
+                    ObjectKind::DataView(_) => write!(f, "DataView"),
+                    ObjectKind::TypedArray(ref info) => write!(f, "{}", info.name),
                     ObjectKind::Symbol(_) => write!(f, "Symbol"),
+                    ObjectKind::BigInt(ref info) => write!(f, "{}n", info.decimal),
                     ObjectKind::Error(_) => write!(f, "Error"),
+                    ObjectKind::Proxy(_) => write!(f, "Proxy"),
+                    ObjectKind::Temporal(_) => write!(f, "Temporal"),
                 }
             }
         }
@@ -178,7 +233,7 @@ impl Value {
     }
 
     fn string(memory_allocator: &mut gc::MemoryAllocator, body: String) -> Self {
-        Value::String(memory_allocator.alloc(CString::new(body).unwrap()))
+        Value::String(memory_allocator.alloc(body))
     }
 
     pub fn builtin_function_with_proto(
@@ -192,6 +247,7 @@ impl Value {
         Value::Object(memory_allocator.alloc(Object {
             kind: ObjectKind::Function(FunctionObjectInfo {
                 name: Some(name),
+                super_constructor: None,
                 kind: FunctionObjectKind::Builtin(func),
             }),
             prototype: proto,
@@ -199,7 +255,14 @@ impl Value {
                 length => false, false, true : Value::Number(0.0),
                 name   => false, false, true : name_prop
             ),
+            property_order: make_property_order!(
+                length => false, false, true : Value::Number(0.0),
+                name   => false, false, true : name_prop
+            ),
+            private_elements: rustc_hash::FxHashMap::default(),
             sym_property: FxHashMap::default(),
+            sym_property_order: Vec::new(),
+            extensible: true,
         }))
     }
 }
@@ -305,6 +368,23 @@ impl Value {
         }
     }
 
+    pub fn is_bigint(&self) -> bool {
+        match self {
+            Value::Object(info) => matches!(ObjectRef(*info).kind, ObjectKind::BigInt(_)),
+            _ => false,
+        }
+    }
+
+    pub fn bigint_decimal(&self) -> Option<String> {
+        match self {
+            Value::Object(info) => match ObjectRef(*info).kind {
+                ObjectKind::BigInt(ref info) => Some(info.decimal.clone()),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
     // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-canonicalnumericindexstring
     pub fn is_canonical_numeric_index_string(
         &self,
@@ -393,6 +473,27 @@ impl Value {
             Value::String(s) => {
                 return string_get_property(factory, cstrp_to_str(*s), key);
             }
+            Value::Number(_) => {
+                return factory
+                    .object_prototypes
+                    .number
+                    .get_object_info()
+                    .get_property_by_value(factory, key);
+            }
+            Value::Object(info) if matches!(ObjectRef(*info).kind, ObjectKind::BigInt(_)) => {
+                return factory
+                    .object_prototypes
+                    .bigint
+                    .get_object_info()
+                    .get_property_by_value(factory, key);
+            }
+            Value::Bool(_) => {
+                return factory
+                    .object_prototypes
+                    .boolean
+                    .get_object_info()
+                    .get_property_by_value(factory, key);
+            }
             Value::Other(_) => {
                 return Err(error::RuntimeError::typeerr(format!(
                     "TypeError: Cannot read property '{}' of {}",
@@ -400,7 +501,6 @@ impl Value {
                     self.to_string()
                 )));
             }
-            // TODO: Number
             _ => {}
         }
 
@@ -422,7 +522,7 @@ impl Value {
         allocator: &mut gc::MemoryAllocator,
         key: Value,
         val: Value,
-    ) -> Result<Option<Value>, error::RuntimeError> {
+    ) -> Result<(Option<Value>, bool), error::RuntimeError> {
         match self {
             Value::Object(obj_info) => {
                 ObjectRef(*obj_info).set_property_by_value(allocator, key, val)
@@ -432,7 +532,25 @@ impl Value {
                 key.to_string(),
                 self.to_string()
             ))),
-            _ => Ok(None),
+            _ => Ok((None, false)),
+        }
+    }
+
+    pub fn delete_property_by_value(
+        &self,
+        allocator: &mut gc::MemoryAllocator,
+        key: Value,
+    ) -> Result<bool, error::RuntimeError> {
+        match self {
+            Value::Object(obj_info) => {
+                ObjectRef(*obj_info).delete_property_by_value(allocator, key)
+            }
+            Value::Other(_) => Err(error::RuntimeError::typeerr(format!(
+                "TypeError: Cannot delete property '{}' of {}",
+                key.to_string(),
+                self.to_string()
+            ))),
+            _ => Ok(true),
         }
     }
 
@@ -487,6 +605,19 @@ impl Value {
                 let obj = unsafe { &**obj };
                 match obj.kind {
                     ObjectKind::Date(ref info) => Some(&info),
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+    }
+
+    pub fn as_date_mut(&self) -> Option<&mut DateObjectInfo> {
+        match self {
+            Value::Object(obj) => {
+                let obj = unsafe { &mut **obj };
+                match obj.kind {
+                    ObjectKind::Date(ref mut info) => Some(info),
                     _ => None,
                 }
             }
@@ -568,16 +699,42 @@ impl Value {
             Value::Bool(0) => 0.0,
             Value::Bool(1) => 1.0,
             Value::Number(n) => *n,
+            Value::Object(info) if matches!(ObjectRef(*info).kind, ObjectKind::BigInt(_)) => {
+                match ObjectRef(*info).kind {
+                    ObjectKind::BigInt(ref info) => info.decimal.parse::<f64>().unwrap_or(f64::NAN),
+                    _ => unreachable!(),
+                }
+            }
             Value::String(s) => {
-                let s = cstrp_to_str(*s);
-                if s == "Infinity" || s == "-Infinity" {
+                let s = cstrp_to_str(*s).trim();
+                if s == "Infinity" || s == "+Infinity" {
                     ::std::f64::INFINITY
+                } else if s == "-Infinity" {
+                    ::std::f64::NEG_INFINITY
                 } else if s.len() == 0 {
                     0.0
                 } else if s.chars().all(|c| c.is_whitespace()) {
                     0.0
+                } else if let Some(hex) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
+                    u64::from_str_radix(hex, 16)
+                        .map(|num| num as f64)
+                        .unwrap_or(::std::f64::NAN)
+                } else if let Some(bin) = s.strip_prefix("0b").or_else(|| s.strip_prefix("0B")) {
+                    u64::from_str_radix(bin, 2)
+                        .map(|num| num as f64)
+                        .unwrap_or(::std::f64::NAN)
+                } else if let Some(oct) = s.strip_prefix("0o").or_else(|| s.strip_prefix("0O")) {
+                    u64::from_str_radix(oct, 8)
+                        .map(|num| num as f64)
+                        .unwrap_or(::std::f64::NAN)
                 } else {
-                    s.parse::<f64>().unwrap_or(::std::f64::NAN)
+                    if s.chars()
+                        .any(|ch| ch.is_ascii_alphabetic() && ch != 'e' && ch != 'E')
+                    {
+                        ::std::f64::NAN
+                    } else {
+                        s.parse::<f64>().unwrap_or(::std::f64::NAN)
+                    }
                 }
             }
             Value::Object(_) => self
@@ -600,9 +757,23 @@ impl Value {
                 if n.is_nan() {
                     "NaN".to_string()
                 } else if n.is_infinite() {
-                    "Infinity".to_string()
+                    if n.is_sign_negative() {
+                        "-Infinity".to_string()
+                    } else {
+                        "Infinity".to_string()
+                    }
+                } else if *n == 0.0 {
+                    "0".to_string()
+                } else if n.abs() >= 1e21 || n.abs() < 1e-6 {
+                    number_to_exponential_string(*n)
                 } else {
                     format!("{}", n)
+                }
+            }
+            Value::Object(info) if matches!(ObjectRef(*info).kind, ObjectKind::BigInt(_)) => {
+                match ObjectRef(*info).kind {
+                    ObjectKind::BigInt(ref info) => info.decimal.clone(),
+                    _ => unreachable!(),
                 }
             }
             Value::Object(info) => {
@@ -610,6 +781,11 @@ impl Value {
                 match info.kind {
                     ObjectKind::Ordinary => "[object Object]".to_string(),
                     ObjectKind::Array(ref info) => info.join(None),
+                    ObjectKind::WeakRef(_) => "[object WeakRef]".to_string(),
+                    ObjectKind::FinalizationRegistry(_) => {
+                        "[object FinalizationRegistry]".to_string()
+                    }
+                    ObjectKind::ShadowRealm(_) => "[object ShadowRealm]".to_string(),
                     _ => "[unimplemented]".to_string(), // TODO
                 }
             }
@@ -628,6 +804,12 @@ impl Value {
                     false
                 } else {
                     true
+                }
+            }
+            Value::Object(info) if matches!(ObjectRef(*info).kind, ObjectKind::BigInt(_)) => {
+                match ObjectRef(*info).kind {
+                    ObjectKind::BigInt(ref info) => info.decimal != "0",
+                    _ => unreachable!(),
                 }
             }
             Value::String(s) => cstrp_to_str(*s).len() != 0,
@@ -659,6 +841,9 @@ impl Value {
         allocator: &mut gc::MemoryAllocator,
         preferred_type: Option<PreferredType>,
     ) -> Value {
+        if self.is_symbol() || self.is_bigint() {
+            return *self;
+        }
         if !self.is_object() {
             return *self;
         }
@@ -683,7 +868,7 @@ impl Value {
         match hint {
             PreferredType::Number => {
                 if let Some(val) = self.value_of() {
-                    if !val.is_object() {
+                    if !val.is_object() || val.is_symbol() || val.is_bigint() {
                         return val;
                     }
                 }
@@ -700,13 +885,45 @@ impl Value {
             Value::Object(info) => {
                 let info = unsafe { &*info };
                 match info.kind {
-                    ObjectKind::Ordinary => Some(self),
-                    ObjectKind::Arguments => Some(self),
+                    ObjectKind::Ordinary => {
+                        for internal in [
+                            "__string_data",
+                            "__number_data",
+                            "__boolean_data",
+                            "__symbol_data",
+                            "__bigint_data",
+                        ] {
+                            if let Some(prop) = info.property.get(internal) {
+                                if let Some(data) = prop.get_data() {
+                                    return Some(data.val);
+                                }
+                            }
+                        }
+                        Some(self)
+                    }
+                    ObjectKind::Arguments(_) => Some(self),
                     ObjectKind::Function(_) => None,
                     ObjectKind::Array(_) => None,
                     ObjectKind::Date(_) => None,
+                    ObjectKind::RegExp(_)
+                    | ObjectKind::Map(_)
+                    | ObjectKind::Set(_)
+                    | ObjectKind::WeakMap(_)
+                    | ObjectKind::WeakSet(_)
+                    | ObjectKind::WeakRef(_)
+                    | ObjectKind::FinalizationRegistry(_)
+                    | ObjectKind::ShadowRealm(_)
+                    | ObjectKind::MapIterator(_)
+                    | ObjectKind::SetIterator(_)
+                    | ObjectKind::Generator(_)
+                    | ObjectKind::ArrayBuffer(_)
+                    | ObjectKind::DataView(_)
+                    | ObjectKind::TypedArray(_) => Some(self),
                     ObjectKind::Error(_) => None,
                     ObjectKind::Symbol(_) => Some(self), // TODO
+                    ObjectKind::BigInt(_) => Some(self),
+                    ObjectKind::Proxy(_) => Some(self),
+                    ObjectKind::Temporal(_) => Some(self),
                 }
             }
             Value::String(_) => Some(self), // TODO
@@ -716,11 +933,47 @@ impl Value {
 }
 
 impl Value {
+    fn bigint_from_i128(allocator: &mut gc::MemoryAllocator, value: i128) -> Value {
+        Value::Object(allocator.alloc(Object {
+            kind: ObjectKind::BigInt(BigIntInfo {
+                decimal: value.to_string(),
+            }),
+            prototype: Value::undefined(),
+            property: FxHashMap::default(),
+            property_order: Vec::new(),
+            private_elements: FxHashMap::default(),
+            sym_property: FxHashMap::default(),
+            sym_property_order: Vec::new(),
+            extensible: true,
+        }))
+    }
+
+    fn bigint_i128(&self) -> Option<i128> {
+        self.bigint_decimal()?.parse::<i128>().ok()
+    }
+
+    fn bigint_binary_i128(
+        allocator: &mut gc::MemoryAllocator,
+        lhs: Value,
+        rhs: Value,
+        op: impl FnOnce(i128, i128) -> Option<i128>,
+    ) -> Value {
+        match (lhs.bigint_i128(), rhs.bigint_i128()) {
+            (Some(l), Some(r)) => op(l, r)
+                .map(|value| Value::bigint_from_i128(allocator, value))
+                .unwrap_or_else(Value::undefined),
+            _ => Value::undefined(),
+        }
+    }
+
     // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-addition-operator-plus-runtime-semantics-evaluation
     pub fn add(self, allocator: &mut gc::MemoryAllocator, val: Value) -> Self {
         let lprim = self.to_primitive(allocator, None);
         let rprim = val.to_primitive(allocator, None);
         match (lprim, rprim) {
+            (x, y) if x.is_bigint() && y.is_bigint() => {
+                Value::bigint_binary_i128(allocator, x, y, |l, r| l.checked_add(r))
+            }
             (Value::Number(x), Value::Number(y)) => Value::Number(x + y),
             (Value::String(x), Value::String(y)) => {
                 let x = cstrp_to_str(x);
@@ -736,6 +989,7 @@ impl Value {
                 let y = cstrp_to_str(y);
                 Value::string(allocator, format!("{}{}", lprim.to_string(), y))
             }
+            (x, y) if x.is_bigint() || y.is_bigint() => Value::undefined(),
             (x, y) => Value::Number(x.to_number(allocator) + y.to_number(allocator)),
         }
     }
@@ -743,64 +997,161 @@ impl Value {
     // https://www.ecma-international.org/ecma-262/6.0/#sec-subtraction-operator-minus-runtime-semantics-evaluation
     pub fn sub(self, allocator: &mut gc::MemoryAllocator, val: Value) -> Self {
         match (self, val) {
+            (x, y) if x.is_bigint() && y.is_bigint() => {
+                Value::bigint_binary_i128(allocator, x, y, |l, r| l.checked_sub(r))
+            }
+            (x, y) if x.is_bigint() || y.is_bigint() => Value::undefined(),
             (Value::Number(x), Value::Number(y)) => Value::Number(x - y),
             (x, y) => Value::Number(x.to_number(allocator) - y.to_number(allocator)),
         }
     }
 
-    pub fn mul(self, val: Value) -> Self {
+    pub fn mul(self, allocator: &mut gc::MemoryAllocator, val: Value) -> Self {
         match (self, val) {
+            (x, y) if x.is_bigint() && y.is_bigint() => {
+                Value::bigint_binary_i128(allocator, x, y, |l, r| l.checked_mul(r))
+            }
+            (x, y) if x.is_bigint() || y.is_bigint() => Value::undefined(),
             (Value::Number(x), Value::Number(y)) => Value::Number(x * y),
             _ => Value::undefined(),
         }
     }
 
-    pub fn div(self, val: Value) -> Self {
+    pub fn div(self, allocator: &mut gc::MemoryAllocator, val: Value) -> Self {
         match (self, val) {
+            (x, y) if x.is_bigint() && y.is_bigint() => {
+                Value::bigint_binary_i128(allocator, x, y, |l, r| {
+                    if r == 0 {
+                        None
+                    } else {
+                        l.checked_div(r)
+                    }
+                })
+            }
+            (x, y) if x.is_bigint() || y.is_bigint() => Value::undefined(),
             (Value::Number(x), Value::Number(y)) => Value::Number(x / y),
             _ => Value::undefined(),
         }
     }
 
-    pub fn rem(self, val: Value) -> Self {
+    pub fn rem(self, allocator: &mut gc::MemoryAllocator, val: Value) -> Self {
         match (self, val) {
+            (x, y) if x.is_bigint() && y.is_bigint() => {
+                Value::bigint_binary_i128(allocator, x, y, |l, r| {
+                    if r == 0 {
+                        None
+                    } else {
+                        l.checked_rem(r)
+                    }
+                })
+            }
+            (x, y) if x.is_bigint() || y.is_bigint() => Value::undefined(),
             (Value::Number(x), Value::Number(y)) => Value::Number((x as i64 % y as i64) as f64),
             _ => Value::undefined(),
         }
     }
 
     pub fn exp(self, allocator: &mut gc::MemoryAllocator, val: Value) -> Self {
+        if self.is_bigint() && val.is_bigint() {
+            let Some(base) = self.bigint_i128() else {
+                return Value::undefined();
+            };
+            let Some(exp) = val.bigint_i128() else {
+                return Value::undefined();
+            };
+            if exp < 0 || exp > u32::MAX as i128 {
+                return Value::undefined();
+            }
+            return base
+                .checked_pow(exp as u32)
+                .map(|value| Value::bigint_from_i128(allocator, value))
+                .unwrap_or_else(Value::undefined);
+        }
+        if self.is_bigint() || val.is_bigint() {
+            return Value::undefined();
+        }
         Value::Number(self.to_number(allocator).powf(val.to_number(allocator)))
     }
 
     pub fn and(self, allocator: &mut gc::MemoryAllocator, val: Value) -> Self {
+        if self.is_bigint() && val.is_bigint() {
+            return Value::bigint_binary_i128(allocator, self, val, |l, r| Some(l & r));
+        }
+        if self.is_bigint() || val.is_bigint() {
+            return Value::undefined();
+        }
         Value::Number((self.to_int32(allocator) & val.to_int32(allocator)) as f64)
     }
 
     pub fn or(self, allocator: &mut gc::MemoryAllocator, val: Value) -> Self {
+        if self.is_bigint() && val.is_bigint() {
+            return Value::bigint_binary_i128(allocator, self, val, |l, r| Some(l | r));
+        }
+        if self.is_bigint() || val.is_bigint() {
+            return Value::undefined();
+        }
         Value::Number((self.to_int32(allocator) | val.to_int32(allocator)) as f64)
     }
 
     pub fn xor(self, allocator: &mut gc::MemoryAllocator, val: Value) -> Self {
+        if self.is_bigint() && val.is_bigint() {
+            return Value::bigint_binary_i128(allocator, self, val, |l, r| Some(l ^ r));
+        }
+        if self.is_bigint() || val.is_bigint() {
+            return Value::undefined();
+        }
         Value::Number((self.to_int32(allocator) ^ val.to_int32(allocator)) as f64)
     }
 
     pub fn not(self, allocator: &mut gc::MemoryAllocator) -> Self {
+        if self.is_bigint() {
+            return self
+                .bigint_i128()
+                .map(|value| Value::bigint_from_i128(allocator, !value))
+                .unwrap_or_else(Value::undefined);
+        }
         Value::Number((!self.to_int32(allocator)) as f64)
     }
 
     /// https://tc39.github.io/ecma262/#sec-left-shift-operator
     pub fn shift_l(self, allocator: &mut gc::MemoryAllocator, val: Value) -> Self {
+        if self.is_bigint() && val.is_bigint() {
+            return Value::bigint_binary_i128(allocator, self, val, |l, r| {
+                if r < 0 || r > u32::MAX as i128 {
+                    None
+                } else {
+                    l.checked_shl(r as u32)
+                }
+            });
+        }
+        if self.is_bigint() || val.is_bigint() {
+            return Value::undefined();
+        }
         Value::Number((self.to_int32(allocator) << (val.to_uint32(allocator) & 0x1f)) as f64)
     }
 
     /// https://tc39.github.io/ecma262/#sec-signed-right-shift-operator
     pub fn shift_r(self, allocator: &mut gc::MemoryAllocator, val: Value) -> Self {
+        if self.is_bigint() && val.is_bigint() {
+            return Value::bigint_binary_i128(allocator, self, val, |l, r| {
+                if r < 0 || r > u32::MAX as i128 {
+                    None
+                } else {
+                    l.checked_shr(r as u32)
+                }
+            });
+        }
+        if self.is_bigint() || val.is_bigint() {
+            return Value::undefined();
+        }
         Value::Number((self.to_int32(allocator) >> (val.to_uint32(allocator) & 0x1f)) as f64)
     }
 
     /// https://tc39.github.io/ecma262/#sec-unsigned-right-shift-operator
     pub fn z_shift_r(self, allocator: &mut gc::MemoryAllocator, val: Value) -> Self {
+        if self.is_bigint() || val.is_bigint() {
+            return Value::undefined();
+        }
         Value::Number((self.to_uint32(allocator) >> (val.to_uint32(allocator) & 0x1f)) as f64)
     }
 
@@ -817,6 +1168,10 @@ impl Value {
         }
 
         match (self, val) {
+            (x, y) if x.is_bigint() && y.is_bigint() => {
+                Value::bool(x.bigint_decimal() == y.bigint_decimal())
+            }
+            (x, y) if x.is_symbol() || y.is_symbol() => Value::bool(false),
             (Value::Number(x), Value::String(_)) => Value::bool(x == val.to_number(allocator)),
             (Value::String(_), Value::Number(y)) => Value::bool(self.to_number(allocator) == y),
             (Value::Bool(_), Value::Number(y)) => Value::bool(self.to_number(allocator) == y),
@@ -854,6 +1209,9 @@ impl Value {
             Value::Number(_) => self.into_number() == val.into_number(),
             Value::String(_) => self.into_str() == val.into_str(),
             Value::Bool(_) => self.into_bool() == val.into_bool(),
+            Value::Object(info) if matches!(ObjectRef(info).kind, ObjectKind::BigInt(_)) => {
+                self.bigint_decimal() == val.bigint_decimal()
+            }
             Value::Object(_) => get_obj_ptr(self) == get_obj_ptr(val),
             _ => false,
         }
@@ -874,6 +1232,16 @@ impl Value {
 
         if let (Value::String(x), Value::String(y)) = (px, py) {
             return Value::bool(cstrp_to_str(x) < cstrp_to_str(y));
+        }
+
+        if px.is_bigint() && py.is_bigint() {
+            return match (px.bigint_i128(), py.bigint_i128()) {
+                (Some(x), Some(y)) => Value::bool(x < y),
+                _ => Value::undefined(),
+            };
+        }
+        if px.is_bigint() || py.is_bigint() {
+            return Value::undefined();
         }
 
         let nx = px.to_number(allocator);
@@ -905,15 +1273,40 @@ impl Value {
     }
 
     // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-unary-minus-operator-runtime-semantics-evaluation
-    pub fn minus(self) -> Self {
+    pub fn minus(self, allocator: &mut gc::MemoryAllocator) -> Self {
         match self {
             Value::Number(n) => Value::Number(-n),
+            value if value.is_bigint() => {
+                let Some(decimal) = value.bigint_decimal() else {
+                    return Value::undefined();
+                };
+                let decimal = if decimal == "0" {
+                    decimal
+                } else if let Some(positive) = decimal.strip_prefix('-') {
+                    positive.to_string()
+                } else {
+                    format!("-{}", decimal)
+                };
+                Value::Object(allocator.alloc(Object {
+                    kind: ObjectKind::BigInt(BigIntInfo { decimal }),
+                    prototype: Value::undefined(),
+                    property: FxHashMap::default(),
+                    property_order: Vec::new(),
+                    private_elements: FxHashMap::default(),
+                    sym_property: FxHashMap::default(),
+                    sym_property_order: Vec::new(),
+                    extensible: true,
+                }))
+            }
             _ => Value::undefined(),
         }
     }
 
     // TODO: https://www.ecma-international.org/ecma-262/6.0/#sec-unary-plus-operator-runtime-semantics-evaluation
     pub fn positive(self, allocator: &mut gc::MemoryAllocator) -> Self {
+        if self.is_bigint() {
+            return Value::undefined();
+        }
         Value::Number(self.to_number(allocator))
     }
 
@@ -925,8 +1318,10 @@ impl Value {
             | (Value::Other(UNDEFINED), Value::Other(UNDEFINED))
             | (Value::Number(_), Value::Number(_))
             | (Value::String(_), Value::String(_))
-            | (Value::Bool(_), Value::Bool(_))
-            | (Value::Object(_), Value::Object(_)) => true,
+            | (Value::Bool(_), Value::Bool(_)) => true,
+            (Value::Object(_), Value::Object(_)) => {
+                self.is_bigint() == val.is_bigint() && self.is_symbol() == val.is_symbol()
+            }
             _ => false,
         }
     }
@@ -938,6 +1333,7 @@ impl Value {
             Value::Other(NULL) => "object",
             Value::Bool(_) => "boolean",
             Value::Number(_) => "number",
+            value if value.is_bigint() => "bigint",
             Value::String(_) => "string",
             Value::Object(info) => {
                 let info = ObjectRef(*info);
@@ -945,9 +1341,29 @@ impl Value {
                     ObjectKind::Function(_) => "function",
                     ObjectKind::Array(_) => "object",
                     ObjectKind::Date(_) => "object",
+                    ObjectKind::RegExp(_)
+                    | ObjectKind::Map(_)
+                    | ObjectKind::Set(_)
+                    | ObjectKind::WeakMap(_)
+                    | ObjectKind::WeakSet(_)
+                    | ObjectKind::WeakRef(_)
+                    | ObjectKind::FinalizationRegistry(_)
+                    | ObjectKind::ShadowRealm(_)
+                    | ObjectKind::MapIterator(_)
+                    | ObjectKind::SetIterator(_)
+                    | ObjectKind::Generator(_)
+                    | ObjectKind::ArrayBuffer(_)
+                    | ObjectKind::DataView(_)
+                    | ObjectKind::TypedArray(_) => "object",
                     ObjectKind::Symbol(_) => "symbol",
-                    ObjectKind::Error(_) => "error",
-                    ObjectKind::Arguments => "object",
+                    ObjectKind::BigInt(_) => "bigint",
+                    ObjectKind::Error(_) => "object",
+                    ObjectKind::Arguments(_) => "object",
+                    ObjectKind::Proxy(ref proxy) if proxy.target.type_of() == "function" => {
+                        "function"
+                    }
+                    ObjectKind::Proxy(_) => "object",
+                    ObjectKind::Temporal(_) => "object",
                     ObjectKind::Ordinary => "object",
                 }
             }
@@ -1032,7 +1448,7 @@ impl Value {
 
                         format!("{{ {} }}", property_string(sorted_key_val))
                     }
-                    ObjectKind::Arguments => {
+                    ObjectKind::Arguments(_) => {
                         let mut sorted_key_val =
                             (&obj_info.property)
                                 .iter()
@@ -1046,6 +1462,7 @@ impl Value {
                         "Symbol({})",
                         info.description.as_ref().unwrap_or(&"".to_string())
                     ),
+                    ObjectKind::BigInt(ref info) => format!("{}n", info.decimal),
                     ObjectKind::Error(ref _info) => {
                         format!("Error({})", obj_info.get_property("message").to_string())
                     }
@@ -1057,6 +1474,27 @@ impl Value {
                         }
                     }
                     ObjectKind::Date(ref date) => date.to_string(),
+                    ObjectKind::RegExp(ref info) => {
+                        format!("/{}/{}", info.original_source, info.original_flags)
+                    }
+                    ObjectKind::Map(_) => "[Map]".to_string(),
+                    ObjectKind::Set(_) => "[Set]".to_string(),
+                    ObjectKind::WeakMap(_) => "[WeakMap]".to_string(),
+                    ObjectKind::WeakSet(_) => "[WeakSet]".to_string(),
+                    ObjectKind::WeakRef(_) => "[WeakRef]".to_string(),
+                    ObjectKind::FinalizationRegistry(_) => "[FinalizationRegistry]".to_string(),
+                    ObjectKind::ShadowRealm(_) => "[ShadowRealm]".to_string(),
+                    ObjectKind::MapIterator(_) => "[Map Iterator]".to_string(),
+                    ObjectKind::SetIterator(_) => "[Set Iterator]".to_string(),
+                    ObjectKind::Generator(_) => "[Generator]".to_string(),
+                    ObjectKind::ArrayBuffer(ref info) if info.shared => {
+                        "[SharedArrayBuffer]".to_string()
+                    }
+                    ObjectKind::ArrayBuffer(_) => "[ArrayBuffer]".to_string(),
+                    ObjectKind::DataView(_) => "[DataView]".to_string(),
+                    ObjectKind::TypedArray(ref info) => format!("[{}]", info.name),
+                    ObjectKind::Proxy(_) => "[Proxy]".to_string(),
+                    ObjectKind::Temporal(_) => "[Temporal]".to_string(),
                     ObjectKind::Array(ref ary_info) => {
                         let mut string = "[ ".to_string();
 
@@ -1125,6 +1563,26 @@ pub fn is_integer(n: f64) -> bool {
 }
 
 #[inline]
-pub fn cstrp_to_str(p: *mut CString) -> &'static str {
-    unsafe { &*p }.to_str().unwrap()
+pub fn cstrp_to_str(p: *mut String) -> &'static str {
+    unsafe { &*p }
+}
+
+fn number_to_exponential_string(n: f64) -> String {
+    let formatted = format!("{:e}", n);
+    let mut parts = formatted.split('e');
+    let mut mantissa = parts.next().unwrap_or("").to_string();
+    let exponent = parts.next().unwrap_or("0").parse::<i32>().unwrap_or(0);
+    if mantissa.contains('.') {
+        while mantissa.ends_with('0') {
+            mantissa.pop();
+        }
+        if mantissa.ends_with('.') {
+            mantissa.pop();
+        }
+    }
+    if exponent >= 0 {
+        format!("{}e+{}", mantissa, exponent)
+    } else {
+        format!("{}e{}", mantissa, exponent)
+    }
 }

@@ -19,6 +19,9 @@ pub struct RuntimeError {
 pub enum ErrorKind {
     Unknown,
     Type(String),
+    Range(String),
+    Syntax(String),
+    Uri(String),
     Reference(String),
     General(String),
     Exception(Value),
@@ -48,6 +51,18 @@ impl RuntimeError {
         RuntimeError::default(ErrorKind::Type(msg.into()))
     }
 
+    pub fn rangeerr(msg: impl Into<String>) -> RuntimeError {
+        RuntimeError::default(ErrorKind::Range(msg.into()))
+    }
+
+    pub fn syntaxerr(msg: impl Into<String>) -> RuntimeError {
+        RuntimeError::default(ErrorKind::Syntax(msg.into()))
+    }
+
+    pub fn urierr(msg: impl Into<String>) -> RuntimeError {
+        RuntimeError::default(ErrorKind::Uri(msg.into()))
+    }
+
     pub fn reference(msg: impl Into<String>) -> RuntimeError {
         RuntimeError::default(ErrorKind::Reference(msg.into()))
     }
@@ -63,9 +78,12 @@ impl RuntimeError {
     pub fn to_value(self, factory: &mut Factory) -> Value {
         match self.kind {
             ErrorKind::Exception(v) => v,
-            ErrorKind::Type(s) => factory.error(format!("Type error: {}", s)),
+            ErrorKind::Type(s) => factory.native_error("TypeError", s),
+            ErrorKind::Range(s) => factory.native_error("RangeError", s),
+            ErrorKind::Syntax(s) => factory.native_error("SyntaxError", s),
+            ErrorKind::Uri(s) => factory.native_error("URIError", s),
             ErrorKind::General(s) => factory.error(format!("Error: {}", s)),
-            ErrorKind::Reference(s) => factory.error(format!("Reference error: {}", s)),
+            ErrorKind::Reference(s) => factory.native_error("ReferenceError", s),
             ErrorKind::Unimplemented => factory.error("Unimplemented"),
             ErrorKind::Unknown => factory.error("Unknown"),
         }

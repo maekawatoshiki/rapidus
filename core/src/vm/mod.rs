@@ -5,4 +5,5 @@ pub mod constant;
 pub mod error;
 pub mod exec_context;
 pub mod factory;
+pub mod promise_job;
 pub mod vm;

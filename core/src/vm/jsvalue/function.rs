@@ -6,6 +6,7 @@ use crate::vm::factory::{Factory, FunctionId};
 #[derive(Clone, Debug)]
 pub struct FunctionObjectInfo {
     pub name: Option<String>,
+    pub super_constructor: Option<crate::vm::jsvalue::value::Value>,
     pub kind: FunctionObjectKind,
 }
 
@@ -32,11 +33,17 @@ pub struct UserFunctionInfo {
     /// Internal slot \[\[FormalParameters\]\]
     pub params: Vec<FunctionParameter>,
 
+    /// Function `length` property.
+    pub length: usize,
+
     /// Varaible declared names
     pub var_names: Vec<String>,
 
     /// Lexically declared names
     pub lex_names: Vec<String>,
+
+    /// Lexically declared immutable names
+    pub const_names: Vec<String>,
 
     /// Declared functions to initialize
     pub func_decls: Vec<FuncInfoRef>,
@@ -44,11 +51,20 @@ pub struct UserFunctionInfo {
     /// Bytecode to execute
     pub code: ByteCode,
 
+    /// Bytecode offset immediately after parameter initializers.
+    pub parameter_init_len: usize,
+
     /// Exception table
     pub exception_table: Vec<Exception>,
 
     /// Represent if constructible or not
     pub constructible: bool,
+
+    /// Internal slot [[GeneratorKind]] for synchronous generators.
+    pub generator: bool,
+
+    /// True for AsyncFunction objects.
+    pub async_function: bool,
 
     /// Internal slot \[\[ThisMode\]\]
     pub this_mode: ThisMode,
@@ -93,12 +109,14 @@ pub enum ThisMode {
     Lexical,
     Global,
     Strict,
+    Derived,
 }
 
 #[derive(Clone, Debug)]
 pub struct FunctionParameter {
     pub name: String,
     pub rest_param: bool,
+    pub has_initializer: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -124,12 +142,17 @@ impl UserFunctionInfo {
             func_id: factory.new_func_id(),
             module_func_id,
             params: vec![],
+            length: 0,
             var_names: vec![],
             lex_names: vec![],
+            const_names: vec![],
             func_decls: vec![],
             constructible: false,
+            generator: false,
+            async_function: false,
             this_mode: ThisMode::Global,
             code: vec![VMInst::PUSH_UNDEFINED, VMInst::RETURN],
+            parameter_init_len: 0,
             exception_table: vec![],
         }
     }
@@ -140,12 +163,17 @@ impl UserFunctionInfo {
             func_id: FunctionId::default(),
             module_func_id: FunctionId::default(),
             params: vec![],
+            length: 0,
             var_names: vec![],
             lex_names: vec![],
+            const_names: vec![],
             func_decls: vec![],
             constructible: false,
+            generator: false,
+            async_function: false,
             this_mode: ThisMode::Global,
             code: vec![VMInst::PUSH_UNDEFINED, VMInst::RETURN],
+            parameter_init_len: 0,
             exception_table: vec![],
         }
     }

@@ -26,7 +26,6 @@ impl Hash for GcTargetKey {
         H: Hasher,
     {
         state.write_u64(self.0 as *mut libc::c_void as u64);
-        state.finish();
     }
 }
 
@@ -116,6 +115,11 @@ impl MemoryAllocator {
                 object_prototypes.function.initial_trace(&mut markset);
                 object_prototypes.string.initial_trace(&mut markset);
                 object_prototypes.array.initial_trace(&mut markset);
+                object_prototypes.array_buffer.initial_trace(&mut markset);
+                object_prototypes
+                    .shared_array_buffer
+                    .initial_trace(&mut markset);
+                object_prototypes.data_view.initial_trace(&mut markset);
                 object_prototypes.date.initial_trace(&mut markset);
 
                 constant_table.initial_trace(&mut markset);
@@ -181,6 +185,13 @@ impl MemoryAllocator {
         self.roots = &self.roots | &self.locked;
     }
 
+    /// Permanently roots a Value (e.g. the canonical well-known symbols) so
+    /// it survives every collection.
+    pub fn lock_value(&mut self, val: Value) {
+        val.initial_trace(&mut self.locked);
+        self.roots = &self.roots | &self.locked;
+    }
+
     pub fn unlock<T: GcTarget>(&mut self, val: T) {
         let mut map = MarkSet::default();
         val.initial_trace(&mut map);
@@ -238,6 +249,9 @@ impl ExecContext {
         }
         for val_boxed in &self.stack {
             let val: Value = (*val_boxed).into();
+            val.initial_trace(markset);
+        }
+        for val in &self.object_rest_exclusion_stack {
             val.initial_trace(markset);
         }
     }
@@ -318,14 +332,14 @@ impl GcTarget for LexicalEnvironment {
     }
 }
 
-impl GcTarget for ::std::ffi::CString {
+impl GcTarget for String {
     fn initial_trace(&self, _markset: &mut MarkSet) {}
     fn trace(&self, _allocator: &mut MemoryAllocator, _markset: &mut MarkSet) {}
     fn free(&self) -> usize {
         self.size()
     }
     fn size(&self) -> usize {
-        mem::size_of_val(self) + self.as_bytes().len()
+        mem::size_of_val(self) + self.len()
     }
 }
 
@@ -415,21 +429,89 @@ impl object::ObjectKind {
         match self {
             object::ObjectKind::Function(func_info) => match func_info.kind {
                 function::FunctionObjectKind::User { outer_env, .. } => {
+                    if let Some(super_constructor) = func_info.super_constructor {
+                        super_constructor.initial_trace(markset);
+                    }
                     if let Some(env) = outer_env {
                         mark!(markset, env.as_ptr());
                     }
                 }
-                function::FunctionObjectKind::Builtin(_) => {}
+                function::FunctionObjectKind::Builtin(_) => {
+                    if let Some(super_constructor) = func_info.super_constructor {
+                        super_constructor.initial_trace(markset);
+                    }
+                }
             },
             object::ObjectKind::Array(ary_info) => {
                 for elem in &ary_info.elems {
                     elem.initial_trace(markset)
                 }
             }
+            object::ObjectKind::Map(map_info) => {
+                for (key, value) in &map_info.entries {
+                    key.initial_trace(markset);
+                    value.initial_trace(markset);
+                }
+            }
+            object::ObjectKind::Set(set_info) => {
+                for value in &set_info.entries {
+                    value.initial_trace(markset);
+                }
+            }
+            object::ObjectKind::WeakMap(map_info) => {
+                for (key, value) in &map_info.entries {
+                    key.initial_trace(markset);
+                    value.initial_trace(markset);
+                }
+            }
+            object::ObjectKind::WeakSet(set_info) => {
+                for value in &set_info.entries {
+                    value.initial_trace(markset);
+                }
+            }
+            object::ObjectKind::WeakRef(info) => {
+                info.target.initial_trace(markset);
+            }
+            object::ObjectKind::FinalizationRegistry(info) => {
+                info.cleanup_callback.initial_trace(markset);
+                for cell in &info.cells {
+                    cell.target.initial_trace(markset);
+                    cell.holdings.initial_trace(markset);
+                    if let Some(token) = cell.unregister_token {
+                        token.initial_trace(markset);
+                    }
+                }
+            }
+            object::ObjectKind::ShadowRealm(_) => {}
+            object::ObjectKind::MapIterator(iterator) => {
+                iterator.iterated_map.initial_trace(markset);
+            }
+            object::ObjectKind::SetIterator(iterator) => {
+                iterator.iterated_set.initial_trace(markset);
+            }
+            object::ObjectKind::Generator(generator) => {
+                if let Some(context) = &generator.context {
+                    context.initial_trace(markset);
+                }
+            }
+            object::ObjectKind::ArrayBuffer(_) => {}
+            object::ObjectKind::DataView(info) => {
+                info.buffer.initial_trace(markset);
+            }
+            object::ObjectKind::TypedArray(info) => {
+                info.buffer.initial_trace(markset);
+            }
+            object::ObjectKind::RegExp(_) => {}
             object::ObjectKind::Date(_) => {}
             object::ObjectKind::Symbol(_) => {}
+            object::ObjectKind::BigInt(_) => {}
             object::ObjectKind::Error(_) => {}
-            object::ObjectKind::Arguments => {}
+            object::ObjectKind::Arguments(_) => {}
+            object::ObjectKind::Proxy(info) => {
+                info.target.initial_trace(markset);
+                info.handler.initial_trace(markset);
+            }
+            object::ObjectKind::Temporal(_) => {}
             object::ObjectKind::Ordinary => {}
         }
     }
@@ -438,21 +520,89 @@ impl object::ObjectKind {
         match self {
             object::ObjectKind::Function(func_info) => match func_info.kind {
                 function::FunctionObjectKind::User { outer_env, .. } => {
+                    if let Some(super_constructor) = func_info.super_constructor {
+                        super_constructor.trace(allocator, markset);
+                    }
                     if let Some(env) = outer_env {
                         mark_if_white!(allocator, markset, env.as_ptr());
                     }
                 }
-                function::FunctionObjectKind::Builtin(_) => {}
+                function::FunctionObjectKind::Builtin(_) => {
+                    if let Some(super_constructor) = func_info.super_constructor {
+                        super_constructor.trace(allocator, markset);
+                    }
+                }
             },
             object::ObjectKind::Array(ary_info) => {
                 for elem in &ary_info.elems {
                     elem.trace(allocator, markset)
                 }
             }
+            object::ObjectKind::Map(map_info) => {
+                for (key, value) in &map_info.entries {
+                    key.trace(allocator, markset);
+                    value.trace(allocator, markset);
+                }
+            }
+            object::ObjectKind::Set(set_info) => {
+                for value in &set_info.entries {
+                    value.trace(allocator, markset);
+                }
+            }
+            object::ObjectKind::WeakMap(map_info) => {
+                for (key, value) in &map_info.entries {
+                    key.trace(allocator, markset);
+                    value.trace(allocator, markset);
+                }
+            }
+            object::ObjectKind::WeakSet(set_info) => {
+                for value in &set_info.entries {
+                    value.trace(allocator, markset);
+                }
+            }
+            object::ObjectKind::WeakRef(info) => {
+                info.target.trace(allocator, markset);
+            }
+            object::ObjectKind::FinalizationRegistry(info) => {
+                info.cleanup_callback.trace(allocator, markset);
+                for cell in &info.cells {
+                    cell.target.trace(allocator, markset);
+                    cell.holdings.trace(allocator, markset);
+                    if let Some(token) = cell.unregister_token {
+                        token.trace(allocator, markset);
+                    }
+                }
+            }
+            object::ObjectKind::ShadowRealm(_) => {}
+            object::ObjectKind::MapIterator(iterator) => {
+                iterator.iterated_map.trace(allocator, markset);
+            }
+            object::ObjectKind::SetIterator(iterator) => {
+                iterator.iterated_set.trace(allocator, markset);
+            }
+            object::ObjectKind::Generator(generator) => {
+                if let Some(context) = &generator.context {
+                    context.initial_trace(markset);
+                }
+            }
+            object::ObjectKind::ArrayBuffer(_) => {}
+            object::ObjectKind::DataView(info) => {
+                info.buffer.trace(allocator, markset);
+            }
+            object::ObjectKind::TypedArray(info) => {
+                info.buffer.trace(allocator, markset);
+            }
+            object::ObjectKind::RegExp(_) => {}
             object::ObjectKind::Symbol(_) => {}
+            object::ObjectKind::BigInt(_) => {}
             object::ObjectKind::Date(_) => {}
             object::ObjectKind::Error(_) => {}
-            object::ObjectKind::Arguments => {}
+            object::ObjectKind::Arguments(_) => {}
+            object::ObjectKind::Proxy(info) => {
+                info.target.trace(allocator, markset);
+                info.handler.trace(allocator, markset);
+            }
+            object::ObjectKind::Temporal(_) => {}
             object::ObjectKind::Ordinary => {}
         }
     }
