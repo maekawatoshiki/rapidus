@@ -257,6 +257,7 @@ impl LexicalEnvironment {
             factory.builtin_function("evalScript", builtins::test262_eval_script);
         let test262_drain_promise_jobs =
             factory.builtin_function("__drain_promise_jobs", builtins::test262_drain_promise_jobs);
+        let performance_now = factory.builtin_function("now", builtins::performance_now);
         escape.get_object_info().insert_property(
             "length".to_string(),
             Property::new_data(DataProperty::new(Value::Number(1.0))),
@@ -284,6 +285,9 @@ impl LexicalEnvironment {
             gc => true, false, true: test262_gc,
             createRealm => true, false, true: test262_create_realm,
             evalScript => true, false, true: test262_eval_script
+        );
+        let performance = make_normal_object!(factory,
+            now => true, false, true: performance_now
         );
         let object_constructor = builtins::object::object(factory);
         let function_constructor = builtins::function::function(factory);
@@ -412,6 +416,7 @@ impl LexicalEnvironment {
             encodeURIComponent => true, false, true: encode_uri_component,
             eval       => true, false, true: eval,
             console    => true, false, true: console,
+            performance => true, false, true: performance,
             Object     => true, false, true: object_constructor,
             Function   => true, false, true: function_constructor,
             Boolean    => true, false, true: boolean_constructor,

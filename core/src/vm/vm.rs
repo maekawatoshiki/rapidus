@@ -1764,6 +1764,25 @@ impl VM {
                     let parent: Value = self.current_context.stack.pop().unwrap().into();
                     etry!(self.get_property_to_stack_top(parent, property))
                 }
+                VMInst::GET_METHOD_KEEP_THIS => {
+                    self.current_context.pc += 1;
+                    let property: Value = self.current_context.stack.pop().unwrap().into();
+                    let parent: Value = self.current_context.stack.pop().unwrap().into();
+                    let callee =
+                        match etry!(parent.get_property_by_value(&mut self.factory, property)) {
+                            Property::Data(DataProperty { val, .. }) => val,
+                            Property::Accessor(AccessorProperty { get, .. }) => {
+                                if get.is_undefined() {
+                                    Value::undefined()
+                                } else {
+                                    etry!(self.call_function(get, &[], parent));
+                                    self.current_context.stack.pop().unwrap().into()
+                                }
+                            }
+                        };
+                    self.current_context.stack.push(parent.into());
+                    self.current_context.stack.push(callee.into());
+                }
                 VMInst::SET_MEMBER => {
                     self.current_context.pc += 1;
                     let property: Value = self.current_context.stack.pop().unwrap().into();
@@ -1945,6 +1964,91 @@ impl VM {
                         args.push(arg);
                     }
                     etry!(self.enter_function(callee, &args, self.current_context.this, false))
+                }
+                VMInst::CALL_VALUE => {
+                    self.current_context.pc += 1;
+                    read_int32!(self, argc, usize);
+                    let mut args: Vec<Value> = vec![];
+                    for _ in 0..argc {
+                        let Some(arg) = self.current_context.stack.pop() else {
+                            etry!(Err(self.current_context.error_type("Not a function")));
+                            continue;
+                        };
+                        args.push(arg.into());
+                    }
+                    let Some(callee) = self.current_context.stack.pop() else {
+                        etry!(Err(self.current_context.error_type("Not a function")));
+                        continue;
+                    };
+                    etry!(self.enter_function(
+                        callee.into(),
+                        &args,
+                        self.current_context.this,
+                        false,
+                    ))
+                }
+                VMInst::CALL_VALUE_SPREAD => {
+                    self.current_context.pc += 1;
+                    let mut args: Vec<Value> = vec![];
+                    loop {
+                        let arg: Value = match self.current_context.stack.pop() {
+                            Some(arg) => arg.into(),
+                            None => type_error!("Not a function"),
+                        };
+                        if arg.is_seperator() {
+                            break;
+                        }
+                        args.push(arg);
+                    }
+                    let callee: Value = match self.current_context.stack.pop() {
+                        Some(callee) => callee.into(),
+                        None => type_error!("Not a function"),
+                    };
+                    etry!(self.enter_function(callee, &args, self.current_context.this, false))
+                }
+                VMInst::CALL_VALUE_WITH_THIS => {
+                    self.current_context.pc += 1;
+                    read_int32!(self, argc, usize);
+                    let mut args: Vec<Value> = vec![];
+                    for _ in 0..argc {
+                        let Some(arg) = self.current_context.stack.pop() else {
+                            etry!(Err(self.current_context.error_type("Not a function")));
+                            continue;
+                        };
+                        args.push(arg.into());
+                    }
+                    let Some(callee) = self.current_context.stack.pop() else {
+                        etry!(Err(self.current_context.error_type("Not a function")));
+                        continue;
+                    };
+                    let Some(this) = self.current_context.stack.pop() else {
+                        etry!(Err(self.current_context.error_type("Not a function")));
+                        continue;
+                    };
+                    etry!(self.enter_function(callee.into(), &args, this.into(), false))
+                }
+                VMInst::CALL_VALUE_WITH_THIS_SPREAD => {
+                    self.current_context.pc += 1;
+                    let mut args: Vec<Value> = vec![];
+                    loop {
+                        let arg: Value = match self.current_context.stack.pop() {
+                            Some(arg) => arg.into(),
+                            None => type_error!("Not a function"),
+                        };
+                        if arg.is_seperator() {
+                            break;
+                        }
+                        args.push(arg);
+                    }
+                    let callee: Value = match self.current_context.stack.pop() {
+                        Some(callee) => callee.into(),
+                        None => type_error!("Not a function"),
+                    };
+                    let this: Value = match self.current_context.stack.pop() {
+                        Some(this) => this.into(),
+                        None => type_error!("Not a function"),
+                    };
+                    etry!(self.enter_function(callee, &args, this, false))
                 }
                 VMInst::CALL_DIRECT_EVAL => {
                     self.current_context.pc += 1;

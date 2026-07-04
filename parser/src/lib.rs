@@ -270,10 +270,8 @@ impl Parser {
     fn read_statement_list_item(&mut self, accept_case_label: bool) -> Result<Node, Error> {
         if let Ok(tok) = self.lexer.peek_skip_lineterminator() {
             match tok.kind {
-                Kind::Identifier(ref name) if self.module && name == "export" => {
-                    self.read_export_declaration()
-                }
-                Kind::Identifier(ref name) if self.module && name == "import" => {
+                Kind::Identifier(ref name) if name == "export" => self.read_export_declaration(),
+                Kind::Identifier(ref name) if name == "import" => {
                     let save_pos = self.lexer.token_pos;
                     self.lexer.next_skip_lineterminator()?;
                     if matches!(
@@ -1468,6 +1466,45 @@ impl Parser {
                     }
                     lhs = Node::new(NodeBase::Index(Box::new(lhs), Box::new(idx)), loc);
                 }
+                Kind::Symbol(Symbol::OptionalChain) => match self
+                    .lexer
+                    .peek_skip_lineterminator()?
+                    .kind
+                {
+                    Kind::Symbol(Symbol::OpeningParen) => {
+                        self.lexer.next_skip_lineterminator()?;
+                        let args = self.read_arguments()?;
+                        lhs = Node::new(NodeBase::OptionalCall(Box::new(lhs), args), loc)
+                    }
+                    Kind::Symbol(Symbol::OpeningBoxBracket) => {
+                        self.lexer.next_skip_lineterminator()?;
+                        let idx = self.read_expression()?;
+                        if !self.lexer.skip(Symbol::ClosingBoxBracket).unwrap_or(false) {
+                            return Err(Error::Expect(
+                                self.lexer.get_current_loc(),
+                                "expect ']'".to_string(),
+                            ));
+                        }
+                        lhs = Node::new(NodeBase::OptionalIndex(Box::new(lhs), Box::new(idx)), loc);
+                    }
+                    _ => {
+                        let prop_tok = self.lexer.next_skip_lineterminator()?;
+                        match prop_tok.kind {
+                            Kind::Identifier(name) => {
+                                lhs = Node::new(NodeBase::OptionalMember(Box::new(lhs), name), loc)
+                            }
+                            Kind::Keyword(kw) => {
+                                lhs = Node::new(
+                                    NodeBase::OptionalMember(Box::new(lhs), kw.to_str().to_owned()),
+                                    loc,
+                                )
+                            }
+                            _ => {
+                                return Err(Error::Expect(loc_, "expect identifier".to_string()));
+                            }
+                        }
+                    }
+                },
                 _ => {
                     self.lexer.unget();
                     break;
@@ -1562,6 +1599,49 @@ impl Parser {
                     let template = self.read_template_literal(parts, tok.loc)?;
                     lhs = Node::new(NodeBase::Call(Box::new(lhs), vec![template]), loc);
                 }
+                Kind::Symbol(Symbol::OptionalChain) => match self
+                    .lexer
+                    .peek_skip_lineterminator()?
+                    .kind
+                {
+                    Kind::Symbol(Symbol::OpeningParen) => {
+                        self.lexer.next_skip_lineterminator()?;
+                        let args = self.read_arguments()?;
+                        lhs = Node::new(NodeBase::OptionalCall(Box::new(lhs), args), loc)
+                    }
+                    Kind::Symbol(Symbol::OpeningBoxBracket) => {
+                        self.lexer.next_skip_lineterminator()?;
+                        let idx = self.read_expression()?;
+                        if !self
+                            .lexer
+                            .skip2(Kind::Symbol(Symbol::ClosingBoxBracket))
+                            .unwrap_or(false)
+                        {
+                            return Err(Error::Expect(
+                                self.lexer.get_current_loc(),
+                                "expect ']'".to_string(),
+                            ));
+                        }
+                        lhs = Node::new(NodeBase::OptionalIndex(Box::new(lhs), Box::new(idx)), loc);
+                    }
+                    _ => {
+                        let prop_tok = self.lexer.next_skip_lineterminator()?;
+                        match prop_tok.kind {
+                            Kind::Identifier(name) => {
+                                lhs = Node::new(NodeBase::OptionalMember(Box::new(lhs), name), loc)
+                            }
+                            Kind::Keyword(kw) => {
+                                lhs = Node::new(
+                                    NodeBase::OptionalMember(Box::new(lhs), kw.to_str().to_owned()),
+                                    loc,
+                                )
+                            }
+                            _ => {
+                                return Err(Error::Expect(loc_, "expect identifier".to_string()));
+                            }
+                        }
+                    }
+                },
                 _ => {
                     self.lexer.unget();
                     break;
@@ -3219,12 +3299,14 @@ impl Parser {
             | NodeBase::Label(_, ref init)
             | NodeBase::AnonymousClassExpr(ref init) => Self::contains_yield_expression(init),
             NodeBase::Member(ref object, _)
+            | NodeBase::OptionalMember(ref object, _)
             | NodeBase::PrivateMember(ref object, _)
             | NodeBase::PrivateMemberInit(ref object, _, _)
             | NodeBase::PrivateAccessorInit(ref object, _, _) => {
                 Self::contains_yield_expression(object)
             }
             NodeBase::Index(ref left, ref right)
+            | NodeBase::OptionalIndex(ref left, ref right)
             | NodeBase::Assign(ref left, ref right)
             | NodeBase::AssignOp(ref left, ref right, _)
             | NodeBase::BinaryOp(ref left, ref right, _) => {
@@ -3235,7 +3317,7 @@ impl Parser {
                     || Self::contains_yield_expression(then)
                     || Self::contains_yield_expression(else_)
             }
-            NodeBase::Call(ref callee, ref args) => {
+            NodeBase::Call(ref callee, ref args) | NodeBase::OptionalCall(ref callee, ref args) => {
                 Self::contains_yield_expression(callee)
                     || args.iter().any(Self::contains_yield_expression)
             }
@@ -3540,7 +3622,7 @@ impl Parser {
                     allow_yield,
                 )?;
             }
-            NodeBase::Index(ref left, ref right) => {
+            NodeBase::Index(ref left, ref right) | NodeBase::OptionalIndex(ref left, ref right) => {
                 if !matches!(left.base, NodeBase::Identifier(ref name) if name == "super") {
                     Self::validate_early_errors_with_yield(
                         left,
@@ -3579,7 +3661,7 @@ impl Parser {
                     allow_yield,
                 )?;
             }
-            NodeBase::Call(ref callee, ref args) => {
+            NodeBase::Call(ref callee, ref args) | NodeBase::OptionalCall(ref callee, ref args) => {
                 let callee_is_super =
                     matches!(callee.base, NodeBase::Identifier(ref name) if name == "super");
                 if callee_is_super {
@@ -4052,7 +4134,7 @@ impl Parser {
     fn contains_super_call(node: &Node) -> bool {
         match node.base {
             NodeBase::SuperCall(_) | NodeBase::SuperCallFromArguments => true,
-            NodeBase::Call(ref callee, ref args) => {
+            NodeBase::Call(ref callee, ref args) | NodeBase::OptionalCall(ref callee, ref args) => {
                 if matches!(callee.base, NodeBase::Identifier(ref name) if name == "super") {
                     return true;
                 }
@@ -4103,10 +4185,12 @@ impl Parser {
             | NodeBase::Label(_, ref init)
             | NodeBase::AnonymousClassExpr(ref init) => Self::contains_super_call(init),
             NodeBase::Member(ref object, _)
+            | NodeBase::OptionalMember(ref object, _)
             | NodeBase::PrivateMember(ref object, _)
             | NodeBase::PrivateMemberInit(ref object, _, _)
             | NodeBase::PrivateAccessorInit(ref object, _, _) => Self::contains_super_call(object),
             NodeBase::Index(ref left, ref right)
+            | NodeBase::OptionalIndex(ref left, ref right)
             | NodeBase::Assign(ref left, ref right)
             | NodeBase::AssignOp(ref left, ref right, _)
             | NodeBase::BinaryOp(ref left, ref right, _) => {
@@ -4210,12 +4294,14 @@ impl Parser {
                 Self::contains_identifier_reference(init, expected)
             }
             NodeBase::Member(ref object, _)
+            | NodeBase::OptionalMember(ref object, _)
             | NodeBase::PrivateMember(ref object, _)
             | NodeBase::PrivateMemberInit(ref object, _, _)
             | NodeBase::PrivateAccessorInit(ref object, _, _) => {
                 Self::contains_identifier_reference(object, expected)
             }
             NodeBase::Index(ref left, ref right)
+            | NodeBase::OptionalIndex(ref left, ref right)
             | NodeBase::Assign(ref left, ref right)
             | NodeBase::AssignOp(ref left, ref right, _)
             | NodeBase::BinaryOp(ref left, ref right, _) => {
@@ -4227,7 +4313,7 @@ impl Parser {
                     || Self::contains_identifier_reference(then, expected)
                     || Self::contains_identifier_reference(else_, expected)
             }
-            NodeBase::Call(ref callee, ref args) => {
+            NodeBase::Call(ref callee, ref args) | NodeBase::OptionalCall(ref callee, ref args) => {
                 Self::contains_identifier_reference(callee, expected)
                     || args
                         .iter()

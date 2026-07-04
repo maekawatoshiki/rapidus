@@ -16,6 +16,12 @@ use rustc_hash::FxHashMap;
 
 pub type CodeGenResult = Result<(), Error>;
 
+enum ChainSegment<'a> {
+    Member(&'a str, bool),
+    Index(&'a Node, bool),
+    Call(&'a Vec<Node>, bool),
+}
+
 #[derive(Clone, Debug)]
 pub struct Error {
     pub msg: String,
@@ -142,6 +148,197 @@ impl<'a> CodeGenerator<'a> {
 // Visit methods for each Node
 
 impl<'a> CodeGenerator<'a> {
+    fn contains_optional_chain(node: &Node) -> bool {
+        match node.base {
+            NodeBase::OptionalMember(_, _)
+            | NodeBase::OptionalIndex(_, _)
+            | NodeBase::OptionalCall(_, _) => true,
+            NodeBase::Member(ref parent, _) | NodeBase::Index(ref parent, _) => {
+                Self::contains_optional_chain(parent)
+            }
+            NodeBase::Call(ref callee, _) => Self::contains_optional_chain(callee),
+            _ => false,
+        }
+    }
+
+    fn collect_chain<'b>(node: &'b Node, segments: &mut Vec<ChainSegment<'b>>) -> &'b Node {
+        match node.base {
+            NodeBase::Member(ref parent, ref property) => {
+                let base = Self::collect_chain(parent, segments);
+                segments.push(ChainSegment::Member(property, false));
+                base
+            }
+            NodeBase::OptionalMember(ref parent, ref property) => {
+                let base = Self::collect_chain(parent, segments);
+                segments.push(ChainSegment::Member(property, true));
+                base
+            }
+            NodeBase::Index(ref parent, ref index) => {
+                let base = Self::collect_chain(parent, segments);
+                segments.push(ChainSegment::Index(index, false));
+                base
+            }
+            NodeBase::OptionalIndex(ref parent, ref index) => {
+                let base = Self::collect_chain(parent, segments);
+                segments.push(ChainSegment::Index(index, true));
+                base
+            }
+            NodeBase::Call(ref callee, ref args) => {
+                let base = Self::collect_chain(callee, segments);
+                segments.push(ChainSegment::Call(args, false));
+                base
+            }
+            NodeBase::OptionalCall(ref callee, ref args) => {
+                let base = Self::collect_chain(callee, segments);
+                segments.push(ChainSegment::Call(args, true));
+                base
+            }
+            _ => node,
+        }
+    }
+
+    fn append_optional_guard(
+        &mut self,
+        iseq: &mut ByteCode,
+        end_jumps: &mut Vec<usize>,
+        extra_stack_values: usize,
+    ) {
+        self.bytecode_generator.append_double(iseq);
+        let not_nullish_pos = iseq.len();
+        self.bytecode_generator.append_jmp_if_not_nullish(0, iseq);
+        self.bytecode_generator.append_pop(iseq);
+        for _ in 0..extra_stack_values {
+            self.bytecode_generator.append_pop(iseq);
+        }
+        self.bytecode_generator.append_push_undefined(iseq);
+        let end_pos = iseq.len();
+        self.bytecode_generator.append_jmp(0, iseq);
+        end_jumps.push(end_pos);
+        let normal_pos = iseq.len() as isize;
+        self.bytecode_generator.replace_int32(
+            (normal_pos - not_nullish_pos as isize) as i32 - 5,
+            &mut iseq[not_nullish_pos + 1..not_nullish_pos + 5],
+        );
+    }
+
+    fn visit_call_args_on_top(
+        &mut self,
+        args: &Vec<Node>,
+        iseq: &mut ByteCode,
+    ) -> Result<bool, Error> {
+        let has_spread = args
+            .iter()
+            .any(|arg| matches!(arg.base, NodeBase::Spread(_)));
+        if has_spread {
+            self.bytecode_generator.append_push_seperator(iseq);
+        }
+        for arg in args.iter().rev() {
+            self.visit(arg, iseq, true)?;
+        }
+        Ok(has_spread)
+    }
+
+    fn visit_optional_chain(
+        &mut self,
+        node: &Node,
+        iseq: &mut ByteCode,
+        use_value: bool,
+    ) -> CodeGenResult {
+        let mut segments = vec![];
+        let base = Self::collect_chain(node, &mut segments);
+        self.visit(base, iseq, true)?;
+
+        let mut end_jumps = vec![];
+        let mut index = 0;
+        while index < segments.len() {
+            match segments[index] {
+                ChainSegment::Member(property, optional) => {
+                    if optional {
+                        self.append_optional_guard(iseq, &mut end_jumps, 0);
+                    }
+                    let property = self.factory.string(property.to_string());
+                    self.bytecode_generator.append_push_const(property, iseq);
+                    if matches!(segments.get(index + 1), Some(ChainSegment::Call(_, _))) {
+                        self.bytecode_generator.append_get_method_keep_this(iseq);
+                        if let Some(ChainSegment::Call(args, call_optional)) =
+                            segments.get(index + 1)
+                        {
+                            if *call_optional {
+                                self.append_optional_guard(iseq, &mut end_jumps, 1);
+                            }
+                            let has_spread = self.visit_call_args_on_top(args, iseq)?;
+                            self.save_source_pos(iseq);
+                            if has_spread {
+                                self.bytecode_generator
+                                    .append_call_value_with_this_spread(iseq);
+                            } else {
+                                self.bytecode_generator
+                                    .append_call_value_with_this(args.len() as u32, iseq);
+                            }
+                        }
+                        index += 2;
+                        continue;
+                    }
+                    self.save_source_pos(iseq);
+                    self.bytecode_generator.append_get_member(iseq);
+                }
+                ChainSegment::Index(expr, optional) => {
+                    if optional {
+                        self.append_optional_guard(iseq, &mut end_jumps, 0);
+                    }
+                    self.visit(expr, iseq, true)?;
+                    if matches!(segments.get(index + 1), Some(ChainSegment::Call(_, _))) {
+                        self.bytecode_generator.append_get_method_keep_this(iseq);
+                        if let Some(ChainSegment::Call(args, call_optional)) =
+                            segments.get(index + 1)
+                        {
+                            if *call_optional {
+                                self.append_optional_guard(iseq, &mut end_jumps, 1);
+                            }
+                            let has_spread = self.visit_call_args_on_top(args, iseq)?;
+                            self.save_source_pos(iseq);
+                            if has_spread {
+                                self.bytecode_generator
+                                    .append_call_value_with_this_spread(iseq);
+                            } else {
+                                self.bytecode_generator
+                                    .append_call_value_with_this(args.len() as u32, iseq);
+                            }
+                        }
+                        index += 2;
+                        continue;
+                    }
+                    self.save_source_pos(iseq);
+                    self.bytecode_generator.append_get_member(iseq);
+                }
+                ChainSegment::Call(args, optional) => {
+                    if optional {
+                        self.append_optional_guard(iseq, &mut end_jumps, 0);
+                    }
+                    let has_spread = self.visit_call_args_on_top(args, iseq)?;
+                    self.save_source_pos(iseq);
+                    if has_spread {
+                        self.bytecode_generator.append_call_value_spread(iseq);
+                    } else {
+                        self.bytecode_generator
+                            .append_call_value(args.len() as u32, iseq);
+                    }
+                }
+            }
+            index += 1;
+        }
+
+        let end = iseq.len() as isize;
+        for pos in end_jumps {
+            self.bytecode_generator
+                .replace_int32((end - pos as isize) as i32 - 5, &mut iseq[pos + 1..pos + 5]);
+        }
+        if !use_value {
+            self.bytecode_generator.append_pop(iseq);
+        }
+        Ok(())
+    }
+
     fn visit(&mut self, node: &Node, iseq: &mut ByteCode, use_value: bool) -> CodeGenResult {
         self.loc = node.loc;
         match node.base {
@@ -226,7 +423,11 @@ impl<'a> CodeGenerator<'a> {
                 self.visit_var_decl_pattern(node, &*pattern, init, kind, iseq)?
             }
             NodeBase::Member(ref parent, ref property) => {
-                self.visit_member(&*parent, property, iseq, use_value)?
+                if Self::contains_optional_chain(node) {
+                    self.visit_optional_chain(node, iseq, use_value)?
+                } else {
+                    self.visit_member(&*parent, property, iseq, use_value)?
+                }
             }
             NodeBase::PrivateMember(ref parent, ref property) => {
                 self.visit_private_member(&*parent, property, iseq, use_value)?
@@ -241,7 +442,11 @@ impl<'a> CodeGenerator<'a> {
                 ))
             }
             NodeBase::Index(ref parent, ref index) => {
-                self.visit_index(&*parent, &*index, iseq, use_value)?
+                if Self::contains_optional_chain(node) {
+                    self.visit_optional_chain(node, iseq, use_value)?
+                } else {
+                    self.visit_index(&*parent, &*index, iseq, use_value)?
+                }
             }
             NodeBase::UnaryOp(ref expr, ref op) => {
                 self.visit_unary_op(&*expr, op, iseq, use_value)?
@@ -256,8 +461,15 @@ impl<'a> CodeGenerator<'a> {
                 self.visit_assign_op(&*dst, &*src, op, iseq, use_value)?
             }
             NodeBase::Call(ref callee, ref args) => {
-                self.visit_call(&*callee, args, iseq, use_value)?
+                if Self::contains_optional_chain(node) {
+                    self.visit_optional_chain(node, iseq, use_value)?
+                } else {
+                    self.visit_call(&*callee, args, iseq, use_value)?
+                }
             }
+            NodeBase::OptionalMember(_, _)
+            | NodeBase::OptionalIndex(_, _)
+            | NodeBase::OptionalCall(_, _) => self.visit_optional_chain(node, iseq, use_value)?,
             NodeBase::SuperCall(ref args) => self.visit_super_call(args, iseq, use_value)?,
             NodeBase::SuperCallFromArguments => {
                 self.visit_super_call_from_arguments(iseq, use_value)?

@@ -561,6 +561,10 @@ fn deep_seq_bool(lval: &Value, rval: &Value) -> bool {
     }
 }
 
+pub fn performance_now(_vm: &mut VM, _args: &[Value], _this: Value) -> VMValueResult {
+    Ok(Value::Number(0.0))
+}
+
 pub fn require(vm: &mut VM, args: &[Value], _this: Value) -> VMValueResult {
     let file_name = {
         let val = args.get(0).ok_or(

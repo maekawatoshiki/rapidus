@@ -270,6 +270,28 @@ impl<'a> ByteCodeGenerator<'a> {
         self.append_int32(argc as i32, iseq);
     }
 
+    pub fn append_get_method_keep_this(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::GET_METHOD_KEEP_THIS);
+    }
+
+    pub fn append_call_value(&self, argc: u32, iseq: &mut ByteCode) {
+        iseq.push(VMInst::CALL_VALUE);
+        self.append_int32(argc as i32, iseq);
+    }
+
+    pub fn append_call_value_spread(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::CALL_VALUE_SPREAD);
+    }
+
+    pub fn append_call_value_with_this(&self, argc: u32, iseq: &mut ByteCode) {
+        iseq.push(VMInst::CALL_VALUE_WITH_THIS);
+        self.append_int32(argc as i32, iseq);
+    }
+
+    pub fn append_call_value_with_this_spread(&self, iseq: &mut ByteCode) {
+        iseq.push(VMInst::CALL_VALUE_WITH_THIS_SPREAD);
+    }
+
     pub fn append_jmp(&self, dst: i32, iseq: &mut ByteCode) {
         iseq.push(VMInst::JMP);
         self.append_int32(dst, iseq);
@@ -560,6 +582,16 @@ pub fn show_inst(code: &ByteCode, i: usize, const_table: &constant::ConstantTabl
                 format!("CallPrivateMethod {}", int32)
             }
             VMInst::CALL_PRIVATE_METHOD_SPREAD => "CallPrivateMethodSpread".to_string(),
+            VMInst::CALL_VALUE => {
+                let int32 = read_int32(code, i + 1);
+                format!("CallValue {}", int32)
+            }
+            VMInst::CALL_VALUE_SPREAD => "CallValueSpread".to_string(),
+            VMInst::CALL_VALUE_WITH_THIS => {
+                let int32 = read_int32(code, i + 1);
+                format!("CallValueWithThis {}", int32)
+            }
+            VMInst::CALL_VALUE_WITH_THIS_SPREAD => "CallValueWithThisSpread".to_string(),
             VMInst::GET_VALUE => {
                 let int32 = read_int32(code, i + 1);
                 let name = const_table.get(int32 as usize).as_string();
@@ -697,6 +729,11 @@ pub fn inst_to_inst_name(inst: u8) -> &'static str {
         VMInst::CALL_METHOD_SPREAD => "CallMethodSpread",
         VMInst::CALL_PRIVATE_METHOD => "CallPrivateMethod",
         VMInst::CALL_PRIVATE_METHOD_SPREAD => "CallPrivateMethodSpread",
+        VMInst::GET_METHOD_KEEP_THIS => "GetMethodKeepThis",
+        VMInst::CALL_VALUE => "CallValue",
+        VMInst::CALL_VALUE_SPREAD => "CallValueSpread",
+        VMInst::CALL_VALUE_WITH_THIS => "CallValueWithThis",
+        VMInst::CALL_VALUE_WITH_THIS_SPREAD => "CallValueWithThisSpread",
         VMInst::RETURN => "Return",
         VMInst::DOUBLE => "Double",
         VMInst::POP => "Pop",
@@ -854,6 +891,11 @@ pub mod VMInst {
     pub const MAKE_BINDING_REFERENCE: u8 = 0x66;
     pub const PUSH_PENDING_ITERATOR_CLOSE: u8 = 0x67;
     pub const POP_PENDING_ITERATOR_CLOSE: u8 = 0x68;
+    pub const GET_METHOD_KEEP_THIS: u8 = 0x69;
+    pub const CALL_VALUE: u8 = 0x6a;
+    pub const CALL_VALUE_SPREAD: u8 = 0x6b;
+    pub const CALL_VALUE_WITH_THIS: u8 = 0x6c;
+    pub const CALL_VALUE_WITH_THIS_SPREAD: u8 = 0x6d;
 
     pub fn get_inst_size(inst: u8) -> Option<usize> {
         match inst {
@@ -910,7 +952,9 @@ pub mod VMInst {
             | SET_FUNCTION_NAME
             | CALL_PRIVATE_METHOD
             | MAKE_BINDING_REFERENCE
-            | CALL_SUPER_METHOD => Some(5),
+            | CALL_SUPER_METHOD
+            | CALL_VALUE
+            | CALL_VALUE_WITH_THIS => Some(5),
             FOR_IN_NEXT | FOR_OF_NEXT => Some(9),
             PUSH_INT8 => Some(2),
             PUSH_FALSE
@@ -934,6 +978,7 @@ pub mod VMInst {
             | EQ
             | NE
             | GET_MEMBER
+            | GET_METHOD_KEEP_THIS
             | GET_PRIVATE_MEMBER
             | RETURN
             | SNE
@@ -959,7 +1004,9 @@ pub mod VMInst {
             | LOR
             | NOT
             | CREATE_ARRAY
-            | SPREAD_ARRAY => Some(1),
+            | SPREAD_ARRAY
+            | CALL_VALUE_SPREAD
+            | CALL_VALUE_WITH_THIS_SPREAD => Some(1),
             _ => None,
         }
     }

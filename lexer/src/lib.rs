@@ -1628,6 +1628,16 @@ impl Lexer {
                     } else {
                         Symbol::Coalesce
                     }
+                } else if !self.eof()
+                    && self.peek_char()? == '.'
+                    && self
+                        .code
+                        .get(self.loc.pos + 1..)
+                        .and_then(|rest| rest.chars().next())
+                        .map_or(true, |c| !c.is_ascii_digit())
+                {
+                    self.take_char()?;
+                    symbol = Symbol::OptionalChain
                 } else {
                     symbol = Symbol::Question
                 }
@@ -1865,7 +1875,7 @@ fn symbol() {
     let mut lexer = Lexer::new(
         "() {} [] , ; : . -> ++ -- + - * % **\
          ! ~ << >> >>> < <= > >= == != === !== & | ^ && || \
-         ? ?? = += -= *= %= <<= >>= >>>= &= |= ^= \
+         ? ?. ?? = += -= *= %= <<= >>= >>>= &= |= ^= \
          &&= ||= ??= #"
             .to_string(),
     );
@@ -1929,6 +1939,10 @@ fn symbol() {
     assert_eq!(lexer.next().unwrap().kind, Kind::Symbol(Symbol::LAnd,));
     assert_eq!(lexer.next().unwrap().kind, Kind::Symbol(Symbol::LOr,));
     assert_eq!(lexer.next().unwrap().kind, Kind::Symbol(Symbol::Question,));
+    assert_eq!(
+        lexer.next().unwrap().kind,
+        Kind::Symbol(Symbol::OptionalChain,)
+    );
     assert_eq!(lexer.next().unwrap().kind, Kind::Symbol(Symbol::Coalesce,));
     assert_eq!(lexer.next().unwrap().kind, Kind::Symbol(Symbol::Assign,));
     assert_eq!(lexer.next().unwrap().kind, Kind::Symbol(Symbol::AssignAdd,));

@@ -105,12 +105,15 @@ pub enum NodeBase {
     VarDecl(String, Option<Box<Node>>, VarKind),
     VarDeclPattern(Box<Node>, Option<Box<Node>>, VarKind),
     Member(Box<Node>, String),
+    OptionalMember(Box<Node>, String),
     PrivateMember(Box<Node>, String),
     PrivateMemberInit(Box<Node>, String, bool), // object, name, writable
     PrivateAccessorInit(Box<Node>, String, bool), // object, name, is_getter
     Index(Box<Node>, Box<Node>),
+    OptionalIndex(Box<Node>, Box<Node>),
     New(Box<Node>),
     Call(Box<Node>, Vec<Node>),
+    OptionalCall(Box<Node>, Vec<Node>),
     SuperCall(Vec<Node>),
     SuperCallFromArguments,
     If(Box<Node>, Box<Node>, Box<Node>), // Cond, Then, Else

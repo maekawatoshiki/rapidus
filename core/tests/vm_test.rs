@@ -135,6 +135,39 @@ fn fuzz_regression_object_literal_conditional_stack() {
 }
 
 #[test]
+fn optional_chaining_member_index_and_call() {
+    test_code("null?.x === undefined", "true");
+    test_code("null?.x.y === undefined", "true");
+    test_code(
+        "var log = ''; function side(){ log = 'x'; return 'p' } var r = null?.[side()]; log",
+        "''",
+    );
+    test_code("function f(x){ return x + 1 } f?.(4)", "5");
+}
+
+#[test]
+fn optional_chaining_preserves_method_this() {
+    test_code(
+        "var obj = { x: 2, m: function(v){ return this.x + v } }; obj?.m(3)",
+        "5",
+    );
+    test_code(
+        "var obj = { x: 2, m: function(v){ return this.x + v } }; obj.m?.(4)",
+        "6",
+    );
+    test_code(
+        "var log = ''; function side(){ log = 'x'; return 1 } var obj = {}; var r = obj.missing?.(side()); log",
+        "''",
+    );
+}
+
+#[test]
+fn module_tail_and_performance_shims() {
+    test_code("var a = 1; export { a as b }; a", "1");
+    test_code("typeof performance.now()", "'number'");
+}
+
+#[test]
 fn operator_test2() {
     assert_file("operator");
 }
